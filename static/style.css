@@ -283,6 +283,128 @@ body[data-theme="v2"] .v2-pts {
 body[data-theme="v2"] .v2-th-pts { text-align: center; }
 body[data-theme="v2"] .v2-tor { font-variant-numeric: tabular-nums; }
 
+/* V2 results - mini banner */
+body[data-theme="v2"] .v2-mini-banner {
+  margin: -16px -16px 0;
+  padding: 16px 20px 14px;
+  background: linear-gradient(170deg, #163520 0%, #0d1c12 100%);
+  text-align: center;
+}
+body[data-theme="v2"] .v2-mini-league {
+  margin: 4px 0 0;
+  font-size: clamp(1.1rem, 3vw, 1.5rem);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+/* V2 results - table */
+body[data-theme="v2"] .v2-results-outer {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -16px;
+}
+body[data-theme="v2"] table.v2-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.88rem;
+  background: #ffffff;
+  color: #1c1c1c;
+}
+body[data-theme="v2"] .v2-results-table thead tr { background: #1c1c1c; }
+body[data-theme="v2"] .v2-results-table th {
+  padding: 10px 10px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffffff;
+  border: none;
+  white-space: nowrap;
+  text-align: center;
+}
+body[data-theme="v2"] .v2-res-th-date { text-align: left; padding-left: 14px; }
+body[data-theme="v2"] .v2-res-th-home { text-align: right; padding-right: 14px; }
+body[data-theme="v2"] .v2-res-th-away { text-align: left; padding-left: 14px; }
+body[data-theme="v2"] .v2-md-row td {
+  background: #2d2d2d;
+  color: #ffffff;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 14px;
+}
+body[data-theme="v2"] .v2-res-row td {
+  padding: 11px 10px;
+  border-bottom: 1px solid #e4e4e4;
+  background: #ffffff;
+  color: #1c1c1c;
+  white-space: nowrap;
+}
+body[data-theme="v2"] .v2-res-row.alt td { background: #f5f5f5; }
+body[data-theme="v2"] .v2-res-date {
+  text-align: left;
+  padding-left: 14px !important;
+  color: #666;
+  font-size: 0.82rem;
+  min-width: 7rem;
+}
+body[data-theme="v2"] .v2-res-home {
+  text-align: right;
+  font-weight: 700;
+  padding-right: 14px !important;
+}
+body[data-theme="v2"] .v2-res-score {
+  text-align: center;
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #1c1c1c;
+  letter-spacing: -0.01em;
+  padding: 11px 16px !important;
+}
+body[data-theme="v2"] .v2-res-away {
+  text-align: left;
+  font-weight: 700;
+  padding-left: 14px !important;
+}
+body[data-theme="v2"] .v2-empty {
+  background: #ffffff;
+  color: #666;
+  padding: 20px 14px;
+  font-size: 0.88rem;
+}
+
+/* ─── V2 mobile (≤ 540px) ───────────────────────────── */
+@media (max-width: 540px) {
+  /* standings: hide W, D, L, DIFF — show POS TEAM P GOALS PTS */
+  body[data-theme="v2"] .v2-standings th:nth-child(4),
+  body[data-theme="v2"] .v2-standings th:nth-child(5),
+  body[data-theme="v2"] .v2-standings th:nth-child(6),
+  body[data-theme="v2"] .v2-standings th:nth-child(8),
+  body[data-theme="v2"] .v2-standings td:nth-child(4),
+  body[data-theme="v2"] .v2-standings td:nth-child(5),
+  body[data-theme="v2"] .v2-standings td:nth-child(6),
+  body[data-theme="v2"] .v2-standings td:nth-child(8) { display: none; }
+  body[data-theme="v2"] .v2-standings th,
+  body[data-theme="v2"] .v2-standings td { padding: 11px 5px; }
+  body[data-theme="v2"] .v2-th-pos { width: 3rem; }
+  body[data-theme="v2"] .v2-th-team,
+  body[data-theme="v2"] .v2-team-name { padding-left: 8px !important; }
+
+  /* results: hide date column — HOME RESULT AWAY is enough */
+  body[data-theme="v2"] .v2-res-th-date,
+  body[data-theme="v2"] .v2-res-date { display: none; }
+  body[data-theme="v2"] .v2-res-row td { padding: 11px 8px; }
+  body[data-theme="v2"] .v2-res-home { padding-right: 10px !important; }
+  body[data-theme="v2"] .v2-res-away { padding-left: 10px !important; }
+  body[data-theme="v2"] .v2-res-score { padding: 11px 12px !important; }
+  body[data-theme="v2"] .v2-md-row td { padding: 6px 10px; }
+}
+
 /* ─── V3: Bold / App ─────────────────────────────────── */
 body[data-theme="v3"] .table-wrap {
   border: 1px solid var(--line);

@@ -87,11 +87,11 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
         '<div class="v2-table-outer">',
         '<table class="v2-standings">',
         "<thead><tr>",
-        '<th class="v2-th-pos">PLATZ</th>',
+        '<th class="v2-th-pos">POS</th>',
         '<th class="v2-th-team">TEAM</th>',
-        "<th>SP</th><th>G</th><th>U</th><th>V</th>",
-        "<th>TOR</th><th>DIFF</th>",
-        '<th class="v2-th-pts">PUNKTE</th>',
+        "<th>P</th><th>W</th><th>D</th><th>L</th>",
+        "<th>GOALS</th><th>DIFF</th>",
+        '<th class="v2-th-pts">PTS</th>',
         "</tr></thead>",
         "<tbody>",
     ]
@@ -117,35 +117,84 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
     return "\n".join(v1 + v2)
 
 
-def render_results(matches, teams):
-    body = ['<h2 class="view-title">Results</h2>']
+def render_results(matches, teams, season="", league_name=""):
     played = [m for m in matches if m.played]
-    if not played:
-        body.append('<p class="empty">No results have been recorded yet.</p>')
-        return "\n".join(body)
-
     by_day = {}
     for m in played:
         by_day.setdefault(m.matchday, []).append(m)
 
-    for md in sorted(by_day, reverse=True):
-        body.append('<section class="matchday">')
-        body.append(f"<h3>Matchday {md}</h3>")
-        body.append('<ul class="matches">')
-        for m in sorted(by_day[md], key=lambda x: (x.date, x.home_code)):
-            home = escape(teams[m.home_code].name)
-            away = escape(teams[m.away_code].name)
-            body.append(
-                '<li class="match">'
-                f'<span class="home">{home}</span>'
-                f'<span class="score">{m.home_goals}'
-                f'<span class="dash">&ndash;</span>{m.away_goals}</span>'
-                f'<span class="away">{away}</span>'
-                f'<span class="date">{escape(_format_date(m.date))}</span>'
-                "</li>"
+    # ── V1 / V3 content ────────────────────────────────────
+    v1 = ['<div class="v1-content">', '<h2 class="view-title">Results</h2>']
+    if not played:
+        v1.append('<p class="empty">No results have been recorded yet.</p>')
+    else:
+        for md in sorted(by_day, reverse=True):
+            v1.append('<section class="matchday">')
+            v1.append(f"<h3>Matchday {md}</h3>")
+            v1.append('<ul class="matches">')
+            for m in sorted(by_day[md], key=lambda x: (x.date, x.home_code)):
+                home = escape(teams[m.home_code].name)
+                away = escape(teams[m.away_code].name)
+                v1.append(
+                    '<li class="match">'
+                    f'<span class="home">{home}</span>'
+                    f'<span class="score">{m.home_goals}'
+                    f'<span class="dash">&ndash;</span>{m.away_goals}</span>'
+                    f'<span class="away">{away}</span>'
+                    f'<span class="date">{escape(_format_date(m.date))}</span>'
+                    "</li>"
+                )
+            v1.append("</ul></section>")
+    v1.append("</div>")  # /v1-content
+
+    # ── V2 content (fussball.de style) ─────────────────────
+    v2 = [
+        '<div class="v2-content">',
+        '<div class="v2-mini-banner">',
+        f'<p class="v2-season">SEASON {escape(season)}</p>',
+        f'<h2 class="v2-mini-league">{escape(league_name.upper())}</h2>',
+        "</div>",  # /v2-mini-banner
+        '<div class="v2-results-outer">',
+    ]
+    if not played:
+        v2.append('<p class="v2-empty">No results have been recorded yet.</p>')
+    else:
+        v2 += [
+            '<table class="v2-results-table">',
+            "<thead><tr>",
+            '<th class="v2-res-th-date">DATE</th>',
+            '<th class="v2-res-th-home">HOME</th>',
+            '<th class="v2-res-th-score">RESULT</th>',
+            '<th class="v2-res-th-away">AWAY</th>',
+            "</tr></thead>",
+            "<tbody>",
+        ]
+        for md in sorted(by_day, reverse=True):
+            day_matches = sorted(by_day[md], key=lambda x: (x.date, x.home_code))
+            v2.append(
+                f'<tr class="v2-md-row"><td colspan="4">MATCHDAY {md}</td></tr>'
             )
-        body.append("</ul></section>")
-    return "\n".join(body)
+            for j, m in enumerate(day_matches):
+                alt_cls = " alt" if j % 2 == 1 else ""
+                home = escape(teams[m.home_code].name)
+                away = escape(teams[m.away_code].name)
+                score = f"{m.home_goals}:{m.away_goals}"
+                date = escape(_format_date(m.date))
+                v2.append(
+                    f'<tr class="v2-res-row{alt_cls}">'
+                    f'<td class="v2-res-date">{date}</td>'
+                    f'<td class="v2-res-home">{home}</td>'
+                    f'<td class="v2-res-score">{score}</td>'
+                    f'<td class="v2-res-away">{away}</td>'
+                    "</tr>"
+                )
+        v2 += ["</tbody></table>"]
+    v2 += [
+        "</div>",  # /v2-results-outer
+        "</div>",  # /v2-content
+    ]
+
+    return "\n".join(v1 + v2)
 
 
 def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matches, teams,
@@ -157,7 +206,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             rows, season=season, league_name=league_name,
             total_goals=total_goals, goals_per_game=goals_per_game, updated=updated,
         )),
-        "results.html": ("Results", render_results(matches, teams)),
+        "results.html": ("Results", render_results(matches, teams, season=season, league_name=league_name)),
     }
     for filename, (title, content) in pages.items():
         html = (
