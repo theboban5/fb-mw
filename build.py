@@ -41,12 +41,17 @@ def main():
 
     rows = standings.compute_standings(matches, teams)
 
+    played_count = sum(1 for m in matches if m.played)
+    total_goals = sum(m.home_goals + m.away_goals for m in matches if m.played)
+    goals_per_game = total_goals / played_count if played_count > 0 else 0.0
+
     tz = timezone(timedelta(hours=config.TZ_OFFSET_HOURS), config.TZ_LABEL)
     now = datetime.now(tz)
     updated = f"{now.day} {now.strftime('%B %Y, %H:%M')} {config.TZ_LABEL}"
 
     render.build_site(
-        DIST, TEMPLATES, STATIC, config.LEAGUE_NAME, updated, rows, matches, teams
+        DIST, TEMPLATES, STATIC, config.LEAGUE_NAME, updated, rows, matches, teams,
+        season=config.SEASON, total_goals=total_goals, goals_per_game=goals_per_game,
     )
 
     played = sum(1 for m in matches if m.played)

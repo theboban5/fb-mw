@@ -32,8 +32,10 @@ def _nav(active):
     return "\n".join(out)
 
 
-def render_standings(rows):
-    body = [
+def render_standings(rows, season="", league_name="", total_goals=0, goals_per_game=0.0, updated=""):
+    # ── V1 / V3 content (hidden in V2) ─────────────────────
+    v1 = [
+        '<div class="v1-content">',
         '<h2 class="view-title">Standings</h2>',
         '<div class="table-wrap">',
         '<table class="standings">',
@@ -46,7 +48,7 @@ def render_standings(rows):
     ]
     for i, s in enumerate(rows, start=1):
         gd = f"+{s.gd}" if s.gd > 0 else str(s.gd)
-        body.append(
+        v1.append(
             f'<tr class="pos-{i}">'
             f'<td class="pos">{i}</td>'
             f'<td class="team">{escape(s.name)}</td>'
@@ -55,13 +57,64 @@ def render_standings(rows):
             f'<td class="pts">{s.points}</td>'
             "</tr>"
         )
-    body += [
+    v1 += [
         "</tbody></table></div>",
         '<p class="legend">P played &middot; W won &middot; D drawn &middot; '
         "L lost &middot; GF/GA goals for/against &middot; GD goal difference &middot; "
         "Pts points</p>",
+        "</div>",  # /v1-content
     ]
-    return "\n".join(body)
+
+    # ── V2 content (fussball.de style, hidden in V1/V3) ────
+    gpg_str = f"{goals_per_game:.1f}" if total_goals > 0 else "0.0"
+    v2 = [
+        '<div class="v2-content">',
+        '<div class="v2-hero">',
+        f'<p class="v2-season">SEASON {escape(season)}</p>',
+        f'<h2 class="v2-league-name">{escape(league_name.upper())}</h2>',
+        '<div class="v2-stats">',
+        f'<div class="v2-stat">'
+        f'<span class="v2-stat-num">{total_goals}</span>'
+        f'<span class="v2-stat-label">GOALS</span>'
+        f'</div>',
+        f'<div class="v2-stat">'
+        f'<span class="v2-stat-num">{gpg_str}</span>'
+        f'<span class="v2-stat-label">GOALS/GAME</span>'
+        f'</div>',
+        "</div>",  # /v2-stats
+        f'<p class="v2-updated">{escape(updated)}</p>' if updated else "",
+        "</div>",  # /v2-hero
+        '<div class="v2-table-outer">',
+        '<table class="v2-standings">',
+        "<thead><tr>",
+        '<th class="v2-th-pos">PLATZ</th>',
+        '<th class="v2-th-team">TEAM</th>',
+        "<th>SP</th><th>G</th><th>U</th><th>V</th>",
+        "<th>TOR</th><th>DIFF</th>",
+        '<th class="v2-th-pts">PUNKTE</th>',
+        "</tr></thead>",
+        "<tbody>",
+    ]
+    for i, s in enumerate(rows, start=1):
+        gd = f"+{s.gd}" if s.gd > 0 else str(s.gd)
+        tor = f"{s.gf}:{s.ga}"
+        leader_cls = " v2-pos-leader" if i == 1 else ""
+        v2.append(
+            f'<tr class="pos-{i}">'
+            f'<td class="v2-pos{leader_cls}"><span class="v2-arrow">&#x2192;</span> {i}.</td>'
+            f'<td class="v2-team-name">{escape(s.name)}</td>'
+            f"<td>{s.played}</td><td>{s.won}</td><td>{s.drawn}</td><td>{s.lost}</td>"
+            f'<td class="v2-tor">{tor}</td><td>{gd}</td>'
+            f'<td class="v2-pts">{s.points}</td>'
+            "</tr>"
+        )
+    v2 += [
+        "</tbody></table>",
+        "</div>",  # /v2-table-outer
+        "</div>",  # /v2-content
+    ]
+
+    return "\n".join(v1 + v2)
 
 
 def render_results(matches, teams):
@@ -95,11 +148,15 @@ def render_results(matches, teams):
     return "\n".join(body)
 
 
-def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matches, teams):
+def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matches, teams,
+               season="", total_goals=0, goals_per_game=0.0):
     os.makedirs(dist, exist_ok=True)
     base = _read(os.path.join(templates_dir, "base.html"))
     pages = {
-        "index.html": ("Standings", render_standings(rows)),
+        "index.html": ("Standings", render_standings(
+            rows, season=season, league_name=league_name,
+            total_goals=total_goals, goals_per_game=goals_per_game, updated=updated,
+        )),
         "results.html": ("Results", render_results(matches, teams)),
     }
     for filename, (title, content) in pages.items():

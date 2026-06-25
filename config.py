@@ -35,6 +35,9 @@ _load_dotenv()
 # Shown in the page header and title.
 LEAGUE_NAME = "Under-16s Development League"
 
+# Season label shown in the Design B hero banner (e.g. "26/27").
+SEASON = os.environ.get("SEASON", "26/27")
+
 # Data sources. Replace the placeholders with your published CSV URLs.
 # A URL (http/https) is fetched; anything else is read as a local file path.
 CSV_URL_TEAMS = os.environ.get("CSV_URL_TEAMS", "CSV_URL_TEAMS")

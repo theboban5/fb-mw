@@ -114,9 +114,6 @@ table.standings {
     --accent: #3fb37a;
     --row-alt: #1b1e22;
   }
-  body[data-theme="v2"] .standings tbody tr.pos-1 { background: #28270f; }
-  body[data-theme="v2"] .standings tbody tr.pos-2 { background: #141924; }
-  body[data-theme="v2"] .standings tbody tr.pos-3 { background: #251a12; }
 }
 
 /* ─── Theme toggle bar ───────────────────────────────── */
@@ -161,29 +158,130 @@ table.standings {
   border-color: var(--accent);
 }
 
-/* ─── V2: Newspaper ──────────────────────────────────── */
-body[data-theme="v2"] .standings th {
-  background: var(--ink);
-  color: var(--bg);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  font-size: 0.65rem;
-  border-bottom: none;
-  padding: 7px 6px;
+/* ─── V2: fussball.de style ──────────────────────────── */
+
+/* content visibility */
+.v2-content { display: none; }
+body[data-theme="v2"] .v1-content { display: none; }
+body[data-theme="v2"] .v2-content { display: block; }
+body[data-theme="v2"] .site-header { display: none; }
+
+/* hero banner */
+body[data-theme="v2"] .v2-hero {
+  margin: -16px -16px 0;
+  padding: 28px 20px 32px;
+  background: linear-gradient(170deg, #163520 0%, #0d1c12 100%);
+  text-align: center;
 }
-body[data-theme="v2"] .standings tbody tr { background: var(--bg); }
-body[data-theme="v2"] .standings tbody tr:nth-child(even) { background: var(--row-alt); }
-body[data-theme="v2"] .standings tbody tr.pos-1 { background: #fffce6; }
-body[data-theme="v2"] .standings tbody tr.pos-2 { background: #f0f4ff; }
-body[data-theme="v2"] .standings tbody tr.pos-3 { background: #fff4ec; }
-body[data-theme="v2"] .standings .pts { color: var(--accent); font-size: 1rem; }
-body[data-theme="v2"] .matchday h3 {
+body[data-theme="v2"] .v2-season {
+  margin: 0 0 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  font-size: 0.75rem;
+  color: rgba(255,255,255,0.55);
+}
+body[data-theme="v2"] .v2-league-name {
+  margin: 0 0 22px;
+  font-size: clamp(1.25rem, 5vw, 2rem);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #ffffff;
+  line-height: 1.15;
+}
+body[data-theme="v2"] .v2-stats {
+  display: flex;
+  justify-content: center;
+  gap: 36px;
+}
+body[data-theme="v2"] .v2-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+body[data-theme="v2"] .v2-stat-num {
+  font-size: clamp(2.8rem, 9vw, 4.5rem);
+  font-weight: 900;
+  line-height: 1;
+  color: #6dbf67;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+body[data-theme="v2"] .v2-stat-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6dbf67;
+  border: 1px solid #6dbf67;
+  padding: 2px 7px;
+  border-radius: 2px;
+}
+body[data-theme="v2"] .v2-updated {
+  margin: 18px 0 0;
+  font-size: 0.68rem;
+  color: rgba(255,255,255,0.4);
+}
+
+/* V2 table */
+body[data-theme="v2"] .v2-table-outer {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -16px;
+}
+body[data-theme="v2"] table.v2-standings {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.88rem;
+  background: #ffffff;
+  color: #1c1c1c;
+}
+body[data-theme="v2"] .v2-standings thead tr { background: #1c1c1c; }
+body[data-theme="v2"] .v2-standings th {
+  padding: 10px 8px;
+  font-size: 0.62rem;
+  font-weight: 700;
   letter-spacing: 0.08em;
-  border-left: 3px solid var(--accent);
-  padding-left: 8px;
+  text-transform: uppercase;
+  text-align: center;
+  color: #ffffff;
+  border: none;
+  white-space: nowrap;
 }
+body[data-theme="v2"] .v2-th-team { text-align: left; padding-left: 14px; }
+body[data-theme="v2"] .v2-th-pos { width: 4.5rem; }
+body[data-theme="v2"] .v2-standings td {
+  padding: 12px 8px;
+  text-align: center;
+  border-bottom: 1px solid #e4e4e4;
+  background: #ffffff;
+  color: #1c1c1c;
+  white-space: nowrap;
+}
+body[data-theme="v2"] .v2-standings tbody tr:nth-child(even) td { background: #f5f5f5; }
+body[data-theme="v2"] .v2-team-name { text-align: left; font-weight: 700; padding-left: 14px; }
+body[data-theme="v2"] .v2-pos {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #555;
+}
+body[data-theme="v2"] .v2-pos-leader {
+  background: #5aad4e !important;
+  color: #ffffff !important;
+  font-weight: 800;
+}
+body[data-theme="v2"] .v2-arrow { color: #bbb; margin-right: 2px; font-size: 0.78rem; }
+body[data-theme="v2"] .v2-pos-leader .v2-arrow { color: rgba(255,255,255,0.8); }
+body[data-theme="v2"] .v2-pts {
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: #1c1c1c;
+}
+body[data-theme="v2"] .v2-th-pts { text-align: center; }
+body[data-theme="v2"] .v2-tor { font-variant-numeric: tabular-nums; }
 
 /* ─── V3: Bold / App ─────────────────────────────────── */
 body[data-theme="v3"] .table-wrap {
