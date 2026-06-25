@@ -18,7 +18,7 @@ sys.path.insert(0, ROOT)
 import config  # noqa: E402
 from src import data, render, standings  # noqa: E402
 
-DIST = os.path.join(ROOT, "dist")
+DIST = os.path.join(ROOT, "docs")
 STATIC = os.path.join(ROOT, "static")
 TEMPLATES = os.path.join(ROOT, "templates")
 

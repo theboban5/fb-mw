@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Results &middot; Under-16s Development League</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <h1>Under-16s Development League</h1>
+  <p class="updated">Last updated 25 June 2026, 16:56 CAT</p>
+</header>
+<nav class="tabs">
+<a href="index.html">Standings</a>
+<a href="results.html" class="active">Results</a>
+</nav>
+<main>
+<div class="v1-content">
+<h2 class="view-title">Results</h2>
+<section class="matchday">
+<h3>Matchday 1</h3>
+<ul class="matches">
+<li class="match"><span class="home">Blantyre FC</span><span class="score">1<span class="dash">&ndash;</span>1</span><span class="away">South Malawi United</span><span class="date">18 Jul 2026</span></li>
+<li class="match"><span class="home">Blantyre United</span><span class="score">2<span class="dash">&ndash;</span>1</span><span class="away">Lilongwe City</span><span class="date">18 Jul 2026</span></li>
+<li class="match"><span class="home">Lunzu FC</span><span class="score">0<span class="dash">&ndash;</span>3</span><span class="away">Machinga United</span><span class="date">18 Jul 2026</span></li>
+<li class="match"><span class="home">Mwanza FC</span><span class="score">3<span class="dash">&ndash;</span>2</span><span class="away">Liwonde Athletic</span><span class="date">18 Jul 2026</span></li>
+<li class="match"><span class="home">Mzuzu FC</span><span class="score">0<span class="dash">&ndash;</span>0</span><span class="away">FC Zomba</span><span class="date">18 Jul 2026</span></li>
+<li class="match"><span class="home">Zomba United</span><span class="score">5<span class="dash">&ndash;</span>2</span><span class="away">Chikwawa</span><span class="date">18 Jul 2026</span></li>
+</ul></section>
+</div>
+<div class="v2-content">
+<div class="v2-mini-banner">
+<p class="v2-season">SEASON 26/27</p>
+<h2 class="v2-mini-league">UNDER-16S DEVELOPMENT LEAGUE</h2>
+</div>
+<div class="v2-results-outer">
+<table class="v2-results-table">
+<thead><tr>
+<th class="v2-res-th-date">DATE</th>
+<th class="v2-res-th-home">HOME</th>
+<th class="v2-res-th-score">RESULT</th>
+<th class="v2-res-th-away">AWAY</th>
+</tr></thead>
+<tbody>
+<tr class="v2-md-row"><td colspan="4">MATCHDAY 1</td></tr>
+<tr class="v2-res-row"><td class="v2-res-date">18 Jul 2026</td><td class="v2-res-home">Blantyre FC</td><td class="v2-res-score">1:1</td><td class="v2-res-away">South Malawi United</td></tr>
+<tr class="v2-res-row alt"><td class="v2-res-date">18 Jul 2026</td><td class="v2-res-home">Blantyre United</td><td class="v2-res-score">2:1</td><td class="v2-res-away">Lilongwe City</td></tr>
+<tr class="v2-res-row"><td class="v2-res-date">18 Jul 2026</td><td class="v2-res-home">Lunzu FC</td><td class="v2-res-score">0:3</td><td class="v2-res-away">Machinga United</td></tr>
+<tr class="v2-res-row alt"><td class="v2-res-date">18 Jul 2026</td><td class="v2-res-home">Mwanza FC</td><td class="v2-res-score">3:2</td><td class="v2-res-away">Liwonde Athletic</td></tr>
+<tr class="v2-res-row"><td class="v2-res-date">18 Jul 2026</td><td class="v2-res-home">Mzuzu FC</td><td class="v2-res-score">0:0</td><td class="v2-res-away">FC Zomba</td></tr>
+<tr class="v2-res-row alt"><td class="v2-res-date">18 Jul 2026</td><td class="v2-res-home">Zomba United</td><td class="v2-res-score">5:2</td><td class="v2-res-away">Chikwawa</td></tr>
+</tbody></table>
+</div>
+</div>
+</main>
+<footer class="site-footer">
+  <p>Under-16s Development League &middot; results reported by team reps</p>
+</footer>
+<div id="theme-bar" aria-label="Switch design variant">
+  <span class="theme-label">Design</span>
+  <button data-t="v2">A</button>
+  <button data-t="v3">B</button>
+  <button data-t="v1">C</button>
+</div>
+<script>
+(function(){
+  var bar=document.getElementById('theme-bar');
+  var btns=bar.querySelectorAll('button');
+  function apply(t){
+    document.body.dataset.theme=t;
+    btns.forEach(function(b){b.classList.toggle('active',b.dataset.t===t);});
+    try{localStorage.setItem('fbmw-theme',t);}catch(e){}
+  }
+  var saved;try{saved=localStorage.getItem('fbmw-theme');}catch(e){}
+  apply(saved||'v2');
+  btns.forEach(function(b){b.addEventListener('click',function(){apply(b.dataset.t);});});
+})();
+</script>
+</body>
+</html>
