@@ -114,4 +114,93 @@ table.standings {
     --accent: #3fb37a;
     --row-alt: #1b1e22;
   }
+  body[data-theme="v2"] .standings tbody tr.pos-1 { background: #28270f; }
+  body[data-theme="v2"] .standings tbody tr.pos-2 { background: #141924; }
+  body[data-theme="v2"] .standings tbody tr.pos-3 { background: #251a12; }
+}
+
+/* ─── Theme toggle bar ───────────────────────────────── */
+#theme-bar {
+  position: fixed;
+  bottom: 20px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.14);
+  z-index: 100;
+}
+.theme-label {
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding-right: 4px;
+  user-select: none;
+}
+#theme-bar button {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 9px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.4;
+}
+#theme-bar button.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* ─── V2: Newspaper ──────────────────────────────────── */
+body[data-theme="v2"] .standings th {
+  background: var(--ink);
+  color: var(--bg);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 0.65rem;
+  border-bottom: none;
+  padding: 7px 6px;
+}
+body[data-theme="v2"] .standings tbody tr { background: var(--bg); }
+body[data-theme="v2"] .standings tbody tr:nth-child(even) { background: var(--row-alt); }
+body[data-theme="v2"] .standings tbody tr.pos-1 { background: #fffce6; }
+body[data-theme="v2"] .standings tbody tr.pos-2 { background: #f0f4ff; }
+body[data-theme="v2"] .standings tbody tr.pos-3 { background: #fff4ec; }
+body[data-theme="v2"] .standings .pts { color: var(--accent); font-size: 1rem; }
+body[data-theme="v2"] .matchday h3 {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  border-left: 3px solid var(--accent);
+  padding-left: 8px;
+}
+
+/* ─── V3: Bold / App ─────────────────────────────────── */
+body[data-theme="v3"] .table-wrap {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+body[data-theme="v3"] .standings th { padding: 10px 8px; background: var(--row-alt); }
+body[data-theme="v3"] .standings td { padding: 11px 8px; }
+body[data-theme="v3"] .standings .team { font-size: 1rem; }
+body[data-theme="v3"] .standings tr.pos-1 .pos { color: #c9982a; font-weight: 800; }
+body[data-theme="v3"] .standings tr.pos-2 .pos { color: #7b8b99; font-weight: 800; }
+body[data-theme="v3"] .standings tr.pos-3 .pos { color: #b87642; font-weight: 800; }
+body[data-theme="v3"] .standings .pts { color: var(--accent); font-size: 1.05rem; font-weight: 900; }
+body[data-theme="v3"] .matches { display: flex; flex-direction: column; gap: 6px; }
+body[data-theme="v3"] .match {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 10px;
 }

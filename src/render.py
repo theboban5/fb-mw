@@ -47,7 +47,7 @@ def render_standings(rows):
     for i, s in enumerate(rows, start=1):
         gd = f"+{s.gd}" if s.gd > 0 else str(s.gd)
         body.append(
-            "<tr>"
+            f'<tr class="pos-{i}">'
             f'<td class="pos">{i}</td>'
             f'<td class="team">{escape(s.name)}</td>'
             f"<td>{s.played}</td><td>{s.won}</td><td>{s.drawn}</td><td>{s.lost}</td>"

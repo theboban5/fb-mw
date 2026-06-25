@@ -21,5 +21,25 @@
 <footer class="site-footer">
   <p>{{LEAGUE_NAME}} &middot; results reported by team reps</p>
 </footer>
+<div id="theme-bar" aria-label="Switch design variant">
+  <span class="theme-label">Design</span>
+  <button data-t="v1">A</button>
+  <button data-t="v2">B</button>
+  <button data-t="v3">C</button>
+</div>
+<script>
+(function(){
+  var bar=document.getElementById('theme-bar');
+  var btns=bar.querySelectorAll('button');
+  function apply(t){
+    document.body.dataset.theme=t;
+    btns.forEach(function(b){b.classList.toggle('active',b.dataset.t===t);});
+    try{localStorage.setItem('fbmw-theme',t);}catch(e){}
+  }
+  var saved;try{saved=localStorage.getItem('fbmw-theme');}catch(e){}
+  apply(saved||'v1');
+  btns.forEach(function(b){b.addEventListener('click',function(){apply(b.dataset.t);});});
+})();
+</script>
 </body>
 </html>
