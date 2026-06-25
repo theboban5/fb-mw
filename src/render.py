@@ -218,6 +218,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
         )
         _write(os.path.join(dist, filename), html)
 
-    shutil.copy(os.path.join(static_dir, "style.css"), os.path.join(dist, "style.css"))
+    for fname in os.listdir(static_dir):
+        shutil.copy(os.path.join(static_dir, fname), os.path.join(dist, fname))
     # Tell GitHub Pages to serve files as-is (no Jekyll processing).
     _write(os.path.join(dist, ".nojekyll"), "")

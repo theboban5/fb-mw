@@ -91,6 +91,21 @@ table.standings {
 .match .date { grid-area: date; margin-top: 4px; text-align: center; color: var(--muted); font-size: 0.72rem; }
 .empty { color: var(--muted); }
 
+/* Design A: Malawi flag as full-viewport background watermark */
+body:not([data-theme="v2"]):not([data-theme="v3"]) main::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: url(malawi_flag.svg) center / 60% auto no-repeat;
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: -1;
+}
+/* Remove alternating row fill so flag shows uniformly through all rows */
+body:not([data-theme="v2"]):not([data-theme="v3"]) .standings tbody tr:nth-child(even) {
+  background: transparent;
+}
+
 .site-footer {
   max-width: var(--max);
   margin: 0 auto;
