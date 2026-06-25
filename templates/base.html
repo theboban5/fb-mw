@@ -23,9 +23,9 @@
 </footer>
 <div id="theme-bar" aria-label="Switch design variant">
   <span class="theme-label">Design</span>
-  <button data-t="v1">A</button>
-  <button data-t="v2">B</button>
-  <button data-t="v3">C</button>
+  <button data-t="v2">A</button>
+  <button data-t="v3">B</button>
+  <button data-t="v1">C</button>
 </div>
 <script>
 (function(){
@@ -37,7 +37,7 @@
     try{localStorage.setItem('fbmw-theme',t);}catch(e){}
   }
   var saved;try{saved=localStorage.getItem('fbmw-theme');}catch(e){}
-  apply(saved||'v1');
+  apply(saved||'v2');
   btns.forEach(function(b){b.addEventListener('click',function(){apply(b.dataset.t);});});
 })();
 </script>
