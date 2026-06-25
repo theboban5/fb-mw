@@ -1,84 +1,77 @@
-# Under-16s Development League — static site
+# Football League Site
 
-A lightweight, mobile-first static site that shows the league **standings** and
-**results by matchday**. Data comes from two Google Sheet tabs published as CSV.
-No backend, no database, no JavaScript framework — the build reads the CSVs,
-validates them, computes the table, and writes plain HTML.
+A lightweight, mobile-first static site for football league standings and results. No backend, no database, no JavaScript framework — data comes from two Google Sheets tabs published as CSV, and a single Python script builds the whole site.
+
+**Live site:** https://theboban5.github.io/fb-mw/
 
 ## How it works
 
 ```
-config.py            ← the only file you edit: league name + the two CSV URLs
-build.py             ← one command: fetch → validate → compute → render
-src/data.py          ← load + validate CSVs (the data layer)
-src/standings.py     ← pure standings computation
+config.py            ← league name, CSV URLs, timezone
+build.py             ← entry point: fetch → validate → compute → render
+src/data.py          ← load and validate the CSVs
+src/standings.py     ← standings computation
 src/render.py        ← data → HTML
 templates/base.html  ← page shell
 static/style.css     ← hand-written, mobile-first
-dist/                ← build output (deployed; not committed)
-tests/               ← unit tests for the standings + validation rules
-sample-data/         ← example CSVs to preview the site locally
+docs/                ← build output (committed; served by GitHub Pages)
+tests/               ← unit tests for standings and validation
+sample-data/         ← example CSVs for local preview
 ```
-
-The **data layer** (`src/data.py`) is kept separate from rendering, so adding
-more leagues later is more data, not a rewrite.
 
 ## Google Sheet format
 
-**teams** tab: `code, name, location`  — `code` (e.g. `BLU`) is the join key;
-`location` may be blank.
+**Teams tab:** `code, name, location`
+`code` (e.g. `BLU`) is the join key used in the matches tab. `location` may be blank.
 
-**matches** tab: `matchday, date, home_code, away_code, home_goals, away_goals`
-— `date` is `YYYY-MM-DD`; leave both goal columns blank for a match not yet
-played (it's excluded from the table). Every `home_code`/`away_code` **must**
-match a `code` in the teams tab.
+**Matches tab:** `matchday, date, home_code, away_code, home_goals, away_goals`
+`date` must be `YYYY-MM-DD`. Leave both goal columns blank for unplayed matches — they are excluded from the table automatically. Every `home_code` and `away_code` must appear in the teams tab.
 
-## Build
+## Local development
 
 Requires Python 3.9+ (standard library only — nothing to install).
 
-```bash
-python build.py            # writes the site to dist/
-```
-
-If a team code in **matches** doesn't exist in **teams**, the build **fails
-loudly**, lists every offending row, and writes nothing — so a typo can never
-silently produce a wrong table. It also rejects malformed dates, non-integer or
-half-filled scores, and duplicate team codes.
-
-### Preview locally with the sample data
+**Build with the sample data:**
 
 ```bash
 CSV_URL_TEAMS=sample-data/teams.csv \
 CSV_URL_MATCHES=sample-data/matches.csv \
-python build.py && python -m http.server -d dist 8000
+python build.py
+```
+
+**Preview in a browser:**
+
+```bash
+python -m http.server -d docs 8000
 # open http://localhost:8000
 ```
 
-### Run the tests
+**Run the tests:**
 
 ```bash
 python -m unittest discover -s tests
 ```
 
-## Going live
+## Configuration
 
-1. In your Google Sheet: **File → Share → Publish to web**, publish each tab
-   as **CSV**, and copy the two URLs.
-2. Paste them into `config.py` as `CSV_URL_TEAMS` and `CSV_URL_MATCHES`
-   (or, on GitHub, store them as the repo secrets of the same names — the
-   workflow reads them from there).
+Edit `config.py` to set your league name, season, timezone, and the two CSV URLs from Google Sheets.
 
-## Deploy (GitHub Pages)
+To get the CSV URLs: in your Google Sheet go to **File → Share → Publish to web**, choose each tab and publish as CSV.
 
-Deployment uses GitHub Actions (`.github/workflows/deploy.yml`).
+## Deploying
 
-1. Push this repo to GitHub.
-2. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
-3. **Settings → Secrets and variables → Actions** → add `CSV_URL_TEAMS` and
-   `CSV_URL_MATCHES`.
+The `docs/` folder is committed to `main` and served by GitHub Pages (Settings → Pages → Deploy from branch → `main` / `/docs`).
 
-The site rebuilds **on every push to `main`** and whenever you click **Run
-workflow** (Actions tab). After new scores land in the sheet, trigger a run to
-publish them. To make rebuilds automatic later, add a `schedule:` cron trigger
-to the workflow.
+To publish updated scores:
+
+1. Run `python build.py` — this overwrites `docs/` with the latest data.
+2. Commit and push.
+
+```bash
+python build.py
+git add docs/
+git commit -m "update standings"
+git push
+```
+
+GitHub Pages will pick up the new files within a minute or two.
