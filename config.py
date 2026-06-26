@@ -38,6 +38,12 @@ SL_SEASON = os.environ.get("SL_SEASON", "26/27")
 SL_CSV_TEAMS = os.environ.get("SL_CSV_TEAMS", "SL_CSV_TEAMS")
 SL_CSV_MATCHES = os.environ.get("SL_CSV_MATCHES", "SL_CSV_MATCHES")
 
+# ── Women's Premiership (women's first division) ─────────────────────────────
+WP_LEAGUE_NAME = "Women's Premiership"
+WP_SEASON = os.environ.get("WP_SEASON", "25/26")
+WP_CSV_TEAMS = os.environ.get("WP_CSV_TEAMS", "WP_CSV_TEAMS")
+WP_CSV_MATCHES = os.environ.get("WP_CSV_MATCHES", "WP_CSV_MATCHES")
+
 # ── National Division League (second tier) ──────────────────────────────────
 NDL_LEAGUE_NAME = "National Division League"
 NDL_SEASON = os.environ.get("NDL_SEASON", "26/27")

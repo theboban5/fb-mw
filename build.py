@@ -84,6 +84,12 @@ def _write_landing(season):
       <span class="lc-season">Season {season}</span>
       <span class="lc-arrow">&#x2192;</span>
     </a>
+    <a href="wp/" class="league-card">
+      <span class="lc-tier">Women&#x2019;s First Division</span>
+      <span class="lc-name">Women&#x2019;s Premiership</span>
+      <span class="lc-season">Season 25/26</span>
+      <span class="lc-arrow">&#x2192;</span>
+    </a>
     <a href="u16/" class="league-card">
       <span class="lc-tier">Development</span>
       <span class="lc-name">Under-16s Development League</span>
@@ -122,6 +128,13 @@ def main():
         os.path.join(DIST, "ndl"), updated,
     )
 
+    # Women's Premiership
+    wp_teams, wp_played = _build_league(
+        config.WP_CSV_TEAMS, config.WP_CSV_MATCHES,
+        config.WP_LEAGUE_NAME, config.WP_SEASON,
+        os.path.join(DIST, "wp"), updated,
+    )
+
     # Under-16s Development League
     u16_teams, u16_played = _build_league(
         config.CSV_URL_TEAMS, config.CSV_URL_MATCHES,
@@ -143,6 +156,7 @@ def main():
     for label, teams, played in [
         ("SL", sl_teams, sl_played),
         ("NDL", ndl_teams, ndl_played),
+        ("WP", wp_teams, wp_played),
         ("U16", u16_teams, u16_played),
     ]:
         if teams is not None:

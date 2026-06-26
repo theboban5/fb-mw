@@ -32,6 +32,8 @@ jobs:
           SL_CSV_MATCHES: ${{ secrets.SL_CSV_MATCHES }}
           NDL_CSV_TEAMS: ${{ secrets.NDL_CSV_TEAMS }}
           NDL_CSV_MATCHES: ${{ secrets.NDL_CSV_MATCHES }}
+          WP_CSV_TEAMS: ${{ secrets.WP_CSV_TEAMS }}
+          WP_CSV_MATCHES: ${{ secrets.WP_CSV_MATCHES }}
         run: python build.py
       - uses: actions/upload-pages-artifact@v3
         with:
