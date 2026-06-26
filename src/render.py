@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from html import escape
+import hashlib
 import os
 import shutil
 
@@ -26,6 +27,78 @@ _PALETTE = (
     "#e67e22", "#000075", "#7f8c8d", "#800000", "#2c3e50",
     "#d81b60", "#00897b", "#c0392b", "#8e44ad", "#27ae60",
 )
+
+
+# Logos are stored full-size in static/logos/ so you can drop in whatever you
+# find; the build downscales them so pages stay light. Caps are generous enough
+# for retina at the largest on-page size (hero league logo ~88px, crests ~54px).
+_LOGO_MAX_PX = {"clubs": 128, "leagues": 256}
+_LOGO_MAX_DEFAULT = 256
+
+
+def copy_static_tree(static_dir, dist):
+    """Copy static_dir -> dist, downscaling raster logos to keep pages light.
+
+    Everything except logos/ is copied verbatim. PNG logos are shrunk to a sane
+    cap with Pillow; if Pillow isn't installed they're copied as-is (with a
+    warning) so the build never hard-fails on a missing optional dependency.
+    """
+    shutil.copytree(
+        static_dir, dist, dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns(".DS_Store", "logos"),
+    )
+    _copy_logos(os.path.join(static_dir, "logos"), os.path.join(dist, "logos"))
+
+
+def _copy_logos(src_root, dst_root):
+    if not os.path.isdir(src_root):
+        return
+    try:
+        from PIL import Image
+    except ImportError:
+        Image = None
+        print(
+            "WARNING: Pillow not installed; copying logos at full size "
+            "(run 'pip install -r requirements.txt' to enable downscaling).",
+        )
+
+    for dirpath, _dirs, files in os.walk(src_root):
+        rel = os.path.relpath(dirpath, src_root)
+        out_dir = dst_root if rel == "." else os.path.join(dst_root, rel)
+        os.makedirs(out_dir, exist_ok=True)
+        subdir = "" if rel == "." else rel.split(os.sep)[0]
+        max_px = _LOGO_MAX_PX.get(subdir, _LOGO_MAX_DEFAULT)
+        for fname in files:
+            if fname == ".DS_Store":
+                continue
+            src = os.path.join(dirpath, fname)
+            dst = os.path.join(out_dir, fname)
+            if Image is not None and fname.lower().endswith(".png"):
+                _downscale_png(Image, src, dst, max_px)
+            else:
+                shutil.copy(src, dst)
+
+
+def _downscale_png(Image, src, dst, max_px):
+    """Write a copy of src capped at max_px on its longest side (never upscaled)."""
+    with Image.open(src) as im:
+        im = im.convert("RGBA")
+        im.thumbnail((max_px, max_px), Image.LANCZOS)
+        im.save(dst, "PNG", optimize=True)
+
+
+def css_version(static_dir):
+    """Short content hash of style.css, used to cache-bust the <link> on deploy.
+
+    GitHub Pages serves CSS with a 10-minute cache, so without a versioned URL a
+    returning visitor sees stale styles after every change. The hash changes only
+    when the file changes, so caching still works between deploys.
+    """
+    try:
+        with open(os.path.join(static_dir, "style.css"), "rb") as fh:
+            return hashlib.md5(fh.read()).hexdigest()[:8]
+    except OSError:
+        return ""
 
 
 def _logo_finder(static_dir, css_prefix, subdir):
@@ -401,6 +474,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
     # Logos are keyed off the data: a club crest by its team code, the league
     # logo by this league's output-directory slug (sl / ndl / wp / u16).
     crest = _logo_finder(static_dir, css_prefix, "clubs")
+    css_ver = css_version(static_dir)
     slug = os.path.basename(os.path.normpath(dist))
     league_logo = _logo_finder(static_dir, css_prefix, "leagues")(slug) or ""
     header_logo = (
@@ -431,13 +505,11 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             .replace("{{NAV}}", _nav(filename))
             .replace("{{CONTENT}}", content)
             .replace("{{CSS_PREFIX}}", css_prefix)
+            .replace("{{CSS_VER}}", css_ver)
             .replace("{{BACK_LINK}}", back_link)
         )
         _write(os.path.join(dist, filename), html)
 
     if copy_static:
-        shutil.copytree(
-            static_dir, dist, dirs_exist_ok=True,
-            ignore=shutil.ignore_patterns(".DS_Store"),
-        )
+        copy_static_tree(static_dir, dist)
         _write(os.path.join(dist, ".nojekyll"), "")

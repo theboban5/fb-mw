@@ -11,7 +11,6 @@ Exits non-zero (and prints what's wrong) if the source data is invalid.
 
 from datetime import datetime, timezone, timedelta
 import os
-import shutil
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -80,6 +79,7 @@ def _landing_card(slug, tier, name, season):
 
 
 def _write_landing(season):
+    css_ver = render.css_version(STATIC)
     cards = "\n    ".join([
         _landing_card("sl", "Top Tier", "Super League of Malawi", season),
         _landing_card("ndl", "Second Division", "National Division League", season),
@@ -93,7 +93,7 @@ def _write_landing(season):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Malawi Football</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v={css_ver}">
 </head>
 <body class="landing">
 <main class="landing-main">
@@ -115,12 +115,9 @@ def main():
     now = datetime.now(tz)
     updated = f"{now.day} {now.strftime('%B %Y, %H:%M')} {config.TZ_LABEL}"
 
-    # Copy static files once to docs root (recursively, so static/logos/ comes too)
+    # Copy static files once to docs root (logos are downscaled along the way)
     os.makedirs(DIST, exist_ok=True)
-    shutil.copytree(
-        STATIC, DIST, dirs_exist_ok=True,
-        ignore=shutil.ignore_patterns(".DS_Store"),
-    )
+    render.copy_static_tree(STATIC, DIST)
     render._write(os.path.join(DIST, ".nojekyll"), "")
 
     # Super League of Malawi
