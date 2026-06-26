@@ -28,6 +28,32 @@ _PALETTE = (
 )
 
 
+def _logo_finder(static_dir, css_prefix, subdir):
+    """Return f(key) -> web URL for static/logos/<subdir>/<key>.(svg|png), or None.
+
+    Existence is checked against the source static dir at build time, so a club
+    or league without an image simply renders nothing — no broken-image icons.
+    SVG is preferred over PNG when both are present.
+    """
+    base = os.path.join(static_dir, "logos", subdir)
+
+    def find(key):
+        for ext in (".svg", ".png"):
+            if os.path.exists(os.path.join(base, key + ext)):
+                return f"{css_prefix}logos/{subdir}/{key}{ext}"
+        return None
+
+    return find
+
+
+def _crest_img(url, extra_cls=""):
+    """An <img> for a club crest, or empty string when there's no logo."""
+    if not url:
+        return ""
+    cls = f"club-crest {extra_cls}".strip()
+    return f'<img class="{cls}" src="{escape(url)}" alt="" loading="lazy">'
+
+
 def _read(path):
     with open(path, encoding="utf-8") as fh:
         return fh.read()
@@ -62,9 +88,10 @@ def _form_cell(results):
 
 
 def render_standings(rows, season="", league_name="", total_goals=0, goals_per_game=0.0,
-                     updated="", form=None, changes=None):
+                     updated="", form=None, changes=None, crest=None, league_logo=""):
     form = form or {}
     changes = changes or {}
+    crest = crest or (lambda code: None)
     # ── V1 / V3 content (hidden in V2) ─────────────────────
     v1 = [
         '<div class="v1-content">',
@@ -80,10 +107,11 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
     ]
     for i, s in enumerate(rows, start=1):
         gd = f"+{s.gd}" if s.gd > 0 else str(s.gd)
+        c = _crest_img(crest(s.code), "crest-pre")
         v1.append(
             f'<tr class="pos-{i}">'
             f'<td class="pos">{i}</td>'
-            f'<td class="team">{escape(s.name)}</td>'
+            f'<td class="team">{c}{escape(s.name)}</td>'
             f"<td>{s.played}</td><td>{s.won}</td><td>{s.drawn}</td><td>{s.lost}</td>"
             f"<td>{s.gf}</td><td>{s.ga}</td><td>{gd}</td>"
             f'<td class="pts">{s.points}</td>'
@@ -102,6 +130,7 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
     v2 = [
         '<div class="v2-content">',
         '<div class="v2-hero">',
+        f'<img class="v2-hero-logo" src="{escape(league_logo)}" alt="">' if league_logo else "",
         f'<p class="v2-season">SEASON {escape(season)}</p>',
         f'<h2 class="v2-league-name">{escape(league_name.upper())}</h2>',
         '<div class="v2-stats">',
@@ -133,10 +162,11 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
         tor = f"{s.gf}:{s.ga}"
         leader_cls = " v2-pos-leader" if i == 1 else ""
         arrow_cls, arrow_glyph = _ARROW[changes.get(s.code, "same")]
+        c = _crest_img(crest(s.code), "crest-pre")
         v2.append(
             f'<tr class="pos-{i}">'
             f'<td class="v2-pos{leader_cls}"><span class="v2-arrow {arrow_cls}">{arrow_glyph}</span> {i}.</td>'
-            f'<td class="v2-team-name">{escape(s.name)}</td>'
+            f'<td class="v2-team-name">{c}{escape(s.name)}</td>'
             f"<td>{s.played}</td><td>{s.won}</td><td>{s.drawn}</td><td>{s.lost}</td>"
             f'<td class="v2-tor">{tor}</td><td>{gd}</td>'
             f'<td class="v2-pts">{s.points}</td>'
@@ -152,7 +182,8 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
     return "\n".join(v1 + v2)
 
 
-def render_results(matches, teams, season="", league_name=""):
+def render_results(matches, teams, season="", league_name="", crest=None, league_logo=""):
+    crest = crest or (lambda code: None)
     played = [m for m in matches if m.played]
     by_day = {}
     for m in played:
@@ -172,15 +203,17 @@ def render_results(matches, teams, season="", league_name=""):
             for m in sorted(by_day[md], key=lambda x: (x.date, x.home_code)):
                 home = escape(teams[m.home_code].name)
                 away = escape(teams[m.away_code].name)
+                home_c = _crest_img(crest(m.home_code), "crest-post")
+                away_c = _crest_img(crest(m.away_code), "crest-pre")
                 date_str = escape(_format_date(m.date))
                 if m.stadium:
                     date_str += f" &middot; {escape(m.stadium)}"
                 v1.append(
                     '<li class="match">'
-                    f'<span class="home">{home}</span>'
+                    f'<span class="home">{home}{home_c}</span>'
                     f'<span class="score">{m.home_goals}'
                     f'<span class="dash">&ndash;</span>{m.away_goals}</span>'
-                    f'<span class="away">{away}</span>'
+                    f'<span class="away">{away_c}{away}</span>'
                     f'<span class="date">{date_str}</span>'
                     "</li>"
                 )
@@ -191,6 +224,7 @@ def render_results(matches, teams, season="", league_name=""):
     v2 = [
         '<div class="v2-content">',
         '<div class="v2-mini-banner">',
+        f'<img class="v2-mini-logo" src="{escape(league_logo)}" alt="">' if league_logo else "",
         f'<p class="v2-season">SEASON {escape(season)}</p>',
         f'<h2 class="v2-mini-league">{escape(league_name.upper())}</h2>',
         "</div>",  # /v2-mini-banner
@@ -220,14 +254,16 @@ def render_results(matches, teams, season="", league_name=""):
                 alt_cls = " alt" if j % 2 == 1 else ""
                 home = escape(teams[m.home_code].name)
                 away = escape(teams[m.away_code].name)
+                home_c = _crest_img(crest(m.home_code), "crest-post")
+                away_c = _crest_img(crest(m.away_code), "crest-pre")
                 score = f"{m.home_goals}:{m.away_goals}"
                 date = escape(_format_date(m.date))
                 row = (
                     f'<tr class="v2-res-row{alt_cls}">'
                     f'<td class="v2-res-date">{date}</td>'
-                    f'<td class="v2-res-home">{home}</td>'
+                    f'<td class="v2-res-home">{home}{home_c}</td>'
                     f'<td class="v2-res-score">{score}</td>'
-                    f'<td class="v2-res-away">{away}</td>'
+                    f'<td class="v2-res-away">{away_c}{away}</td>'
                 )
                 if has_venue:
                     row += f'<td class="v2-res-venue">{escape(m.stadium)}</td>'
@@ -319,7 +355,7 @@ def _overview_legend(rows, color):
     return '<ul class="ov-legend">' + "".join(items) + "</ul>"
 
 
-def render_overview(matches, teams, days, history, rows, season="", league_name=""):
+def render_overview(matches, teams, days, history, rows, season="", league_name="", league_logo=""):
     played = bool(days) and bool(rows)
     if played:
         color = {s.code: _PALETTE[i % len(_PALETTE)] for i, s in enumerate(rows)}
@@ -342,6 +378,7 @@ def render_overview(matches, teams, days, history, rows, season="", league_name=
     v2 = [
         '<div class="v2-content">',
         '<div class="v2-mini-banner">',
+        f'<img class="v2-mini-logo" src="{escape(league_logo)}" alt="">' if league_logo else "",
         f'<p class="v2-season">SEASON {escape(season)}</p>',
         f'<h2 class="v2-mini-league">{escape(league_name.upper())}</h2>',
         "</div>",  # /v2-mini-banner
@@ -360,22 +397,36 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
                css_prefix="", back_link="", copy_static=True):
     os.makedirs(dist, exist_ok=True)
     base = _read(os.path.join(templates_dir, "base.html"))
+
+    # Logos are keyed off the data: a club crest by its team code, the league
+    # logo by this league's output-directory slug (sl / ndl / wp / u16).
+    crest = _logo_finder(static_dir, css_prefix, "clubs")
+    slug = os.path.basename(os.path.normpath(dist))
+    league_logo = _logo_finder(static_dir, css_prefix, "leagues")(slug) or ""
+    header_logo = (
+        f'<img class="site-logo" src="{escape(league_logo)}" alt="">' if league_logo else ""
+    )
+
     pages = {
         "index.html": ("Standings", render_standings(
             rows, season=season, league_name=league_name,
             total_goals=total_goals, goals_per_game=goals_per_game, updated=updated,
-            form=form, changes=changes,
+            form=form, changes=changes, crest=crest, league_logo=league_logo,
         )),
-        "results.html": ("Results", render_results(matches, teams, season=season, league_name=league_name)),
+        "results.html": ("Results", render_results(
+            matches, teams, season=season, league_name=league_name,
+            crest=crest, league_logo=league_logo,
+        )),
         "overview.html": ("Season Overview", render_overview(
             matches, teams, days or [], history or {}, rows,
-            season=season, league_name=league_name,
+            season=season, league_name=league_name, league_logo=league_logo,
         )),
     }
     for filename, (title, content) in pages.items():
         html = (
             base.replace("{{TITLE}}", escape(title))
             .replace("{{LEAGUE_NAME}}", escape(league_name))
+            .replace("{{LEAGUE_LOGO}}", header_logo)
             .replace("{{LAST_UPDATED}}", escape(updated))
             .replace("{{NAV}}", _nav(filename))
             .replace("{{CONTENT}}", content)
@@ -385,6 +436,8 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
         _write(os.path.join(dist, filename), html)
 
     if copy_static:
-        for fname in os.listdir(static_dir):
-            shutil.copy(os.path.join(static_dir, fname), os.path.join(dist, fname))
+        shutil.copytree(
+            static_dir, dist, dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns(".DS_Store"),
+        )
         _write(os.path.join(dist, ".nojekyll"), "")

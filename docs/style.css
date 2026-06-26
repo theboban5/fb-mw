@@ -106,6 +106,24 @@ table.standings {
 .match .date { grid-area: date; margin-top: 4px; text-align: center; color: var(--muted); font-size: 0.72rem; }
 .empty { color: var(--muted); }
 
+/* ─── Club crests & league logos ─────────────────────── */
+.club-crest {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  vertical-align: middle;
+}
+.crest-pre { margin-right: 8px; }
+.crest-post { margin-left: 8px; }
+
+/* league logo in the V1 / V3 site header */
+.site-logo {
+  display: block;
+  height: 46px;
+  width: auto;
+  margin-bottom: 8px;
+}
+
 /* Design A: Malawi flag as full-viewport background watermark */
 body:not([data-theme="v2"]):not([data-theme="v3"]) main::before {
   content: "";
@@ -253,6 +271,28 @@ body[data-theme="v2"] .v2-updated {
   margin: 18px 0 0;
   font-size: 0.68rem;
   color: rgba(255,255,255,0.4);
+}
+body[data-theme="v2"] .v2-hero-logo {
+  display: block;
+  width: 88px;
+  height: 88px;
+  margin: 0 auto 18px;
+  object-fit: contain;
+  background: #ffffff;
+  border-radius: 50%;
+  padding: 10px;
+  box-shadow: 0 2px 14px rgba(0,0,0,0.3);
+}
+body[data-theme="v2"] .v2-mini-logo {
+  display: block;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 8px;
+  object-fit: contain;
+  background: #ffffff;
+  border-radius: 50%;
+  padding: 7px;
+  box-shadow: 0 1px 8px rgba(0,0,0,0.25);
 }
 
 /* V2 table */
@@ -581,9 +621,10 @@ body.landing main::before {
 }
 .league-card {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 20px 50px 20px 24px;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 50px 18px 20px;
   border: 1px solid var(--line);
   border-radius: 12px;
   text-decoration: none;
@@ -591,6 +632,17 @@ body.landing main::before {
   background: var(--bg);
   position: relative;
   transition: border-color 0.15s, box-shadow 0.15s;
+}
+.lc-logo {
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+.lc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 .league-card:hover {
   border-color: var(--accent);

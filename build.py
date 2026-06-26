@@ -59,7 +59,33 @@ def _build_league(csv_teams, csv_matches, league_name, season, dist, updated):
     return len(teams), played_count
 
 
+def _landing_card(slug, tier, name, season):
+    """One league card; shows the league logo when static/logos/leagues/<slug> exists."""
+    logo = ""
+    for ext in (".svg", ".png"):
+        if os.path.exists(os.path.join(STATIC, "logos", "leagues", slug + ext)):
+            logo = f'<img class="lc-logo" src="logos/leagues/{slug}{ext}" alt="">'
+            break
+    return (
+        f'<a href="{slug}/" class="league-card">'
+        f"{logo}"
+        f'<span class="lc-body">'
+        f'<span class="lc-tier">{tier}</span>'
+        f'<span class="lc-name">{name}</span>'
+        f'<span class="lc-season">Season {season}</span>'
+        f"</span>"
+        f'<span class="lc-arrow">&#x2192;</span>'
+        f"</a>"
+    )
+
+
 def _write_landing(season):
+    cards = "\n    ".join([
+        _landing_card("sl", "Top Tier", "Super League of Malawi", season),
+        _landing_card("ndl", "Second Division", "National Division League", season),
+        _landing_card("wp", "Women&#x2019;s First Division", "Women&#x2019;s Premiership", "25/26"),
+        _landing_card("u16", "Development", "Under-16s Development League", season),
+    ])
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -76,30 +102,7 @@ def _write_landing(season):
     <p class="landing-sub">Live tables &amp; results</p>
   </header>
   <div class="league-cards">
-    <a href="sl/" class="league-card">
-      <span class="lc-tier">Top Tier</span>
-      <span class="lc-name">Super League of Malawi</span>
-      <span class="lc-season">Season {season}</span>
-      <span class="lc-arrow">&#x2192;</span>
-    </a>
-    <a href="ndl/" class="league-card">
-      <span class="lc-tier">Second Division</span>
-      <span class="lc-name">National Division League</span>
-      <span class="lc-season">Season {season}</span>
-      <span class="lc-arrow">&#x2192;</span>
-    </a>
-    <a href="wp/" class="league-card">
-      <span class="lc-tier">Women&#x2019;s First Division</span>
-      <span class="lc-name">Women&#x2019;s Premiership</span>
-      <span class="lc-season">Season 25/26</span>
-      <span class="lc-arrow">&#x2192;</span>
-    </a>
-    <a href="u16/" class="league-card">
-      <span class="lc-tier">Development</span>
-      <span class="lc-name">Under-16s Development League</span>
-      <span class="lc-season">Season {season}</span>
-      <span class="lc-arrow">&#x2192;</span>
-    </a>
+    {cards}
   </div>
 </main>
 </body>
@@ -112,10 +115,12 @@ def main():
     now = datetime.now(tz)
     updated = f"{now.day} {now.strftime('%B %Y, %H:%M')} {config.TZ_LABEL}"
 
-    # Copy static files once to docs root
+    # Copy static files once to docs root (recursively, so static/logos/ comes too)
     os.makedirs(DIST, exist_ok=True)
-    for fname in os.listdir(STATIC):
-        shutil.copy(os.path.join(STATIC, fname), os.path.join(DIST, fname))
+    shutil.copytree(
+        STATIC, DIST, dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns(".DS_Store"),
+    )
     render._write(os.path.join(DIST, ".nojekyll"), "")
 
     # Super League of Malawi
