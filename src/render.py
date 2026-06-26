@@ -123,6 +123,8 @@ def render_results(matches, teams, season="", league_name=""):
     for m in played:
         by_day.setdefault(m.matchday, []).append(m)
 
+    has_venue = any(m.stadium for m in played)
+
     # ── V1 / V3 content ────────────────────────────────────
     v1 = ['<div class="v1-content">', '<h2 class="view-title">Results</h2>']
     if not played:
@@ -135,13 +137,16 @@ def render_results(matches, teams, season="", league_name=""):
             for m in sorted(by_day[md], key=lambda x: (x.date, x.home_code)):
                 home = escape(teams[m.home_code].name)
                 away = escape(teams[m.away_code].name)
+                date_str = escape(_format_date(m.date))
+                if m.stadium:
+                    date_str += f" &middot; {escape(m.stadium)}"
                 v1.append(
                     '<li class="match">'
                     f'<span class="home">{home}</span>'
                     f'<span class="score">{m.home_goals}'
                     f'<span class="dash">&ndash;</span>{m.away_goals}</span>'
                     f'<span class="away">{away}</span>'
-                    f'<span class="date">{escape(_format_date(m.date))}</span>'
+                    f'<span class="date">{date_str}</span>'
                     "</li>"
                 )
             v1.append("</ul></section>")
@@ -159,6 +164,7 @@ def render_results(matches, teams, season="", league_name=""):
     if not played:
         v2.append('<p class="v2-empty">No results have been recorded yet.</p>')
     else:
+        colspan = 5 if has_venue else 4
         v2 += [
             '<table class="v2-results-table">',
             "<thead><tr>",
@@ -166,13 +172,14 @@ def render_results(matches, teams, season="", league_name=""):
             '<th class="v2-res-th-home">HOME</th>',
             '<th class="v2-res-th-score">RESULT</th>',
             '<th class="v2-res-th-away">AWAY</th>',
-            "</tr></thead>",
-            "<tbody>",
         ]
+        if has_venue:
+            v2.append('<th class="v2-res-th-venue">VENUE</th>')
+        v2 += ["</tr></thead>", "<tbody>"]
         for md in sorted(by_day, reverse=True):
             day_matches = sorted(by_day[md], key=lambda x: (x.date, x.home_code))
             v2.append(
-                f'<tr class="v2-md-row"><td colspan="4">MATCHDAY {md}</td></tr>'
+                f'<tr class="v2-md-row"><td colspan="{colspan}">MATCHDAY {md}</td></tr>'
             )
             for j, m in enumerate(day_matches):
                 alt_cls = " alt" if j % 2 == 1 else ""
@@ -180,14 +187,17 @@ def render_results(matches, teams, season="", league_name=""):
                 away = escape(teams[m.away_code].name)
                 score = f"{m.home_goals}:{m.away_goals}"
                 date = escape(_format_date(m.date))
-                v2.append(
+                row = (
                     f'<tr class="v2-res-row{alt_cls}">'
                     f'<td class="v2-res-date">{date}</td>'
                     f'<td class="v2-res-home">{home}</td>'
                     f'<td class="v2-res-score">{score}</td>'
                     f'<td class="v2-res-away">{away}</td>'
-                    "</tr>"
                 )
+                if has_venue:
+                    row += f'<td class="v2-res-venue">{escape(m.stadium)}</td>'
+                row += "</tr>"
+                v2.append(row)
         v2 += ["</tbody></table>"]
     v2 += [
         "</div>",  # /v2-results-outer
@@ -198,7 +208,8 @@ def render_results(matches, teams, season="", league_name=""):
 
 
 def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matches, teams,
-               season="", total_goals=0, goals_per_game=0.0):
+               season="", total_goals=0, goals_per_game=0.0,
+               css_prefix="", back_link="", copy_static=True):
     os.makedirs(dist, exist_ok=True)
     base = _read(os.path.join(templates_dir, "base.html"))
     pages = {
@@ -215,10 +226,12 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             .replace("{{LAST_UPDATED}}", escape(updated))
             .replace("{{NAV}}", _nav(filename))
             .replace("{{CONTENT}}", content)
+            .replace("{{CSS_PREFIX}}", css_prefix)
+            .replace("{{BACK_LINK}}", back_link)
         )
         _write(os.path.join(dist, filename), html)
 
-    for fname in os.listdir(static_dir):
-        shutil.copy(os.path.join(static_dir, fname), os.path.join(dist, fname))
-    # Tell GitHub Pages to serve files as-is (no Jekyll processing).
-    _write(os.path.join(dist, ".nojekyll"), "")
+    if copy_static:
+        for fname in os.listdir(static_dir):
+            shutil.copy(os.path.join(static_dir, fname), os.path.join(dist, fname))
+        _write(os.path.join(dist, ".nojekyll"), "")

@@ -24,6 +24,21 @@ body {
 .site-header h1 { margin: 0; font-size: 1.35rem; letter-spacing: -0.01em; }
 .updated { margin: 3px 0 0; color: var(--muted); font-size: 0.8rem; }
 
+/* ─── Back link (league pages → landing) ─────────────── */
+.back-link {
+  display: block;
+  max-width: var(--max);
+  margin: 6px auto 0;
+  padding: 0 16px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+}
+.back-link:hover { color: var(--accent); }
+body[data-theme="v2"] .back-link { color: var(--muted); }
+body[data-theme="v2"] .back-link:hover { color: var(--accent); }
+
 .tabs {
   max-width: var(--max);
   margin: 0 auto;
@@ -344,6 +359,7 @@ body[data-theme="v2"] .v2-results-table th {
 body[data-theme="v2"] .v2-res-th-date { text-align: left; padding-left: 14px; }
 body[data-theme="v2"] .v2-res-th-home { text-align: right; padding-right: 14px; }
 body[data-theme="v2"] .v2-res-th-away { text-align: left; padding-left: 14px; }
+body[data-theme="v2"] .v2-res-th-venue { text-align: left; padding-left: 14px; }
 body[data-theme="v2"] .v2-md-row td {
   background: #2d2d2d;
   color: #ffffff;
@@ -386,6 +402,12 @@ body[data-theme="v2"] .v2-res-away {
   font-weight: 700;
   padding-left: 14px !important;
 }
+body[data-theme="v2"] .v2-res-venue {
+  text-align: left;
+  padding-left: 14px !important;
+  color: #666;
+  font-size: 0.82rem;
+}
 body[data-theme="v2"] .v2-empty {
   background: #ffffff;
   color: #666;
@@ -410,9 +432,11 @@ body[data-theme="v2"] .v2-empty {
   body[data-theme="v2"] .v2-th-team,
   body[data-theme="v2"] .v2-team-name { padding-left: 8px !important; }
 
-  /* results: hide date column — HOME RESULT AWAY is enough */
+  /* results: hide date and venue columns — HOME RESULT AWAY is enough */
   body[data-theme="v2"] .v2-res-th-date,
   body[data-theme="v2"] .v2-res-date { display: none; }
+  body[data-theme="v2"] .v2-res-th-venue,
+  body[data-theme="v2"] .v2-res-venue { display: none; }
   body[data-theme="v2"] .v2-res-row td { padding: 11px 8px; }
   body[data-theme="v2"] .v2-res-home { padding-right: 10px !important; }
   body[data-theme="v2"] .v2-res-away { padding-left: 10px !important; }
@@ -438,4 +462,88 @@ body[data-theme="v3"] .match {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px 10px;
+}
+
+/* ─── Landing page ───────────────────────────────────── */
+body.landing {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+body.landing main::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: url(malawi_flag.svg) center / 60% auto no-repeat;
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: -1;
+}
+.landing-main {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 40px 16px;
+}
+.landing-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+.landing-title {
+  margin: 0;
+  font-size: clamp(1.8rem, 6vw, 2.8rem);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.landing-sub {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.league-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.league-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px 50px 20px 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  background: var(--bg);
+  position: relative;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.league-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+.lc-tier {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+}
+.lc-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.lc-season {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.lc-arrow {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.2rem;
+  color: var(--muted);
 }

@@ -1,12 +1,12 @@
 """Site + data configuration. This is the only file you edit for content.
 
-To go live, replace the two placeholder strings below with your Google Sheet
+To go live, replace the placeholder strings below with your Google Sheet
 "Publish to web" CSV URLs (File -> Share -> Publish to web -> pick the tab ->
 CSV). They look like:
   https://docs.google.com/spreadsheets/d/e/XXXX/pub?gid=0&single=true&output=csv
 
 For local testing you can instead point these at local .csv files, or override
-them without editing this file via the CSV_URL_TEAMS / CSV_URL_MATCHES env vars.
+them without editing this file via the env vars listed below.
 """
 
 import os
@@ -32,17 +32,19 @@ def _load_dotenv():
 
 _load_dotenv()
 
-# Shown in the page header and title.
+# ── Super League of Malawi (top tier) ───────────────────────────────────────
+SL_LEAGUE_NAME = "Super League of Malawi"
+SL_SEASON = os.environ.get("SL_SEASON", "26/27")
+SL_CSV_TEAMS = os.environ.get("SL_CSV_TEAMS", "SL_CSV_TEAMS")
+SL_CSV_MATCHES = os.environ.get("SL_CSV_MATCHES", "SL_CSV_MATCHES")
+
+# ── Under-16s Development League ────────────────────────────────────────────
 LEAGUE_NAME = "Under-16s Development League"
-
-# Season label shown in the Design B hero banner (e.g. "26/27").
 SEASON = os.environ.get("SEASON", "26/27")
-
-# Data sources. Replace the placeholders with your published CSV URLs.
-# A URL (http/https) is fetched; anything else is read as a local file path.
 CSV_URL_TEAMS = os.environ.get("CSV_URL_TEAMS", "CSV_URL_TEAMS")
 CSV_URL_MATCHES = os.environ.get("CSV_URL_MATCHES", "CSV_URL_MATCHES")
 
+# ── Shared ───────────────────────────────────────────────────────────────────
 # Timezone for the "last updated" stamp. Malawi is CAT (UTC+2), no DST.
 TZ_OFFSET_HOURS = 2
 TZ_LABEL = "CAT"

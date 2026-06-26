@@ -31,6 +31,7 @@ class Match:
     away_code: str
     home_goals: "int | None"
     away_goals: "int | None"
+    stadium: str = ""  # optional venue name
 
     @property
     def played(self) -> bool:
@@ -135,7 +136,8 @@ def parse_matches(text: str) -> "list[Match]":
                 f"(home_goals={row.get('home_goals')!r}, away_goals={row.get('away_goals')!r}); "
                 f"enter both or leave both blank"
             )
-        matches.append(Match(i, matchday, date, home, away, hg, ag))
+        stadium = (row.get("stadium") or "").strip()
+        matches.append(Match(i, matchday, date, home, away, hg, ag, stadium))
     return matches
 
 
