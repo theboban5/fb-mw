@@ -78,6 +78,12 @@ def _write_landing(season):
       <span class="lc-season">Season {season}</span>
       <span class="lc-arrow">&#x2192;</span>
     </a>
+    <a href="ndl/" class="league-card">
+      <span class="lc-tier">Second Division</span>
+      <span class="lc-name">National Division League</span>
+      <span class="lc-season">Season {season}</span>
+      <span class="lc-arrow">&#x2192;</span>
+    </a>
     <a href="u16/" class="league-card">
       <span class="lc-tier">Development</span>
       <span class="lc-name">Under-16s Development League</span>
@@ -109,6 +115,13 @@ def main():
         os.path.join(DIST, "sl"), updated,
     )
 
+    # National Division League
+    ndl_teams, ndl_played = _build_league(
+        config.NDL_CSV_TEAMS, config.NDL_CSV_MATCHES,
+        config.NDL_LEAGUE_NAME, config.NDL_SEASON,
+        os.path.join(DIST, "ndl"), updated,
+    )
+
     # Under-16s Development League
     u16_teams, u16_played = _build_league(
         config.CSV_URL_TEAMS, config.CSV_URL_MATCHES,
@@ -127,16 +140,16 @@ def main():
 
     errors = 0
     parts = []
-    if sl_teams is not None:
-        parts.append(f"SL: {sl_teams} teams, {sl_played} results")
-    else:
-        parts.append("SL: SKIPPED (data error)")
-        errors += 1
-    if u16_teams is not None:
-        parts.append(f"U16: {u16_teams} teams, {u16_played} results")
-    else:
-        parts.append("U16: SKIPPED (data error)")
-        errors += 1
+    for label, teams, played in [
+        ("SL", sl_teams, sl_played),
+        ("NDL", ndl_teams, ndl_played),
+        ("U16", u16_teams, u16_played),
+    ]:
+        if teams is not None:
+            parts.append(f"{label}: {teams} teams, {played} results")
+        else:
+            parts.append(f"{label}: SKIPPED (data error)")
+            errors += 1
     print(f"Built {DIST}/  " + " | ".join(parts))
     if errors:
         sys.exit(1)

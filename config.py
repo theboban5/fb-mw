@@ -38,6 +38,12 @@ SL_SEASON = os.environ.get("SL_SEASON", "26/27")
 SL_CSV_TEAMS = os.environ.get("SL_CSV_TEAMS", "SL_CSV_TEAMS")
 SL_CSV_MATCHES = os.environ.get("SL_CSV_MATCHES", "SL_CSV_MATCHES")
 
+# ── National Division League (second tier) ──────────────────────────────────
+NDL_LEAGUE_NAME = "National Division League"
+NDL_SEASON = os.environ.get("NDL_SEASON", "26/27")
+NDL_CSV_TEAMS = os.environ.get("NDL_CSV_TEAMS", "NDL_CSV_TEAMS")
+NDL_CSV_MATCHES = os.environ.get("NDL_CSV_MATCHES", "NDL_CSV_MATCHES")
+
 # ── Under-16s Development League ────────────────────────────────────────────
 LEAGUE_NAME = "Under-16s Development League"
 SEASON = os.environ.get("SEASON", "26/27")
