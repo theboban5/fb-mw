@@ -69,6 +69,59 @@ class StandingsTest(unittest.TestCase):
         self.assertEqual(order, ["Alpha", "Bravo"])
 
 
+class FormTest(unittest.TestCase):
+    def test_recent_form_orders_oldest_to_newest(self):
+        ms = [
+            match(2, 1, "AAA", "BBB", 2, 0),  # AAA W
+            match(3, 2, "CCC", "AAA", 1, 1),  # AAA D
+            match(4, 3, "AAA", "BBB", 0, 3),  # AAA L
+        ]
+        form = standings.recent_form(ms, teams())
+        self.assertEqual(form["AAA"], ["W", "D", "L"])
+        self.assertEqual(form["BBB"], ["L", "W"])
+
+    def test_recent_form_caps_at_last_n(self):
+        ms = [match(i, i - 1, "AAA", "BBB", 1, 0) for i in range(2, 9)]  # 7 AAA wins
+        form = standings.recent_form(ms, teams(), last_n=5)
+        self.assertEqual(form["AAA"], ["W"] * 5)
+
+    def test_recent_form_ignores_unplayed(self):
+        ms = [match(2, 1, "AAA", "BBB", None, None)]
+        self.assertEqual(standings.recent_form(ms, teams())["AAA"], [])
+
+
+class PositionChangeTest(unittest.TestCase):
+    def test_single_matchday_is_all_same(self):
+        ms = [match(2, 1, "AAA", "BBB", 1, 0)]
+        self.assertEqual(
+            standings.position_changes(ms, teams()),
+            {"AAA": "same", "BBB": "same", "CCC": "same"},
+        )
+
+    def test_climbing_team_is_up_and_overtaken_is_down(self):
+        # After MD1: Bravo top (won big), Alpha 2nd. After MD2 Alpha overtakes.
+        ms = [
+            match(2, 1, "BBB", "CCC", 5, 0),  # BBB +5
+            match(3, 1, "AAA", "CCC", 1, 0),  # AAA +1  -> BBB 1st, AAA 2nd
+            match(4, 2, "AAA", "CCC", 9, 0),  # AAA now far ahead on GD -> 1st
+        ]
+        changes = standings.position_changes(ms, teams())
+        self.assertEqual(changes["AAA"], "up")
+        self.assertEqual(changes["BBB"], "down")
+
+
+class PositionHistoryTest(unittest.TestCase):
+    def test_history_tracks_position_each_matchday(self):
+        ms = [
+            match(2, 1, "AAA", "BBB", 1, 0),  # MD1: AAA leads
+            match(3, 2, "BBB", "AAA", 5, 0),  # MD2: BBB jumps ahead on GD
+        ]
+        days, history = standings.position_history(ms, teams())
+        self.assertEqual(days, [1, 2])
+        self.assertEqual(history["AAA"], [1, 2])
+        self.assertEqual(history["BBB"][-1], 1)
+
+
 class ValidationTest(unittest.TestCase):
     def test_unknown_code_fails_loudly(self):
         ms = [match(2, 1, "AAA", "ZZZ", 1, 0)]

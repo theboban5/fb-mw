@@ -43,6 +43,9 @@ def _build_league(csv_teams, csv_matches, league_name, season, dist, updated):
         return None, None
 
     rows = standings.compute_standings(matches, teams)
+    form = standings.recent_form(matches, teams)
+    changes = standings.position_changes(matches, teams)
+    days, history = standings.position_history(matches, teams)
     played_count = sum(1 for m in matches if m.played)
     total_goals = sum(m.home_goals + m.away_goals for m in matches if m.played)
     goals_per_game = total_goals / played_count if played_count > 0 else 0.0
@@ -50,6 +53,7 @@ def _build_league(csv_teams, csv_matches, league_name, season, dist, updated):
     render.build_site(
         dist, TEMPLATES, STATIC, league_name, updated, rows, matches, teams,
         season=season, total_goals=total_goals, goals_per_game=goals_per_game,
+        form=form, changes=changes, days=days, history=history,
         css_prefix="../", back_link=BACK_LINK, copy_static=False,
     )
     return len(teams), played_count

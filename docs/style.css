@@ -313,6 +313,33 @@ body[data-theme="v2"] .v2-pts {
 body[data-theme="v2"] .v2-th-pts { text-align: center; }
 body[data-theme="v2"] .v2-tor { font-variant-numeric: tabular-nums; }
 
+/* dynamic position-change arrows (override the neutral base, but never the
+   leader row whose arrow stays light against the green fill) */
+body[data-theme="v2"] .v2-arrow-up { color: #2e9e4f; }
+body[data-theme="v2"] .v2-arrow-down { color: #d33a3a; }
+body[data-theme="v2"] .v2-arrow-same { color: #bbb; }
+
+/* form guide: five W/D/L badges, oldest left → newest right */
+body[data-theme="v2"] .v2-th-form { text-align: center; }
+body[data-theme="v2"] .v2-form { white-space: nowrap; }
+.v2-form-badge {
+  display: inline-block;
+  width: 17px;
+  height: 17px;
+  line-height: 17px;
+  margin: 0 1px;
+  border-radius: 3px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-align: center;
+  color: #ffffff;
+  vertical-align: middle;
+}
+.v2-form-w { background: #2e9e4f; }
+.v2-form-d { background: #9aa1ab; }
+.v2-form-l { background: #d33a3a; }
+.v2-form-empty { color: #bbb; }
+
 /* V2 results - mini banner */
 body[data-theme="v2"] .v2-mini-banner {
   margin: -16px -16px 0;
@@ -417,20 +444,26 @@ body[data-theme="v2"] .v2-empty {
 
 /* ─── V2 mobile (≤ 540px) ───────────────────────────── */
 @media (max-width: 540px) {
-  /* standings: hide W, D, L, DIFF — show POS TEAM P GOALS PTS */
+  /* standings: hide W, D, L, GOALS, DIFF — show POS TEAM P PTS FORM */
   body[data-theme="v2"] .v2-standings th:nth-child(4),
   body[data-theme="v2"] .v2-standings th:nth-child(5),
   body[data-theme="v2"] .v2-standings th:nth-child(6),
+  body[data-theme="v2"] .v2-standings th:nth-child(7),
   body[data-theme="v2"] .v2-standings th:nth-child(8),
   body[data-theme="v2"] .v2-standings td:nth-child(4),
   body[data-theme="v2"] .v2-standings td:nth-child(5),
   body[data-theme="v2"] .v2-standings td:nth-child(6),
+  body[data-theme="v2"] .v2-standings td:nth-child(7),
   body[data-theme="v2"] .v2-standings td:nth-child(8) { display: none; }
   body[data-theme="v2"] .v2-standings th,
-  body[data-theme="v2"] .v2-standings td { padding: 11px 5px; }
+  body[data-theme="v2"] .v2-standings td { padding: 11px 4px; }
+  body[data-theme="v2"] .v2-form-badge { width: 16px; height: 16px; line-height: 16px; }
   body[data-theme="v2"] .v2-th-pos { width: 3rem; }
   body[data-theme="v2"] .v2-th-team,
   body[data-theme="v2"] .v2-team-name { padding-left: 8px !important; }
+  /* let long team names wrap so the FORM column still fits on a phone.
+     Note the td qualifier: it must out-specify `.v2-standings td { nowrap }`. */
+  body[data-theme="v2"] .v2-standings td.v2-team-name { white-space: normal; }
 
   /* results: hide date and venue columns — HOME RESULT AWAY is enough */
   body[data-theme="v2"] .v2-res-th-date,
@@ -443,6 +476,46 @@ body[data-theme="v2"] .v2-empty {
   body[data-theme="v2"] .v2-res-score { padding: 11px 12px !important; }
   body[data-theme="v2"] .v2-md-row td { padding: 6px 10px; }
 }
+
+/* ─── Season overview (position-by-matchday chart) ───── */
+.ov-caption { color: var(--muted); font-size: 0.78rem; margin: 0 0 12px; }
+.ov-chart-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+}
+.ov-chart-wrap svg {
+  display: block;
+  margin: 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.ov-legend {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 16px;
+}
+.ov-legend-item { display: flex; align-items: center; gap: 7px; font-size: 0.8rem; }
+.ov-swatch {
+  width: 16px;
+  height: 4px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+.ov-legend-name { color: var(--ink); }
+
+/* Design A: full-bleed white card. No overflow here — the chart-wrap scrolls
+   on its own and the legend wraps within this padding (never clipped). */
+body[data-theme="v2"] .ov-outer {
+  margin: 0 -16px;
+  padding: 18px 16px 20px;
+  background: #ffffff;
+}
+body[data-theme="v2"] .ov-caption { color: #666; }
+body[data-theme="v2"] .ov-legend-name { color: #1c1c1c; }
 
 /* ─── V3: Bold / App ─────────────────────────────────── */
 body[data-theme="v3"] .table-wrap {
