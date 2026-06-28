@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Malawi Football</title>
-<link rel="stylesheet" href="style.css?v=230656a9">
+<link rel="stylesheet" href="style.css?v=e24411db">
 </head>
 <body class="landing">
 <main class="landing-main">
@@ -13,12 +13,101 @@
     <h1 class="landing-title">Malawi Football</h1>
     <p class="landing-sub">Live tables &amp; results</p>
   </header>
-  <div class="league-cards">
-    <a href="sl/" class="league-card"><img class="lc-logo" src="logos/leagues/sl.png" alt=""><span class="lc-body"><span class="lc-tier">Top Tier</span><span class="lc-name">Super League of Malawi</span><span class="lc-season">Season 26/27</span></span><span class="lc-arrow">&#x2192;</span></a>
-    <a href="ndl/" class="league-card"><img class="lc-logo" src="logos/leagues/ndl.png" alt=""><span class="lc-body"><span class="lc-tier">Second Division</span><span class="lc-name">National Division League</span><span class="lc-season">Season 26/27</span></span><span class="lc-arrow">&#x2192;</span></a>
-    <a href="wp/" class="league-card"><img class="lc-logo" src="logos/leagues/wp.png" alt=""><span class="lc-body"><span class="lc-tier">Women&#x2019;s First Division</span><span class="lc-name">Women&#x2019;s Premiership</span><span class="lc-season">Season 25/26</span></span><span class="lc-arrow">&#x2192;</span></a>
-    <a href="u16/" class="league-card"><span class="lc-body"><span class="lc-tier">Development</span><span class="lc-name">Under-16s Development League</span><span class="lc-season">Season 26/27</span></span><span class="lc-arrow">&#x2192;</span></a>
+  <div class="comp-nav">
+    <div class="comp-sticky">
+      <div class="comp-tab-row" role="tablist" aria-label="Competition category"><button class="comp-tab active" type="button" data-tab="men" aria-selected="true">Men&#x2019;s</button><button class="comp-tab" type="button" data-tab="women" aria-selected="false">Women&#x2019;s</button><button class="comp-tab" type="button" data-tab="youth" aria-selected="false">Youth</button></div>
+      <div class="comp-subfilters"><div class="comp-subbar" data-subbar="men"><button class="comp-sub active" type="button" data-sub="men-leagues">Leagues</button><button class="comp-sub" type="button" data-sub="men-cups">Cups</button><button class="comp-sub" type="button" data-sub="men-nt">National Team</button></div><div class="comp-subbar" data-subbar="women" hidden><button class="comp-sub active" type="button" data-sub="women-leagues">Leagues</button><button class="comp-sub" type="button" data-sub="women-cups">Cups</button><button class="comp-sub" type="button" data-sub="women-nt">National Team</button></div><div class="comp-subbar" data-subbar="youth" hidden><button class="comp-sub active" type="button" data-sub="youth-boys">Boys</button><button class="comp-sub" type="button" data-sub="youth-girls">Girls</button><button class="comp-sub" type="button" data-sub="youth-nt">National Team</button></div></div>
+    </div>
+    <div class="comp-panels">
+    <section class="comp-panel" data-panel="men-leagues"><div class="league-cards">
+      <a href="sl/" class="league-card"><img class="lc-logo" src="logos/leagues/sl.png" alt=""><span class="lc-body"><span class="lc-tier">Top Tier</span><span class="lc-name">Super League of Malawi</span><span class="lc-season">Season 26/27</span></span><span class="lc-arrow">&#x2192;</span></a>
+      <a href="ndl/" class="league-card"><img class="lc-logo" src="logos/leagues/ndl.png" alt=""><span class="lc-body"><span class="lc-tier">Second Division</span><span class="lc-name">National Division League</span><span class="lc-season">Season 26/27</span></span><span class="lc-arrow">&#x2192;</span></a>
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">Division One</span><span class="lc-name">SRFA FINCA Division One League</span><span class="lc-region">Southern Region</span></span><span class="lc-badge">Coming Soon</span></div>
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">Division One</span><span class="lc-name">CRFA GOJET Investments Division One League</span><span class="lc-region">Central Region</span></span><span class="lc-badge">Coming Soon</span></div>
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">League One</span><span class="lc-name">Chiwemi Investment NRFA League One</span><span class="lc-region">Northern Region</span></span><span class="lc-badge">Coming Soon</span></div>
+    </div></section>
+    <section class="comp-panel" data-panel="men-cups" hidden><div class="league-cards">
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">Cup</span><span class="lc-name">FAM Charity Shield</span></span><span class="lc-badge">Coming Soon</span></div>
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">Cup</span><span class="lc-name">Airtel Top 8</span></span><span class="lc-badge">Coming Soon</span></div>
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">Cup</span><span class="lc-name">Castel Challenge Cup</span></span><span class="lc-badge">Coming Soon</span></div>
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">Cup</span><span class="lc-name">FDH Bank Cup</span></span><span class="lc-badge">Coming Soon</span></div>
+    </div></section>
+    <section class="comp-panel" data-panel="men-nt" hidden><div class="league-cards single">
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">National Team</span><span class="lc-name">Malawi Flames</span></span><span class="lc-badge">Coming Soon</span></div>
+    </div></section>
+    <section class="comp-panel" data-panel="women-leagues" hidden><div class="league-cards">
+      <a href="wp/" class="league-card"><img class="lc-logo" src="logos/leagues/wp.png" alt=""><span class="lc-body"><span class="lc-tier">Women&#x2019;s First Division</span><span class="lc-name">NBM Women&#x2019;s Premiership</span><span class="lc-season">Season 25/26</span></span><span class="lc-arrow">&#x2192;</span></a>
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">Premier Division</span><span class="lc-name">Southern Region Women&#x2019;s Premier Division</span><span class="lc-region">Southern Region</span></span><span class="lc-badge">Coming Soon</span></div>
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">Premier Division</span><span class="lc-name">Central Region Women&#x2019;s Premier Division</span><span class="lc-region">Central Region</span></span><span class="lc-badge">Coming Soon</span></div>
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">Premier Division</span><span class="lc-name">Northern Region Women&#x2019;s Premier Division</span><span class="lc-region">Northern Region</span></span><span class="lc-badge">Coming Soon</span></div>
+    </div></section>
+    <section class="comp-panel" data-panel="women-cups" hidden><div class="league-cards single">
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">Cup</span><span class="lc-name">Women&#x2019;s Cups</span></span><span class="lc-badge">Coming Soon</span></div>
+    </div></section>
+    <section class="comp-panel" data-panel="women-nt" hidden><div class="league-cards single">
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">National Team</span><span class="lc-name">Malawi Scorchers</span></span><span class="lc-badge">Coming Soon</span></div>
+    </div></section>
+    <section class="comp-panel" data-panel="youth-boys" hidden><div class="league-cards">
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">Under-23</span><span class="lc-name">National Bank U23 Championship</span></span><span class="lc-badge">Coming Soon</span></div>
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">Under-19</span><span class="lc-name">U19 Development League</span></span><span class="lc-badge">Coming Soon</span></div>
+      <a href="u16/" class="league-card"><span class="lc-body"><span class="lc-tier">Development</span><span class="lc-name">U16 Development League</span><span class="lc-season">Season 26/27</span></span><span class="lc-arrow">&#x2192;</span></a>
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">Under-14</span><span class="lc-name">U14 Development League</span></span><span class="lc-badge">Coming Soon</span></div>
+    </div></section>
+    <section class="comp-panel" data-panel="youth-girls" hidden><div class="league-cards single">
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">Youth</span><span class="lc-name">Girls&#x2019; Youth Competitions</span></span><span class="lc-badge">Coming Soon</span></div>
+    </div></section>
+    <section class="comp-panel" data-panel="youth-nt" hidden><div class="league-cards">
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">National Team</span><span class="lc-name">Boys&#x2019; Youth National Team</span></span><span class="lc-badge">Coming Soon</span></div>
+      <div class="league-card is-soon" aria-disabled="true"><span class="lc-body"><span class="lc-tier">National Team</span><span class="lc-name">Girls&#x2019; Youth National Team</span></span><span class="lc-badge">Coming Soon</span></div>
+    </div></section>
+    </div>
   </div>
 </main>
+<script>
+(function(){
+  var nav=document.querySelector('.comp-nav');
+  if(!nav) return;
+  var tabs=nav.querySelectorAll('.comp-tab');
+  var subbars=nav.querySelectorAll('.comp-subbar');
+  var panels=nav.querySelectorAll('.comp-panel');
+  var lastSub={};
+  function showPanel(key){
+    panels.forEach(function(p){ p.hidden = (p.dataset.panel!==key); });
+  }
+  function setSubActive(bar,key){
+    bar.querySelectorAll('.comp-sub').forEach(function(s){
+      s.classList.toggle('active', s.dataset.sub===key);
+    });
+  }
+  function selectTab(tab){
+    var name=tab.dataset.tab, active=null;
+    tabs.forEach(function(t){
+      var on=(t===tab);
+      t.classList.toggle('active',on);
+      t.setAttribute('aria-selected',on?'true':'false');
+    });
+    subbars.forEach(function(b){
+      var on=(b.dataset.subbar===name);
+      b.hidden=!on;
+      if(on) active=b;
+    });
+    var key=lastSub[name]||active.querySelector('.comp-sub').dataset.sub;
+    setSubActive(active,key);
+    showPanel(key);
+  }
+  tabs.forEach(function(tab){
+    tab.addEventListener('click',function(){ selectTab(tab); });
+  });
+  subbars.forEach(function(bar){
+    bar.querySelectorAll('.comp-sub').forEach(function(s){
+      s.addEventListener('click',function(){
+        lastSub[bar.dataset.subbar]=s.dataset.sub;
+        setSubActive(bar,s.dataset.sub);
+        showPanel(s.dataset.sub);
+      });
+    });
+  });
+})();
+</script>
 </body>
 </html>

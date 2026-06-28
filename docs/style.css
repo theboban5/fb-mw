@@ -615,8 +615,10 @@ body.landing main::before {
   font-size: 0.9rem;
 }
 .league-cards {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  /* minmax(0,...) lets the track shrink below the cards' min-content so a long
+     competition name wraps instead of blowing the grid (and page) out wide. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 .league-card {
@@ -643,6 +645,7 @@ body.landing main::before {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0; /* allow long competition names to wrap instead of overflowing */
 }
 .league-card:hover {
   border-color: var(--accent);
@@ -671,4 +674,119 @@ body.landing main::before {
   transform: translateY(-50%);
   font-size: 1.2rem;
   color: var(--muted);
+}
+
+/* ─── Landing: competition tabs & sub-filters ────────── */
+/* The tabbed layout fills the page, so don't vertically centre it. */
+body.landing { justify-content: flex-start; }
+.landing-header { margin-bottom: 24px; }
+
+/* Tabs + the active sub-filter bar stick to the top of the viewport together,
+   so there's no offset to keep in sync. Opaque background covers the flag
+   watermark and the cards scrolling underneath. */
+.comp-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: 0 -16px;
+  padding: 0 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.comp-tab-row {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.comp-tab-row::-webkit-scrollbar { display: none; }
+.comp-tab {
+  flex: 1 0 auto;
+  min-height: 48px;
+  padding: 12px 18px;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.comp-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.comp-subbar {
+  display: flex;
+  gap: 6px;
+  padding: 10px 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+/* Out-specify our own `display:flex` so the `hidden` attribute still hides
+   inactive sub-bars (this is what keeps the no-JS fallback to Men's Leagues). */
+.comp-subbar[hidden] { display: none; }
+.comp-subbar::-webkit-scrollbar { display: none; }
+.comp-sub {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 7px 15px;
+  background: var(--row-alt);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.comp-sub.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.comp-panels { padding-top: 18px; }
+
+/* Two columns once there's room; single-card panels stay full width. */
+@media (min-width: 560px) {
+  .league-cards { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .league-cards.single { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ─── Coming-soon (roadmap) cards ────────────────────── */
+.league-card.is-soon {
+  background: var(--row-alt);
+  border-style: dashed;
+  padding-top: 30px;
+  cursor: default;
+}
+.league-card.is-soon:hover { border-color: var(--line); box-shadow: none; }
+.league-card.is-soon .lc-tier { color: var(--muted); }
+.league-card.is-soon .lc-name { color: var(--muted); }
+.lc-region {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.lc-badge {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  padding: 3px 8px;
+  background: var(--line);
+  border-radius: 999px;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
 }
