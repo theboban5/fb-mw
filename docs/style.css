@@ -490,17 +490,19 @@ body[data-theme="v2"] .v2-empty {
 
 /* ─── V2 mobile (≤ 540px) ───────────────────────────── */
 @media (max-width: 540px) {
-  /* standings: hide W, D, L, GOALS, DIFF — show POS TEAM P PTS FORM */
-  body[data-theme="v2"] .v2-standings th:nth-child(4),
-  body[data-theme="v2"] .v2-standings th:nth-child(5),
-  body[data-theme="v2"] .v2-standings th:nth-child(6),
-  body[data-theme="v2"] .v2-standings th:nth-child(7),
-  body[data-theme="v2"] .v2-standings th:nth-child(8),
-  body[data-theme="v2"] .v2-standings td:nth-child(4),
-  body[data-theme="v2"] .v2-standings td:nth-child(5),
-  body[data-theme="v2"] .v2-standings td:nth-child(6),
-  body[data-theme="v2"] .v2-standings td:nth-child(7),
-  body[data-theme="v2"] .v2-standings td:nth-child(8) { display: none; }
+  /* standings: hide W, D, L, GOALS, DIFF — show POS TEAM P PTS FORM.
+     :not(.scorers-table) so the goalscorers table (which shares .v2-standings
+     but has GOALS as its 4th column) keeps every column. */
+  body[data-theme="v2"] .v2-standings:not(.scorers-table) th:nth-child(4),
+  body[data-theme="v2"] .v2-standings:not(.scorers-table) th:nth-child(5),
+  body[data-theme="v2"] .v2-standings:not(.scorers-table) th:nth-child(6),
+  body[data-theme="v2"] .v2-standings:not(.scorers-table) th:nth-child(7),
+  body[data-theme="v2"] .v2-standings:not(.scorers-table) th:nth-child(8),
+  body[data-theme="v2"] .v2-standings:not(.scorers-table) td:nth-child(4),
+  body[data-theme="v2"] .v2-standings:not(.scorers-table) td:nth-child(5),
+  body[data-theme="v2"] .v2-standings:not(.scorers-table) td:nth-child(6),
+  body[data-theme="v2"] .v2-standings:not(.scorers-table) td:nth-child(7),
+  body[data-theme="v2"] .v2-standings:not(.scorers-table) td:nth-child(8) { display: none; }
   body[data-theme="v2"] .v2-standings th,
   body[data-theme="v2"] .v2-standings td { padding: 11px 4px; }
   body[data-theme="v2"] .v2-form-badge { width: 16px; height: 16px; line-height: 16px; }
@@ -521,6 +523,16 @@ body[data-theme="v2"] .v2-empty {
   body[data-theme="v2"] .v2-res-away { padding-left: 10px !important; }
   body[data-theme="v2"] .v2-res-score { padding: 11px 12px !important; }
   body[data-theme="v2"] .v2-md-row td { padding: 6px 10px; }
+
+  /* top scorers: fixed layout pins the table to the phone width so the GOALS
+     column stays visible; rank/goals get just enough, player & team wrap. */
+  body[data-theme="v2"] table.scorers-table { table-layout: fixed; width: 100%; }
+  body[data-theme="v2"] .scorers-table .scr-rank,
+  body[data-theme="v2"] .scorers-table .scr-th-rank { width: 2.2rem; padding-left: 8px; }
+  body[data-theme="v2"] .scorers-table .scr-goals,
+  body[data-theme="v2"] .scorers-table .scr-th-goals { width: 3.4rem; }
+  body[data-theme="v2"] .scorers-table .scr-player,
+  body[data-theme="v2"] .scorers-table .scr-team { padding-left: 8px; }
 }
 
 /* ─── Season overview (position-by-matchday chart) ───── */
