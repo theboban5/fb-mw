@@ -37,6 +37,8 @@ SL_LEAGUE_NAME = "Super League of Malawi"
 SL_SEASON = os.environ.get("SL_SEASON", "26/27")
 SL_CSV_TEAMS = os.environ.get("SL_CSV_TEAMS", "SL_CSV_TEAMS")
 SL_CSV_MATCHES = os.environ.get("SL_CSV_MATCHES", "SL_CSV_MATCHES")
+# Goalscorers (Super League only). Joins to the matches sheet on match_id.
+SL_CSV_GOALS = os.environ.get("SL_CSV_GOALS", "SL_CSV_GOALS")
 
 # ── Women's Premiership (women's first division) ─────────────────────────────
 WP_LEAGUE_NAME = "Women's Premiership"

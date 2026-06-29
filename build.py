@@ -17,7 +17,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
 import config  # noqa: E402
-from src import data, render, standings  # noqa: E402
+from src import data, render, scorers, standings  # noqa: E402
 
 DIST = os.path.join(ROOT, "docs")
 STATIC = os.path.join(ROOT, "static")
@@ -26,11 +26,18 @@ TEMPLATES = os.path.join(ROOT, "templates")
 BACK_LINK = '<a href="../" class="back-link">&#x2190; All Leagues</a>'
 
 
-def _build_league(csv_teams, csv_matches, league_name, season, dist, updated):
+def _build_league(csv_teams, csv_matches, league_name, season, dist, updated,
+                  csv_goals=None):
     try:
         teams = data.parse_teams(data.fetch(csv_teams))
         matches = data.parse_matches(data.fetch(csv_matches))
         data.validate_match_codes(matches, teams)
+        # Goals are Super-League-only; csv_goals is None for every other league,
+        # leaving these structures empty so render output is unchanged for them.
+        goals = []
+        if csv_goals:
+            goals = data.parse_goals(data.fetch(csv_goals))
+            data.validate_goal_links(goals, matches, teams)
     except data.DataError as err:
         print(f"\nERROR ({league_name}): {err}\n", file=sys.stderr)
         return None, None
@@ -49,11 +56,20 @@ def _build_league(csv_teams, csv_matches, league_name, season, dist, updated):
     total_goals = sum(m.home_goals + m.away_goals for m in matches if m.played)
     goals_per_game = total_goals / played_count if played_count > 0 else 0.0
 
+    if goals:
+        goals_by_match = scorers.goals_by_match(goals)
+        top_scorers, own_goal_total = scorers.top_scorers(goals)
+        team_scorers = scorers.team_top_scorers(goals, teams)
+    else:
+        goals_by_match, top_scorers, own_goal_total, team_scorers = {}, [], 0, []
+
     render.build_site(
         dist, TEMPLATES, STATIC, league_name, updated, rows, matches, teams,
         season=season, total_goals=total_goals, goals_per_game=goals_per_game,
         form=form, changes=changes, days=days, history=history,
         css_prefix="../", back_link=BACK_LINK, copy_static=False,
+        goals_by_match=goals_by_match, top_scorers=top_scorers,
+        own_goal_total=own_goal_total, team_scorers=team_scorers,
     )
     return len(teams), played_count
 
@@ -285,6 +301,7 @@ def main():
         config.SL_CSV_TEAMS, config.SL_CSV_MATCHES,
         config.SL_LEAGUE_NAME, config.SL_SEASON,
         os.path.join(DIST, "sl"), updated,
+        csv_goals=config.SL_CSV_GOALS,
     )
 
     # National Division League

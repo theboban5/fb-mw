@@ -32,6 +32,7 @@ class Match:
     home_goals: "int | None"
     away_goals: "int | None"
     stadium: str = ""  # optional venue name
+    match_id: "int | None" = None  # optional join key (only the SL sheet has it)
 
     @property
     def played(self) -> bool:
@@ -137,7 +138,12 @@ def parse_matches(text: str) -> "list[Match]":
                 f"enter both or leave both blank"
             )
         stadium = (row.get("stadium") or "").strip()
-        matches.append(Match(i, matchday, date, home, away, hg, ag, stadium))
+        # match_id is optional: only the Super League sheet carries it (it is the
+        # join key for the goals data). Other leagues have no such column, so it
+        # stays None and nothing downstream changes for them.
+        mid_raw = (row.get("match_id") or "").strip()
+        match_id = _parse_int(mid_raw, "match_id", i) if mid_raw else None
+        matches.append(Match(i, matchday, date, home, away, hg, ag, stadium, match_id))
     return matches
 
 
@@ -163,3 +169,114 @@ def validate_match_codes(matches, teams) -> None:
         lines.append(f"  matches row {row}: {field} = {code!r}")
     lines += ["", f"Known team codes: {', '.join(sorted(teams))}"]
     raise DataError("\n".join(lines))
+
+
+# ── Goals (Super League only) ───────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class Goal:
+    match_id: int
+    team_code: str       # the team this goal counted FOR (own goals: the beneficiary)
+    player_name: str     # who physically scored (even for own goals)
+    minute: str          # raw, e.g. "45" or "45+2" — kept verbatim for display
+    goal_type: str = ""  # "" normal, "penalty", or "own goal"
+
+    @property
+    def is_own_goal(self) -> bool:
+        return self.goal_type == "own goal"
+
+    @property
+    def is_penalty(self) -> bool:
+        return self.goal_type == "penalty"
+
+    @property
+    def minute_sort(self) -> "tuple[int, int]":
+        """Sort key that orders injury time correctly: 45 < 45+1 < 45+2 < 46.
+
+        Splits "base+added" into (base, added); a plain minute sorts as added=0.
+        Unparseable minutes sort last rather than crashing the build.
+        """
+        base, _, added = self.minute.partition("+")
+        try:
+            b = int(base.strip())
+        except ValueError:
+            return (10**6, 0)
+        try:
+            a = int(added.strip()) if added.strip() else 0
+        except ValueError:
+            a = 0
+        return (b, a)
+
+    @property
+    def annotation(self) -> str:
+        """Display label: "Name 45'", "Name 45' (P)" or "Name 45' (OG)"."""
+        label = f"{self.player_name} {self.minute}'"
+        if self.is_penalty:
+            label += " (P)"
+        elif self.is_own_goal:
+            label += " (OG)"
+        return label
+
+
+def parse_goals(text: str) -> "list[Goal]":
+    """Parse the goals CSV into Goal records.
+
+    Columns: match_id, team_code, player_name, minute, goal_type. Blank lines are
+    skipped; goal_type is normalised (trimmed/lowercased) so stray whitespace in
+    the sheet doesn't split "penalty" off into its own bucket.
+    """
+    reader = csv.DictReader(io.StringIO(text))
+    _check_columns(
+        reader.fieldnames,
+        {"match_id", "team_code", "player_name", "minute", "goal_type"},
+        "goals",
+    )
+    goals: "list[Goal]" = []
+    for i, row in enumerate(reader, start=2):
+        if not any((v or "").strip() for v in row.values()):
+            continue  # blank line
+        match_id = _parse_int(row.get("match_id"), "match_id", i)
+        team = (row.get("team_code") or "").strip()
+        player = (row.get("player_name") or "").strip()
+        minute = (row.get("minute") or "").strip()
+        gtype = (row.get("goal_type") or "").strip().lower()
+        if not team:
+            raise DataError(f"goals row {i}: empty team_code")
+        if not player:
+            raise DataError(f"goals row {i}: empty player_name")
+        if not minute:
+            raise DataError(f"goals row {i}: empty minute")
+        if gtype not in ("", "penalty", "own goal"):
+            raise DataError(
+                f"goals row {i}: unknown goal_type {gtype!r} "
+                f"(expected '', 'penalty' or 'own goal')"
+            )
+        goals.append(Goal(match_id, team, player, minute, gtype))
+    return goals
+
+
+def validate_goal_links(goals, matches, teams) -> None:
+    """Every goal must point at a real match and a team that played in it.
+
+    Fails loudly (listing each bad row) so a typo can never silently drop or
+    misattribute a goal.
+    """
+    by_id = {m.match_id: m for m in matches if m.match_id is not None}
+    problems = []
+    for g in goals:
+        if g.team_code not in teams:
+            problems.append(f"  goals: match_id {g.match_id}: unknown team_code {g.team_code!r}")
+            continue
+        m = by_id.get(g.match_id)
+        if m is None:
+            problems.append(f"  goals: match_id {g.match_id} matches no row in the matches sheet")
+        elif g.team_code not in (m.home_code, m.away_code):
+            problems.append(
+                f"  goals: match_id {g.match_id}: team {g.team_code!r} did not play "
+                f"in that match ({m.home_code} vs {m.away_code})"
+            )
+    if problems:
+        raise DataError(
+            "ABORTING: goals data does not line up with matches/teams:\n"
+            + "\n".join(problems)
+        )
