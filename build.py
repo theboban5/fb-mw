@@ -58,10 +58,11 @@ def _build_league(csv_teams, csv_matches, league_name, season, dist, updated,
 
     if goals:
         goals_by_match = scorers.goals_by_match(goals)
-        top_scorers, own_goal_total = scorers.top_scorers(goals)
+        top_scorers, own_goal_total, more_scorers = scorers.top_scorers(goals)
         team_scorers = scorers.team_top_scorers(goals, teams)
     else:
-        goals_by_match, top_scorers, own_goal_total, team_scorers = {}, [], 0, []
+        goals_by_match, top_scorers, own_goal_total = {}, [], 0
+        more_scorers, team_scorers = [], []
 
     render.build_site(
         dist, TEMPLATES, STATIC, league_name, updated, rows, matches, teams,
@@ -69,7 +70,8 @@ def _build_league(csv_teams, csv_matches, league_name, season, dist, updated,
         form=form, changes=changes, days=days, history=history,
         css_prefix="../", back_link=BACK_LINK, copy_static=False,
         goals_by_match=goals_by_match, top_scorers=top_scorers,
-        own_goal_total=own_goal_total, team_scorers=team_scorers,
+        own_goal_total=own_goal_total, more_scorers=more_scorers,
+        team_scorers=team_scorers,
     )
     return len(teams), played_count
 

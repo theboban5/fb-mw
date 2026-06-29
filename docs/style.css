@@ -872,7 +872,8 @@ body[data-theme="v2"] .v2-res-row-compact td {
 }
 .scorers-table .scr-rank, .scorers-table .scr-th-rank { width: 2rem; color: var(--muted); }
 .scorers-table .scr-goals, .scorers-table .scr-th-goals { font-weight: 800; }
-.scorers-table .scr-og-row td { color: var(--muted); font-style: italic; }
+.scorers-table .scr-og-row td,
+.scorers-table .scr-more-row td { color: var(--muted); font-style: italic; }
 
 /* v2 needs higher specificity to beat the centred .v2-standings td/th rules. */
 body[data-theme="v2"] .scorers-table .scr-player,

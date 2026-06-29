@@ -195,11 +195,15 @@ def _scorers_block(match, goals_by_match, variant):
     )
 
 
-def _scorers_table(top_scorers, own_goal_total, teams, variant, crest=None):
+def _scorers_table(top_scorers, own_goal_total, teams, variant, crest=None, more_scorers=None):
     """The overall Top Scorers table (Rank/Player/Team/Goals + Own Goals row).
 
     Reuses the league-table classes (`standings` / `v2-standings`) so it inherits
     the page's existing table styling, with a few scr-* classes for alignment.
+
+    `more_scorers` (list of (goals, num_players)) adds a summarised line per tier
+    below the cutoff — e.g. "16 other scorers" with 1 in the goals column — so the
+    reader knows how many further scorers there are without listing them.
     """
     crest = crest or (lambda code: None)
     if not top_scorers and not own_goal_total:
@@ -221,6 +225,16 @@ def _scorers_table(top_scorers, own_goal_total, teams, variant, crest=None):
             f'<td class="scr-player">{escape(t.player_name)}</td>'
             f'<td class="scr-team">{team_c}{escape(team_name)}</td>'
             f'<td class="scr-goals">{t.goals}</td>'
+            "</tr>"
+        )
+    for g, num in (more_scorers or []):
+        label = f"{num} other scorer{'s' if num != 1 else ''}"
+        body.append(
+            '<tr class="scr-more-row">'
+            '<td class="scr-rank"></td>'
+            f'<td class="scr-player">{label}</td>'
+            '<td class="scr-team"></td>'
+            f'<td class="scr-goals">{g}</td>'
             "</tr>"
         )
     if own_goal_total:
@@ -603,15 +617,16 @@ def render_overview(matches, teams, days, history, rows, season="", league_name=
 
 
 def render_goalscorers(teams, top_scorers, own_goal_total, team_scorers,
-                       season="", league_name="", league_logo="", crest=None):
+                       season="", league_name="", league_logo="", crest=None,
+                       more_scorers=None):
     """The Goal Scorers tab: overall Top Scorers table + per-team top-3 cards.
 
     Only built for the Super League (the only league with goal data), so this is
     never reached with empty data in practice — but it degrades gracefully if so.
     """
-    table_v1 = _scorers_table(top_scorers, own_goal_total, teams, "v1", crest)
+    table_v1 = _scorers_table(top_scorers, own_goal_total, teams, "v1", crest, more_scorers)
     teams_v1 = _team_scorers_section(team_scorers, "v1", crest)
-    table_v2 = _scorers_table(top_scorers, own_goal_total, teams, "v2", crest)
+    table_v2 = _scorers_table(top_scorers, own_goal_total, teams, "v2", crest, more_scorers)
     teams_v2 = _team_scorers_section(team_scorers, "v2", crest)
     empty = not (top_scorers or own_goal_total or team_scorers)
 
@@ -643,7 +658,8 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
                season="", total_goals=0, goals_per_game=0.0,
                form=None, changes=None, days=None, history=None,
                css_prefix="", back_link="", copy_static=True,
-               goals_by_match=None, top_scorers=None, own_goal_total=0, team_scorers=None):
+               goals_by_match=None, top_scorers=None, own_goal_total=0, team_scorers=None,
+               more_scorers=None):
     os.makedirs(dist, exist_ok=True)
     base = _read(os.path.join(templates_dir, "base.html"))
 
@@ -682,7 +698,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
         pages["goalscorers.html"] = ("Goal Scorers", render_goalscorers(
             teams, top_scorers or [], own_goal_total, team_scorers or [],
             season=season, league_name=league_name, league_logo=league_logo,
-            crest=crest,
+            crest=crest, more_scorers=more_scorers or [],
         ))
 
     for filename, (title, content) in pages.items():

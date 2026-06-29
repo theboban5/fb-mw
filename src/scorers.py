@@ -40,12 +40,16 @@ def _tally(goals):
 
 
 def top_scorers(goals):
-    """Return (ranked_tallies, own_goal_total).
+    """Return (ranked_tallies, own_goal_total, more_scorers).
 
     Personal tallies exclude own goals but include penalties. Sorted by goals
     descending, then player name (A-Z). The list is at least TOP_N long; if there
     are ties at the cutoff every tied player is kept. Ranks use standard
     competition ranking (joint 2nd, joint 2nd, 4th).
+
+    `more_scorers` summarises the players below the cutoff without naming them:
+    a list of (goals, num_players) tiers, highest goal count first — e.g.
+    [(1, 16)] means "16 other players scored 1 goal each".
     """
     counts = _tally(goals)
     ordered = sorted(
@@ -69,8 +73,15 @@ def top_scorers(goals):
             rank = i + 1
         tallies.append(ScorerTally(rank, player, team_code, n))
 
+    # Summarise everyone below the cutoff, grouped by goal count (highest first).
+    excluded = ordered[len(kept):]
+    by_count: "dict[int, int]" = {}
+    for _key, n in excluded:
+        by_count[n] = by_count.get(n, 0) + 1
+    more_scorers = sorted(by_count.items(), key=lambda gc: -gc[0])
+
     own_goal_total = sum(1 for g in goals if g.is_own_goal)
-    return tallies, own_goal_total
+    return tallies, own_goal_total, more_scorers
 
 
 def team_top_scorers(goals, teams):
