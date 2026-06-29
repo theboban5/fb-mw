@@ -437,7 +437,8 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
         v2.append('<p class="v2-empty">No results have been recorded yet.</p>')
     else:
         colspan = 3 if compact else (5 if has_venue else 4)
-        v2.append('<table class="v2-results-table">')
+        table_cls = "v2-results-table v2-results-compact" if compact else "v2-results-table"
+        v2.append(f'<table class="{table_cls}">')
         v2.append("<thead><tr>")
         if not compact:
             v2.append('<th class="v2-res-th-date">DATE</th>')
