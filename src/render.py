@@ -363,7 +363,10 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
 
 
 def render_results(matches, teams, season="", league_name="", crest=None, league_logo="",
-                   goals_by_match=None):
+                   goals_by_match=None, compact=False):
+    # `compact` (the Super League, which shows scorers) drops the DATE/VENUE
+    # columns to a centred caption so the v2 table fits the 660px column without
+    # horizontal scroll — which is what lets the away scorers stay on screen.
     crest = crest or (lambda code: None)
     played = [m for m in matches if m.played]
     by_day = {}
@@ -415,16 +418,17 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
     if not played:
         v2.append('<p class="v2-empty">No results have been recorded yet.</p>')
     else:
-        colspan = 5 if has_venue else 4
+        colspan = 3 if compact else (5 if has_venue else 4)
+        v2.append('<table class="v2-results-table">')
+        v2.append("<thead><tr>")
+        if not compact:
+            v2.append('<th class="v2-res-th-date">DATE</th>')
         v2 += [
-            '<table class="v2-results-table">',
-            "<thead><tr>",
-            '<th class="v2-res-th-date">DATE</th>',
             '<th class="v2-res-th-home">HOME</th>',
             '<th class="v2-res-th-score">RESULT</th>',
             '<th class="v2-res-th-away">AWAY</th>',
         ]
-        if has_venue:
+        if not compact and has_venue:
             v2.append('<th class="v2-res-th-venue">VENUE</th>')
         v2 += ["</tr></thead>", "<tbody>"]
         for md in sorted(by_day, reverse=True):
@@ -440,17 +444,32 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                 away_c = _crest_img(crest(m.away_code), "crest-pre")
                 score = f"{m.home_goals}:{m.away_goals}"
                 date = escape(_format_date(m.date))
-                row = (
-                    f'<tr class="v2-res-row{alt_cls}">'
-                    f'<td class="v2-res-date">{date}</td>'
-                    f'<td class="v2-res-home">{home}{home_c}</td>'
-                    f'<td class="v2-res-score">{score}</td>'
-                    f'<td class="v2-res-away">{away_c}{away}</td>'
-                )
-                if has_venue:
-                    row += f'<td class="v2-res-venue">{escape(m.stadium)}</td>'
-                row += "</tr>"
-                v2.append(row)
+                if compact:
+                    meta = date
+                    if m.stadium:
+                        meta += f" &middot; {escape(m.stadium)}"
+                    v2.append(
+                        f'<tr class="v2-res-meta-row{alt_cls}">'
+                        f'<td colspan="3"><span class="v2-res-meta">{meta}</span></td></tr>'
+                    )
+                    v2.append(
+                        f'<tr class="v2-res-row v2-res-row-compact{alt_cls}">'
+                        f'<td class="v2-res-home">{home}{home_c}</td>'
+                        f'<td class="v2-res-score">{score}</td>'
+                        f'<td class="v2-res-away">{away_c}{away}</td></tr>'
+                    )
+                else:
+                    row = (
+                        f'<tr class="v2-res-row{alt_cls}">'
+                        f'<td class="v2-res-date">{date}</td>'
+                        f'<td class="v2-res-home">{home}{home_c}</td>'
+                        f'<td class="v2-res-score">{score}</td>'
+                        f'<td class="v2-res-away">{away_c}{away}</td>'
+                    )
+                    if has_venue:
+                        row += f'<td class="v2-res-venue">{escape(m.stadium)}</td>'
+                    row += "</tr>"
+                    v2.append(row)
                 scorers_html = _scorers_block(m, goals_by_match, "v2")
                 if scorers_html:
                     v2.append(
@@ -621,7 +640,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
         "results.html": ("Results", render_results(
             matches, teams, season=season, league_name=league_name,
             crest=crest, league_logo=league_logo,
-            goals_by_match=goals_by_match,
+            goals_by_match=goals_by_match, compact=bool(goals_by_match),
         )),
         "overview.html": ("Season Overview", render_overview(
             matches, teams, days or [], history or {}, rows,
