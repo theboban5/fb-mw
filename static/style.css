@@ -46,8 +46,14 @@ body[data-theme="v2"] .back-link:hover { color: var(--accent); }
   display: flex;
   gap: 4px;
   border-bottom: 1px solid var(--line);
+  overflow-x: auto;            /* a 4th tab (SL) scrolls on narrow screens */
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;       /* hide the scrollbar; the row stays one line */
 }
+.tabs::-webkit-scrollbar { display: none; }
 .tabs a {
+  flex: 0 0 auto;
+  white-space: nowrap;
   padding: 10px 12px;
   text-decoration: none;
   color: var(--muted);
@@ -903,11 +909,15 @@ body[data-theme="v2"] .v2-sec-title {
   padding: 10px 12px;
 }
 .ts-team {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   margin: 0 0 6px;
   font-size: 0.82rem;
   font-weight: 700;
   color: var(--accent);
 }
+.ts-crest { width: 20px; height: 20px; flex: 0 0 auto; }
 .ts-list { list-style: none; margin: 0; padding: 0; }
 .ts-item {
   display: flex;

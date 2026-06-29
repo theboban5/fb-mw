@@ -143,9 +143,9 @@ def _format_date(iso):
     return f"{dt.day} {dt.strftime('%b %Y')}"
 
 
-def _nav(active):
+def _nav(active, items=NAV_ITEMS):
     out = []
-    for href, label in NAV_ITEMS:
+    for href, label in items:
         cls = ' class="active"' if href == active else ""
         out.append(f'<a href="{href}"{cls}>{escape(label)}</a>')
     return "\n".join(out)
@@ -195,12 +195,13 @@ def _scorers_block(match, goals_by_match, variant):
     )
 
 
-def _scorers_table(top_scorers, own_goal_total, teams, variant):
+def _scorers_table(top_scorers, own_goal_total, teams, variant, crest=None):
     """The overall Top Scorers table (Rank/Player/Team/Goals + Own Goals row).
 
     Reuses the league-table classes (`standings` / `v2-standings`) so it inherits
     the page's existing table styling, with a few scr-* classes for alignment.
     """
+    crest = crest or (lambda code: None)
     if not top_scorers and not own_goal_total:
         return ""
     if variant == "v2":
@@ -213,11 +214,12 @@ def _scorers_table(top_scorers, own_goal_total, teams, variant):
     body = []
     for t in top_scorers:
         team_name = teams[t.team_code].name if t.team_code in teams else t.team_code
+        team_c = _crest_img(crest(t.team_code), "crest-pre")
         body.append(
             "<tr>"
             f'<td class="scr-rank">{t.rank}</td>'
             f'<td class="scr-player">{escape(t.player_name)}</td>'
-            f'<td class="scr-team">{escape(team_name)}</td>'
+            f'<td class="scr-team">{team_c}{escape(team_name)}</td>'
             f'<td class="scr-goals">{t.goals}</td>'
             "</tr>"
         )
@@ -245,20 +247,22 @@ def _scorers_table(top_scorers, own_goal_total, teams, variant):
     )
 
 
-def _team_scorers_section(team_scorers, variant):
+def _team_scorers_section(team_scorers, variant, crest=None):
     """Compact per-team top-3 cards below the overall table (own goals excluded)."""
+    crest = crest or (lambda code: None)
     if not team_scorers:
         return ""
     title_cls = "v2-sec-title" if variant == "v2" else "view-title"
     cards = []
-    for _code, name, players in team_scorers:
+    for code, name, players in team_scorers:
         items = "".join(
             f'<li class="ts-item"><span class="ts-name">{escape(player)}</span>'
             f'<span class="ts-goals">{n}</span></li>'
             for player, n in players
         )
+        team_c = _crest_img(crest(code), "ts-crest")
         cards.append(
-            f'<div class="ts-card"><h4 class="ts-team">{escape(name)}</h4>'
+            f'<div class="ts-card"><h4 class="ts-team">{team_c}{escape(name)}</h4>'
             f'<ul class="ts-list">{items}</ul></div>'
         )
     return (
@@ -562,10 +566,7 @@ def _overview_legend(rows, color):
     return '<ul class="ov-legend">' + "".join(items) + "</ul>"
 
 
-def render_overview(matches, teams, days, history, rows, season="", league_name="", league_logo="",
-                    top_scorers=None, own_goal_total=0, team_scorers=None):
-    top_scorers = top_scorers or []
-    team_scorers = team_scorers or []
+def render_overview(matches, teams, days, history, rows, season="", league_name="", league_logo=""):
     played = bool(days) and bool(rows)
     if played:
         color = {s.code: _PALETTE[i % len(_PALETTE)] for i, s in enumerate(rows)}
@@ -578,22 +579,11 @@ def render_overview(matches, teams, days, history, rows, season="", league_name=
 
     caption = '<p class="ov-caption">League position after each matchday &middot; position 1 is top.</p>'
 
-    # Goalscorer sections (empty string for every non-SL league).
-    sc_v1 = (
-        _scorers_table(top_scorers, own_goal_total, teams, "v1")
-        + _team_scorers_section(team_scorers, "v1")
-    )
-    sc_v2 = (
-        _scorers_table(top_scorers, own_goal_total, teams, "v2")
-        + _team_scorers_section(team_scorers, "v2")
-    )
-
     v1 = [
         '<div class="v1-content">',
         '<h2 class="view-title">Season Overview</h2>',
         caption,
         chart,
-        sc_v1,
         "</div>",  # /v1-content
     ]
     v2 = [
@@ -606,10 +596,46 @@ def render_overview(matches, teams, days, history, rows, season="", league_name=
         '<div class="ov-outer">',
         caption,
         chart,
-        sc_v2,
         "</div>",  # /ov-outer
         "</div>",  # /v2-content
     ]
+    return "\n".join(v1 + v2)
+
+
+def render_goalscorers(teams, top_scorers, own_goal_total, team_scorers,
+                       season="", league_name="", league_logo="", crest=None):
+    """The Goal Scorers tab: overall Top Scorers table + per-team top-3 cards.
+
+    Only built for the Super League (the only league with goal data), so this is
+    never reached with empty data in practice — but it degrades gracefully if so.
+    """
+    table_v1 = _scorers_table(top_scorers, own_goal_total, teams, "v1", crest)
+    teams_v1 = _team_scorers_section(team_scorers, "v1", crest)
+    table_v2 = _scorers_table(top_scorers, own_goal_total, teams, "v2", crest)
+    teams_v2 = _team_scorers_section(team_scorers, "v2", crest)
+    empty = not (top_scorers or own_goal_total or team_scorers)
+
+    v1 = ['<div class="v1-content">', '<h2 class="view-title">Goal Scorers</h2>']
+    if empty:
+        v1.append('<p class="empty">No goals have been recorded yet.</p>')
+    else:
+        v1 += [table_v1, teams_v1]
+    v1.append("</div>")  # /v1-content
+
+    v2 = [
+        '<div class="v2-content">',
+        '<div class="v2-mini-banner">',
+        f'<img class="v2-mini-logo" src="{escape(league_logo)}" alt="">' if league_logo else "",
+        f'<p class="v2-season">SEASON {escape(season)}</p>',
+        f'<h2 class="v2-mini-league">{escape(league_name.upper())}</h2>',
+        "</div>",  # /v2-mini-banner
+        '<div class="ov-outer">',
+    ]
+    if empty:
+        v2.append('<p class="v2-empty">No goals have been recorded yet.</p>')
+    else:
+        v2 += [table_v2, teams_v2]
+    v2 += ["</div>", "</div>"]  # /ov-outer /v2-content
     return "\n".join(v1 + v2)
 
 
@@ -645,17 +671,27 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
         "overview.html": ("Season Overview", render_overview(
             matches, teams, days or [], history or {}, rows,
             season=season, league_name=league_name, league_logo=league_logo,
-            top_scorers=top_scorers, own_goal_total=own_goal_total,
-            team_scorers=team_scorers,
         )),
     }
+
+    # The Goal Scorers tab/page exists only when there is goal data (the Super
+    # League). Other leagues keep the original three-tab nav untouched.
+    nav_items = list(NAV_ITEMS)
+    if top_scorers or own_goal_total or team_scorers:
+        nav_items.insert(2, ("goalscorers.html", "Goal Scorers"))
+        pages["goalscorers.html"] = ("Goal Scorers", render_goalscorers(
+            teams, top_scorers or [], own_goal_total, team_scorers or [],
+            season=season, league_name=league_name, league_logo=league_logo,
+            crest=crest,
+        ))
+
     for filename, (title, content) in pages.items():
         html = (
             base.replace("{{TITLE}}", escape(title))
             .replace("{{LEAGUE_NAME}}", escape(league_name))
             .replace("{{LEAGUE_LOGO}}", header_logo)
             .replace("{{LAST_UPDATED}}", escape(updated))
-            .replace("{{NAV}}", _nav(filename))
+            .replace("{{NAV}}", _nav(filename, nav_items))
             .replace("{{CONTENT}}", content)
             .replace("{{CSS_PREFIX}}", css_prefix)
             .replace("{{CSS_VER}}", css_ver)
