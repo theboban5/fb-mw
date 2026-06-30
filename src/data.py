@@ -209,8 +209,12 @@ class Goal:
 
     @property
     def annotation(self) -> str:
-        """Display label: "Name 45'", "Name 45' (P)" or "Name 45' (OG)"."""
-        label = f"{self.player_name} {self.minute}'"
+        """Display label: "Name 45'", "Name 45' (P)" or "Name 45' (OG)".
+
+        The minute is omitted when blank (scorer known, minute not), giving just
+        "Name", "Name (P)" or "Name (OG)".
+        """
+        label = f"{self.player_name} {self.minute}'" if self.minute else self.player_name
         if self.is_penalty:
             label += " (P)"
         elif self.is_own_goal:
@@ -242,10 +246,14 @@ def parse_goals(text: str) -> "list[Goal]":
         gtype = (row.get("goal_type") or "").strip().lower()
         if not team:
             raise DataError(f"goals row {i}: empty team_code")
+        # A "scorer not yet found" placeholder: the goal is recorded (match_id +
+        # team_code filled in) but the player is still blank in the sheet. We skip
+        # it so nothing renders for that goal — the result still shows, just
+        # without a scorer line — while the row stays in the sheet as a to-do.
         if not player:
-            raise DataError(f"goals row {i}: empty player_name")
-        if not minute:
-            raise DataError(f"goals row {i}: empty minute")
+            continue
+        # minute may be blank (some scorers are known but not the minute); the
+        # annotation simply omits the minute in that case.
         if gtype not in ("", "penalty", "own goal"):
             raise DataError(
                 f"goals row {i}: unknown goal_type {gtype!r} "
