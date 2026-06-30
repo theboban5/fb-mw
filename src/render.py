@@ -683,7 +683,12 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
         "results.html": ("Results", render_results(
             matches, teams, season=season, league_name=league_name,
             crest=crest, league_logo=league_logo,
-            goals_by_match=goals_by_match, compact=bool(goals_by_match),
+            # Every league uses the compact (centred date/venue caption above
+            # each result) layout — it fits without horizontal scroll and leaves
+            # room for an optional scorer block. The block stays empty until a
+            # league supplies goal data, so leagues without goals are unchanged
+            # apart from the tidier layout.
+            goals_by_match=goals_by_match, compact=True,
         )),
         "overview.html": ("Season Overview", render_overview(
             matches, teams, days or [], history or {}, rows,

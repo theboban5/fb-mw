@@ -311,6 +311,7 @@ def main():
         config.NDL_CSV_TEAMS, config.NDL_CSV_MATCHES,
         config.NDL_LEAGUE_NAME, config.NDL_SEASON,
         os.path.join(DIST, "ndl"), updated,
+        csv_goals=config.NDL_CSV_GOALS,
     )
 
     # Women's Premiership
@@ -318,6 +319,7 @@ def main():
         config.WP_CSV_TEAMS, config.WP_CSV_MATCHES,
         config.WP_LEAGUE_NAME, config.WP_SEASON,
         os.path.join(DIST, "wp"), updated,
+        csv_goals=config.WP_CSV_GOALS,
     )
 
     # SRFA FINCA Division League 1 (Southern Region, third tier)
@@ -325,6 +327,7 @@ def main():
         config.SRFA_CSV_TEAMS, config.SRFA_CSV_MATCHES,
         config.SRFA_LEAGUE_NAME, config.SRFA_SEASON,
         os.path.join(DIST, "srfa"), updated,
+        csv_goals=config.SRFA_CSV_GOALS,
     )
 
     # GoJet Investments CRFA Division One League (Central Region, third tier)
@@ -332,6 +335,7 @@ def main():
         config.CRFA_CSV_TEAMS, config.CRFA_CSV_MATCHES,
         config.CRFA_LEAGUE_NAME, config.CRFA_SEASON,
         os.path.join(DIST, "crfa"), updated,
+        csv_goals=config.CRFA_CSV_GOALS,
     )
 
     # Chiwemi Investment NRFA League One (Northern Region, third tier).
@@ -341,6 +345,7 @@ def main():
         config.NRFA_CSV_TEAMS, config.NRFA_CSV_MATCHES,
         config.NRFA_LEAGUE_NAME, config.NRFA_SEASON,
         os.path.join(DIST, "nrfa"), updated,
+        csv_goals=config.NRFA_CSV_GOALS,
     )
 
     # Under-16s Development League
@@ -348,6 +353,7 @@ def main():
         config.CSV_URL_TEAMS, config.CSV_URL_MATCHES,
         config.LEAGUE_NAME, config.SEASON,
         os.path.join(DIST, "u16"), updated,
+        csv_goals=config.CSV_URL_GOALS,
     )
 
     # Landing page
