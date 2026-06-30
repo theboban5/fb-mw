@@ -4,24 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Results &middot; Women&#x27;s Premiership</title>
-<link rel="stylesheet" href="../style.css?v=b4e5bfee">
+<title>Matches &middot; Women&#x27;s Premiership</title>
+<link rel="stylesheet" href="../style.css?v=a64dd200">
 </head>
 <body>
 <header class="site-header">
   <img class="site-logo" src="../logos/leagues/wp.png" alt="">
   <h1>Women&#x27;s Premiership</h1>
-  <p class="updated">Last updated 30 June 2026, 16:41 CAT</p>
+  <p class="updated">Last updated 30 June 2026, 17:30 CAT</p>
 </header>
 <a href="../" class="back-link">&#x2190; All Leagues</a>
 <nav class="tabs">
 <a href="index.html">Standings</a>
-<a href="results.html" class="active">Results</a>
+<a href="results.html" class="active">Matches</a>
 <a href="overview.html">Season Overview</a>
 </nav>
 <main>
 <div class="v1-content">
-<h2 class="view-title">Results</h2>
+<h2 class="view-title">Matches</h2>
 <section class="matchday">
 <h3>Matchday 18</h3>
 <ul class="matches">
@@ -191,7 +191,7 @@
 <p class="v2-season">SEASON 25/26</p>
 <h2 class="v2-mini-league">WOMEN&#x27;S PREMIERSHIP</h2>
 </div>
-<div class="v2-md-pager" data-md-pager hidden>
+<div class="v2-md-pager" data-md-pager data-md-default="18" hidden>
 <button type="button" class="v2-md-nav" data-md-prev aria-label="Earlier matchday">&lsaquo;</button>
 <div class="v2-md-strip" data-md-strip>
 <button type="button" class="v2-md-chip" data-md-chip="1">1</button>
@@ -508,8 +508,9 @@
   chips.forEach(function(c){c.addEventListener('click',function(){select(mds.indexOf(+c.dataset.mdChip));});});
   prev.addEventListener('click',function(){select(idx-1);});
   next.addEventListener('click',function(){select(idx+1);});
+  var di=mds.indexOf(+pager.dataset.mdDefault);
   pager.hidden=false;
-  select(mds.length-1); // latest matchday by default
+  select(di>=0?di:mds.length-1); // open on the live edge (next unplayed round)
 })();
 </script>
 </body>

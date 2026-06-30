@@ -68,8 +68,9 @@
   chips.forEach(function(c){c.addEventListener('click',function(){select(mds.indexOf(+c.dataset.mdChip));});});
   prev.addEventListener('click',function(){select(idx-1);});
   next.addEventListener('click',function(){select(idx+1);});
+  var di=mds.indexOf(+pager.dataset.mdDefault);
   pager.hidden=false;
-  select(mds.length-1); // latest matchday by default
+  select(di>=0?di:mds.length-1); // open on the live edge (next unplayed round)
 })();
 </script>
 </body>

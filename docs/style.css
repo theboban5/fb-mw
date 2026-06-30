@@ -442,9 +442,13 @@ body[data-theme="v2"] .v2-md-chip {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+body[data-theme="v2"] .v2-md-chip-upcoming {
+  border-style: dashed;
+  color: #8a9099;
+}
 body[data-theme="v2"] .v2-md-chip.active {
   background: #0b6b3a;
-  border-color: #0b6b3a;
+  border: 1px solid #0b6b3a;
   color: #ffffff;
 }
 body[data-theme="v2"] .v2-md-nav {
@@ -532,6 +536,13 @@ body[data-theme="v2"] .v2-res-score {
   color: #1c1c1c;
   letter-spacing: -0.01em;
   padding: 11px 16px !important;
+}
+body[data-theme="v2"] .v2-res-score.v2-res-vs {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9aa1ab;
 }
 body[data-theme="v2"] .v2-res-away {
   text-align: left;

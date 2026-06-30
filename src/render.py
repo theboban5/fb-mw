@@ -8,7 +8,7 @@ import shutil
 
 NAV_ITEMS = (
     ("index.html", "Standings"),
-    ("results.html", "Results"),
+    ("results.html", "Matches"),
     ("overview.html", "Season Overview"),
 )
 
@@ -386,23 +386,35 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
     # columns to a centred caption so the v2 table fits the 660px column without
     # horizontal scroll — which is what lets the away scorers stay on screen.
     crest = crest or (lambda code: None)
-    played = [m for m in matches if m.played]
+    # Group every match by matchday — played results and not-yet-played fixtures
+    # alike. A row with blank goals is a fixture (Match.played is False): it shows
+    # kickoff info instead of a score, and standings/scorers already ignore it.
     by_day = {}
-    for m in played:
+    for m in matches:
         by_day.setdefault(m.matchday, []).append(m)
+    all_days = sorted(by_day)
+    has_venue = any(m.stadium for m in matches)
 
-    has_venue = any(m.stadium for m in played)
+    # The season's "live edge": the earliest matchday that still has an unplayed
+    # fixture (a round in progress, or the next one up). The Matches tab opens
+    # here. If every match has been played, fall back to the latest matchday.
+    unplayed_days = [md for md in all_days if any(not m.played for m in by_day[md])]
+    default_md = unplayed_days[0] if unplayed_days else (all_days[-1] if all_days else None)
 
-    # ── V1 / V3 content ────────────────────────────────────
-    v1 = ['<div class="v1-content">', '<h2 class="view-title">Results</h2>']
-    if not played:
+    # ── V1 / V3 content (played results only; v1 is slated for removal) ────
+    played_by_day = {}
+    for m in matches:
+        if m.played:
+            played_by_day.setdefault(m.matchday, []).append(m)
+    v1 = ['<div class="v1-content">', '<h2 class="view-title">Matches</h2>']
+    if not played_by_day:
         v1.append('<p class="empty">No results have been recorded yet.</p>')
     else:
-        for md in sorted(by_day, reverse=True):
+        for md in sorted(played_by_day, reverse=True):
             v1.append('<section class="matchday">')
             v1.append(f"<h3>Matchday {md}</h3>")
             v1.append('<ul class="matches">')
-            for m in sorted(by_day[md], key=lambda x: (x.date, x.home_code)):
+            for m in sorted(played_by_day[md], key=lambda x: (x.date, x.home_code)):
                 home = escape(teams[m.home_code].name)
                 away = escape(teams[m.away_code].name)
                 home_c = _crest_img(crest(m.home_code), "crest-post")
@@ -432,20 +444,24 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
         f'<h2 class="v2-mini-league">{escape(league_name.upper())}</h2>',
         "</div>",  # /v2-mini-banner
     ]
-    if not played:
+    if not by_day:
         v2.append('<div class="v2-results-outer">')
-        v2.append('<p class="v2-empty">No results have been recorded yet.</p>')
+        v2.append('<p class="v2-empty">No matches have been scheduled yet.</p>')
         v2.append("</div>")  # /v2-results-outer
     else:
         # Matchday pager. Progressive enhancement: it ships hidden and JS reveals
         # it, hides all but the selected matchday, and wires up the chips/arrows.
         # With no JS the pager stays hidden and every matchday shows (scroll).
-        v2.append('<div class="v2-md-pager" data-md-pager hidden>')
+        # data-md-default is the live edge the tab opens on; chips for rounds with
+        # no played match yet get a modifier class so they read as upcoming.
+        v2.append(f'<div class="v2-md-pager" data-md-pager '
+                  f'data-md-default="{default_md}" hidden>')
         v2.append('<button type="button" class="v2-md-nav" data-md-prev '
                   'aria-label="Earlier matchday">&lsaquo;</button>')
         v2.append('<div class="v2-md-strip" data-md-strip>')
-        for md in sorted(by_day):
-            v2.append(f'<button type="button" class="v2-md-chip" '
+        for md in all_days:
+            up_cls = "" if any(m.played for m in by_day[md]) else " v2-md-chip-upcoming"
+            v2.append(f'<button type="button" class="v2-md-chip{up_cls}" '
                       f'data-md-chip="{md}">{md}</button>')
         v2.append("</div>")  # /v2-md-strip
         v2.append('<button type="button" class="v2-md-nav" data-md-next '
@@ -478,7 +494,13 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                 away = escape(teams[m.away_code].name)
                 home_c = _crest_img(crest(m.home_code), "crest-post")
                 away_c = _crest_img(crest(m.away_code), "crest-pre")
-                score = f"{m.home_goals}:{m.away_goals}"
+                # A fixture (no goals yet) shows "vs" in place of the score.
+                if m.played:
+                    score_cell = f'<td class="v2-res-score">{m.home_goals}:{m.away_goals}</td>'
+                    fix_cls = ""
+                else:
+                    score_cell = '<td class="v2-res-score v2-res-vs">vs</td>'
+                    fix_cls = " v2-res-row-fixture"
                 date = escape(_format_date(m.date))
                 if compact:
                     meta = date
@@ -489,17 +511,17 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                         f'<td colspan="3"><span class="v2-res-meta">{meta}</span></td></tr>'
                     )
                     v2.append(
-                        f'<tr class="v2-res-row v2-res-row-compact{alt_cls}">'
+                        f'<tr class="v2-res-row v2-res-row-compact{fix_cls}{alt_cls}">'
                         f'<td class="v2-res-home">{home}{home_c}</td>'
-                        f'<td class="v2-res-score">{score}</td>'
+                        f'{score_cell}'
                         f'<td class="v2-res-away">{away_c}{away}</td></tr>'
                     )
                 else:
                     row = (
-                        f'<tr class="v2-res-row{alt_cls}">'
+                        f'<tr class="v2-res-row{fix_cls}{alt_cls}">'
                         f'<td class="v2-res-date">{date}</td>'
                         f'<td class="v2-res-home">{home}{home_c}</td>'
-                        f'<td class="v2-res-score">{score}</td>'
+                        f'{score_cell}'
                         f'<td class="v2-res-away">{away_c}{away}</td>'
                     )
                     if has_venue:
@@ -696,7 +718,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             total_goals=total_goals, goals_per_game=goals_per_game, updated=updated,
             form=form, changes=changes, crest=crest, league_logo=league_logo,
         )),
-        "results.html": ("Results", render_results(
+        "results.html": ("Matches", render_results(
             matches, teams, season=season, league_name=league_name,
             crest=crest, league_logo=league_logo,
             # Every league uses the compact (centred date/venue caption above

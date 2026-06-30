@@ -5,18 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Standings &middot; Super League of Malawi</title>
-<link rel="stylesheet" href="../style.css?v=b4e5bfee">
+<link rel="stylesheet" href="../style.css?v=a64dd200">
 </head>
 <body>
 <header class="site-header">
   <img class="site-logo" src="../logos/leagues/sl.png" alt="">
   <h1>Super League of Malawi</h1>
-  <p class="updated">Last updated 30 June 2026, 16:41 CAT</p>
+  <p class="updated">Last updated 30 June 2026, 17:30 CAT</p>
 </header>
 <a href="../" class="back-link">&#x2190; All Leagues</a>
 <nav class="tabs">
 <a href="index.html" class="active">Standings</a>
-<a href="results.html">Results</a>
+<a href="results.html">Matches</a>
 <a href="goalscorers.html">Goal Scorers</a>
 <a href="overview.html">Season Overview</a>
 </nav>
@@ -55,7 +55,7 @@
 <div class="v2-stat"><span class="v2-stat-num">139</span><span class="v2-stat-label">GOALS</span></div>
 <div class="v2-stat"><span class="v2-stat-num">2.2</span><span class="v2-stat-label">GOALS/GAME</span></div>
 </div>
-<p class="v2-updated">30 June 2026, 16:41 CAT</p>
+<p class="v2-updated">30 June 2026, 17:30 CAT</p>
 </div>
 <div class="v2-table-outer">
 <table class="v2-standings">
@@ -136,8 +136,9 @@
   chips.forEach(function(c){c.addEventListener('click',function(){select(mds.indexOf(+c.dataset.mdChip));});});
   prev.addEventListener('click',function(){select(idx-1);});
   next.addEventListener('click',function(){select(idx+1);});
+  var di=mds.indexOf(+pager.dataset.mdDefault);
   pager.hidden=false;
-  select(mds.length-1); // latest matchday by default
+  select(di>=0?di:mds.length-1); // open on the live edge (next unplayed round)
 })();
 </script>
 </body>

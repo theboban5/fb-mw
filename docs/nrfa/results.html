@@ -4,24 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Results &middot; Chiwemi Investment NRFA League One</title>
-<link rel="stylesheet" href="../style.css?v=b4e5bfee">
+<title>Matches &middot; Chiwemi Investment NRFA League One</title>
+<link rel="stylesheet" href="../style.css?v=a64dd200">
 </head>
 <body>
 <header class="site-header">
   <img class="site-logo" src="../logos/leagues/nrfa.png" alt="">
   <h1>Chiwemi Investment NRFA League One</h1>
-  <p class="updated">Last updated 30 June 2026, 16:41 CAT</p>
+  <p class="updated">Last updated 30 June 2026, 16:53 CAT</p>
 </header>
 <a href="../" class="back-link">&#x2190; All Leagues</a>
 <nav class="tabs">
 <a href="index.html">Standings</a>
-<a href="results.html" class="active">Results</a>
+<a href="results.html" class="active">Matches</a>
 <a href="overview.html">Season Overview</a>
 </nav>
 <main>
 <div class="v1-content">
-<h2 class="view-title">Results</h2>
+<h2 class="view-title">Matches</h2>
 <p class="empty">No results have been recorded yet.</p>
 </div>
 <div class="v2-content">
@@ -31,7 +31,7 @@
 <h2 class="v2-mini-league">CHIWEMI INVESTMENT NRFA LEAGUE ONE</h2>
 </div>
 <div class="v2-results-outer">
-<p class="v2-empty">No results have been recorded yet.</p>
+<p class="v2-empty">No matches have been scheduled yet.</p>
 </div>
 </div>
 </main>
@@ -83,8 +83,9 @@
   chips.forEach(function(c){c.addEventListener('click',function(){select(mds.indexOf(+c.dataset.mdChip));});});
   prev.addEventListener('click',function(){select(idx-1);});
   next.addEventListener('click',function(){select(idx+1);});
+  var di=mds.indexOf(+pager.dataset.mdDefault);
   pager.hidden=false;
-  select(mds.length-1); // latest matchday by default
+  select(di>=0?di:mds.length-1); // open on the live edge (next unplayed round)
 })();
 </script>
 </body>

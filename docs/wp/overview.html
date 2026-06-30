@@ -5,18 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Season Overview &middot; Women&#x27;s Premiership</title>
-<link rel="stylesheet" href="../style.css?v=b4e5bfee">
+<link rel="stylesheet" href="../style.css?v=a64dd200">
 </head>
 <body>
 <header class="site-header">
   <img class="site-logo" src="../logos/leagues/wp.png" alt="">
   <h1>Women&#x27;s Premiership</h1>
-  <p class="updated">Last updated 30 June 2026, 16:41 CAT</p>
+  <p class="updated">Last updated 30 June 2026, 17:30 CAT</p>
 </header>
 <a href="../" class="back-link">&#x2190; All Leagues</a>
 <nav class="tabs">
 <a href="index.html">Standings</a>
-<a href="results.html">Results</a>
+<a href="results.html">Matches</a>
 <a href="overview.html" class="active">Season Overview</a>
 </nav>
 <main>
@@ -85,8 +85,9 @@
   chips.forEach(function(c){c.addEventListener('click',function(){select(mds.indexOf(+c.dataset.mdChip));});});
   prev.addEventListener('click',function(){select(idx-1);});
   next.addEventListener('click',function(){select(idx+1);});
+  var di=mds.indexOf(+pager.dataset.mdDefault);
   pager.hidden=false;
-  select(mds.length-1); // latest matchday by default
+  select(di>=0?di:mds.length-1); // open on the live edge (next unplayed round)
 })();
 </script>
 </body>
