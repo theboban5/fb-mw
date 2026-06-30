@@ -431,11 +431,27 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
         f'<p class="v2-season">SEASON {escape(season)}</p>',
         f'<h2 class="v2-mini-league">{escape(league_name.upper())}</h2>',
         "</div>",  # /v2-mini-banner
-        '<div class="v2-results-outer">',
     ]
     if not played:
+        v2.append('<div class="v2-results-outer">')
         v2.append('<p class="v2-empty">No results have been recorded yet.</p>')
+        v2.append("</div>")  # /v2-results-outer
     else:
+        # Matchday pager. Progressive enhancement: it ships hidden and JS reveals
+        # it, hides all but the selected matchday, and wires up the chips/arrows.
+        # With no JS the pager stays hidden and every matchday shows (scroll).
+        v2.append('<div class="v2-md-pager" data-md-pager hidden>')
+        v2.append('<button type="button" class="v2-md-nav" data-md-prev '
+                  'aria-label="Earlier matchday">&lsaquo;</button>')
+        v2.append('<div class="v2-md-strip" data-md-strip>')
+        for md in sorted(by_day):
+            v2.append(f'<button type="button" class="v2-md-chip" '
+                      f'data-md-chip="{md}">{md}</button>')
+        v2.append("</div>")  # /v2-md-strip
+        v2.append('<button type="button" class="v2-md-nav" data-md-next '
+                  'aria-label="Later matchday">&rsaquo;</button>')
+        v2.append("</div>")  # /v2-md-pager
+        v2.append('<div class="v2-results-outer">')
         colspan = 3 if compact else (5 if has_venue else 4)
         table_cls = "v2-results-table v2-results-compact" if compact else "v2-results-table"
         v2.append(f'<table class="{table_cls}">')
@@ -449,9 +465,10 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
         ]
         if not compact and has_venue:
             v2.append('<th class="v2-res-th-venue">VENUE</th>')
-        v2 += ["</tr></thead>", "<tbody>"]
+        v2 += ["</tr></thead>"]
         for md in sorted(by_day, reverse=True):
             day_matches = sorted(by_day[md], key=lambda x: (x.date, x.home_code))
+            v2.append(f'<tbody class="v2-md-group" data-md="{md}">')
             v2.append(
                 f'<tr class="v2-md-row"><td colspan="{colspan}">MATCHDAY {md}</td></tr>'
             )
@@ -495,11 +512,10 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                         f'<tr class="v2-scorers-row{alt_cls}">'
                         f'<td colspan="{colspan}">{scorers_html}</td></tr>'
                     )
-        v2 += ["</tbody></table>"]
-    v2 += [
-        "</div>",  # /v2-results-outer
-        "</div>",  # /v2-content
-    ]
+            v2.append("</tbody>")  # /v2-md-group
+        v2 += ["</table>"]
+        v2.append("</div>")  # /v2-results-outer
+    v2.append("</div>")  # /v2-content
 
     return "\n".join(v1 + v2)
 

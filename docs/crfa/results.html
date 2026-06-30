@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Results &middot; GoJet Investments CRFA Division One League</title>
-<link rel="stylesheet" href="../style.css?v=aec7774d">
+<link rel="stylesheet" href="../style.css?v=b4e5bfee">
 </head>
 <body>
 <header class="site-header">
   <img class="site-logo" src="../logos/leagues/crfa.png" alt="">
   <h1>GoJet Investments CRFA Division One League</h1>
-  <p class="updated">Last updated 30 June 2026, 15:27 CAT</p>
+  <p class="updated">Last updated 30 June 2026, 16:41 CAT</p>
 </header>
 <a href="../" class="back-link">&#x2190; All Leagues</a>
 <nav class="tabs">
@@ -40,6 +40,13 @@
 <p class="v2-season">SEASON 26/27</p>
 <h2 class="v2-mini-league">GOJET INVESTMENTS CRFA DIVISION ONE LEAGUE</h2>
 </div>
+<div class="v2-md-pager" data-md-pager hidden>
+<button type="button" class="v2-md-nav" data-md-prev aria-label="Earlier matchday">&lsaquo;</button>
+<div class="v2-md-strip" data-md-strip>
+<button type="button" class="v2-md-chip" data-md-chip="1">1</button>
+</div>
+<button type="button" class="v2-md-nav" data-md-next aria-label="Later matchday">&rsaquo;</button>
+</div>
 <div class="v2-results-outer">
 <table class="v2-results-table v2-results-compact">
 <thead><tr>
@@ -47,7 +54,7 @@
 <th class="v2-res-th-score">RESULT</th>
 <th class="v2-res-th-away">AWAY</th>
 </tr></thead>
-<tbody>
+<tbody class="v2-md-group" data-md="1">
 <tr class="v2-md-row"><td colspan="3">MATCHDAY 1</td></tr>
 <tr class="v2-res-meta-row"><td colspan="3"><span class="v2-res-meta">7 Jun 2026 &middot; Mchinji Mini Stadium</span></td></tr>
 <tr class="v2-res-row v2-res-row-compact"><td class="v2-res-home">Mchinji Villa FC<img class="club-crest crest-post" src="../logos/clubs/CRFA_MV.png" alt="" loading="lazy"></td><td class="v2-res-score">0:0</td><td class="v2-res-away">Mchinji Strikers</td></tr>
@@ -64,7 +71,8 @@
 <tr class="v2-res-meta-row alt"><td colspan="3"><span class="v2-res-meta">28 Jun 2026 &middot; Kasungu Stadium</span></td></tr>
 <tr class="v2-res-row v2-res-row-compact alt"><td class="v2-res-home">TN Stars<img class="club-crest crest-post" src="../logos/clubs/CRFA_TNS.png" alt="" loading="lazy"></td><td class="v2-res-score">1:1</td><td class="v2-res-away"><img class="club-crest crest-pre" src="../logos/clubs/CRFA_MC.png" alt="" loading="lazy">Manzo Chisomo FC</td></tr>
 <tr class="v2-scorers-row alt"><td colspan="3"><div class="v2-match-scorers"><div class="v2-ms-home"><span class="v2-ms-line">Noah Malizwe 13&#x27;</span></div><div class="v2-ms-away"><span class="v2-ms-line">Christopher Gomani 55&#x27;</span></div></div></td></tr>
-</tbody></table>
+</tbody>
+</table>
 </div>
 </div>
 </main>
@@ -89,6 +97,35 @@
   var saved;try{saved=localStorage.getItem('fbmw-theme');}catch(e){}
   apply(saved||'v2');
   btns.forEach(function(b){b.addEventListener('click',function(){apply(b.dataset.t);});});
+})();
+(function(){
+  var pager=document.querySelector('.v2-content [data-md-pager]');
+  if(!pager) return;
+  var groups=document.querySelectorAll('.v2-content .v2-md-group');
+  var chips=[].slice.call(pager.querySelectorAll('[data-md-chip]'));
+  if(chips.length<2) return; // single matchday: leave full view, pager hidden
+  var mds=chips.map(function(c){return +c.dataset.mdChip;}).sort(function(a,b){return a-b;});
+  var prev=pager.querySelector('[data-md-prev]');
+  var next=pager.querySelector('[data-md-next]');
+  var idx;
+  function select(i){
+    idx=Math.max(0,Math.min(mds.length-1,i));
+    var md=mds[idx];
+    groups.forEach(function(g){g.hidden=(+g.dataset.md!==md);});
+    chips.forEach(function(c){
+      var on=(+c.dataset.mdChip===md);
+      c.classList.toggle('active',on);
+      if(on){c.setAttribute('aria-current','true');c.scrollIntoView({inline:'center',block:'nearest'});}
+      else{c.removeAttribute('aria-current');}
+    });
+    prev.disabled=(idx<=0);
+    next.disabled=(idx>=mds.length-1);
+  }
+  chips.forEach(function(c){c.addEventListener('click',function(){select(mds.indexOf(+c.dataset.mdChip));});});
+  prev.addEventListener('click',function(){select(idx-1);});
+  next.addEventListener('click',function(){select(idx+1);});
+  pager.hidden=false;
+  select(mds.length-1); // latest matchday by default
 })();
 </script>
 </body>

@@ -403,6 +403,69 @@ body[data-theme="v2"] .v2-mini-league {
   line-height: 1.2;
 }
 
+/* V2 results - matchday pager (one matchday at a time, JS-enhanced) */
+body[data-theme="v2"] .v2-md-pager {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  margin-bottom: 2px;
+  background: #ffffff;
+  border-bottom: 1px solid #e4e4e4;
+}
+body[data-theme="v2"] .v2-md-pager[hidden] { display: none; }
+body[data-theme="v2"] .v2-md-strip {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+  padding: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+body[data-theme="v2"] .v2-md-strip::-webkit-scrollbar { display: none; }
+body[data-theme="v2"] .v2-md-chip {
+  flex: 0 0 auto;
+  min-width: 2.2rem;
+  padding: 7px 11px;
+  border: 1px solid #d8d8d8;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1c1c1c;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+body[data-theme="v2"] .v2-md-chip.active {
+  background: #0b6b3a;
+  border-color: #0b6b3a;
+  color: #ffffff;
+}
+body[data-theme="v2"] .v2-md-nav {
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d8d8d8;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #1c1c1c;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+body[data-theme="v2"] .v2-md-nav:disabled { opacity: 0.35; cursor: default; }
+body[data-theme="v2"] .v2-md-group[hidden] { display: none; }
+
 /* V2 results - table */
 body[data-theme="v2"] .v2-results-outer {
   overflow-x: auto;

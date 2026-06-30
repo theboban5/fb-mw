@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Standings &middot; Women&#x27;s Premiership</title>
-<link rel="stylesheet" href="../style.css?v=aec7774d">
+<link rel="stylesheet" href="../style.css?v=b4e5bfee">
 </head>
 <body>
 <header class="site-header">
   <img class="site-logo" src="../logos/leagues/wp.png" alt="">
   <h1>Women&#x27;s Premiership</h1>
-  <p class="updated">Last updated 30 June 2026, 15:27 CAT</p>
+  <p class="updated">Last updated 30 June 2026, 16:41 CAT</p>
 </header>
 <a href="../" class="back-link">&#x2190; All Leagues</a>
 <nav class="tabs">
@@ -48,7 +48,7 @@
 <div class="v2-stat"><span class="v2-stat-num">260</span><span class="v2-stat-label">GOALS</span></div>
 <div class="v2-stat"><span class="v2-stat-num">2.9</span><span class="v2-stat-label">GOALS/GAME</span></div>
 </div>
-<p class="v2-updated">30 June 2026, 15:27 CAT</p>
+<p class="v2-updated">30 June 2026, 16:41 CAT</p>
 </div>
 <div class="v2-table-outer">
 <table class="v2-standings">
@@ -96,6 +96,35 @@
   var saved;try{saved=localStorage.getItem('fbmw-theme');}catch(e){}
   apply(saved||'v2');
   btns.forEach(function(b){b.addEventListener('click',function(){apply(b.dataset.t);});});
+})();
+(function(){
+  var pager=document.querySelector('.v2-content [data-md-pager]');
+  if(!pager) return;
+  var groups=document.querySelectorAll('.v2-content .v2-md-group');
+  var chips=[].slice.call(pager.querySelectorAll('[data-md-chip]'));
+  if(chips.length<2) return; // single matchday: leave full view, pager hidden
+  var mds=chips.map(function(c){return +c.dataset.mdChip;}).sort(function(a,b){return a-b;});
+  var prev=pager.querySelector('[data-md-prev]');
+  var next=pager.querySelector('[data-md-next]');
+  var idx;
+  function select(i){
+    idx=Math.max(0,Math.min(mds.length-1,i));
+    var md=mds[idx];
+    groups.forEach(function(g){g.hidden=(+g.dataset.md!==md);});
+    chips.forEach(function(c){
+      var on=(+c.dataset.mdChip===md);
+      c.classList.toggle('active',on);
+      if(on){c.setAttribute('aria-current','true');c.scrollIntoView({inline:'center',block:'nearest'});}
+      else{c.removeAttribute('aria-current');}
+    });
+    prev.disabled=(idx<=0);
+    next.disabled=(idx>=mds.length-1);
+  }
+  chips.forEach(function(c){c.addEventListener('click',function(){select(mds.indexOf(+c.dataset.mdChip));});});
+  prev.addEventListener('click',function(){select(idx-1);});
+  next.addEventListener('click',function(){select(idx+1);});
+  pager.hidden=false;
+  select(mds.length-1); // latest matchday by default
 })();
 </script>
 </body>
