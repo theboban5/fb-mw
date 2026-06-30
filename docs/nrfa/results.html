@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Matches &middot; Chiwemi Investment NRFA League One</title>
-<link rel="stylesheet" href="../style.css?v=a64dd200">
+<link rel="stylesheet" href="../style.css?v=374212b2">
 </head>
 <body>
 <header class="site-header">
   <img class="site-logo" src="../logos/leagues/nrfa.png" alt="">
   <h1>Chiwemi Investment NRFA League One</h1>
-  <p class="updated">Last updated 30 June 2026, 16:53 CAT</p>
+  <p class="updated">Last updated 30 June 2026, 18:08 CAT</p>
 </header>
 <a href="../" class="back-link">&#x2190; All Leagues</a>
 <nav class="tabs">
@@ -20,43 +20,39 @@
 <a href="overview.html">Season Overview</a>
 </nav>
 <main>
-<div class="v1-content">
-<h2 class="view-title">Matches</h2>
-<p class="empty">No results have been recorded yet.</p>
-</div>
 <div class="v2-content">
 <div class="v2-mini-banner">
 <img class="v2-mini-logo" src="../logos/leagues/nrfa.png" alt="">
 <p class="v2-season">SEASON 26/27</p>
 <h2 class="v2-mini-league">CHIWEMI INVESTMENT NRFA LEAGUE ONE</h2>
 </div>
+<div class="v2-md-pager" data-md-pager data-md-default="1" hidden>
+<button type="button" class="v2-md-nav" data-md-prev aria-label="Earlier matchday">&lsaquo;</button>
+<div class="v2-md-strip" data-md-strip>
+<button type="button" class="v2-md-chip v2-md-chip-upcoming" data-md-chip="1">1</button>
+</div>
+<button type="button" class="v2-md-nav" data-md-next aria-label="Later matchday">&rsaquo;</button>
+</div>
 <div class="v2-results-outer">
-<p class="v2-empty">No matches have been scheduled yet.</p>
+<table class="v2-results-table v2-results-compact">
+<thead><tr>
+<th class="v2-res-th-home">HOME</th>
+<th class="v2-res-th-score">RESULT</th>
+<th class="v2-res-th-away">AWAY</th>
+</tr></thead>
+<tbody class="v2-md-group" data-md="1">
+<tr class="v2-md-row"><td colspan="3">MATCHDAY 1</td></tr>
+<tr class="v2-res-meta-row"><td colspan="3"><span class="v2-res-meta">4 Jul 2026 &middot; Chiwaza Ground</span></td></tr>
+<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home">Chintheche United FC<img class="club-crest crest-post" src="../logos/clubs/NRFA_CU.png" alt="" loading="lazy"></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away">MAFU FC</td></tr>
+</tbody>
+</table>
 </div>
 </div>
 </main>
 <footer class="site-footer">
   <p>Chiwemi Investment NRFA League One &middot; results reported by team reps</p>
 </footer>
-<div id="theme-bar" aria-label="Switch design variant">
-  <span class="theme-label">Design</span>
-  <button data-t="v2">A</button>
-  <button data-t="v3">B</button>
-  <button data-t="v1">C</button>
-</div>
 <script>
-(function(){
-  var bar=document.getElementById('theme-bar');
-  var btns=bar.querySelectorAll('button');
-  function apply(t){
-    document.body.dataset.theme=t;
-    btns.forEach(function(b){b.classList.toggle('active',b.dataset.t===t);});
-    try{localStorage.setItem('fbmw-theme',t);}catch(e){}
-  }
-  var saved;try{saved=localStorage.getItem('fbmw-theme');}catch(e){}
-  apply(saved||'v2');
-  btns.forEach(function(b){b.addEventListener('click',function(){apply(b.dataset.t);});});
-})();
 (function(){
   var pager=document.querySelector('.v2-content [data-md-pager]');
   if(!pager) return;

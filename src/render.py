@@ -164,12 +164,11 @@ def _form_cell(results):
 # Every helper below no-ops to "" when there are no goals, so the other leagues
 # (which never supply goal data) render exactly as before.
 
-def _scorers_block(match, goals_by_match, variant):
+def _scorers_block(match, goals_by_match):
     """Two-column home/away scorer block under one match result, or "" if none.
 
     Home scorers sit left, away scorers right; each line is already minute-sorted
-    by the caller. `variant` is "v1" (Designs B/C list) or "v2" (Design A table),
-    which only changes the CSS class prefix.
+    by the caller.
     """
     if not goals_by_match or match.match_id is None:
         return ""
@@ -180,26 +179,25 @@ def _scorers_block(match, goals_by_match, variant):
     away = [g for g in gs if g.team_code == match.away_code]
     if not home and not away:
         return ""
-    pre = "v2-" if variant == "v2" else ""
 
     def column(side, side_cls):
         lines = "".join(
-            f'<span class="{pre}ms-line">{escape(g.annotation)}</span>' for g in side
+            f'<span class="v2-ms-line">{escape(g.annotation)}</span>' for g in side
         )
-        return f'<div class="{pre}ms-{side_cls}">{lines}</div>'
+        return f'<div class="v2-ms-{side_cls}">{lines}</div>'
 
     return (
-        f'<div class="{pre}match-scorers">'
+        '<div class="v2-match-scorers">'
         f'{column(home, "home")}{column(away, "away")}'
         "</div>"
     )
 
 
-def _scorers_table(top_scorers, own_goal_total, teams, variant, crest=None, more_scorers=None):
+def _scorers_table(top_scorers, own_goal_total, teams, crest=None, more_scorers=None):
     """The overall Top Scorers table (Rank/Player/Team/Goals + Own Goals row).
 
-    Reuses the league-table classes (`standings` / `v2-standings`) so it inherits
-    the page's existing table styling, with a few scr-* classes for alignment.
+    Reuses the league-table classes (`v2-standings`) so it inherits the page's
+    existing table styling, with a few scr-* classes for alignment.
 
     `more_scorers` (list of (goals, num_players)) adds a summarised line per tier
     below the cutoff — e.g. "16 other scorers" with 1 in the goals column — so the
@@ -208,12 +206,8 @@ def _scorers_table(top_scorers, own_goal_total, teams, variant, crest=None, more
     crest = crest or (lambda code: None)
     if not top_scorers and not own_goal_total:
         return ""
-    if variant == "v2":
-        outer, table_cls, title_cls = "v2-table-outer", "v2-standings scorers-table", "v2-sec-title"
-        head = ("#", "PLAYER", "TEAM", "GOALS")
-    else:
-        outer, table_cls, title_cls = "table-wrap", "standings scorers-table", "view-title"
-        head = ("#", "Player", "Team", "Goals")
+    outer, table_cls, title_cls = "v2-table-outer", "v2-standings scorers-table", "v2-sec-title"
+    head = ("#", "PLAYER", "TEAM", "GOALS")
 
     body = []
     for t in top_scorers:
@@ -261,12 +255,12 @@ def _scorers_table(top_scorers, own_goal_total, teams, variant, crest=None, more
     )
 
 
-def _team_scorers_section(team_scorers, variant, crest=None):
+def _team_scorers_section(team_scorers, crest=None):
     """Compact per-team top-3 cards below the overall table (own goals excluded)."""
     crest = crest or (lambda code: None)
     if not team_scorers:
         return ""
-    title_cls = "v2-sec-title" if variant == "v2" else "view-title"
+    title_cls = "v2-sec-title"
     cards = []
     for code, name, players in team_scorers:
         items = "".join(
@@ -290,40 +284,6 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
     form = form or {}
     changes = changes or {}
     crest = crest or (lambda code: None)
-    # ── V1 / V3 content (hidden in V2) ─────────────────────
-    v1 = [
-        '<div class="v1-content">',
-        '<h2 class="view-title">Standings</h2>',
-        '<div class="table-wrap">',
-        '<table class="standings">',
-        "<thead><tr>"
-        '<th class="pos">#</th><th class="team">Team</th>'
-        "<th>P</th><th>W</th><th>D</th><th>L</th>"
-        "<th>GF</th><th>GA</th><th>GD</th>"
-        '<th class="pts">Pts</th></tr></thead>',
-        "<tbody>",
-    ]
-    for i, s in enumerate(rows, start=1):
-        gd = f"+{s.gd}" if s.gd > 0 else str(s.gd)
-        c = _crest_img(crest(s.code), "crest-pre")
-        v1.append(
-            f'<tr class="pos-{i}">'
-            f'<td class="pos">{i}</td>'
-            f'<td class="team">{c}{escape(s.name)}</td>'
-            f"<td>{s.played}</td><td>{s.won}</td><td>{s.drawn}</td><td>{s.lost}</td>"
-            f"<td>{s.gf}</td><td>{s.ga}</td><td>{gd}</td>"
-            f'<td class="pts">{s.points}</td>'
-            "</tr>"
-        )
-    v1 += [
-        "</tbody></table></div>",
-        '<p class="legend">P played &middot; W won &middot; D drawn &middot; '
-        "L lost &middot; GF/GA goals for/against &middot; GD goal difference &middot; "
-        "Pts points</p>",
-        "</div>",  # /v1-content
-    ]
-
-    # ── V2 content (fussball.de style, hidden in V1/V3) ────
     gpg_str = f"{goals_per_game:.1f}" if total_goals > 0 else "0.0"
     v2 = [
         '<div class="v2-content">',
@@ -377,7 +337,7 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
         "</div>",  # /v2-content
     ]
 
-    return "\n".join(v1 + v2)
+    return "\n".join(v2)
 
 
 def render_results(matches, teams, season="", league_name="", crest=None, league_logo="",
@@ -401,41 +361,7 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
     unplayed_days = [md for md in all_days if any(not m.played for m in by_day[md])]
     default_md = unplayed_days[0] if unplayed_days else (all_days[-1] if all_days else None)
 
-    # ── V1 / V3 content (played results only; v1 is slated for removal) ────
-    played_by_day = {}
-    for m in matches:
-        if m.played:
-            played_by_day.setdefault(m.matchday, []).append(m)
-    v1 = ['<div class="v1-content">', '<h2 class="view-title">Matches</h2>']
-    if not played_by_day:
-        v1.append('<p class="empty">No results have been recorded yet.</p>')
-    else:
-        for md in sorted(played_by_day, reverse=True):
-            v1.append('<section class="matchday">')
-            v1.append(f"<h3>Matchday {md}</h3>")
-            v1.append('<ul class="matches">')
-            for m in sorted(played_by_day[md], key=lambda x: (x.date, x.home_code)):
-                home = escape(teams[m.home_code].name)
-                away = escape(teams[m.away_code].name)
-                home_c = _crest_img(crest(m.home_code), "crest-post")
-                away_c = _crest_img(crest(m.away_code), "crest-pre")
-                date_str = escape(_format_date(m.date))
-                if m.stadium:
-                    date_str += f" &middot; {escape(m.stadium)}"
-                v1.append(
-                    '<li class="match">'
-                    f'<span class="home">{home}{home_c}</span>'
-                    f'<span class="score">{m.home_goals}'
-                    f'<span class="dash">&ndash;</span>{m.away_goals}</span>'
-                    f'<span class="away">{away_c}{away}</span>'
-                    f'<span class="date">{date_str}</span>'
-                    f"{_scorers_block(m, goals_by_match, 'v1')}"
-                    "</li>"
-                )
-            v1.append("</ul></section>")
-    v1.append("</div>")  # /v1-content
-
-    # ── V2 content (fussball.de style) ─────────────────────
+    # ── Content (fussball.de style) ────────────────────────
     v2 = [
         '<div class="v2-content">',
         '<div class="v2-mini-banner">',
@@ -528,7 +454,7 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                         row += f'<td class="v2-res-venue">{escape(m.stadium)}</td>'
                     row += "</tr>"
                     v2.append(row)
-                scorers_html = _scorers_block(m, goals_by_match, "v2")
+                scorers_html = _scorers_block(m, goals_by_match)
                 if scorers_html:
                     v2.append(
                         f'<tr class="v2-scorers-row{alt_cls}">'
@@ -539,7 +465,7 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
         v2.append("</div>")  # /v2-results-outer
     v2.append("</div>")  # /v2-content
 
-    return "\n".join(v1 + v2)
+    return "\n".join(v2)
 
 
 def _overview_svg(days, history, rows, color):
@@ -632,13 +558,6 @@ def render_overview(matches, teams, days, history, rows, season="", league_name=
 
     caption = '<p class="ov-caption">League position after each matchday &middot; position 1 is top.</p>'
 
-    v1 = [
-        '<div class="v1-content">',
-        '<h2 class="view-title">Season Overview</h2>',
-        caption,
-        chart,
-        "</div>",  # /v1-content
-    ]
     v2 = [
         '<div class="v2-content">',
         '<div class="v2-mini-banner">',
@@ -652,7 +571,7 @@ def render_overview(matches, teams, days, history, rows, season="", league_name=
         "</div>",  # /ov-outer
         "</div>",  # /v2-content
     ]
-    return "\n".join(v1 + v2)
+    return "\n".join(v2)
 
 
 def render_goalscorers(teams, top_scorers, own_goal_total, team_scorers,
@@ -663,18 +582,9 @@ def render_goalscorers(teams, top_scorers, own_goal_total, team_scorers,
     Only built for the Super League (the only league with goal data), so this is
     never reached with empty data in practice — but it degrades gracefully if so.
     """
-    table_v1 = _scorers_table(top_scorers, own_goal_total, teams, "v1", crest, more_scorers)
-    teams_v1 = _team_scorers_section(team_scorers, "v1", crest)
-    table_v2 = _scorers_table(top_scorers, own_goal_total, teams, "v2", crest, more_scorers)
-    teams_v2 = _team_scorers_section(team_scorers, "v2", crest)
+    table_v2 = _scorers_table(top_scorers, own_goal_total, teams, crest, more_scorers)
+    teams_v2 = _team_scorers_section(team_scorers, crest)
     empty = not (top_scorers or own_goal_total or team_scorers)
-
-    v1 = ['<div class="v1-content">', '<h2 class="view-title">Goal Scorers</h2>']
-    if empty:
-        v1.append('<p class="empty">No goals have been recorded yet.</p>')
-    else:
-        v1 += [table_v1, teams_v1]
-    v1.append("</div>")  # /v1-content
 
     v2 = [
         '<div class="v2-content">',
@@ -690,7 +600,7 @@ def render_goalscorers(teams, top_scorers, own_goal_total, team_scorers,
     else:
         v2 += [table_v2, teams_v2]
     v2 += ["</div>", "</div>"]  # /ov-outer /v2-content
-    return "\n".join(v1 + v2)
+    return "\n".join(v2)
 
 
 def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matches, teams,
