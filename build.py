@@ -32,8 +32,8 @@ def _build_league(csv_teams, csv_matches, league_name, season, dist, updated,
         teams = data.parse_teams(data.fetch(csv_teams))
         matches = data.parse_matches(data.fetch(csv_matches))
         data.validate_match_codes(matches, teams)
-        # Goals are Super-League-only; csv_goals is None for every other league,
-        # leaving these structures empty so render output is unchanged for them.
+        # Goals are opt-in per league: csv_goals is None for leagues without a
+        # goals sheet, leaving these structures empty so their render is unchanged.
         goals = []
         if csv_goals:
             goals = data.parse_goals(data.fetch(csv_goals))
