@@ -198,9 +198,9 @@ def _write_landing(season):
     men_leagues = [
         _live_card("sl", "Top Tier", "Super League of Malawi", season),
         _live_card("ndl", "Second Division", "National Division League", season),
-        _soon_card("Division One", "SRFA FINCA Division One League", region="Southern"),
-        _soon_card("Division One", "CRFA GOJET Investments Division One League", region="Central"),
-        _soon_card("League One", "Chiwemi Investment NRFA League One", region="Northern"),
+        _live_card("srfa", "Division One", config.SRFA_LEAGUE_NAME, config.SRFA_SEASON),
+        _live_card("crfa", "Division One", config.CRFA_LEAGUE_NAME, config.CRFA_SEASON),
+        _live_card("nrfa", "League One", config.NRFA_LEAGUE_NAME, config.NRFA_SEASON),
     ]
     men_cups = [
         _soon_card("Cup", "FAM Charity Shield"),
@@ -320,6 +320,29 @@ def main():
         os.path.join(DIST, "wp"), updated,
     )
 
+    # SRFA FINCA Division League 1 (Southern Region, third tier)
+    srfa_teams, srfa_played = _build_league(
+        config.SRFA_CSV_TEAMS, config.SRFA_CSV_MATCHES,
+        config.SRFA_LEAGUE_NAME, config.SRFA_SEASON,
+        os.path.join(DIST, "srfa"), updated,
+    )
+
+    # GoJet Investments CRFA Division One League (Central Region, third tier)
+    crfa_teams, crfa_played = _build_league(
+        config.CRFA_CSV_TEAMS, config.CRFA_CSV_MATCHES,
+        config.CRFA_LEAGUE_NAME, config.CRFA_SEASON,
+        os.path.join(DIST, "crfa"), updated,
+    )
+
+    # Chiwemi Investment NRFA League One (Northern Region, third tier).
+    # Season not yet started: the matches sheet may have no rows, which the
+    # whole pipeline handles — the table shows every team on zero.
+    nrfa_teams, nrfa_played = _build_league(
+        config.NRFA_CSV_TEAMS, config.NRFA_CSV_MATCHES,
+        config.NRFA_LEAGUE_NAME, config.NRFA_SEASON,
+        os.path.join(DIST, "nrfa"), updated,
+    )
+
     # Under-16s Development League
     u16_teams, u16_played = _build_league(
         config.CSV_URL_TEAMS, config.CSV_URL_MATCHES,
@@ -342,6 +365,9 @@ def main():
         ("SL", sl_teams, sl_played),
         ("NDL", ndl_teams, ndl_played),
         ("WP", wp_teams, wp_played),
+        ("SRFA", srfa_teams, srfa_played),
+        ("CRFA", crfa_teams, crfa_played),
+        ("NRFA", nrfa_teams, nrfa_played),
         ("U16", u16_teams, u16_played),
     ]:
         if teams is not None:

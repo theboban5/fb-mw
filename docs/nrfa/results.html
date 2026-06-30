@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Results &middot; Chiwemi Investment NRFA League One</title>
+<link rel="stylesheet" href="../style.css?v=aec7774d">
+</head>
+<body>
+<header class="site-header">
+  <img class="site-logo" src="../logos/leagues/nrfa.png" alt="">
+  <h1>Chiwemi Investment NRFA League One</h1>
+  <p class="updated">Last updated 30 June 2026, 14:08 CAT</p>
+</header>
+<a href="../" class="back-link">&#x2190; All Leagues</a>
+<nav class="tabs">
+<a href="index.html">Standings</a>
+<a href="results.html" class="active">Results</a>
+<a href="overview.html">Season Overview</a>
+</nav>
+<main>
+<div class="v1-content">
+<h2 class="view-title">Results</h2>
+<p class="empty">No results have been recorded yet.</p>
+</div>
+<div class="v2-content">
+<div class="v2-mini-banner">
+<img class="v2-mini-logo" src="../logos/leagues/nrfa.png" alt="">
+<p class="v2-season">SEASON 26/27</p>
+<h2 class="v2-mini-league">CHIWEMI INVESTMENT NRFA LEAGUE ONE</h2>
+</div>
+<div class="v2-results-outer">
+<p class="v2-empty">No results have been recorded yet.</p>
+</div>
+</div>
+</main>
+<footer class="site-footer">
+  <p>Chiwemi Investment NRFA League One &middot; results reported by team reps</p>
+</footer>
+<div id="theme-bar" aria-label="Switch design variant">
+  <span class="theme-label">Design</span>
+  <button data-t="v2">A</button>
+  <button data-t="v3">B</button>
+  <button data-t="v1">C</button>
+</div>
+<script>
+(function(){
+  var bar=document.getElementById('theme-bar');
+  var btns=bar.querySelectorAll('button');
+  function apply(t){
+    document.body.dataset.theme=t;
+    btns.forEach(function(b){b.classList.toggle('active',b.dataset.t===t);});
+    try{localStorage.setItem('fbmw-theme',t);}catch(e){}
+  }
+  var saved;try{saved=localStorage.getItem('fbmw-theme');}catch(e){}
+  apply(saved||'v2');
+  btns.forEach(function(b){b.addEventListener('click',function(){apply(b.dataset.t);});});
+})();
+</script>
+</body>
+</html>

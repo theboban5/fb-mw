@@ -52,6 +52,24 @@ NDL_SEASON = os.environ.get("NDL_SEASON", "26/27")
 NDL_CSV_TEAMS = os.environ.get("NDL_CSV_TEAMS", "NDL_CSV_TEAMS")
 NDL_CSV_MATCHES = os.environ.get("NDL_CSV_MATCHES", "NDL_CSV_MATCHES")
 
+# ── Southern Regional FA FINCA Division League 1 (third tier) ──────────────────────────────────
+SRFA_LEAGUE_NAME = "SRFA FINCA Division League 1"
+SRFA_SEASON = os.environ.get("SRFA_SEASON", "26/27")
+SRFA_CSV_TEAMS = os.environ.get("SRFA_CSV_TEAMS", "SRFA_CSV_TEAMS")
+SRFA_CSV_MATCHES = os.environ.get("SRFA_CSV_MATCHES", "SRFA_CSV_MATCHES")
+
+# ── GoJet Investments CRFA Division One League (third tier) ──────────────────────────────────
+CRFA_LEAGUE_NAME = "GoJet Investments CRFA Division One League"
+CRFA_SEASON = os.environ.get("CRFA_SEASON", "26/27")
+CRFA_CSV_TEAMS = os.environ.get("CRFA_CSV_TEAMS", "CRFA_CSV_TEAMS")
+CRFA_CSV_MATCHES = os.environ.get("CRFA_CSV_MATCHES", "CRFA_CSV_MATCHES")
+
+# ── Chiwemi Investment NRFA League One (third tier) ──────────────────────────────────
+NRFA_LEAGUE_NAME = "Chiwemi Investment NRFA League One"
+NRFA_SEASON = os.environ.get("NRFA_SEASON", "26/27")
+NRFA_CSV_TEAMS = os.environ.get("NRFA_CSV_TEAMS", "NRFA_CSV_TEAMS")
+NRFA_CSV_MATCHES = os.environ.get("NRFA_CSV_MATCHES", "NRFA_CSV_MATCHES")
+
 # ── Under-16s Development League ────────────────────────────────────────────
 LEAGUE_NAME = "Under-16s Development League"
 SEASON = os.environ.get("SEASON", "26/27")
