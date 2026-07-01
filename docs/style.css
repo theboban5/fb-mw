@@ -303,6 +303,30 @@ table.v2-standings {
   line-height: 1.2;
 }
 
+/* Clickable club names (standings + results) navigate to the club overview.
+   Keep the surrounding text styling — links read as plain names until hovered. */
+.club-link { color: inherit; text-decoration: none; }
+.club-link:hover { text-decoration: underline; }
+
+/* Club overview: position/record/form summary beneath the mini banner. */
+.v2-club-summary {
+  padding: 14px 4px 4px;
+  text-align: center;
+}
+.v2-club-standing {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+.v2-club-record {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.v2-club-form { margin-top: 10px; }
+
 /* V2 results - matchday pager (one matchday at a time, JS-enhanced) */
 .v2-md-pager {
   position: sticky;

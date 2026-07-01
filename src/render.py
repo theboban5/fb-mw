@@ -342,7 +342,8 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
         v2.append(
             f'<tr class="pos-{i}">'
             f'<td class="v2-pos{zone_cls}"><span class="v2-arrow {arrow_cls}">{arrow_glyph}</span> {i}.</td>'
-            f'<td class="v2-team-name">{c}{escape(s.name)}</td>'
+            f'<td class="v2-team-name">'
+            f'<a class="club-link" href="clubs/{escape(s.code)}.html">{c}{escape(s.name)}</a></td>'
             f"<td>{s.played}</td><td>{s.won}</td><td>{s.drawn}</td><td>{s.lost}</td>"
             f'<td class="v2-tor">{tor}</td><td>{gd}</td>'
             f'<td class="v2-pts">{s.points}</td>'
@@ -438,6 +439,14 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                 away = escape(teams[m.away_code].name)
                 home_c = _crest_img(crest(m.home_code), "crest-post")
                 away_c = _crest_img(crest(m.away_code), "crest-pre")
+                home_cell = (
+                    f'<a class="club-link" href="clubs/{escape(m.home_code)}.html">'
+                    f'{home}{home_c}</a>'
+                )
+                away_cell = (
+                    f'<a class="club-link" href="clubs/{escape(m.away_code)}.html">'
+                    f'{away_c}{away}</a>'
+                )
                 # A fixture (no goals yet) shows "vs" in place of the score.
                 if m.played:
                     score_cell = f'<td class="v2-res-score">{m.home_goals}:{m.away_goals}</td>'
@@ -456,17 +465,17 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                     )
                     v2.append(
                         f'<tr class="v2-res-row v2-res-row-compact{fix_cls}{alt_cls}">'
-                        f'<td class="v2-res-home">{home}{home_c}</td>'
+                        f'<td class="v2-res-home">{home_cell}</td>'
                         f'{score_cell}'
-                        f'<td class="v2-res-away">{away_c}{away}</td></tr>'
+                        f'<td class="v2-res-away">{away_cell}</td></tr>'
                     )
                 else:
                     row = (
                         f'<tr class="v2-res-row{fix_cls}{alt_cls}">'
                         f'<td class="v2-res-date">{date}</td>'
-                        f'<td class="v2-res-home">{home}{home_c}</td>'
+                        f'<td class="v2-res-home">{home_cell}</td>'
                         f'{score_cell}'
-                        f'<td class="v2-res-away">{away_c}{away}</td>'
+                        f'<td class="v2-res-away">{away_cell}</td>'
                     )
                     if has_venue:
                         row += f'<td class="v2-res-venue">{escape(m.stadium)}</td>'
@@ -483,6 +492,141 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
         v2.append("</div>")  # /v2-results-outer
     v2.append("</div>")  # /v2-content
 
+    return "\n".join(v2)
+
+
+def _ordinal(n):
+    """1 -> '1st', 2 -> '2nd', 3 -> '3rd', 4 -> '4th', 11 -> '11th', ..."""
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def _club_match_rows(m, teams, crest, goals_by_match, show_scorers):
+    """The compact meta-row + result-row (+ optional scorers) for one match.
+
+    Same markup as the compact branch of render_results, so a club page inherits
+    the identical result styling. A fixture (no goals yet) shows "vs".
+    """
+    home = escape(teams[m.home_code].name)
+    away = escape(teams[m.away_code].name)
+    home_c = _crest_img(crest(m.home_code), "crest-post")
+    away_c = _crest_img(crest(m.away_code), "crest-pre")
+    if m.played:
+        score_cell = f'<td class="v2-res-score">{m.home_goals}:{m.away_goals}</td>'
+        fix_cls = ""
+    else:
+        score_cell = '<td class="v2-res-score v2-res-vs">vs</td>'
+        fix_cls = " v2-res-row-fixture"
+    meta = escape(_format_date(m.date))
+    if m.stadium:
+        meta += f" &middot; {escape(m.stadium)}"
+    home_link = f'<a class="club-link" href="{escape(m.home_code)}.html">{home}{home_c}</a>'
+    away_link = f'<a class="club-link" href="{escape(m.away_code)}.html">{away_c}{away}</a>'
+    out = [
+        f'<tr class="v2-res-meta-row"><td colspan="3">'
+        f'<span class="v2-res-meta">{meta}</span></td></tr>',
+        f'<tr class="v2-res-row v2-res-row-compact{fix_cls}">'
+        f'<td class="v2-res-home">{home_link}</td>'
+        f'{score_cell}'
+        f'<td class="v2-res-away">{away_link}</td></tr>',
+    ]
+    if show_scorers:
+        scorers_html = _scorers_block(m, goals_by_match)
+        if scorers_html:
+            out.append(
+                f'<tr class="v2-scorers-row"><td colspan="3">{scorers_html}</td></tr>'
+            )
+    return "".join(out)
+
+
+def _club_match_table(section_matches, teams, crest, goals_by_match, show_scorers, empty_msg):
+    """A compact results table for one club section, or an empty-state paragraph."""
+    if not section_matches:
+        return f'<p class="v2-empty">{escape(empty_msg)}</p>'
+    body = "".join(
+        _club_match_rows(m, teams, crest, goals_by_match, show_scorers)
+        for m in section_matches
+    )
+    return (
+        '<div class="v2-results-outer">'
+        '<table class="v2-results-table v2-results-compact">'
+        "<thead><tr>"
+        '<th class="v2-res-th-home">HOME</th>'
+        '<th class="v2-res-th-score">RESULT</th>'
+        '<th class="v2-res-th-away">AWAY</th>'
+        "</tr></thead>"
+        f"<tbody>{body}</tbody>"
+        "</table></div>"
+    )
+
+
+def render_club(code, matches, teams, rows, season="", league_name="", crest=None,
+                club_logo="", form=None, goals_by_match=None):
+    """A single club's overview: crest, table position + form, fixtures, results.
+
+    Scoped to one team within one league (the team you clicked). Fixtures are
+    listed soonest-first, results newest-first. Scorers show under results only
+    when the league supplies goal data (currently the Super League). No JS: a
+    single club needs no matchday pager, so this works with JavaScript off.
+    """
+    crest = crest or (lambda c: None)
+    form = form or {}
+    team = teams.get(code)
+    name = team.name if team else code
+
+    club_matches = [m for m in matches if code in (m.home_code, m.away_code)]
+    upcoming = sorted(
+        (m for m in club_matches if not m.played), key=lambda m: (m.date, m.matchday)
+    )
+    results = sorted(
+        (m for m in club_matches if m.played),
+        key=lambda m: (m.date, m.matchday), reverse=True,
+    )
+    show_scorers = bool(goals_by_match)
+
+    # Current league position + record, pulled from this team's standings row.
+    standing = next((s for s in rows if s.code == code), None)
+    position = next((i for i, s in enumerate(rows, start=1) if s.code == code), None)
+
+    crest_img = (
+        f'<img class="v2-mini-logo" src="{escape(club_logo)}" alt="">' if club_logo else ""
+    )
+
+    v2 = [
+        '<div class="v2-content">',
+        '<div class="v2-mini-banner">',
+        crest_img,
+        f'<p class="v2-season">SEASON {escape(season)}</p>',
+        f'<h2 class="v2-mini-league">{escape(name.upper())}</h2>',
+        "</div>",  # /v2-mini-banner
+    ]
+
+    if standing is not None and position is not None:
+        gd = f"+{standing.gd}" if standing.gd > 0 else str(standing.gd)
+        v2 += [
+            '<div class="v2-club-summary">',
+            f'<p class="v2-club-standing">{escape(league_name)} &middot; '
+            f'{_ordinal(position)} &middot; {standing.points} pts</p>',
+            f'<p class="v2-club-record">P{standing.played} &middot; '
+            f'{standing.won}W {standing.drawn}D {standing.lost}L &middot; GD {gd}</p>',
+            f'<div class="v2-club-form">{_form_cell(form.get(code, []))}</div>',
+            "</div>",  # /v2-club-summary
+        ]
+
+    v2 += [
+        '<h3 class="v2-sec-title">Upcoming Fixtures</h3>',
+        _club_match_table(
+            upcoming, teams, crest, goals_by_match, False, "No upcoming fixtures."
+        ),
+        '<h3 class="v2-sec-title">Recent Results</h3>',
+        _club_match_table(
+            results, teams, crest, goals_by_match, show_scorers, "No results yet."
+        ),
+        "</div>",  # /v2-content
+    ]
     return "\n".join(v2)
 
 
@@ -687,6 +831,43 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             .replace("{{BACK_LINK}}", back_link)
         )
         _write(os.path.join(dist, filename), html)
+
+    # One overview page per club under clubs/<code>.html. These sit a directory
+    # deeper than the league pages, so their asset paths and nav/back links need
+    # an extra "../"; crest/logo finders are rebuilt with that deeper prefix.
+    clubs_dir = os.path.join(dist, "clubs")
+    os.makedirs(clubs_dir, exist_ok=True)
+    club_css_prefix = css_prefix + "../"
+    club_crest = _logo_finder(static_dir, club_css_prefix, "clubs")
+    club_league_logo = _logo_finder(static_dir, club_css_prefix, "leagues")(slug) or ""
+    club_header_logo = (
+        f'<img class="site-logo" src="{escape(club_league_logo)}" alt="">'
+        if club_league_logo else ""
+    )
+    # Same league tabs, re-pointed up one level so they navigate back into the
+    # league; plus a back link to this league's standings.
+    club_nav_items = [("../" + href, label) for href, label in nav_items]
+    club_back = (
+        f'<a href="../index.html" class="back-link">&#x2190; {escape(league_name)}</a>'
+    )
+    for code, team in teams.items():
+        content = render_club(
+            code, matches, teams, rows, season=season, league_name=league_name,
+            crest=club_crest, club_logo=club_crest(code) or "",
+            form=form, goals_by_match=goals_by_match,
+        )
+        html = (
+            base.replace("{{TITLE}}", escape(team.name))
+            .replace("{{LEAGUE_NAME}}", escape(league_name))
+            .replace("{{LEAGUE_LOGO}}", club_header_logo)
+            .replace("{{LAST_UPDATED}}", escape(updated))
+            .replace("{{NAV}}", _nav("", club_nav_items))
+            .replace("{{CONTENT}}", content)
+            .replace("{{CSS_PREFIX}}", club_css_prefix)
+            .replace("{{CSS_VER}}", css_ver)
+            .replace("{{BACK_LINK}}", club_back)
+        )
+        _write(os.path.join(clubs_dir, f"{code}.html"), html)
 
     if copy_static:
         copy_static_tree(static_dir, dist)
