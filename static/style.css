@@ -237,8 +237,20 @@ table.v2-standings {
   color: #ffffff !important;
   font-weight: 800;
 }
+.v2-pos-promotion {
+  background: #8fcf82 !important;
+  color: #ffffff !important;
+  font-weight: 800;
+}
+.v2-pos-relegation {
+  background: #c0392b !important;
+  color: #ffffff !important;
+  font-weight: 800;
+}
 .v2-arrow { color: #bbb; margin-right: 2px; font-size: 0.78rem; }
-.v2-pos-leader .v2-arrow { color: rgba(255,255,255,0.8); }
+.v2-pos-leader .v2-arrow,
+.v2-pos-promotion .v2-arrow,
+.v2-pos-relegation .v2-arrow { color: rgba(255,255,255,0.8); }
 .v2-pts {
   font-size: 1.1rem;
   font-weight: 900;

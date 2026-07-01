@@ -279,8 +279,17 @@ def _team_scorers_section(team_scorers, crest=None):
     )
 
 
+# Number of teams relegated from the bottom of each league's table. Leagues
+# not listed here have no relegation zone. National Division League also
+# promotes its top 3 (see NDL_PROMOTION_SPOTS) so 2nd/3rd get a lighter green
+# than the outright leader.
+RELEGATION_SPOTS = {"sl": 3, "ndl": 4}
+NDL_PROMOTION_SPOTS = 3
+
+
 def render_standings(rows, season="", league_name="", total_goals=0, goals_per_game=0.0,
-                     updated="", form=None, changes=None, crest=None, league_logo=""):
+                     updated="", form=None, changes=None, crest=None, league_logo="",
+                     league_slug=""):
     form = form or {}
     changes = changes or {}
     crest = crest or (lambda code: None)
@@ -315,15 +324,24 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
         "</tr></thead>",
         "<tbody>",
     ]
+    total = len(rows)
+    relegation_spots = RELEGATION_SPOTS.get(league_slug, 0)
     for i, s in enumerate(rows, start=1):
         gd = f"+{s.gd}" if s.gd > 0 else str(s.gd)
         tor = f"{s.gf}:{s.ga}"
-        leader_cls = " v2-pos-leader" if i == 1 else ""
+        if i == 1:
+            zone_cls = " v2-pos-leader"
+        elif league_slug == "ndl" and i <= NDL_PROMOTION_SPOTS:
+            zone_cls = " v2-pos-promotion"
+        elif relegation_spots and i > total - relegation_spots:
+            zone_cls = " v2-pos-relegation"
+        else:
+            zone_cls = ""
         arrow_cls, arrow_glyph = _ARROW[changes.get(s.code, "same")]
         c = _crest_img(crest(s.code), "crest-pre")
         v2.append(
             f'<tr class="pos-{i}">'
-            f'<td class="v2-pos{leader_cls}"><span class="v2-arrow {arrow_cls}">{arrow_glyph}</span> {i}.</td>'
+            f'<td class="v2-pos{zone_cls}"><span class="v2-arrow {arrow_cls}">{arrow_glyph}</span> {i}.</td>'
             f'<td class="v2-team-name">{c}{escape(s.name)}</td>'
             f"<td>{s.played}</td><td>{s.won}</td><td>{s.drawn}</td><td>{s.lost}</td>"
             f'<td class="v2-tor">{tor}</td><td>{gd}</td>'
@@ -627,6 +645,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             rows, season=season, league_name=league_name,
             total_goals=total_goals, goals_per_game=goals_per_game, updated=updated,
             form=form, changes=changes, crest=crest, league_logo=league_logo,
+            league_slug=slug,
         )),
         "results.html": ("Matches", render_results(
             matches, teams, season=season, league_name=league_name,
