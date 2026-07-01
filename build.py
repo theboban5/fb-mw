@@ -145,7 +145,7 @@ def _group(group):
 # How the men's leagues rank relative to one another: a <details> disclosure
 # needs no JS and is tap-friendly on mobile, so it's the simplest fit here.
 _MEN_TIER_PYRAMID = """<details class="tier-info">
-      <summary>How do these leagues rank? <span class="tier-info-mark" aria-hidden="true">&#x24D8;</span></summary>
+      <summary>Tiers <span class="tier-info-mark" aria-hidden="true">&#x24D8;</span></summary>
       <div class="tier-pyramid">
         <div class="tier-row tier-1">
           <span class="tier-num">Tier 1</span>
@@ -159,7 +159,7 @@ _MEN_TIER_PYRAMID = """<details class="tier-info">
         <div class="tier-link" aria-hidden="true">&#x2193;</div>
         <div class="tier-row tier-3">
           <span class="tier-num">Tier 3</span>
-          <span class="tier-name">3 regional leagues &mdash; Southern &amp; Central Region Division One, Northern Region League One</span>
+          <span class="tier-name">SRFA Division League 1 // CRFA Division One League // NRFA League One</span>
         </div>
       </div>
     </details>
