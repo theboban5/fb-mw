@@ -27,15 +27,37 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Build site
+        # Secret names match the env vars config.py reads, 1:1. Empty/missing
+        # secrets are safe: a league with no teams/matches URL is skipped, and
+        # goals are opt-in (an empty goals URL just renders no scorers).
         env:
+          # Under-16s Development League
           CSV_URL_TEAMS: ${{ secrets.CSV_URL_TEAMS }}
           CSV_URL_MATCHES: ${{ secrets.CSV_URL_MATCHES }}
+          # Super League of Malawi
           SL_CSV_TEAMS: ${{ secrets.SL_CSV_TEAMS }}
           SL_CSV_MATCHES: ${{ secrets.SL_CSV_MATCHES }}
+          SL_CSV_GOALS: ${{ secrets.SL_CSV_GOALS }}
+          # National Division League
           NDL_CSV_TEAMS: ${{ secrets.NDL_CSV_TEAMS }}
           NDL_CSV_MATCHES: ${{ secrets.NDL_CSV_MATCHES }}
+          NDL_CSV_GOALS: ${{ secrets.NDL_CSV_GOALS }}
+          # Women's Premiership
           WP_CSV_TEAMS: ${{ secrets.WP_CSV_TEAMS }}
           WP_CSV_MATCHES: ${{ secrets.WP_CSV_MATCHES }}
+          WP_CSV_GOALS: ${{ secrets.WP_CSV_GOALS }}
+          # Southern Regional FA
+          SRFA_CSV_TEAMS: ${{ secrets.SRFA_CSV_TEAMS }}
+          SRFA_CSV_MATCHES: ${{ secrets.SRFA_CSV_MATCHES }}
+          SRFA_CSV_GOALS: ${{ secrets.SRFA_CSV_GOALS }}
+          # Central Regional FA
+          CRFA_CSV_TEAMS: ${{ secrets.CRFA_CSV_TEAMS }}
+          CRFA_CSV_MATCHES: ${{ secrets.CRFA_CSV_MATCHES }}
+          CRFA_CSV_GOALS: ${{ secrets.CRFA_CSV_GOALS }}
+          # Northern Regional FA
+          NRFA_CSV_TEAMS: ${{ secrets.NRFA_CSV_TEAMS }}
+          NRFA_CSV_MATCHES: ${{ secrets.NRFA_CSV_MATCHES }}
+          NRFA_CSV_GOALS: ${{ secrets.NRFA_CSV_GOALS }}
         run: python build.py
       - uses: actions/upload-pages-artifact@v3
         with:
