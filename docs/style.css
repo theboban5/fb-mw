@@ -539,29 +539,21 @@ table.v2-results-table {
 
 
 /* ─── Landing page ───────────────────────────────────── */
+/* The tabbed list fills the page top-down, so it isn't vertically centred. */
 body.landing {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-}
-body.landing main::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background: url(malawi_flag.svg) center / 60% auto no-repeat;
-  opacity: 0.4;
-  pointer-events: none;
-  z-index: -1;
 }
 .landing-main {
   max-width: var(--max);
   margin: 0 auto;
-  padding: 40px 16px;
+  padding: 32px 16px 48px;
+  width: 100%;
 }
 .landing-header {
   text-align: center;
-  margin-bottom: 40px;
+  margin-bottom: 20px;
 }
 .landing-title {
   margin: 0;
@@ -575,76 +567,10 @@ body.landing main::before {
   color: var(--muted);
   font-size: 0.9rem;
 }
-.league-cards {
-  display: grid;
-  /* minmax(0,...) lets the track shrink below the cards' min-content so a long
-     competition name wraps instead of blowing the grid (and page) out wide. */
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-}
-.league-card {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 16px;
-  padding: 18px 50px 18px 20px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  text-decoration: none;
-  color: inherit;
-  background: var(--bg);
-  position: relative;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.lc-logo {
-  width: 54px;
-  height: 54px;
-  object-fit: contain;
-  flex: 0 0 auto;
-}
-.lc-body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0; /* allow long competition names to wrap instead of overflowing */
-}
-.league-card:hover {
-  border-color: var(--accent);
-  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-}
-.lc-tier {
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--accent);
-}
-.lc-name {
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: var(--ink);
-}
-.lc-season {
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-.lc-arrow {
-  position: absolute;
-  right: 20px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 1.2rem;
-  color: var(--muted);
-}
 
-/* ─── Landing: competition tabs & sub-filters ────────── */
-/* The tabbed layout fills the page, so don't vertically centre it. */
-body.landing { justify-content: flex-start; }
-.landing-header { margin-bottom: 24px; }
-
-/* Tabs + the active sub-filter bar stick to the top of the viewport together,
-   so there's no offset to keep in sync. Opaque background covers the flag
-   watermark and the cards scrolling underneath. */
+/* ─── Landing: category tabs ─────────────────────────── */
+/* Slim tabs stick to the top of the viewport; opaque background keeps the
+   list legible as it scrolls underneath. */
 .comp-sticky {
   position: sticky;
   top: 0;
@@ -664,14 +590,14 @@ body.landing { justify-content: flex-start; }
 .comp-tab-row::-webkit-scrollbar { display: none; }
 .comp-tab {
   flex: 1 0 auto;
-  min-height: 48px;
-  padding: 12px 18px;
+  min-height: 46px;
+  padding: 11px 18px;
   background: transparent;
   border: 0;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
   font-family: inherit;
-  font-size: 1rem;
+  font-size: 0.98rem;
   font-weight: 700;
   color: var(--muted);
   white-space: nowrap;
@@ -679,70 +605,76 @@ body.landing { justify-content: flex-start; }
 }
 .comp-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
-.comp-subbar {
-  display: flex;
-  gap: 6px;
-  padding: 10px 0;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-/* Out-specify our own `display:flex` so the `hidden` attribute still hides
-   inactive sub-bars (this is what keeps the no-JS fallback to Men's Leagues). */
-.comp-subbar[hidden] { display: none; }
-.comp-subbar::-webkit-scrollbar { display: none; }
-.comp-sub {
-  flex: 0 0 auto;
-  min-height: 38px;
-  padding: 7px 15px;
-  background: var(--row-alt);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  font-family: inherit;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--muted);
-  white-space: nowrap;
-  cursor: pointer;
-}
-.comp-sub.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.comp-panels { padding-top: 8px; }
+/* Belt-and-braces with the `hidden` attribute so inactive tabs stay hidden. */
+.comp-panel[hidden] { display: none; }
 
-.comp-panels { padding-top: 18px; }
-
-/* Two columns once there's room; single-card panels stay full width. */
-@media (min-width: 560px) {
-  .league-cards { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .league-cards.single { grid-template-columns: minmax(0, 1fr); }
-}
-
-/* ─── Coming-soon (roadmap) cards ────────────────────── */
-.league-card.is-soon {
-  background: var(--row-alt);
-  border-style: dashed;
-  padding-top: 30px;
-  cursor: default;
-}
-.league-card.is-soon:hover { border-color: var(--line); box-shadow: none; }
-.league-card.is-soon .lc-tier { color: var(--muted); }
-.league-card.is-soon .lc-name { color: var(--muted); }
-.lc-region {
-  align-self: flex-start;
-  margin-top: 2px;
-  padding: 1px 8px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  font-size: 0.6rem;
+/* ─── Landing: group subheadings + competition rows ──── */
+.lc-group {
+  margin: 26px 0 2px;
+  font-size: 0.72rem;
   font-weight: 700;
-  letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--accent);
+  letter-spacing: 0.09em;
+  color: var(--muted);
 }
+.comp-panel > .lc-group:first-child { margin-top: 14px; }
+
+.lc-list {
+  display: flex;
+  flex-direction: column;
+}
+.lc-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+  color: inherit;
+}
+.lc-list .lc-row:last-child { border-bottom: 0; }
+.lc-logo {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+.lc-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0; /* let long competition names wrap instead of overflowing */
+  flex: 1 1 auto;
+}
+.lc-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+  overflow-wrap: anywhere; /* long league names wrap instead of overflowing on phones */
+}
+.lc-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.lc-arrow {
+  flex: 0 0 auto;
+  font-size: 1.15rem;
+  color: var(--muted);
+  transition: transform 0.15s, color 0.15s;
+}
+a.lc-row:hover .lc-name { color: var(--accent); }
+a.lc-row:hover .lc-arrow { color: var(--accent); transform: translateX(3px); }
+
+/* ─── Coming-soon (roadmap) rows ─────────────────────── */
+.lc-row.is-soon { cursor: default; }
+.lc-row.is-soon .lc-name { color: var(--muted); font-weight: 600; }
 .lc-badge {
-  position: absolute;
-  top: 12px;
-  right: 14px;
+  flex: 0 0 auto;
   padding: 3px 8px;
-  background: var(--line);
+  background: var(--row-alt);
+  border: 1px solid var(--line);
   border-radius: 999px;
   font-size: 0.58rem;
   font-weight: 800;

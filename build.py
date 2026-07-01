@@ -76,186 +76,183 @@ def _build_league(csv_teams, csv_matches, league_name, season, dist, updated,
     return len(teams), played_count
 
 
-def _live_card(slug, tier, name, season):
-    """A live, tappable league card; shows the league logo when one exists."""
-    logo = ""
+def _live(slug, tier, name, season):
+    """A live, tappable competition: an item dict rendered later by _row()."""
+    return {"live": True, "slug": slug, "tier": tier, "name": name, "season": season}
+
+
+def _soon(tier, name, region=None):
+    """A roadmap ("Coming Soon") competition: rendered muted by _row()."""
+    return {"live": False, "tier": tier, "name": name, "region": region}
+
+
+def _logo_html(slug):
+    """A small league logo <img> when one exists on disk, else "" (no logo)."""
     for ext in (".svg", ".png"):
         if os.path.exists(os.path.join(STATIC, "logos", "leagues", slug + ext)):
-            logo = f'<img class="lc-logo" src="logos/leagues/{slug}{ext}" alt="">'
-            break
-    return (
-        f'<a href="{slug}/" class="league-card">'
-        f"{logo}"
-        f'<span class="lc-body">'
-        f'<span class="lc-tier">{tier}</span>'
-        f'<span class="lc-name">{name}</span>'
-        f'<span class="lc-season">Season {season}</span>'
-        f"</span>"
-        f'<span class="lc-arrow">&#x2192;</span>'
-        f"</a>"
-    )
+            return f'<img class="lc-logo" src="logos/leagues/{slug}{ext}" alt="">'
+    return ""
 
 
-def _soon_card(tier, name, region=None):
-    """A muted, non-tappable roadmap card with a "Coming Soon" badge.
+def _row(item):
+    """One competition as a light list row.
 
-    Renders as a <div> (not a link) so it can never become a broken link; an
-    optional region chip distinguishes the regional divisions at a glance.
+    Live items are an <a> that navigates to the league; roadmap items are a
+    non-link <div> so they can never become a broken link.
     """
-    region_html = f'<span class="lc-region">{region} Region</span>' if region else ""
+    tier = item["tier"]
+    name = item["name"]
+    if item["live"]:
+        meta = f"{tier} &middot; Season {item['season']}"
+        return (
+            f'<a href="{item["slug"]}/" class="lc-row">'
+            f"{_logo_html(item['slug'])}"
+            f'<span class="lc-main">'
+            f'<span class="lc-name">{name}</span>'
+            f'<span class="lc-meta">{meta}</span>'
+            f"</span>"
+            f'<span class="lc-arrow">&#x2192;</span>'
+            f"</a>"
+        )
+    region = item.get("region")
+    meta = f"{region} Region &middot; {tier}" if region else tier
     return (
-        f'<div class="league-card is-soon" aria-disabled="true">'
-        f'<span class="lc-body">'
-        f'<span class="lc-tier">{tier}</span>'
+        f'<div class="lc-row is-soon" aria-disabled="true">'
+        f'<span class="lc-main">'
         f'<span class="lc-name">{name}</span>'
-        f"{region_html}"
+        f'<span class="lc-meta">{meta}</span>'
         f"</span>"
         f'<span class="lc-badge">Coming Soon</span>'
         f"</div>"
     )
 
 
-def _panel(key, cards, active=False):
-    """A competition list for one sub-filter; hidden unless it's the active one.
+def _group(group):
+    """A subheading (Leagues / Cups / …) followed by its competition rows."""
+    rows = "\n      ".join(_row(item) for item in group["items"])
+    return (
+        f'<h3 class="lc-group">{group["label"]}</h3>\n'
+        f'      <div class="lc-list">\n      {rows}\n      </div>'
+    )
+
+
+def _panel(cat, active=False):
+    """One category's list of groups; hidden unless it's the active tab.
 
     The `hidden` attribute on inactive panels is the graceful-degradation
-    guarantee: with JS disabled only the active (Men's Leagues) panel shows.
+    guarantee: with JS disabled only the active (Men's) panel shows.
     """
     hidden = "" if active else " hidden"
-    single = " single" if len(cards) == 1 else ""
-    inner = "\n      ".join(cards)
+    inner = "\n    ".join(_group(g) for g in cat["groups"])
     return (
-        f'<section class="comp-panel" data-panel="{key}"{hidden}>'
-        f'<div class="league-cards{single}">\n      {inner}\n    </div>'
-        f"</section>"
+        f'<section class="comp-panel" data-panel="{cat["key"]}"{hidden}>\n    '
+        f"{inner}\n  </section>"
     )
 
 
-def _subbar(name, items, active=False):
-    """A second-level filter row (Leagues/Cups/… or Boys/Girls) for one tab."""
-    hidden = "" if active else " hidden"
-    btns = "".join(
-        f'<button class="comp-sub{" active" if i == 0 else ""}" '
-        f'type="button" data-sub="{key}">{label}</button>'
-        for i, (key, label) in enumerate(items)
-    )
-    return f'<div class="comp-subbar" data-subbar="{name}"{hidden}>{btns}</div>'
-
-
-# Tiny vanilla toggler: no framework, degrades to Men's Leagues if it never runs.
+# Tiny vanilla toggler: no framework, degrades to the Men's panel if it never runs.
 _NAV_JS = """
 (function(){
   var nav=document.querySelector('.comp-nav');
   if(!nav) return;
   var tabs=nav.querySelectorAll('.comp-tab');
-  var subbars=nav.querySelectorAll('.comp-subbar');
   var panels=nav.querySelectorAll('.comp-panel');
-  var lastSub={};
-  function showPanel(key){
-    panels.forEach(function(p){ p.hidden = (p.dataset.panel!==key); });
-  }
-  function setSubActive(bar,key){
-    bar.querySelectorAll('.comp-sub').forEach(function(s){
-      s.classList.toggle('active', s.dataset.sub===key);
-    });
-  }
   function selectTab(tab){
-    var name=tab.dataset.tab, active=null;
+    var name=tab.dataset.tab;
     tabs.forEach(function(t){
       var on=(t===tab);
       t.classList.toggle('active',on);
       t.setAttribute('aria-selected',on?'true':'false');
     });
-    subbars.forEach(function(b){
-      var on=(b.dataset.subbar===name);
-      b.hidden=!on;
-      if(on) active=b;
-    });
-    var key=lastSub[name]||active.querySelector('.comp-sub').dataset.sub;
-    setSubActive(active,key);
-    showPanel(key);
+    panels.forEach(function(p){ p.hidden = (p.dataset.panel!==name); });
   }
   tabs.forEach(function(tab){
     tab.addEventListener('click',function(){ selectTab(tab); });
-  });
-  subbars.forEach(function(bar){
-    bar.querySelectorAll('.comp-sub').forEach(function(s){
-      s.addEventListener('click',function(){
-        lastSub[bar.dataset.subbar]=s.dataset.sub;
-        setSubActive(bar,s.dataset.sub);
-        showPanel(s.dataset.sub);
-      });
-    });
   });
 })();
 """
 
 
+def _landing_countries(season):
+    """The landing content as data: a list of countries, each with categories.
+
+    Only Malawi exists today, so it's rendered directly (no country picker). A
+    second country is just another entry here; the renderer already loops, so a
+    picker/heading can be layered on without touching this shape.
+    """
+    malawi = {
+        "country": "Malawi",
+        "categories": [
+            {"key": "men", "label": "Men&#x2019;s", "groups": [
+                {"label": "Leagues", "items": [
+                    _live("sl", "Top Tier", "Super League of Malawi", season),
+                    _live("ndl", "Second Division", "National Division League", season),
+                    _live("srfa", "Division One", config.SRFA_LEAGUE_NAME, config.SRFA_SEASON),
+                    _live("crfa", "Division One", config.CRFA_LEAGUE_NAME, config.CRFA_SEASON),
+                    _live("nrfa", "League One", config.NRFA_LEAGUE_NAME, config.NRFA_SEASON),
+                ]},
+                {"label": "Cups", "items": [
+                    _soon("Cup", "FAM Charity Shield"),
+                    _soon("Cup", "Airtel Top 8"),
+                    _soon("Cup", "Castel Challenge Cup"),
+                    _soon("Cup", "FDH Bank Cup"),
+                ]},
+                {"label": "National Team", "items": [
+                    _soon("National Team", "Malawi Flames"),
+                ]},
+            ]},
+            {"key": "women", "label": "Women&#x2019;s", "groups": [
+                {"label": "Leagues", "items": [
+                    _live("wp", "Women&#x2019;s First Division", "NBM Women&#x2019;s Premiership", "25/26"),
+                    _soon("Premier Division", "Southern Region Women&#x2019;s Premier Division", region="Southern"),
+                    _soon("Premier Division", "Central Region Women&#x2019;s Premier Division", region="Central"),
+                    _soon("Premier Division", "Northern Region Women&#x2019;s Premier Division", region="Northern"),
+                ]},
+                {"label": "Cups", "items": [
+                    _soon("Cup", "Women&#x2019;s Cups"),
+                ]},
+                {"label": "National Team", "items": [
+                    _soon("National Team", "Malawi Scorchers"),
+                ]},
+            ]},
+            {"key": "youth", "label": "Youth", "groups": [
+                {"label": "Boys", "items": [
+                    _soon("Under-23", "National Bank U23 Championship"),
+                    _soon("Under-19", "U19 Development League"),
+                    _live("u16", "Development", "U16 Development League", season),
+                    _soon("Under-14", "U14 Development League"),
+                ]},
+                {"label": "Girls", "items": [
+                    _soon("Youth", "Girls&#x2019; Youth Competitions"),
+                ]},
+                {"label": "National Team", "items": [
+                    _soon("National Team", "Boys&#x2019; Youth National Team"),
+                    _soon("National Team", "Girls&#x2019; Youth National Team"),
+                ]},
+            ]},
+        ],
+    }
+    return [malawi]
+
+
 def _write_landing(season):
     css_ver = render.css_version(STATIC)
+    # Single country today; the first category (Men's) is the active tab.
+    categories = _landing_countries(season)[0]["categories"]
 
-    # ── MEN'S ────────────────────────────────────────────────
-    men_leagues = [
-        _live_card("sl", "Top Tier", "Super League of Malawi", season),
-        _live_card("ndl", "Second Division", "National Division League", season),
-        _live_card("srfa", "Division One", config.SRFA_LEAGUE_NAME, config.SRFA_SEASON),
-        _live_card("crfa", "Division One", config.CRFA_LEAGUE_NAME, config.CRFA_SEASON),
-        _live_card("nrfa", "League One", config.NRFA_LEAGUE_NAME, config.NRFA_SEASON),
-    ]
-    men_cups = [
-        _soon_card("Cup", "FAM Charity Shield"),
-        _soon_card("Cup", "Airtel Top 8"),
-        _soon_card("Cup", "Castel Challenge Cup"),
-        _soon_card("Cup", "FDH Bank Cup"),
-    ]
-    men_nt = [_soon_card("National Team", "Malawi Flames")]
-
-    # ── WOMEN'S ──────────────────────────────────────────────
-    women_leagues = [
-        _live_card("wp", "Women&#x2019;s First Division", "NBM Women&#x2019;s Premiership", "25/26"),
-        _soon_card("Premier Division", "Southern Region Women&#x2019;s Premier Division", region="Southern"),
-        _soon_card("Premier Division", "Central Region Women&#x2019;s Premier Division", region="Central"),
-        _soon_card("Premier Division", "Northern Region Women&#x2019;s Premier Division", region="Northern"),
-    ]
-    women_cups = [_soon_card("Cup", "Women&#x2019;s Cups")]
-    women_nt = [_soon_card("National Team", "Malawi Scorchers")]
-
-    # ── YOUTH ────────────────────────────────────────────────
-    youth_boys = [
-        _soon_card("Under-23", "National Bank U23 Championship"),
-        _soon_card("Under-19", "U19 Development League"),
-        _live_card("u16", "Development", "U16 Development League", season),
-        _soon_card("Under-14", "U14 Development League"),
-    ]
-    youth_girls = [_soon_card("Youth", "Girls&#x2019; Youth Competitions")]
-    youth_nt = [
-        _soon_card("National Team", "Boys&#x2019; Youth National Team"),
-        _soon_card("National Team", "Girls&#x2019; Youth National Team"),
-    ]
-
-    tabs = (
-        '<div class="comp-tab-row" role="tablist" aria-label="Competition category">'
-        '<button class="comp-tab active" type="button" data-tab="men" aria-selected="true">Men&#x2019;s</button>'
-        '<button class="comp-tab" type="button" data-tab="women" aria-selected="false">Women&#x2019;s</button>'
-        '<button class="comp-tab" type="button" data-tab="youth" aria-selected="false">Youth</button>'
-        "</div>"
+    tabs = "".join(
+        f'<button class="comp-tab{" active" if i == 0 else ""}" type="button" '
+        f'data-tab="{cat["key"]}" aria-selected="{"true" if i == 0 else "false"}">'
+        f'{cat["label"]}</button>'
+        for i, cat in enumerate(categories)
     )
-    subbars = "".join([
-        _subbar("men", [("men-leagues", "Leagues"), ("men-cups", "Cups"), ("men-nt", "National Team")], active=True),
-        _subbar("women", [("women-leagues", "Leagues"), ("women-cups", "Cups"), ("women-nt", "National Team")]),
-        _subbar("youth", [("youth-boys", "Boys"), ("youth-girls", "Girls"), ("youth-nt", "National Team")]),
-    ])
-    panels = "\n    ".join([
-        _panel("men-leagues", men_leagues, active=True),
-        _panel("men-cups", men_cups),
-        _panel("men-nt", men_nt),
-        _panel("women-leagues", women_leagues),
-        _panel("women-cups", women_cups),
-        _panel("women-nt", women_nt),
-        _panel("youth-boys", youth_boys),
-        _panel("youth-girls", youth_girls),
-        _panel("youth-nt", youth_nt),
-    ])
+    tabs = (
+        '<div class="comp-tab-row" role="tablist" '
+        f'aria-label="Competition category">{tabs}</div>'
+    )
+    panels = "\n    ".join(
+        _panel(cat, active=(i == 0)) for i, cat in enumerate(categories)
+    )
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -275,7 +272,6 @@ def _write_landing(season):
   <div class="comp-nav">
     <div class="comp-sticky">
       {tabs}
-      <div class="comp-subfilters">{subbars}</div>
     </div>
     <div class="comp-panels">
     {panels}
