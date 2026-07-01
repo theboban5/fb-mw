@@ -696,6 +696,65 @@ a.lc-row:hover .lc-arrow { color: var(--accent); transform: translateX(3px); }
   white-space: nowrap;
 }
 
+/* ─── Landing: tier-pyramid disclosure (Men's leagues) ── */
+/* Native <details>/<summary>: tap to expand, no JS, works the same on touch
+   and desktop. */
+.tier-info { margin: 2px 0 12px; }
+.tier-info summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  list-style: none;
+}
+.tier-info summary::marker { content: ""; }
+.tier-info summary::-webkit-details-marker { display: none; }
+.tier-info-mark { font-size: 0.95rem; }
+
+.tier-pyramid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 0 4px;
+}
+.tier-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--row-alt);
+  border: 1px solid var(--line);
+}
+/* Widths grow tier 1 -> tier 3 so the stack reads as an inverted pyramid. */
+.tier-row.tier-1 { width: 58%; }
+.tier-row.tier-2 { width: 78%; }
+.tier-row.tier-3 { width: 100%; }
+.tier-num {
+  font-size: 0.64rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.tier-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.tier-link {
+  font-size: 0.8rem;
+  line-height: 1;
+  color: var(--muted);
+}
+
 /* ════════════════════════════════════════════════════════════════════════════
    GOALSCORERS (Super League only — these classes are never emitted elsewhere)
    ════════════════════════════════════════════════════════════════════════════ */

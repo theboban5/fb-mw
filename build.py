@@ -128,12 +128,42 @@ def _row(item):
 
 
 def _group(group):
-    """A subheading (Leagues / Cups / …) followed by its competition rows."""
+    """A subheading (Leagues / Cups / …) followed by its competition rows.
+
+    A group may carry an optional "extra" blob of HTML (e.g. the tier-pyramid
+    disclosure) rendered between the heading and the row list.
+    """
     rows = "\n      ".join(_row(item) for item in group["items"])
+    extra = group.get("extra", "")
     return (
         f'<h3 class="lc-group">{group["label"]}</h3>\n'
-        f'      <div class="lc-list">\n      {rows}\n      </div>'
+        f'      {extra}'
+        f'<div class="lc-list">\n      {rows}\n      </div>'
     )
+
+
+# How the men's leagues rank relative to one another: a <details> disclosure
+# needs no JS and is tap-friendly on mobile, so it's the simplest fit here.
+_MEN_TIER_PYRAMID = """<details class="tier-info">
+      <summary>How do these leagues rank? <span class="tier-info-mark" aria-hidden="true">&#x24D8;</span></summary>
+      <div class="tier-pyramid">
+        <div class="tier-row tier-1">
+          <span class="tier-num">Tier 1</span>
+          <span class="tier-name">Super League of Malawi</span>
+        </div>
+        <div class="tier-link" aria-hidden="true">&#x2193;</div>
+        <div class="tier-row tier-2">
+          <span class="tier-num">Tier 2</span>
+          <span class="tier-name">National Division League</span>
+        </div>
+        <div class="tier-link" aria-hidden="true">&#x2193;</div>
+        <div class="tier-row tier-3">
+          <span class="tier-num">Tier 3</span>
+          <span class="tier-name">3 regional leagues &mdash; Southern &amp; Central Region Division One, Northern Region League One</span>
+        </div>
+      </div>
+    </details>
+    """
 
 
 def _panel(cat, active=False):
@@ -184,7 +214,7 @@ def _landing_countries(season):
         "country": "Malawi",
         "categories": [
             {"key": "men", "label": "Men&#x2019;s", "groups": [
-                {"label": "Leagues", "items": [
+                {"label": "Leagues", "extra": _MEN_TIER_PYRAMID, "items": [
                     _live("sl", "Top Tier", "Super League of Malawi", season),
                     _live("ndl", "Second Division", "National Division League", season),
                     _live("srfa", "Division One", config.SRFA_LEAGUE_NAME, config.SRFA_SEASON),
