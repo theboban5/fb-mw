@@ -323,6 +323,11 @@ def main():
     os.makedirs(DIST, exist_ok=True)
     render.copy_static_tree(STATIC, DIST)
     render._write(os.path.join(DIST, ".nojekyll"), "")
+    # Custom domain for GitHub Pages. Written on every build because the Pages
+    # deploy uploads docs/ as an artifact — a CNAME committed via Settings would
+    # be wiped here, detaching the domain. everyleague.football redirects to this
+    # apex via Porkbun URL forwarding.
+    render._write(os.path.join(DIST, "CNAME"), "everyleague.co\n")
 
     # Super League of Malawi
     sl_teams, sl_played = _build_league(
