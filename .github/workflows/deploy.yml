@@ -58,6 +58,14 @@ jobs:
           NRFA_CSV_TEAMS: ${{ secrets.NRFA_CSV_TEAMS }}
           NRFA_CSV_MATCHES: ${{ secrets.NRFA_CSV_MATCHES }}
           NRFA_CSV_GOALS: ${{ secrets.NRFA_CSV_GOALS }}
+          # SRFA Sultan Concrete Division 2
+          SRFA2_CSV_TEAMS: ${{ secrets.SRFA2_CSV_TEAMS }}
+          SRFA2_CSV_MATCHES: ${{ secrets.SRFA2_CSV_MATCHES }}
+          SRFA2_CSV_GOALS: ${{ secrets.SRFA2_CSV_GOALS }}
+          # Katswiri U19 League
+          KU19_CSV_TEAMS: ${{ secrets.KU19_CSV_TEAMS }}
+          KU19_CSV_MATCHES: ${{ secrets.KU19_CSV_MATCHES }}
+          KU19_CSV_GOALS: ${{ secrets.KU19_CSV_GOALS }}
         run: python build.py
       - uses: actions/upload-pages-artifact@v3
         with:
