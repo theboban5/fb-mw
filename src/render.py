@@ -138,6 +138,10 @@ def _write(path, text):
 
 
 def _format_date(iso):
+    # Blank when the sheet records no date (matchday-only leagues); callers show
+    # nothing rather than a placeholder.
+    if not iso:
+        return ""
     dt = datetime.strptime(iso, "%Y-%m-%d")
     # Avoid platform-specific %-d so it builds on Linux, macOS and Windows.
     return f"{dt.day} {dt.strftime('%b %Y')}"
@@ -458,11 +462,14 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                 if compact:
                     meta = date
                     if m.stadium:
-                        meta += f" &middot; {escape(m.stadium)}"
-                    v2.append(
-                        f'<tr class="v2-res-meta-row{alt_cls}">'
-                        f'<td colspan="3"><span class="v2-res-meta">{meta}</span></td></tr>'
-                    )
+                        meta = f"{meta} &middot; {escape(m.stadium)}" if meta else escape(m.stadium)
+                    # No date and no venue (e.g. matchday-only leagues): skip the
+                    # caption row entirely rather than render an empty line.
+                    if meta:
+                        v2.append(
+                            f'<tr class="v2-res-meta-row{alt_cls}">'
+                            f'<td colspan="3"><span class="v2-res-meta">{meta}</span></td></tr>'
+                        )
                     v2.append(
                         f'<tr class="v2-res-row v2-res-row-compact{fix_cls}{alt_cls}">'
                         f'<td class="v2-res-home">{home_cell}</td>'
@@ -522,17 +529,22 @@ def _club_match_rows(m, teams, crest, goals_by_match, show_scorers):
         fix_cls = " v2-res-row-fixture"
     meta = escape(_format_date(m.date))
     if m.stadium:
-        meta += f" &middot; {escape(m.stadium)}"
+        meta = f"{meta} &middot; {escape(m.stadium)}" if meta else escape(m.stadium)
     home_link = f'<a class="club-link" href="{escape(m.home_code)}.html">{home}{home_c}</a>'
     away_link = f'<a class="club-link" href="{escape(m.away_code)}.html">{away_c}{away}</a>'
-    out = [
-        f'<tr class="v2-res-meta-row"><td colspan="3">'
-        f'<span class="v2-res-meta">{meta}</span></td></tr>',
+    out = []
+    # No date and no venue: skip the caption row rather than render an empty line.
+    if meta:
+        out.append(
+            f'<tr class="v2-res-meta-row"><td colspan="3">'
+            f'<span class="v2-res-meta">{meta}</span></td></tr>'
+        )
+    out.append(
         f'<tr class="v2-res-row v2-res-row-compact{fix_cls}">'
         f'<td class="v2-res-home">{home_link}</td>'
         f'{score_cell}'
-        f'<td class="v2-res-away">{away_link}</td></tr>',
-    ]
+        f'<td class="v2-res-away">{away_link}</td></tr>'
+    )
     if show_scorers:
         scorers_html = _scorers_block(m, goals_by_match)
         if scorers_html:

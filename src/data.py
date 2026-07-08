@@ -103,6 +103,11 @@ def _parse_goals(value, label, row):
 
 
 def _validate_date(value, row):
+    # A blank date is allowed: some leagues (e.g. district youth leagues) track
+    # matches by matchday only and record no calendar date. Any non-blank value
+    # is still held to strict ISO format so a real typo can't slip through.
+    if value == "":
+        return
     try:
         datetime.strptime(value, "%Y-%m-%d")
     except ValueError:
@@ -116,9 +121,14 @@ def parse_matches(text: str) -> "list[Match]":
         {"matchday", "date", "home_code", "away_code", "home_goals", "away_goals"},
         "matches",
     )
+    # Only these named columns make a row a "match"; some sheets carry stray
+    # extra columns to the right (e.g. a team-code legend) that can extend past
+    # the last fixture — those must not keep an otherwise-empty row alive.
+    known = ("match_id", "matchday", "date", "home_code", "home_goals",
+             "away_goals", "away_code", "stadium")
     matches: "list[Match]" = []
     for i, row in enumerate(reader, start=2):
-        if not any((v or "").strip() for v in row.values()):
+        if not any((row.get(k) or "").strip() for k in known):
             continue  # blank line
         matchday = _parse_int(row.get("matchday"), "matchday", i)
         date = (row.get("date") or "").strip()

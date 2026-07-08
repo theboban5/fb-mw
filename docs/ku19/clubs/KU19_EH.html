@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Extending Hope &middot; Katswiri U19 League</title>
+<link rel="stylesheet" href="../../style.css?v=fb5bdc55">
+</head>
+<body>
+<header class="site-header">
+  <img class="site-logo" src="../../logos/leagues/ku19.png" alt="">
+  <h1>Katswiri U19 League</h1>
+  <p class="updated">Last updated 8 July 2026, 15:58 CAT</p>
+</header>
+<a href="../index.html" class="back-link">&#x2190; Katswiri U19 League</a>
+<nav class="tabs">
+<a href="../index.html">Standings</a>
+<a href="../results.html">Matches</a>
+<a href="../overview.html">Season Overview</a>
+</nav>
+<main>
+<div class="v2-content">
+<div class="v2-mini-banner">
+
+<p class="v2-season">SEASON 26/27</p>
+<h2 class="v2-mini-league">EXTENDING HOPE</h2>
+</div>
+<div class="v2-club-summary">
+<p class="v2-club-standing">Katswiri U19 League &middot; 11th &middot; 0 pts</p>
+<p class="v2-club-record">P0 &middot; 0W 0D 0L &middot; GD 0</p>
+<div class="v2-club-form"><span class="v2-form-empty">&ndash;</span></div>
+</div>
+<h3 class="v2-sec-title">Upcoming Fixtures</h3>
+<div class="v2-results-outer"><table class="v2-results-table v2-results-compact"><thead><tr><th class="v2-res-th-home">HOME</th><th class="v2-res-th-score">RESULT</th><th class="v2-res-th-away">AWAY</th></tr></thead><tbody><tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="KU19_EH.html">Extending Hope</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="KU19_CCS.html">CC Stars</a></td></tr></tbody></table></div>
+<h3 class="v2-sec-title">Recent Results</h3>
+<p class="v2-empty">No results yet.</p>
+</div>
+</main>
+<footer class="site-footer">
+  <p>Katswiri U19 League</p>
+</footer>
+<script>
+(function(){
+  var pager=document.querySelector('.v2-content [data-md-pager]');
+  if(!pager) return;
+  var groups=document.querySelectorAll('.v2-content .v2-md-group');
+  var chips=[].slice.call(pager.querySelectorAll('[data-md-chip]'));
+  if(chips.length<2) return; // single matchday: leave full view, pager hidden
+  var mds=chips.map(function(c){return +c.dataset.mdChip;}).sort(function(a,b){return a-b;});
+  var prev=pager.querySelector('[data-md-prev]');
+  var next=pager.querySelector('[data-md-next]');
+  var idx;
+  function select(i){
+    idx=Math.max(0,Math.min(mds.length-1,i));
+    var md=mds[idx];
+    groups.forEach(function(g){g.hidden=(+g.dataset.md!==md);});
+    chips.forEach(function(c){
+      var on=(+c.dataset.mdChip===md);
+      c.classList.toggle('active',on);
+      if(on){c.setAttribute('aria-current','true');c.scrollIntoView({inline:'center',block:'nearest'});}
+      else{c.removeAttribute('aria-current');}
+    });
+    prev.disabled=(idx<=0);
+    next.disabled=(idx>=mds.length-1);
+  }
+  chips.forEach(function(c){c.addEventListener('click',function(){select(mds.indexOf(+c.dataset.mdChip));});});
+  prev.addEventListener('click',function(){select(idx-1);});
+  next.addEventListener('click',function(){select(idx+1);});
+  var di=mds.indexOf(+pager.dataset.mdDefault);
+  pager.hidden=false;
+  select(di>=0?di:mds.length-1); // open on the live edge (next unplayed round)
+})();
+</script>
+</body>
+</html>

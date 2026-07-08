@@ -75,6 +75,20 @@ NRFA_CSV_TEAMS = os.environ.get("NRFA_CSV_TEAMS", "NRFA_CSV_TEAMS")
 NRFA_CSV_MATCHES = os.environ.get("NRFA_CSV_MATCHES", "NRFA_CSV_MATCHES")
 NRFA_CSV_GOALS = os.environ.get("NRFA_CSV_GOALS")
 
+# ── SRFA Sultan Concrete Division 2 (Southern Region, fourth tier) ───────────
+SRFA2_LEAGUE_NAME = "SRFA Sultan Concrete Division 2"
+SRFA2_SEASON = os.environ.get("SRFA2_SEASON", "26/27")
+SRFA2_CSV_TEAMS = os.environ.get("SRFA2_CSV_TEAMS", "SRFA2_CSV_TEAMS")
+SRFA2_CSV_MATCHES = os.environ.get("SRFA2_CSV_MATCHES", "SRFA2_CSV_MATCHES")
+SRFA2_CSV_GOALS = os.environ.get("SRFA2_CSV_GOALS")
+
+# ── Katswiri U19 League (Blantyre District Youth FC, youth boys) ─────────────
+KU19_LEAGUE_NAME = "Katswiri U19 League"
+KU19_SEASON = os.environ.get("KU19_SEASON", "26/27")
+KU19_CSV_TEAMS = os.environ.get("KU19_CSV_TEAMS", "KU19_CSV_TEAMS")
+KU19_CSV_MATCHES = os.environ.get("KU19_CSV_MATCHES", "KU19_CSV_MATCHES")
+KU19_CSV_GOALS = os.environ.get("KU19_CSV_GOALS")
+
 # ── Under-16s Development League ────────────────────────────────────────────
 LEAGUE_NAME = "Under-16s Development League"
 SEASON = os.environ.get("SEASON", "26/27")

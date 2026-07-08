@@ -220,6 +220,7 @@ def _landing_countries(season):
                     _live("srfa", "Division One", config.SRFA_LEAGUE_NAME, config.SRFA_SEASON),
                     _live("crfa", "Division One", config.CRFA_LEAGUE_NAME, config.CRFA_SEASON),
                     _live("nrfa", "League One", config.NRFA_LEAGUE_NAME, config.NRFA_SEASON),
+                    _live("srfa2", "Division Two", config.SRFA2_LEAGUE_NAME, config.SRFA2_SEASON),
                 ]},
                 {"label": "Cups", "items": [
                     _soon("Cup", "FAM Charity Shield"),
@@ -248,7 +249,7 @@ def _landing_countries(season):
             {"key": "youth", "label": "Youth", "groups": [
                 {"label": "Boys", "items": [
                     _soon("Under-23", "National Bank U23 Championship"),
-                    _soon("Under-19", "U19 Development League"),
+                    _live("ku19", "Under-19", config.KU19_LEAGUE_NAME, config.KU19_SEASON),
                     _live("u16", "Development", "U16 Development League", season),
                     _soon("Under-14", "U14 Development League"),
                 ]},
@@ -379,6 +380,22 @@ def main():
         csv_goals=config.NRFA_CSV_GOALS,
     )
 
+    # SRFA Sultan Concrete Division 2 (Southern Region, fourth tier)
+    srfa2_teams, srfa2_played = _build_league(
+        config.SRFA2_CSV_TEAMS, config.SRFA2_CSV_MATCHES,
+        config.SRFA2_LEAGUE_NAME, config.SRFA2_SEASON,
+        os.path.join(DIST, "srfa2"), updated,
+        csv_goals=config.SRFA2_CSV_GOALS,
+    )
+
+    # Katswiri U19 League (Blantyre District Youth FC, youth boys)
+    ku19_teams, ku19_played = _build_league(
+        config.KU19_CSV_TEAMS, config.KU19_CSV_MATCHES,
+        config.KU19_LEAGUE_NAME, config.KU19_SEASON,
+        os.path.join(DIST, "ku19"), updated,
+        csv_goals=config.KU19_CSV_GOALS,
+    )
+
     # Under-16s Development League
     u16_teams, u16_played = _build_league(
         config.CSV_URL_TEAMS, config.CSV_URL_MATCHES,
@@ -405,6 +422,8 @@ def main():
         ("SRFA", srfa_teams, srfa_played),
         ("CRFA", crfa_teams, crfa_played),
         ("NRFA", nrfa_teams, nrfa_played),
+        ("SRFA2", srfa2_teams, srfa2_played),
+        ("KU19", ku19_teams, ku19_played),
         ("U16", u16_teams, u16_played),
     ]:
         if teams is not None:
