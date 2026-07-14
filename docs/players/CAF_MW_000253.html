@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Anzeru Joseph &middot; Anzeru Joseph</title>
+<link rel="stylesheet" href="../style.css?v=93d87f72">
+</head>
+<body>
+<header class="site-header">
+  
+  <h1>Anzeru Joseph</h1>
+  <p class="updated">Last updated 14 July 2026, 17:49 CAT</p>
+</header>
+<a href="../" class="back-link">&#x2190; All Leagues</a>
+<nav class="tabs">
+<a href="../">Home</a>
+</nav>
+<main>
+<div class="v2-content">
+<div class="v2-mini-banner">
+<p class="v2-season">PLAYER</p>
+<h2 class="v2-mini-league">ANZERU JOSEPH</h2>
+</div>
+<h3 class="v2-sec-title">Goals by Competition</h3>
+<div class="v2-table-outer"><table class="v2-standings scorers-table"><thead><tr><th class="scr-th-player">SEASON</th><th class="scr-th-team">COMPETITION</th><th class="scr-th-goals">GOALS</th></tr></thead><tbody><tr><td class="scr-player">2026/27</td><td class="scr-team"><a class="club-link" href="../ndl/">NBS Bank National Division League</a></td><td class="scr-goals">1</td></tr><tr class="scr-og-row"><td class="scr-player">Total</td><td class="scr-team"></td><td class="scr-goals">1</td></tr></tbody></table></div>
+
+</div>
+</main>
+<footer class="site-footer">
+  <p>Anzeru Joseph</p>
+</footer>
+<script>
+(function(){
+  var pager=document.querySelector('.v2-content [data-md-pager]');
+  if(!pager) return;
+  var groups=document.querySelectorAll('.v2-content .v2-md-group');
+  var chips=[].slice.call(pager.querySelectorAll('[data-md-chip]'));
+  if(chips.length<2) return; // single matchday: leave full view, pager hidden
+  var mds=chips.map(function(c){return +c.dataset.mdChip;}).sort(function(a,b){return a-b;});
+  var prev=pager.querySelector('[data-md-prev]');
+  var next=pager.querySelector('[data-md-next]');
+  var idx;
+  function select(i){
+    idx=Math.max(0,Math.min(mds.length-1,i));
+    var md=mds[idx];
+    groups.forEach(function(g){g.hidden=(+g.dataset.md!==md);});
+    chips.forEach(function(c){
+      var on=(+c.dataset.mdChip===md);
+      c.classList.toggle('active',on);
+      if(on){c.setAttribute('aria-current','true');c.scrollIntoView({inline:'center',block:'nearest'});}
+      else{c.removeAttribute('aria-current');}
+    });
+    prev.disabled=(idx<=0);
+    next.disabled=(idx>=mds.length-1);
+  }
+  chips.forEach(function(c){c.addEventListener('click',function(){select(mds.indexOf(+c.dataset.mdChip));});});
+  prev.addEventListener('click',function(){select(idx-1);});
+  next.addEventListener('click',function(){select(idx+1);});
+  var di=mds.indexOf(+pager.dataset.mdDefault);
+  pager.hidden=false;
+  select(di>=0?di:mds.length-1); // open on the live edge (next unplayed round)
+})();
+</script>
+</body>
+</html>

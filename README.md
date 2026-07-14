@@ -17,6 +17,7 @@ src/adapt.py         ← new schema → renderer-ready per-league shapes
 src/standings.py     ← standings computation
 src/scorers.py       ← goalscorer aggregation
 src/render.py        ← data → HTML
+src/hubs.py          ← club hub + player pages (cross-competition views)
 templates/base.html  ← page shell
 static/style.css     ← hand-written, mobile-first
 data/canonical/      ← last validated fetch (drift baseline + audit log)

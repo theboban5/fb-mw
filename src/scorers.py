@@ -1,8 +1,4 @@
-"""Goalscorer aggregation for the Super League. Pure functions, no I/O.
-
-Kept separate from standings.py because goals are a Super-League-only concern;
-the other leagues never call into here.
-"""
+"""Goalscorer aggregation. Pure functions, no I/O."""
 
 from dataclasses import dataclass
 
@@ -16,6 +12,7 @@ class ScorerTally:
     player_name: str
     team_code: str
     goals: int
+    player_id: str = ""  # for linking to /players/{player_id}.html
 
 
 def goals_by_match(goals) -> "dict[int, list]":
@@ -29,12 +26,17 @@ def goals_by_match(goals) -> "dict[int, list]":
 
 
 def _tally(goals):
-    """Map (player, team_code) -> goal count, excluding own goals."""
-    counts: "dict[tuple[str, str], int]" = {}
+    """Map (player_id, player, team_code) -> goal count, excluding own goals.
+
+    Keyed by player_id first so two players who share a display name stay
+    separate; goals without an id (blank player_id) fall back to the name.
+    """
+    counts: "dict[tuple[str, str, str], int]" = {}
     for g in goals:
         if g.is_own_goal:
             continue
-        key = (g.player_name, g.team_code)
+        pid = getattr(g, "player_id", "")
+        key = (pid or g.player_name, g.player_name, g.team_code)
         counts[key] = counts.get(key, 0) + 1
     return counts
 
@@ -54,7 +56,7 @@ def top_scorers(goals):
     counts = _tally(goals)
     ordered = sorted(
         counts.items(),
-        key=lambda kv: (-kv[1], kv[0][0].lower()),
+        key=lambda kv: (-kv[1], kv[0][1].lower()),
     )
 
     # Keep the top TOP_N, then extend through anyone tied on the cutoff's goals.
@@ -65,13 +67,16 @@ def top_scorers(goals):
         kept = ordered
 
     tallies = []
-    for i, ((player, team_code), n) in enumerate(kept):
+    for i, ((pid, player, team_code), n) in enumerate(kept):
         # Standard competition ranking: share the rank of the first tied player.
         if i > 0 and n == kept[i - 1][1]:
             rank = tallies[-1].rank
         else:
             rank = i + 1
-        tallies.append(ScorerTally(rank, player, team_code, n))
+        tallies.append(ScorerTally(
+            rank, player, team_code, n,
+            player_id=pid if pid != player else "",
+        ))
 
     # Summarise everyone below the cutoff, grouped by goal count (highest first).
     excluded = ordered[len(kept):]
@@ -87,14 +92,15 @@ def top_scorers(goals):
 def team_top_scorers(goals, teams):
     """Per-team top-TEAM_TOP_N scorers (own goals excluded).
 
-    Returns a list of (team_code, team_name, [(player, goals), ...]) for every
-    team that has at least one scorer, ordered by team name (A-Z). Within a team:
-    goals descending, then player name (A-Z).
+    Returns a list of (team_code, team_name, [(player, goals, player_id), ...])
+    for every team that has at least one scorer, ordered by team name (A-Z).
+    Within a team: goals descending, then player name (A-Z).
     """
     counts = _tally(goals)
     per_team: "dict[str, list]" = {}
-    for (player, team_code), n in counts.items():
-        per_team.setdefault(team_code, []).append((player, n))
+    for (pid, player, team_code), n in counts.items():
+        per_team.setdefault(team_code, []).append(
+            (player, n, pid if pid != player else ""))
 
     out = []
     for team_code, players in per_team.items():

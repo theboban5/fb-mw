@@ -197,6 +197,14 @@ def _scorers_block(match, goals_by_match):
     )
 
 
+def _player_link(name, player_id):
+    """Scorer name linked to its player page, or plain text without an id."""
+    if player_id:
+        return (f'<a class="club-link" href="../players/{escape(player_id)}.html">'
+                f'{escape(name)}</a>')
+    return escape(name)
+
+
 def _scorers_table(top_scorers, own_goal_total, teams, crest=None, more_scorers=None):
     """The overall Top Scorers table (Rank/Player/Team/Goals + Own Goals row).
 
@@ -217,10 +225,11 @@ def _scorers_table(top_scorers, own_goal_total, teams, crest=None, more_scorers=
     for t in top_scorers:
         team_name = teams[t.team_code].name if t.team_code in teams else t.team_code
         team_c = _crest_img(crest(t.team_code), "crest-pre")
+        player = _player_link(t.player_name, getattr(t, "player_id", ""))
         body.append(
             "<tr>"
             f'<td class="scr-rank">{t.rank}</td>'
-            f'<td class="scr-player">{escape(t.player_name)}</td>'
+            f'<td class="scr-player">{player}</td>'
             f'<td class="scr-team">{team_c}{escape(team_name)}</td>'
             f'<td class="scr-goals">{t.goals}</td>'
             "</tr>"
@@ -268,9 +277,10 @@ def _team_scorers_section(team_scorers, crest=None):
     cards = []
     for code, name, players in team_scorers:
         items = "".join(
-            f'<li class="ts-item"><span class="ts-name">{escape(player)}</span>'
-            f'<span class="ts-goals">{n}</span></li>'
-            for player, n in players
+            f'<li class="ts-item"><span class="ts-name">'
+            f'{_player_link(entry[0], entry[2] if len(entry) > 2 else "")}</span>'
+            f'<span class="ts-goals">{entry[1]}</span></li>'
+            for entry in players
         )
         team_c = _crest_img(crest(code), "ts-crest")
         cards.append(
@@ -294,15 +304,17 @@ NDL_PROMOTION_SPOTS = 3
 def render_standings(rows, season="", league_name="", total_goals=0, goals_per_game=0.0,
                      updated="", form=None, changes=None, crest=None, league_logo="",
                      league_slug="", promotion_spots=None, relegation_spots=None,
-                     withdrawn=None, adjustment_reasons=None):
+                     withdrawn=None, adjustment_reasons=None, club_hrefs=None):
     # promotion/relegation spots come from competition_seasons in the new
     # schema; None falls back to the per-slug constants for old callers.
     # `withdrawn` maps code -> withdrawn|expelled; `adjustment_reasons` maps
-    # code -> footnote text for a non-zero points adjustment.
+    # code -> footnote text for a non-zero points adjustment. `club_hrefs`
+    # maps code -> href (the club hub); default is the per-league club page.
     form = form or {}
     changes = changes or {}
     withdrawn = withdrawn or {}
     adjustment_reasons = adjustment_reasons or {}
+    club_hrefs = club_hrefs or {}
     crest = crest or (lambda code: None)
     gpg_str = f"{goals_per_game:.1f}" if total_goals > 0 else "0.0"
     v2 = [
@@ -357,6 +369,7 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
         # Withdrawn/expelled entries stay in the table, struck through, with
         # a footnote; a non-zero points adjustment gets a marker + footnote.
         name_cls = "club-link v2-team-withdrawn" if s.code in withdrawn else "club-link"
+        href = club_hrefs.get(s.code, f"clubs/{s.code}.html")
         if s.code in withdrawn:
             footnotes.append(f"{escape(s.name)}: {escape(withdrawn[s.code])}")
         adjustment = getattr(s, "adjustment", 0)
@@ -373,7 +386,7 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
             f'<tr class="pos-{i}">'
             f'<td class="v2-pos{zone_cls}"><span class="v2-arrow {arrow_cls}">{arrow_glyph}</span> {i}.</td>'
             f'<td class="v2-team-name">'
-            f'<a class="{name_cls}" href="clubs/{escape(s.code)}.html">{c}{escape(s.name)}</a></td>'
+            f'<a class="{name_cls}" href="{escape(href)}">{c}{escape(s.name)}</a></td>'
             f"<td>{s.played}</td><td>{s.won}</td><td>{s.drawn}</td><td>{s.lost}</td>"
             f'<td class="v2-tor">{tor}</td><td>{gd}</td>'
             f'<td class="v2-pts">{pts}</td>'
@@ -429,11 +442,12 @@ def _unconfirmed_legend(matches):
 
 
 def render_results(matches, teams, season="", league_name="", crest=None, league_logo="",
-                   goals_by_match=None, compact=False):
+                   goals_by_match=None, compact=False, club_hrefs=None):
     # `compact` (the Super League, which shows scorers) drops the DATE/VENUE
     # columns to a centred caption so the v2 table fits the 660px column without
     # horizontal scroll — which is what lets the away scorers stay on screen.
     crest = crest or (lambda code: None)
+    club_hrefs = club_hrefs or {}
     # Group every match by matchday — played results and not-yet-played fixtures
     # alike. A row with blank goals is a fixture (Match.played is False): it shows
     # kickoff info instead of a score, and standings/scorers already ignore it.
@@ -508,12 +522,14 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                 away = escape(teams[m.away_code].name)
                 home_c = _crest_img(crest(m.home_code), "crest-post")
                 away_c = _crest_img(crest(m.away_code), "crest-pre")
+                home_href = club_hrefs.get(m.home_code, f"clubs/{m.home_code}.html")
+                away_href = club_hrefs.get(m.away_code, f"clubs/{m.away_code}.html")
                 home_cell = (
-                    f'<a class="club-link" href="clubs/{escape(m.home_code)}.html">'
+                    f'<a class="club-link" href="{escape(home_href)}">'
                     f'{home}{home_c}</a>'
                 )
                 away_cell = (
-                    f'<a class="club-link" href="clubs/{escape(m.away_code)}.html">'
+                    f'<a class="club-link" href="{escape(away_href)}">'
                     f'{away_c}{away}</a>'
                 )
                 # A fixture (no goals yet) shows "vs" in place of the score;
@@ -869,7 +885,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
                goals_by_match=None, top_scorers=None, own_goal_total=0, team_scorers=None,
                more_scorers=None, promotion_spots=None, relegation_spots=None,
                withdrawn=None, adjustment_reasons=None, crest_keys=None,
-               competition_id=""):
+               competition_id="", club_hrefs=None):
     os.makedirs(dist, exist_ok=True)
     base = _read(os.path.join(templates_dir, "base.html"))
 
@@ -891,7 +907,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             form=form, changes=changes, crest=crest, league_logo=league_logo,
             league_slug=slug, promotion_spots=promotion_spots,
             relegation_spots=relegation_spots, withdrawn=withdrawn,
-            adjustment_reasons=adjustment_reasons,
+            adjustment_reasons=adjustment_reasons, club_hrefs=club_hrefs,
         )),
         "results.html": ("Matches", render_results(
             matches, teams, season=season, league_name=league_name,
@@ -901,7 +917,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             # room for an optional scorer block. The block stays empty until a
             # league supplies goal data, so leagues without goals are unchanged
             # apart from the tidier layout.
-            goals_by_match=goals_by_match, compact=True,
+            goals_by_match=goals_by_match, compact=True, club_hrefs=club_hrefs,
         )),
         "overview.html": ("Season Overview", render_overview(
             matches, teams, days or [], history or {}, rows,

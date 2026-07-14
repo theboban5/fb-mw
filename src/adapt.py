@@ -108,6 +108,7 @@ class GoalView:
     player_name: str
     minute: str          # display string, "" when unknown
     goal_type: str = ""  # "" normal, "penalty", or "own goal"
+    player_id: str = ""  # for scorer-table links to /players/{player_id}.html
 
     @property
     def is_own_goal(self) -> bool:
@@ -253,6 +254,7 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
             player_name=ds.player_display_name(g.player_id),
             minute=_goal_display_minute(g),
             goal_type=_GOAL_TYPE_DISPLAY.get(g.goal_type, ""),
+            player_id=g.player_id,
         ))
 
     return LeagueData(

@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
 import validate  # noqa: E402
-from src import adapt, dataset, render, scorers, standings  # noqa: E402
+from src import adapt, dataset, hubs, render, scorers, standings  # noqa: E402
 
 STATIC = os.path.join(ROOT, "static")
 TEMPLATES = os.path.join(ROOT, "templates")
@@ -111,8 +111,12 @@ def _build_league(ds, cs, dist_root, updated):
         adjustment_reasons=league.adjustment_reasons,
         crest_keys={code: t.club_id for code, t in league.teams.items()},
         competition_id=league.competition_id,
+        # Team names on league pages link to the cross-competition club hub;
+        # the per-league club pages stay generated so their URLs keep working.
+        club_hrefs={code: f"../clubs/{t.club_id}.html"
+                    for code, t in league.teams.items()},
     )
-    return league, len(league.teams), played_count
+    return league, rows, played_count
 
 
 # ── Landing page ─────────────────────────────────────────────────────────────
@@ -405,15 +409,23 @@ def main(argv):
     render._write(os.path.join(dist, "CNAME"), "everyleague.co\n")
 
     leagues = []
+    standings_by_slug = {}
     parts = []
     for cs in adapt.current_competition_seasons(ds):
-        league, n_teams, n_played = _build_league(ds, cs, dist, updated)
+        league, rows, n_played = _build_league(ds, cs, dist, updated)
         leagues.append(league)
-        parts.append(f"{league.slug}: {n_teams} teams, {n_played} results")
+        standings_by_slug[league.slug] = rows
+        parts.append(f"{league.slug}: {len(league.teams)} teams, {n_played} results")
 
     _write_landing(dist, ds, leagues)
 
-    print(f"Built {dist}/  " + " | ".join(parts))
+    # Cross-competition pages: club hubs and player pages.
+    n_clubs = hubs.build_club_hubs(
+        dist, TEMPLATES, STATIC, ds, leagues, standings_by_slug, updated)
+    n_players = hubs.build_player_pages(dist, TEMPLATES, STATIC, ds, updated)
+
+    print(f"Built {dist}/  " + " | ".join(parts)
+          + f" | {n_clubs} club hubs | {n_players} player pages")
     return 0
 
 
