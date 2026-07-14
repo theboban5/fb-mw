@@ -1,77 +1,58 @@
-# Football League Site
+# EverLeague — Malawi football results
 
-A lightweight, mobile-first static site for football league standings and results. No backend, no database, no JavaScript framework — data comes from two Google Sheets tabs published as CSV, and a single Python script builds the whole site.
+A lightweight, mobile-first static site for football standings and results at
+every level of the Malawi pyramid. No backend, no database, no JavaScript
+framework — data lives in one normalized Google Spreadsheet (13 tabs,
+published as CSV) and a single Python script builds the whole site.
 
-**Live site:** https://theboban5.github.io/fb-mw/
+**Live site:** https://everyleague.co
 
 ## How it works
 
 ```
-config.py            ← league name, CSV URLs, timezone
-build.py             ← entry point: fetch → validate → compute → render
-src/data.py          ← load and validate the CSVs
+build.py             ← entry point: fetch → validate → snapshot → render
+validate.py          ← data validation; any ERROR aborts the build
+src/dataset.py       ← the 13-tab data layer (only place that knows the URLs)
+src/adapt.py         ← new schema → renderer-ready per-league shapes
 src/standings.py     ← standings computation
+src/scorers.py       ← goalscorer aggregation
 src/render.py        ← data → HTML
 templates/base.html  ← page shell
 static/style.css     ← hand-written, mobile-first
-docs/                ← build output (committed; served by GitHub Pages)
-tests/               ← unit tests for standings and validation
-sample-data/         ← example CSVs for local preview
+data/canonical/      ← last validated fetch (drift baseline + audit log)
+docs/                ← build output (served by GitHub Pages)
+tests/               ← unit tests
+DATA_MODEL.md        ← the schema, ID conventions, enums, and build rules
 ```
 
-## Google Sheet format
-
-**Teams tab:** `code, name, location`
-`code` (e.g. `BLU`) is the join key used in the matches tab. `location` may be blank.
-
-**Matches tab:** `matchday, date, home_code, away_code, home_goals, away_goals`
-`date` must be `YYYY-MM-DD`. Leave both goal columns blank for unplayed matches — they are excluded from the table automatically. Every `home_code` and `away_code` must appear in the teams tab.
+See `DATA_MODEL.md` for the spreadsheet schema and the rules the build
+enforces (placeholder exclusion, own-goal handling, season resolution, …).
 
 ## Local development
 
-Requires Python 3.9+ (standard library only — nothing to install).
-
-**Build with the sample data:**
+Requires Python 3.9+. Pillow (optional) downscales logos.
 
 ```bash
-CSV_URL_TEAMS=sample-data/teams.csv \
-CSV_URL_MATCHES=sample-data/matches.csv \
-python build.py
+python build.py                  # fetch, validate, build into docs/
+python build.py --dist staging --no-snapshot   # build elsewhere, e.g. parity checks
+python -m http.server -d docs 8000             # preview
+python -m unittest discover -s tests           # tests
 ```
 
-**Preview in a browser:**
+To build offline, point `DATASET_LOCAL_DIR` at a directory of `{tab}.csv`
+files (e.g. a copy of `data/canonical/`):
 
 ```bash
-python -m http.server -d docs 8000
-# open http://localhost:8000
+DATASET_LOCAL_DIR=data/canonical python build.py --no-snapshot
 ```
-
-**Run the tests:**
-
-```bash
-python -m unittest discover -s tests
-```
-
-## Configuration
-
-Edit `config.py` to set your league name, season, timezone, and the two CSV URLs from Google Sheets.
-
-To get the CSV URLs: in your Google Sheet go to **File → Share → Publish to web**, choose each tab and publish as CSV.
 
 ## Deploying
 
-The `docs/` folder is committed to `main` and served by GitHub Pages (Settings → Pages → Deploy from branch → `main` / `/docs`).
+`.github/workflows/deploy.yml` builds and deploys via GitHub Pages
+(artifact deploy): hourly by cron, on every push to main, and on demand via
+"Run workflow". A failed validation fails the build job, so a broken sheet
+can never deploy a partial site. Successful builds commit the fetched CSVs
+to `data/canonical/`, making git history the data audit log.
 
-To publish updated scores:
-
-1. Run `python build.py` — this overwrites `docs/` with the latest data.
-2. Commit and push.
-
-```bash
-python build.py
-git add docs/
-git commit -m "update standings"
-git push
-```
-
-GitHub Pages will pick up the new files within a minute or two.
+If Pages ever reports "Deployment failed, try again later", check that the
+Pages source is still "GitHub Actions" (workflow), not "Deploy from branch".

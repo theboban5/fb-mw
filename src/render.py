@@ -293,9 +293,16 @@ NDL_PROMOTION_SPOTS = 3
 
 def render_standings(rows, season="", league_name="", total_goals=0, goals_per_game=0.0,
                      updated="", form=None, changes=None, crest=None, league_logo="",
-                     league_slug=""):
+                     league_slug="", promotion_spots=None, relegation_spots=None,
+                     withdrawn=None, adjustment_reasons=None):
+    # promotion/relegation spots come from competition_seasons in the new
+    # schema; None falls back to the per-slug constants for old callers.
+    # `withdrawn` maps code -> withdrawn|expelled; `adjustment_reasons` maps
+    # code -> footnote text for a non-zero points adjustment.
     form = form or {}
     changes = changes or {}
+    withdrawn = withdrawn or {}
+    adjustment_reasons = adjustment_reasons or {}
     crest = crest or (lambda code: None)
     gpg_str = f"{goals_per_game:.1f}" if total_goals > 0 else "0.0"
     v2 = [
@@ -329,13 +336,17 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
         "<tbody>",
     ]
     total = len(rows)
-    relegation_spots = RELEGATION_SPOTS.get(league_slug, 0)
+    if relegation_spots is None:
+        relegation_spots = RELEGATION_SPOTS.get(league_slug, 0)
+    if promotion_spots is None:
+        promotion_spots = NDL_PROMOTION_SPOTS if league_slug == "ndl" else 0
+    footnotes = []
     for i, s in enumerate(rows, start=1):
         gd = f"+{s.gd}" if s.gd > 0 else str(s.gd)
         tor = f"{s.gf}:{s.ga}"
         if i == 1:
             zone_cls = " v2-pos-leader"
-        elif league_slug == "ndl" and i <= NDL_PROMOTION_SPOTS:
+        elif i <= promotion_spots:
             zone_cls = " v2-pos-promotion"
         elif relegation_spots and i > total - relegation_spots:
             zone_cls = " v2-pos-relegation"
@@ -343,24 +354,78 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
             zone_cls = ""
         arrow_cls, arrow_glyph = _ARROW[changes.get(s.code, "same")]
         c = _crest_img(crest(s.code), "crest-pre")
+        # Withdrawn/expelled entries stay in the table, struck through, with
+        # a footnote; a non-zero points adjustment gets a marker + footnote.
+        name_cls = "club-link v2-team-withdrawn" if s.code in withdrawn else "club-link"
+        if s.code in withdrawn:
+            footnotes.append(f"{escape(s.name)}: {escape(withdrawn[s.code])}")
+        adjustment = getattr(s, "adjustment", 0)
+        pts = str(s.points)
+        if adjustment:
+            pts += '<span class="v2-pts-adj">*</span>'
+            sign = "+" if adjustment > 0 else ""
+            reason = adjustment_reasons.get(s.code, "")
+            note = f"{escape(s.name)}: {sign}{adjustment} pts"
+            if reason:
+                note += f" ({escape(reason)})"
+            footnotes.append("* " + note)
         v2.append(
             f'<tr class="pos-{i}">'
             f'<td class="v2-pos{zone_cls}"><span class="v2-arrow {arrow_cls}">{arrow_glyph}</span> {i}.</td>'
             f'<td class="v2-team-name">'
-            f'<a class="club-link" href="clubs/{escape(s.code)}.html">{c}{escape(s.name)}</a></td>'
+            f'<a class="{name_cls}" href="clubs/{escape(s.code)}.html">{c}{escape(s.name)}</a></td>'
             f"<td>{s.played}</td><td>{s.won}</td><td>{s.drawn}</td><td>{s.lost}</td>"
             f'<td class="v2-tor">{tor}</td><td>{gd}</td>'
-            f'<td class="v2-pts">{s.points}</td>'
+            f'<td class="v2-pts">{pts}</td>'
             f'<td class="v2-form">{_form_cell(form.get(s.code, []))}</td>'
             "</tr>"
         )
     v2 += [
         "</tbody></table>",
         "</div>",  # /v2-table-outer
-        "</div>",  # /v2-content
     ]
+    if footnotes:
+        notes = "".join(f'<li class="v2-footnote">{n}</li>' for n in footnotes)
+        v2.append(f'<ul class="v2-footnotes">{notes}</ul>')
+    v2.append("</div>")  # /v2-content
 
     return "\n".join(v2)
+
+
+def _score_cell(m):
+    """The RESULT cell + row modifier class for one match.
+
+    Played (and awarded) matches show the score — with an asterisk when the
+    result is unconfirmed. postponed/cancelled/abandoned show a status badge.
+    Anything else is an upcoming fixture ("vs"). getattr defaults keep the
+    old-schema Match objects working unchanged.
+    """
+    if m.played:
+        star = '<span class="v2-res-unconf">*</span>' if getattr(m, "unconfirmed", False) else ""
+        return f'<td class="v2-res-score">{m.home_goals}:{m.away_goals}{star}</td>', ""
+    badge = getattr(m, "status_badge", "")
+    if badge:
+        return (f'<td class="v2-res-score v2-res-badge">{escape(badge)}</td>',
+                " v2-res-row-fixture")
+    return '<td class="v2-res-score v2-res-vs">vs</td>', " v2-res-row-fixture"
+
+
+def _match_meta(m, date):
+    """The caption line above a compact result: date · venue · awarded note."""
+    meta = date
+    if m.stadium:
+        meta = f"{meta} &middot; {escape(m.stadium)}" if meta else escape(m.stadium)
+    note = getattr(m, "awarded_note", "")
+    if note:
+        label = f"Awarded: {escape(note)}"
+        meta = f"{meta} &middot; {label}" if meta else label
+    return meta
+
+
+def _unconfirmed_legend(matches):
+    if any(getattr(m, "unconfirmed", False) and m.played for m in matches):
+        return '<p class="v2-res-legend">* result not yet confirmed</p>'
+    return ""
 
 
 def render_results(matches, teams, season="", league_name="", crest=None, league_logo="",
@@ -451,18 +516,12 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                     f'<a class="club-link" href="clubs/{escape(m.away_code)}.html">'
                     f'{away_c}{away}</a>'
                 )
-                # A fixture (no goals yet) shows "vs" in place of the score.
-                if m.played:
-                    score_cell = f'<td class="v2-res-score">{m.home_goals}:{m.away_goals}</td>'
-                    fix_cls = ""
-                else:
-                    score_cell = '<td class="v2-res-score v2-res-vs">vs</td>'
-                    fix_cls = " v2-res-row-fixture"
+                # A fixture (no goals yet) shows "vs" in place of the score;
+                # postponed/cancelled/abandoned show a badge instead.
+                score_cell, fix_cls = _score_cell(m)
                 date = escape(_format_date(m.date))
                 if compact:
-                    meta = date
-                    if m.stadium:
-                        meta = f"{meta} &middot; {escape(m.stadium)}" if meta else escape(m.stadium)
+                    meta = _match_meta(m, date)
                     # No date and no venue (e.g. matchday-only leagues): skip the
                     # caption row entirely rather than render an empty line.
                     if meta:
@@ -496,6 +555,9 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                     )
             v2.append("</tbody>")  # /v2-md-group
         v2 += ["</table>"]
+        legend = _unconfirmed_legend(matches)
+        if legend:
+            v2.append(legend)
         v2.append("</div>")  # /v2-results-outer
     v2.append("</div>")  # /v2-content
 
@@ -521,15 +583,8 @@ def _club_match_rows(m, teams, crest, goals_by_match, show_scorers):
     away = escape(teams[m.away_code].name)
     home_c = _crest_img(crest(m.home_code), "crest-post")
     away_c = _crest_img(crest(m.away_code), "crest-pre")
-    if m.played:
-        score_cell = f'<td class="v2-res-score">{m.home_goals}:{m.away_goals}</td>'
-        fix_cls = ""
-    else:
-        score_cell = '<td class="v2-res-score v2-res-vs">vs</td>'
-        fix_cls = " v2-res-row-fixture"
-    meta = escape(_format_date(m.date))
-    if m.stadium:
-        meta = f"{meta} &middot; {escape(m.stadium)}" if meta else escape(m.stadium)
+    score_cell, fix_cls = _score_cell(m)
+    meta = _match_meta(m, escape(_format_date(m.date)))
     home_link = f'<a class="club-link" href="{escape(m.home_code)}.html">{home}{home_c}</a>'
     away_link = f'<a class="club-link" href="{escape(m.away_code)}.html">{away_c}{away}</a>'
     out = []
@@ -777,21 +832,54 @@ def render_goalscorers(teams, top_scorers, own_goal_total, team_scorers,
     return "\n".join(v2)
 
 
+def _crest_lookup(static_dir, css_prefix, crest_keys=None):
+    """Crest finder for a team code, tolerant of the logo-file rename.
+
+    Tries logos/clubs/<code> (legacy naming) first so a team with its own
+    file (e.g. a women's-team crest kept alongside the club's) keeps it,
+    then logos/clubs/<club_id> via `crest_keys` (new naming), so builds work
+    both before and after the rename commit.
+    """
+    find = _logo_finder(static_dir, css_prefix, "clubs")
+    crest_keys = crest_keys or {}
+
+    def crest(code):
+        url = find(code)
+        if url:
+            return url
+        mapped = crest_keys.get(code)
+        return find(mapped) if mapped else None
+
+    return crest
+
+
+def _league_logo_lookup(static_dir, css_prefix, slug, competition_id=""):
+    """logos/competitions/<competition_id> (new) else logos/leagues/<slug> (old)."""
+    if competition_id:
+        url = _logo_finder(static_dir, css_prefix, "competitions")(competition_id)
+        if url:
+            return url
+    return _logo_finder(static_dir, css_prefix, "leagues")(slug) or ""
+
+
 def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matches, teams,
                season="", total_goals=0, goals_per_game=0.0,
                form=None, changes=None, days=None, history=None,
                css_prefix="", back_link="", copy_static=True,
                goals_by_match=None, top_scorers=None, own_goal_total=0, team_scorers=None,
-               more_scorers=None):
+               more_scorers=None, promotion_spots=None, relegation_spots=None,
+               withdrawn=None, adjustment_reasons=None, crest_keys=None,
+               competition_id=""):
     os.makedirs(dist, exist_ok=True)
     base = _read(os.path.join(templates_dir, "base.html"))
 
-    # Logos are keyed off the data: a club crest by its team code, the league
-    # logo by this league's output-directory slug (sl / ndl / wp / u16).
-    crest = _logo_finder(static_dir, css_prefix, "clubs")
+    # Logos are keyed off the data: a club crest by its club_id (falling back
+    # to the legacy team code), the league logo by competition_id (falling
+    # back to this league's output-directory slug: sl / ndl / wp / u16).
+    crest = _crest_lookup(static_dir, css_prefix, crest_keys)
     css_ver = css_version(static_dir)
     slug = os.path.basename(os.path.normpath(dist))
-    league_logo = _logo_finder(static_dir, css_prefix, "leagues")(slug) or ""
+    league_logo = _league_logo_lookup(static_dir, css_prefix, slug, competition_id)
     header_logo = (
         f'<img class="site-logo" src="{escape(league_logo)}" alt="">' if league_logo else ""
     )
@@ -801,7 +889,9 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             rows, season=season, league_name=league_name,
             total_goals=total_goals, goals_per_game=goals_per_game, updated=updated,
             form=form, changes=changes, crest=crest, league_logo=league_logo,
-            league_slug=slug,
+            league_slug=slug, promotion_spots=promotion_spots,
+            relegation_spots=relegation_spots, withdrawn=withdrawn,
+            adjustment_reasons=adjustment_reasons,
         )),
         "results.html": ("Matches", render_results(
             matches, teams, season=season, league_name=league_name,
@@ -850,8 +940,9 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
     clubs_dir = os.path.join(dist, "clubs")
     os.makedirs(clubs_dir, exist_ok=True)
     club_css_prefix = css_prefix + "../"
-    club_crest = _logo_finder(static_dir, club_css_prefix, "clubs")
-    club_league_logo = _logo_finder(static_dir, club_css_prefix, "leagues")(slug) or ""
+    club_crest = _crest_lookup(static_dir, club_css_prefix, crest_keys)
+    club_league_logo = _league_logo_lookup(
+        static_dir, club_css_prefix, slug, competition_id)
     club_header_logo = (
         f'<img class="site-logo" src="{escape(club_league_logo)}" alt="">'
         if club_league_logo else ""

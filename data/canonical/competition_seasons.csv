@@ -1,0 +1,10 @@
+competition_id,season_id,sponsor_name,format,teams_count,promotion_places,relegation_places,points_win,points_draw,status
+MW_SL,MW_2026_27,FDH Bank Premiership,round_robin_2x,16,0,3,3,1,active
+MW_NDL,MW_2026_27,NBS Bank National Division League,round_robin_2x,12,3,4,3,1,active
+MW_WP,MW_2025_26,NBM Women's Premiership,round_robin_2x,10,0,0,3,1,complete
+MW_SRFA,MW_2026_27,SRFA FINCA Division League 1,round_robin_2x,16,1,0,3,1,active
+MW_CRFA,MW_2026_27,GoJet Investments CRFA Division One League,round_robin_2x,16,1,0,3,1,active
+MW_NRFA,MW_2026_27,Chiwemi Investment NRFA League One,round_robin_2x,15,1,0,3,1,active
+MW_SRFA2,MW_2026_27,SRFA Sultan Concrete Division 2,round_robin_2x,13,1,0,3,1,active
+MW_KU19,MW_2026_27,Katswiri U19 League,round_robin_2x,15,0,0,3,1,active
+MW_U16,MW_2026_27,U16 Development League,round_robin_2x,12,0,0,3,1,active

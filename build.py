@@ -1,149 +1,124 @@
 #!/usr/bin/env python3
-"""Build the static site: fetch -> validate -> compute -> render.
+"""Build the static site from the normalized 13-tab schema.
 
-Builds two leagues into subdirectories and a landing page at docs/index.html.
+Pipeline: fetch all 13 tabs -> validate (any ERROR aborts before a single
+page is written, so production is never touched by bad data) -> snapshot to
+data/canonical/ -> render every competition that has a competition_seasons
+row -> landing page.
 
 Usage:
-    python build.py
+    python build.py [--dist DIR] [--no-snapshot] [--allow-deletions]
 
-Exits non-zero (and prints what's wrong) if the source data is invalid.
+--dist DIR          output directory (default: docs). Use a staging dir for
+                    parity checks, e.g. --dist staging.
+--no-snapshot       don't update data/canonical/ (staging/parity builds).
+--allow-deletions   pass through to the validator's drift check.
 """
 
 from datetime import datetime, timezone, timedelta
+from html import escape
 import os
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
-import config  # noqa: E402
-from src import data, render, scorers, standings  # noqa: E402
+import validate  # noqa: E402
+from src import adapt, dataset, render, scorers, standings  # noqa: E402
 
-DIST = os.path.join(ROOT, "docs")
 STATIC = os.path.join(ROOT, "static")
 TEMPLATES = os.path.join(ROOT, "templates")
 
 BACK_LINK = '<a href="../" class="back-link">&#x2190; All Leagues</a>'
 
+# Timezone for the "last updated" stamp. Malawi is CAT (UTC+2), no DST.
+TZ_OFFSET_HOURS = 2
+TZ_LABEL = "CAT"
 
-def _build_league(csv_teams, csv_matches, league_name, season, dist, updated,
-                  csv_goals=None):
-    try:
-        teams = data.parse_teams(data.fetch(csv_teams))
-        matches = data.parse_matches(data.fetch(csv_matches))
-        data.validate_match_codes(matches, teams)
-        # Goals are opt-in per league: csv_goals is None for leagues without a
-        # goals sheet, leaving these structures empty so their render is unchanged.
-        goals = []
-        if csv_goals:
-            goals = data.parse_goals(data.fetch(csv_goals))
-            data.validate_goal_links(goals, matches, teams)
-    except data.DataError as err:
-        print(f"\nERROR ({league_name}): {err}\n", file=sys.stderr)
-        return None, None
-    except OSError as err:
-        print(
-            f"\nERROR ({league_name}): could not read data: {err}\n",
-            file=sys.stderr,
-        )
-        return None, None
+# The short tier caption under each league name on the landing page. These
+# are editorial labels, not data; unknown competitions fall back to a label
+# derived from competitions.tier / age_group.
+TIER_LABELS = {
+    "MW_SL": "Top Tier",
+    "MW_NDL": "Second Division",
+    "MW_SRFA": "Division One",
+    "MW_CRFA": "Division One",
+    "MW_NRFA": "League One",
+    "MW_SRFA2": "Division Two",
+    "MW_WP": "Women&#x2019;s First Division",
+    "MW_KU19": "Under-19",
+    "MW_U16": "Development",
+}
 
-    rows = standings.compute_standings(matches, teams)
-    form = standings.recent_form(matches, teams)
-    changes = standings.position_changes(matches, teams)
-    days, history = standings.position_history(matches, teams)
-    played_count = sum(1 for m in matches if m.played)
-    total_goals = sum(m.home_goals + m.away_goals for m in matches if m.played)
+_TIER_WORDS = {1: "Top Tier", 2: "Second Division", 3: "Third Division",
+               4: "Fourth Division"}
+
+# Landing-page ordering of live competitions inside a group; anything not
+# listed sorts after these by (tier, name).
+_LANDING_ORDER = list(adapt.COMPETITION_SLUGS)
+
+
+def _tier_label(comp: "dataset.Competition") -> str:
+    if comp.competition_id in TIER_LABELS:
+        return TIER_LABELS[comp.competition_id]
+    if comp.age_group != "senior":
+        return escape(comp.age_group.upper())
+    if comp.type == "cup":
+        return "Cup"
+    if comp.tier in _TIER_WORDS:
+        return _TIER_WORDS[comp.tier]
+    return "League"
+
+
+def _build_league(ds, cs, dist_root, updated):
+    """Render one competition+season into dist_root/<slug>/."""
+    league = adapt.league_data(ds, cs.competition_id, cs.season_id)
+
+    table_kwargs = {
+        "points_win": league.points_win,
+        "points_draw": league.points_draw,
+        "adjustments": league.adjustments,
+    }
+    rows = standings.compute_standings(league.matches, league.teams, **table_kwargs)
+    form = standings.recent_form(league.matches, league.teams)
+    changes = standings.position_changes(league.matches, league.teams, **table_kwargs)
+    days, history = standings.position_history(league.matches, league.teams, **table_kwargs)
+    played_count = sum(1 for m in league.matches if m.played)
+    total_goals = sum(m.home_goals + m.away_goals for m in league.matches if m.played)
     goals_per_game = total_goals / played_count if played_count > 0 else 0.0
 
-    if goals:
-        goals_by_match = scorers.goals_by_match(goals)
-        top_scorers, own_goal_total, more_scorers = scorers.top_scorers(goals)
-        team_scorers = scorers.team_top_scorers(goals, teams)
+    if league.goals:
+        goals_by_match = scorers.goals_by_match(league.goals)
+        top_scorers, _og_from_rows, more_scorers = scorers.top_scorers(league.goals)
+        team_scorers = scorers.team_top_scorers(league.goals, league.teams)
     else:
-        goals_by_match, top_scorers, own_goal_total = {}, [], 0
-        more_scorers, team_scorers = [], []
+        goals_by_match, top_scorers, more_scorers, team_scorers = {}, [], [], []
 
     render.build_site(
-        dist, TEMPLATES, STATIC, league_name, updated, rows, matches, teams,
-        season=season, total_goals=total_goals, goals_per_game=goals_per_game,
+        os.path.join(dist_root, league.slug), TEMPLATES, STATIC,
+        league.league_name, updated, rows, league.matches, league.teams,
+        season=league.season, total_goals=total_goals, goals_per_game=goals_per_game,
         form=form, changes=changes, days=days, history=history,
         css_prefix="../", back_link=BACK_LINK, copy_static=False,
         goals_by_match=goals_by_match, top_scorers=top_scorers,
-        own_goal_total=own_goal_total, more_scorers=more_scorers,
-        team_scorers=team_scorers,
+        # own_goal_total from the adapter, not the scorer rows: it includes
+        # own goals by unresolved (CAF_MW_UNKNOWN) players.
+        own_goal_total=league.own_goal_total,
+        more_scorers=more_scorers, team_scorers=team_scorers,
+        promotion_spots=league.promotion_places,
+        relegation_spots=league.relegation_places,
+        withdrawn=league.withdrawn,
+        adjustment_reasons=league.adjustment_reasons,
+        crest_keys={code: t.club_id for code, t in league.teams.items()},
+        competition_id=league.competition_id,
     )
-    return len(teams), played_count
+    return league, len(league.teams), played_count
 
 
-def _live(slug, tier, name, season):
-    """A live, tappable competition: an item dict rendered later by _row()."""
-    return {"live": True, "slug": slug, "tier": tier, "name": name, "season": season}
+# ── Landing page ─────────────────────────────────────────────────────────────
+# Live rows come from the data (grouped by competitions.gender/age_group/type);
+# the "Coming Soon" roadmap rows and the tier pyramid are editorial content.
 
-
-def _soon(tier, name, region=None):
-    """A roadmap ("Coming Soon") competition: rendered muted by _row()."""
-    return {"live": False, "tier": tier, "name": name, "region": region}
-
-
-def _logo_html(slug):
-    """A small league logo <img> when one exists on disk, else "" (no logo)."""
-    for ext in (".svg", ".png"):
-        if os.path.exists(os.path.join(STATIC, "logos", "leagues", slug + ext)):
-            return f'<img class="lc-logo" src="logos/leagues/{slug}{ext}" alt="">'
-    return ""
-
-
-def _row(item):
-    """One competition as a light list row.
-
-    Live items are an <a> that navigates to the league; roadmap items are a
-    non-link <div> so they can never become a broken link.
-    """
-    tier = item["tier"]
-    name = item["name"]
-    if item["live"]:
-        meta = f"{tier} &middot; Season {item['season']}"
-        return (
-            f'<a href="{item["slug"]}/" class="lc-row">'
-            f"{_logo_html(item['slug'])}"
-            f'<span class="lc-main">'
-            f'<span class="lc-name">{name}</span>'
-            f'<span class="lc-meta">{meta}</span>'
-            f"</span>"
-            f'<span class="lc-arrow">&#x2192;</span>'
-            f"</a>"
-        )
-    region = item.get("region")
-    meta = f"{region} Region &middot; {tier}" if region else tier
-    return (
-        f'<div class="lc-row is-soon" aria-disabled="true">'
-        f'<span class="lc-main">'
-        f'<span class="lc-name">{name}</span>'
-        f'<span class="lc-meta">{meta}</span>'
-        f"</span>"
-        f'<span class="lc-badge">Coming Soon</span>'
-        f"</div>"
-    )
-
-
-def _group(group):
-    """A subheading (Leagues / Cups / …) followed by its competition rows.
-
-    A group may carry an optional "extra" blob of HTML (e.g. the tier-pyramid
-    disclosure) rendered between the heading and the row list.
-    """
-    rows = "\n      ".join(_row(item) for item in group["items"])
-    extra = group.get("extra", "")
-    return (
-        f'<h3 class="lc-group">{group["label"]}</h3>\n'
-        f'      {extra}'
-        f'<div class="lc-list">\n      {rows}\n      </div>'
-    )
-
-
-# How the men's leagues rank relative to one another: a <details> disclosure
-# needs no JS and is tap-friendly on mobile, so it's the simplest fit here.
 _MEN_TIER_PYRAMID = """<details class="tier-info">
       <summary>Tiers <span class="tier-info-mark" aria-hidden="true">&#x24D8;</span></summary>
       <div class="tier-pyramid">
@@ -165,22 +140,6 @@ _MEN_TIER_PYRAMID = """<details class="tier-info">
     </details>
     """
 
-
-def _panel(cat, active=False):
-    """One category's list of groups; hidden unless it's the active tab.
-
-    The `hidden` attribute on inactive panels is the graceful-degradation
-    guarantee: with JS disabled only the active (Men's) panel shows.
-    """
-    hidden = "" if active else " hidden"
-    inner = "\n    ".join(_group(g) for g in cat["groups"])
-    return (
-        f'<section class="comp-panel" data-panel="{cat["key"]}"{hidden}>\n    '
-        f"{inner}\n  </section>"
-    )
-
-
-# Tiny vanilla toggler: no framework, degrades to the Men's panel if it never runs.
 _NAV_JS = """
 (function(){
   var nav=document.querySelector('.comp-nav');
@@ -203,73 +162,165 @@ _NAV_JS = """
 """
 
 
-def _landing_countries(season):
-    """The landing content as data: a list of countries, each with categories.
+def _soon(tier, name, region=None):
+    return {"live": False, "tier": tier, "name": name, "region": region}
 
-    Only Malawi exists today, so it's rendered directly (no country picker). A
-    second country is just another entry here; the renderer already loops, so a
-    picker/heading can be layered on without touching this shape.
-    """
-    malawi = {
-        "country": "Malawi",
-        "categories": [
-            {"key": "men", "label": "Men&#x2019;s", "groups": [
-                {"label": "Leagues", "extra": _MEN_TIER_PYRAMID, "items": [
-                    _live("sl", "Top Tier", "Super League of Malawi", season),
-                    _live("ndl", "Second Division", "National Division League", season),
-                    _live("srfa", "Division One", config.SRFA_LEAGUE_NAME, config.SRFA_SEASON),
-                    _live("crfa", "Division One", config.CRFA_LEAGUE_NAME, config.CRFA_SEASON),
-                    _live("nrfa", "League One", config.NRFA_LEAGUE_NAME, config.NRFA_SEASON),
-                    _live("srfa2", "Division Two", config.SRFA2_LEAGUE_NAME, config.SRFA2_SEASON),
-                ]},
-                {"label": "Cups", "items": [
-                    _soon("Cup", "FAM Charity Shield"),
-                    _soon("Cup", "Airtel Top 8"),
-                    _soon("Cup", "Castel Challenge Cup"),
-                    _soon("Cup", "FDH Bank Cup"),
-                ]},
-                {"label": "National Team", "items": [
-                    _soon("National Team", "Malawi Flames"),
-                ]},
-            ]},
-            {"key": "women", "label": "Women&#x2019;s", "groups": [
-                {"label": "Leagues", "items": [
-                    _live("wp", "Women&#x2019;s First Division", "NBM Women&#x2019;s Premiership", "25/26"),
-                    _soon("Premier Division", "Southern Region Women&#x2019;s Premier Division", region="Southern"),
-                    _soon("Premier Division", "Central Region Women&#x2019;s Premier Division", region="Central"),
-                    _soon("Premier Division", "Northern Region Women&#x2019;s Premier Division", region="Northern"),
-                ]},
-                {"label": "Cups", "items": [
-                    _soon("Cup", "Women&#x2019;s Cups"),
-                ]},
-                {"label": "National Team", "items": [
-                    _soon("National Team", "Malawi Scorchers"),
-                ]},
-            ]},
-            {"key": "youth", "label": "Youth", "groups": [
-                {"label": "Boys", "items": [
-                    _soon("Under-23", "National Bank U23 Championship"),
-                    _live("ku19", "Under-19", config.KU19_LEAGUE_NAME, config.KU19_SEASON),
-                    _live("u16", "Development", "U16 Development League", season),
-                    _soon("Under-14", "U14 Development League"),
-                ]},
-                {"label": "Girls", "items": [
-                    _soon("Youth", "Girls&#x2019; Youth Competitions"),
-                ]},
-                {"label": "National Team", "items": [
-                    _soon("National Team", "Boys&#x2019; Youth National Team"),
-                    _soon("National Team", "Girls&#x2019; Youth National Team"),
-                ]},
-            ]},
-        ],
+
+def _live_item(ds, league):
+    comp = ds.competitions[league.competition_id]
+    return {
+        "live": True,
+        "slug": league.slug,
+        "competition_id": league.competition_id,
+        "tier": _tier_label(comp),
+        "name": escape(league.league_name),
+        "season": league.season,
+        "sort": (
+            _LANDING_ORDER.index(league.competition_id)
+            if league.competition_id in _LANDING_ORDER else len(_LANDING_ORDER),
+            comp.tier or 99,
+            league.league_name,
+        ),
     }
-    return [malawi]
 
 
-def _write_landing(season):
+def _logo_html(item):
+    """League logo <img> when one exists on disk (new naming, then old)."""
+    for subdir, key in (("competitions", item.get("competition_id", "")),
+                        ("leagues", item["slug"])):
+        if not key:
+            continue
+        for ext in (".svg", ".png"):
+            if os.path.exists(os.path.join(STATIC, "logos", subdir, key + ext)):
+                return (f'<img class="lc-logo" '
+                        f'src="logos/{subdir}/{key}{ext}" alt="">')
+    return ""
+
+
+def _row(item):
+    tier = item["tier"]
+    name = item["name"]
+    if item["live"]:
+        meta = f"{tier} &middot; Season {item['season']}"
+        return (
+            f'<a href="{item["slug"]}/" class="lc-row">'
+            f"{_logo_html(item)}"
+            f'<span class="lc-main">'
+            f'<span class="lc-name">{name}</span>'
+            f'<span class="lc-meta">{meta}</span>'
+            f"</span>"
+            f'<span class="lc-arrow">&#x2192;</span>'
+            f"</a>"
+        )
+    region = item.get("region")
+    meta = f"{region} Region &middot; {tier}" if region else tier
+    return (
+        f'<div class="lc-row is-soon" aria-disabled="true">'
+        f'<span class="lc-main">'
+        f'<span class="lc-name">{name}</span>'
+        f'<span class="lc-meta">{meta}</span>'
+        f"</span>"
+        f'<span class="lc-badge">Coming Soon</span>'
+        f"</div>"
+    )
+
+
+def _group(group):
+    rows = "\n      ".join(_row(item) for item in group["items"])
+    extra = group.get("extra", "")
+    return (
+        f'<h3 class="lc-group">{group["label"]}</h3>\n'
+        f'      {extra}'
+        f'<div class="lc-list">\n      {rows}\n      </div>'
+    )
+
+
+def _panel(cat, active=False):
+    hidden = "" if active else " hidden"
+    inner = "\n    ".join(_group(g) for g in cat["groups"])
+    return (
+        f'<section class="comp-panel" data-panel="{cat["key"]}"{hidden}>\n    '
+        f"{inner}\n  </section>"
+    )
+
+
+def _landing_categories(ds, leagues):
+    """Group the live leagues by competitions.gender / age_group / type.
+
+    Men's / Women's / Youth tabs; leagues vs cups within each. Roadmap
+    ("Coming Soon") rows stay editorial until those competitions have data.
+    """
+    buckets = {
+        ("men", "league"): [], ("men", "cup"): [],
+        ("women", "league"): [], ("women", "cup"): [],
+        ("youth-boys", "league"): [], ("youth-girls", "league"): [],
+    }
+    for league in leagues:
+        comp = ds.competitions[league.competition_id]
+        if comp.age_group != "senior":
+            key = "youth-girls" if comp.gender == "w" else "youth-boys"
+        elif comp.gender == "w":
+            key = "women"
+        else:
+            key = "men"
+        kind = "cup" if comp.type == "cup" else "league"
+        buckets.setdefault((key, kind), []).append(_live_item(ds, league))
+    for items in buckets.values():
+        items.sort(key=lambda it: it["sort"])
+
+    men_cups = buckets[("men", "cup")] + [
+        _soon("Cup", "FAM Charity Shield"),
+        _soon("Cup", "Airtel Top 8"),
+        _soon("Cup", "Castel Challenge Cup"),
+        _soon("Cup", "FDH Bank Cup"),
+    ]
+    women_leagues = buckets[("women", "league")] + [
+        _soon("Premier Division", "Southern Region Women&#x2019;s Premier Division", region="Southern"),
+        _soon("Premier Division", "Central Region Women&#x2019;s Premier Division", region="Central"),
+        _soon("Premier Division", "Northern Region Women&#x2019;s Premier Division", region="Northern"),
+    ]
+    boys = buckets[("youth-boys", "league")]
+    boys_items = (
+        [_soon("Under-23", "National Bank U23 Championship")]
+        + boys
+        + [_soon("Under-14", "U14 Development League")]
+    )
+    girls_items = buckets[("youth-girls", "league")] + [
+        _soon("Youth", "Girls&#x2019; Youth Competitions"),
+    ]
+
+    return [
+        {"key": "men", "label": "Men&#x2019;s", "groups": [
+            {"label": "Leagues", "extra": _MEN_TIER_PYRAMID,
+             "items": buckets[("men", "league")]},
+            {"label": "Cups", "items": men_cups},
+            {"label": "National Team", "items": [
+                _soon("National Team", "Malawi Flames"),
+            ]},
+        ]},
+        {"key": "women", "label": "Women&#x2019;s", "groups": [
+            {"label": "Leagues", "items": women_leagues},
+            {"label": "Cups", "items": buckets[("women", "cup")] + [
+                _soon("Cup", "Women&#x2019;s Cups"),
+            ]},
+            {"label": "National Team", "items": [
+                _soon("National Team", "Malawi Scorchers"),
+            ]},
+        ]},
+        {"key": "youth", "label": "Youth", "groups": [
+            {"label": "Boys", "items": boys_items},
+            {"label": "Girls", "items": girls_items},
+            {"label": "National Team", "items": [
+                _soon("National Team", "Boys&#x2019; Youth National Team"),
+                _soon("National Team", "Girls&#x2019; Youth National Team"),
+            ]},
+        ]},
+    ]
+
+
+def _write_landing(dist, ds, leagues):
     css_ver = render.css_version(STATIC)
-    # Single country today; the first category (Men's) is the active tab.
-    categories = _landing_countries(season)[0]["categories"]
+    categories = _landing_categories(ds, leagues)
 
     tabs = "".join(
         f'<button class="comp-tab{" active" if i == 0 else ""}" type="button" '
@@ -312,129 +363,59 @@ def _write_landing(season):
 <script>{_NAV_JS}</script>
 </body>
 </html>"""
-    render._write(os.path.join(DIST, "index.html"), html)
+    render._write(os.path.join(dist, "index.html"), html)
 
 
-def main():
-    tz = timezone(timedelta(hours=config.TZ_OFFSET_HOURS), config.TZ_LABEL)
+def main(argv):
+    dist = os.path.join(ROOT, "docs")
+    if "--dist" in argv:
+        dist = os.path.abspath(argv[argv.index("--dist") + 1])
+    snapshot = "--no-snapshot" not in argv
+    allow_deletions = "--allow-deletions" in argv
+
+    tz = timezone(timedelta(hours=TZ_OFFSET_HOURS), TZ_LABEL)
     now = datetime.now(tz)
-    updated = f"{now.day} {now.strftime('%B %Y, %H:%M')} {config.TZ_LABEL}"
+    updated = f"{now.day} {now.strftime('%B %Y, %H:%M')} {TZ_LABEL}"
 
-    # Copy static files once to docs root (logos are downscaled along the way)
-    os.makedirs(DIST, exist_ok=True)
-    render.copy_static_tree(STATIC, DIST)
-    render._write(os.path.join(DIST, ".nojekyll"), "")
-    # Custom domain for GitHub Pages. Written on every build because the Pages
-    # deploy uploads docs/ as an artifact — a CNAME committed via Settings would
-    # be wiped here, detaching the domain. everyleague.football redirects to this
-    # apex via Porkbun URL forwarding.
-    render._write(os.path.join(DIST, "CNAME"), "everyleague.co\n")
-
-    # Super League of Malawi
-    sl_teams, sl_played = _build_league(
-        config.SL_CSV_TEAMS, config.SL_CSV_MATCHES,
-        config.SL_LEAGUE_NAME, config.SL_SEASON,
-        os.path.join(DIST, "sl"), updated,
-        csv_goals=config.SL_CSV_GOALS,
-    )
-
-    # National Division League
-    ndl_teams, ndl_played = _build_league(
-        config.NDL_CSV_TEAMS, config.NDL_CSV_MATCHES,
-        config.NDL_LEAGUE_NAME, config.NDL_SEASON,
-        os.path.join(DIST, "ndl"), updated,
-        csv_goals=config.NDL_CSV_GOALS,
-    )
-
-    # Women's Premiership
-    wp_teams, wp_played = _build_league(
-        config.WP_CSV_TEAMS, config.WP_CSV_MATCHES,
-        config.WP_LEAGUE_NAME, config.WP_SEASON,
-        os.path.join(DIST, "wp"), updated,
-        csv_goals=config.WP_CSV_GOALS,
-    )
-
-    # SRFA FINCA Division League 1 (Southern Region, third tier)
-    srfa_teams, srfa_played = _build_league(
-        config.SRFA_CSV_TEAMS, config.SRFA_CSV_MATCHES,
-        config.SRFA_LEAGUE_NAME, config.SRFA_SEASON,
-        os.path.join(DIST, "srfa"), updated,
-        csv_goals=config.SRFA_CSV_GOALS,
-    )
-
-    # GoJet Investments CRFA Division One League (Central Region, third tier)
-    crfa_teams, crfa_played = _build_league(
-        config.CRFA_CSV_TEAMS, config.CRFA_CSV_MATCHES,
-        config.CRFA_LEAGUE_NAME, config.CRFA_SEASON,
-        os.path.join(DIST, "crfa"), updated,
-        csv_goals=config.CRFA_CSV_GOALS,
-    )
-
-    # Chiwemi Investment NRFA League One (Northern Region, third tier).
-    # Season not yet started: the matches sheet may have no rows, which the
-    # whole pipeline handles — the table shows every team on zero.
-    nrfa_teams, nrfa_played = _build_league(
-        config.NRFA_CSV_TEAMS, config.NRFA_CSV_MATCHES,
-        config.NRFA_LEAGUE_NAME, config.NRFA_SEASON,
-        os.path.join(DIST, "nrfa"), updated,
-        csv_goals=config.NRFA_CSV_GOALS,
-    )
-
-    # SRFA Sultan Concrete Division 2 (Southern Region, fourth tier)
-    srfa2_teams, srfa2_played = _build_league(
-        config.SRFA2_CSV_TEAMS, config.SRFA2_CSV_MATCHES,
-        config.SRFA2_LEAGUE_NAME, config.SRFA2_SEASON,
-        os.path.join(DIST, "srfa2"), updated,
-        csv_goals=config.SRFA2_CSV_GOALS,
-    )
-
-    # Katswiri U19 League (Blantyre District Youth FC, youth boys)
-    ku19_teams, ku19_played = _build_league(
-        config.KU19_CSV_TEAMS, config.KU19_CSV_MATCHES,
-        config.KU19_LEAGUE_NAME, config.KU19_SEASON,
-        os.path.join(DIST, "ku19"), updated,
-        csv_goals=config.KU19_CSV_GOALS,
-    )
-
-    # Under-16s Development League
-    u16_teams, u16_played = _build_league(
-        config.CSV_URL_TEAMS, config.CSV_URL_MATCHES,
-        config.LEAGUE_NAME, config.SEASON,
-        os.path.join(DIST, "u16"), updated,
-        csv_goals=config.CSV_URL_GOALS,
-    )
-
-    # Landing page
-    _write_landing(config.SL_SEASON)
-
-    # Remove stale root-level pages from old single-league structure
-    for stale in ("results.html",):
-        p = os.path.join(DIST, stale)
-        if os.path.exists(p):
-            os.remove(p)
-
-    errors = 0
-    parts = []
-    for label, teams, played in [
-        ("SL", sl_teams, sl_played),
-        ("NDL", ndl_teams, ndl_played),
-        ("WP", wp_teams, wp_played),
-        ("SRFA", srfa_teams, srfa_played),
-        ("CRFA", crfa_teams, crfa_played),
-        ("NRFA", nrfa_teams, nrfa_played),
-        ("SRFA2", srfa2_teams, srfa2_played),
-        ("KU19", ku19_teams, ku19_played),
-        ("U16", u16_teams, u16_played),
-    ]:
-        if teams is not None:
-            parts.append(f"{label}: {teams} teams, {played} results")
-        else:
-            parts.append(f"{label}: SKIPPED (data error)")
-            errors += 1
-    print(f"Built {DIST}/  " + " | ".join(parts))
+    # 1. Fetch + validate. Any error aborts before a single page is written,
+    # so a broken sheet can never produce a partial or wrong site.
+    try:
+        texts = dataset.fetch_all()
+    except OSError as err:
+        print(f"ERROR: could not fetch data: {err}", file=sys.stderr)
+        return 1
+    ds, errors = validate.validate(texts, allow_deletions=allow_deletions)
     if errors:
-        sys.exit(1)
+        print(f"VALIDATION FAILED — {len(errors)} error(s):", file=sys.stderr)
+        for e in errors:
+            print(f"  ERROR: {e}", file=sys.stderr)
+        return 1
+
+    # 2. Snapshot the validated fetch (git history of data/canonical/ is the
+    # audit log; also the drift baseline for the next build).
+    if snapshot:
+        validate.write_snapshot(texts)
+
+    # 3. Render.
+    os.makedirs(dist, exist_ok=True)
+    render.copy_static_tree(STATIC, dist)
+    render._write(os.path.join(dist, ".nojekyll"), "")
+    # Custom domain for GitHub Pages; rewritten every build because the Pages
+    # artifact deploy would otherwise drop it (see repo history).
+    render._write(os.path.join(dist, "CNAME"), "everyleague.co\n")
+
+    leagues = []
+    parts = []
+    for cs in adapt.current_competition_seasons(ds):
+        league, n_teams, n_played = _build_league(ds, cs, dist, updated)
+        leagues.append(league)
+        parts.append(f"{league.slug}: {n_teams} teams, {n_played} results")
+
+    _write_landing(dist, ds, leagues)
+
+    print(f"Built {dist}/  " + " | ".join(parts))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main(sys.argv[1:]))

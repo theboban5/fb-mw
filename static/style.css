@@ -916,3 +916,30 @@ table.v2-results-compact { table-layout: fixed; width: 100%; }
 .ts-goals { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--ink); }
 .ts-name { color: #1c1c1c; }
 .ts-goals { color: #1c1c1c; }
+
+/* ─── New-schema markers (badges, footnotes, unconfirmed) ───────────── */
+.v2-res-score.v2-res-badge {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #b3541e;
+}
+.v2-res-unconf { color: #9aa1ab; font-weight: 700; margin-left: 1px; }
+.v2-res-legend {
+  background: #ffffff;
+  color: #666;
+  padding: 8px 14px 12px;
+  margin: 0;
+  font-size: 0.78rem;
+}
+.v2-team-withdrawn { text-decoration: line-through; color: #9aa1ab; }
+.v2-pts-adj { color: #b3541e; font-weight: 800; margin-left: 1px; }
+.v2-footnotes {
+  list-style: none;
+  margin: 8px 2px 0;
+  padding: 0;
+  color: #666;
+  font-size: 0.78rem;
+}
+.v2-footnote { padding: 2px 0; }

@@ -1,0 +1,42 @@
+venue_id,name,city,capacity
+MW_ADL_G,ADL Ground,,
+MW_MCJ_001,Aubrey Dimba Stadium,Mchinji,
+MW_BAL_001,Balaka Stadium,Balaka,3000
+MW_L_003,Bingu National Stadium,Lilongwe,41100
+MW_BLUE_G,Blue Gym,,
+MW_BOTA_G,Botanic Ground,,
+MW_MP_001,Champion Stadium,Mponela,15000
+MW_CBJ_G,Chibanja Ground,,
+MW_CHIB_G,Chibavi Ground,,
+MW_CHL_001,Chilomoni Stadium,Chilomoni,20000
+MW_CHITE_G,Chiteko Ground,,
+MW_CHI_001,Chitipa Stadium,Chitipa,
+MW_MAF_001,Chitowe Stadium,Mafupa,1000
+MW_CWZA_G,Chiwaza Ground,,
+MW_L_001,Civo Stadium,Lilongwe,25000
+MW_D_001,Dedza Stadium,Dedza,
+MW_DOW_001,Dowa Community,Dowa,
+MW_GOLF_C,Golf Club,,
+MW_MW_001,Joyce Chitsulo Stadium,Mwanza,10000
+MW_B_002,Kamuzu Stadium,Blantyre,65000
+MW_KAR_001,Karonga Stadium,Karonga,25000
+MW_KAS_001,Kasungu Stadium,Kasungu,
+MW_LIN_SEC,Linthipe Secondary,,
+MW_LUCH_G,Luchenza Ground,,
+MW_LUVI_G,Luviri Ground,,
+MW_MAJA_G,Majaliro Ground,,
+MW_MCJ_003,Mchinji Mini Stadium,Mchinji,
+MW_CRZ_001,Mkhwai Ground,Chiradzulu,
+MW_B_004,Moneymen Ground,Blantyre,
+MW_B_001,Mpira Stadium,Blantyre,10000
+MW_MU_001,Mulanje Park Stadium,Mulanje,
+MW_MZ_001,Mzuzu Stadium,Mzuzu,15000
+MW_L_002,Nankhaka Stadium,Lilongwe,5000
+MW_THY_001,Nchima Ground,Thyolo,
+MW_B_003,Nkhwai Ground,Blantyre,
+MW_MCJ_002,Owen Malijani Stadium,Mchinji,5000
+MW_RU_001,Rumphi Stadium,Rumphi,1000
+MW_MP_002,Santhe Admarc Ground,Mponela,
+MW_L_004,Silver Stadium,Lilongwe,18000
+MW_UPPER_B,Upper Bingu,,
+MW_Z_001,Zomba Stadium,Zomba,20000

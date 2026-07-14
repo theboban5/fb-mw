@@ -1,14 +1,17 @@
 name: Build and deploy
 
-# Manual / on-push rebuilds (per project decision). Push code or click
-# "Run workflow" to publish the latest scores from the Google Sheet.
+# Rebuild hourly from the published Google Sheet, plus on push and on demand.
+# The build validates before rendering: any data error exits non-zero, the
+# job fails, and the deploy job never runs — production stays untouched.
 on:
+  schedule:
+    - cron: "7 * * * *"  # hourly (:07 to dodge the on-the-hour cron rush)
   push:
     branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write  # the build commits the data/canonical/ snapshot back
   pages: write
   id-token: write
 
@@ -26,47 +29,22 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Build site
-        # Secret names match the env vars config.py reads, 1:1. Empty/missing
-        # secrets are safe: a league with no teams/matches URL is skipped, and
-        # goals are opt-in (an empty goals URL just renders no scorers).
-        env:
-          # Under-16s Development League
-          CSV_URL_TEAMS: ${{ secrets.CSV_URL_TEAMS }}
-          CSV_URL_MATCHES: ${{ secrets.CSV_URL_MATCHES }}
-          # Super League of Malawi
-          SL_CSV_TEAMS: ${{ secrets.SL_CSV_TEAMS }}
-          SL_CSV_MATCHES: ${{ secrets.SL_CSV_MATCHES }}
-          SL_CSV_GOALS: ${{ secrets.SL_CSV_GOALS }}
-          # National Division League
-          NDL_CSV_TEAMS: ${{ secrets.NDL_CSV_TEAMS }}
-          NDL_CSV_MATCHES: ${{ secrets.NDL_CSV_MATCHES }}
-          NDL_CSV_GOALS: ${{ secrets.NDL_CSV_GOALS }}
-          # Women's Premiership
-          WP_CSV_TEAMS: ${{ secrets.WP_CSV_TEAMS }}
-          WP_CSV_MATCHES: ${{ secrets.WP_CSV_MATCHES }}
-          WP_CSV_GOALS: ${{ secrets.WP_CSV_GOALS }}
-          # Southern Regional FA
-          SRFA_CSV_TEAMS: ${{ secrets.SRFA_CSV_TEAMS }}
-          SRFA_CSV_MATCHES: ${{ secrets.SRFA_CSV_MATCHES }}
-          SRFA_CSV_GOALS: ${{ secrets.SRFA_CSV_GOALS }}
-          # Central Regional FA
-          CRFA_CSV_TEAMS: ${{ secrets.CRFA_CSV_TEAMS }}
-          CRFA_CSV_MATCHES: ${{ secrets.CRFA_CSV_MATCHES }}
-          CRFA_CSV_GOALS: ${{ secrets.CRFA_CSV_GOALS }}
-          # Northern Regional FA
-          NRFA_CSV_TEAMS: ${{ secrets.NRFA_CSV_TEAMS }}
-          NRFA_CSV_MATCHES: ${{ secrets.NRFA_CSV_MATCHES }}
-          NRFA_CSV_GOALS: ${{ secrets.NRFA_CSV_GOALS }}
-          # SRFA Sultan Concrete Division 2
-          SRFA2_CSV_TEAMS: ${{ secrets.SRFA2_CSV_TEAMS }}
-          SRFA2_CSV_MATCHES: ${{ secrets.SRFA2_CSV_MATCHES }}
-          SRFA2_CSV_GOALS: ${{ secrets.SRFA2_CSV_GOALS }}
-          # Katswiri U19 League
-          KU19_CSV_TEAMS: ${{ secrets.KU19_CSV_TEAMS }}
-          KU19_CSV_MATCHES: ${{ secrets.KU19_CSV_MATCHES }}
-          KU19_CSV_GOALS: ${{ secrets.KU19_CSV_GOALS }}
+      - name: Build site (fetch -> validate -> snapshot -> render)
         run: python build.py
+      - name: Commit data snapshot
+        # data/canonical/ is the audit log of every data change and the
+        # baseline for the validator's deletion-drift check. Only commits
+        # when the sheet actually changed. GITHUB_TOKEN pushes don't
+        # retrigger workflows, so this can't loop.
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/canonical
+          if ! git diff --cached --quiet; then
+            git commit -m "data snapshot $(date -u +'%Y-%m-%d %H:%M') UTC"
+            git pull --rebase origin main
+            git push
+          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs

@@ -1,0 +1,126 @@
+team_id,club_id,gender,age_group,squad_level,display_name,legacy_code,status
+MW_AB_M1,MW_AB,m,senior,3,Armour Battalion,CRFA_AB,active
+MW_AR_M1,MW_AR,m,senior,3,Airborne Rangers FC,CRFA_AR,active
+MW_BLUE_M2,MW_BLUE,m,senior,3,Blue Eagles Reserves,CRFA_BER,active
+MW_CSFC_M1,MW_CSFC,m,senior,3,Chimbiya Stars FC,CRFA_CS,active
+MW_KFC_M1,MW_KFC,m,senior,3,Kalembelembe FC,CRFA_KFC,active
+MW_LFC_M1,MW_LFC,m,senior,3,Luanar FC,CRFA_LFC,active
+MW_MC_M1,MW_MC,m,senior,3,Manzo Chisomo FC,CRFA_MC,active
+MW_MPFC_M1,MW_MPFC,m,senior,3,Mponela FC,CRFA_MFC,active
+MW_MCHS_M1,MW_MCHS,m,senior,3,Mchinji Strikers,CRFA_MS,active
+MW_MU_M1,MW_MU,m,senior,3,Mbabzi United,CRFA_MU,active
+MW_MV_M1,MW_MV,m,senior,3,Mchinji Villa FC,CRFA_MV,active
+MW_NAA_M1,MW_NAA,m,senior,3,Ngw'Angw'Azi Wimbe FC,CRFA_NAA,active
+MW_PFC_M1,MW_PFC,m,senior,3,Pyramid FC,CRFA_PFC,active
+MW_SA_M1,MW_SA,m,senior,3,Santhe Admarc FC,CRFA_SA,active
+MW_SS_M2,MW_SS,m,senior,3,Silver Strikers Reserves,CRFA_SSR,active
+MW_TNS_M1,MW_TNS,m,senior,3,TN Stars,CRFA_TNS,active
+MW_A_MU19,MW_A,m,u19,1,Airsport,KU19_A,active
+MW_AS_MU19,MW_AS,m,u19,1,Agumbala Stars,KU19_AS,active
+MW_BIA_MU19,MW_BIA,m,u19,1,Brothers in Arms,KU19_BIA,active
+MW_CCS_MU19,MW_CCS,m,u19,1,CC Stars,KU19_CCS,active
+MW_EFC_U19,MW_EFC,m,u19,1,Ekhaya,KU19_E,active
+MW_EH_MU19,MW_EH,m,u19,1,Extending Hope,KU19_EH,active
+MW_GS_MU19,MW_GS,m,u19,1,Griffin Stars,KU19_GS,active
+MW_MM_MU19,MW_MM,m,u19,1,Manchester Motors,KU19_MM,active
+MW_BULL_U19,MW_BULL,m,u19,1,Nyasa Big Bullets,KU19_NBB,active
+MW_ND_MU19,MW_ND,m,u19,1,Ndirande Dortmund,KU19_ND,active
+MW_NU_MU19,MW_NY,m,u19,1,Nyambadwe United,KU19_NU,active
+MW_RU_MU19,MW_RU,m,u19,1,Rams United,KU19_RU,active
+MW_SM_MU19,MW_SM,m,u19,1,Soche Madrid,KU19_SM,active
+MW_MW_U19,MW_MW,m,u19,1,Wanderers,KU19_W,active
+MW_YY_MU19,MW_YY,m,u19,1,Yizo Yizo,KU19_YY,active
+MW_BAS_M1,MW_BAS,m,senior,2,Bangwe All Stars,NDL_BAS,active
+MW_CB_M1,MW_CB,m,senior,2,Changalume Barracks,NDL_CB,active
+MW_CBWE_M1,MW_CBWE,m,senior,2,Chilobwe United,NDL_CU,active
+MW_EXFC_M1,MW_EXFC,m,senior,2,Extreme FC,NDL_EFC,active
+MW_EU_M1,MW_EU,m,senior,2,Embangweni United,NDL_EU,active
+MW_FFC_M1,MW_FFC,m,senior,2,FOMO FC,NDL_FFC,active
+MW_MCH_M1,MW_MCH,m,senior,2,Mzuzu City Hammers FC,NDL_MCH,active
+MW_MT_M1,MW_MT,m,senior,2,Mighty Tigers,NDL_MT,active
+MW_NS_M1,MW_NS,m,senior,2,Ndirande Stars,NDL_NS,active
+MW_NU_M1,MW_NU,m,senior,2,Ntaja United,NDL_NU,active
+MW_NZ_M1,MW_NZ,m,senior,2,Namitete Zitha,NDL_NZ,active
+MW_SBU_M1,MW_SBU,m,senior,2,Songwe Board United,NDL_SBU,active
+MW_CAS_M1,MW_CAS,m,senior,3,Chihame All Stars FC,NRFA_CAS,active
+MW_CHB_M1,MW_CHB,m,senior,3,Chilumba Barracks FC,NRFA_CB,active
+MW_CHIP_M1,MW_CHIP,m,senior,3,Chipolopolo FC,NRFA_CFC,active
+MW_CRS_M1,MW_CRS,m,senior,3,Chibavi Real Stars FC,NRFA_CRS,active
+MW_CHIN_M1,MW_CHIN,m,senior,3,Chintheche United FC,NRFA_CU,active
+MW_CZU_M1,MW_CZU,m,senior,3,Chizumulu United FC,NRFA_CZU,active
+MW_EKW_M1,MW_EKW,m,senior,3,Ekwendeni FC,NRFA_EFC,active
+MW_EV_M1,MW_EV,m,senior,3,Euthini Veterans FC,NRFA_EV,active
+MW_JU_M1,MW_JU,m,senior,3,Jenda United FC,NRFA_JU,active
+MW_LVFC_M1,MW_LVFC,m,senior,3,Luviri FC FC,NRFA_LFC,active
+MW_LUMA_M1,MW_LUMA,m,senior,3,Lube Masters FC,NRFA_LM,active
+MW_MAFU_M1,MW_MAFU,m,senior,3,MAFU FC,NRFA_MFC,active
+MW_MMW_M1,MW_MMW,m,senior,3,Mmbelwa Warriors FC,NRFA_MW,active
+MW_RFC_M1,MW_RFC,m,senior,3,Raiply FC,NRFA_RFC,active
+MW_VSA_M1,MW_VSA,m,senior,3,Vision S Academy,NRFA_VSA,active
+MW_BLUE_M1,MW_BLUE,m,senior,1,Blue Eagles,SL_BE,active
+MW_CS_M1,MW_CS,m,senior,1,Creck Sporting,SL_CS,active
+MW_CSU_M1,MW_CSU,m,senior,1,Civil Service United,SL_CSU,active
+MW_CU_M1,MW_CU,m,senior,1,Chitipa United,SL_CU,active
+MW_EFC_M1,MW_EFC,m,senior,1,Ekhaya FC,SL_EFC,active
+MW_DD_M1,MW_DD,m,senior,1,Goshen City Dedza Dynamos,SL_GSD,active
+MW_KB_M1,MW_KB,m,senior,1,Kamuzu Barracks,SL_KB,active
+MW_KU_M1,MW_KU,m,senior,1,Karonga United,SL_KU,active
+MW_LM_M1,MW_LM,m,senior,1,Luanar Mitundu,SL_LM,active
+MW_MAFC_M1,MW_MAFC,m,senior,1,MAFCO F.C.,SL_MAF,active
+MW_MB_M1,MW_MB,m,senior,1,Moyale Barracks,SL_MB,active
+MW_MFC_M1,MW_MFC,m,senior,1,Masters FC,SL_MFC,active
+MW_MW_M1,MW_MW,m,senior,1,Mighty Wanderers,SL_MW,active
+MW_BULL_M1,MW_BULL,m,senior,1,Nyasa Big Bullets,SL_NBB,active
+MW_REDL_M1,MW_REDL,m,senior,1,Red Lions,SL_RL,active
+MW_SS_M1,MW_SS,m,senior,1,Silver Strikers,SL_SS,active
+MW_CFC_M1,MW_CFC,m,senior,3,Chilomoni FC,SRFA_CFC,active
+MW_CHIR_M1,MW_CHIR,m,senior,3,Chiradzulu United,SRFA_CU,active
+MW_EFC_M2,MW_EFC,m,senior,3,Ekhaya Reserve,SRFA_ER,active
+MW_FCT_M1,MW_FCT,m,senior,3,FC Thondwe,SRFA_FCT,active
+MW_IFC_M1,MW_IFC,m,senior,3,Immigration FC,SRFA_IFC,active
+MW_LBTY_M1,MW_LBTY,m,senior,3,Liberty FC,SRFA_LFC,active
+MW_MS_M1,MW_MS,m,senior,3,Mwanza Stars,SRFA_MS,active
+MW_MWU_M1,MW_MWU,m,senior,3,Mwanza United,SRFA_MU,active
+MW_BULL_M2,MW_BULL,m,senior,3,Nyasa Big Bullets Reserve,SRFA_NBB,active
+MW_NFC_M1,MW_NFC,m,senior,3,Ntopwa FC,SRFA_NFC,active
+MW_NCH_M1,MW_NCH,m,senior,3,Nchima United,SRFA_NU,active
+MW_NY_M1,MW_NY,m,senior,3,Nyambadwe United,SRFA_NY,active
+MW_QAS_M1,MW_QAS,m,senior,3,QPL All Stars,SRFA_QAS,active
+MW_TB_M1,MW_TB,m,senior,3,The Boyz SFC,SRFA_TB,active
+MW_MW_M2,MW_MW,m,senior,3,Wanderers Reserve,SRFA_WR,active
+MW_ZU_M1,MW_ZU,m,senior,3,Zingwangwa United,SRFA_ZU,active
+MW_CUNI_M1,MW_CUNI,m,senior,4,Catholic University,SRFA2_CU,active
+MW_GU_M1,MW_GU,m,senior,4,Gada United,SRFA2_GU,active
+MW_H_M1,MW_H,m,senior,4,Hardknockers,SRFA2_H,active
+MW_LIM_M1,MW_LIM,m,senior,4,Limbe Sporting,SRFA2_LIM,active
+MW_LUN_M1,MW_LUN,m,senior,4,Lunzu Sundowns,SRFA2_LUN,active
+MW_MAS_M1,MW_MAS,m,senior,4,Mazabuka All Stars,SRFA2_MAS,active
+MW_MNTI_M1,MW_MNTI,m,senior,4,Mnthunzi FC,SRFA2_MFC,active
+MW_MICH_M1,MW_MICH,m,senior,4,Michigan Select,SRFA2_MS,active
+MW_MUB_M1,MW_MUB,m,senior,4,MUBAS,SRFA2_MUB,active
+MW_MYS_M1,MW_MYS,m,senior,4,Mpemba Young Soccer,SRFA2_MYS,active
+MW_NYG_M1,MW_NYG,m,senior,4,Neno Young Giants,SRFA2_NYG,active
+MW_POYA_M1,MW_POYA,m,senior,4,Poya FC,SRFA2_PFC,active
+MW_PSS_M1,MW_PSS,m,senior,4,PS Sporting,SRFA2_PSS,active
+MW_U16_BFC,MW_U16_BFC,m,u16,1,Blantyre FC,U16_BFC,active
+MW_U16_BLU,MW_U16_BLU,m,u16,1,Blantyre United,U16_BLU,active
+MW_U16_CWW,MW_U16_CWW,m,u16,1,Chikwawa,U16_CWW,active
+MW_U16_LA,MW_U16_LA,m,u16,1,Liwonde Athletic,U16_LA,active
+MW_U16_LFC,MW_U16_LFC,m,u16,1,Lunzu FC,U16_LFC,active
+MW_U16_LLC,MW_U16_LLC,m,u16,1,Lilongwe City,U16_LLC,active
+MW_U16_MFC,MW_U16_MFC,m,u16,1,Mwanza FC,U16_MFC,active
+MW_U16_MU,MW_U16_MU,m,u16,1,Machinga United,U16_MU,active
+MW_U16_MZU,MW_U16_MZU,m,u16,1,Mzuzu FC,U16_MZU,active
+MW_U16_SMU,MW_U16_SMU,m,u16,1,South Malawi United,U16_SMU,active
+MW_U16_ZOM,MW_U16_ZOM,m,u16,1,FC Zomba,U16_ZOM,active
+MW_U16_ZU,MW_U16_ZU,m,u16,1,Zomba United,U16_ZU,active
+MW_ASA_W1,MW_ASA,w,senior,1,Ascent Soccer-Academy,WP_ASA,active
+MW_CSUW_W1,MW_CSU,w,senior,1,Civil Service Women,WP_CSW,active
+MW_KNW_W1,MW_KNW,w,senior,1,Kukoma Ntopwa Women,WP_KNW,active
+MW_MDF_W1,MW_MDF,w,senior,1,MDF Lioness,WP_MDF,active
+MW_MKA_W1,MW_MKA,w,senior,1,MK Academy Women,WP_MKA,active
+MW_MB_W1,MW_MB,w,senior,1,Moyale Sisters,WP_MS,active
+MW_MW_W1,MW_MW,w,senior,1,Mighty Wanderers Queens,WP_MWQ,active
+MW_BULL_W1,MW_BULL,w,senior,1,Nyasa Big Bullets Women,WP_NBB,active
+MW_SS_W1,MW_SS,w,senior,1,Silver Strikers Ladies,WP_SSL,active
+MW_TA_W1,MW_TA,w,senior,1,Topik Academy,WP_TA,active

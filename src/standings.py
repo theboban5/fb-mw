@@ -13,6 +13,9 @@ class Standing:
     lost: int = 0
     gf: int = 0
     ga: int = 0
+    points_win: int = 3
+    points_draw: int = 1
+    adjustment: int = 0    # entries.points_adjustment; can be negative
 
     @property
     def gd(self) -> int:
@@ -20,17 +23,26 @@ class Standing:
 
     @property
     def points(self) -> int:
-        return self.won * 3 + self.drawn
+        return self.won * self.points_win + self.drawn * self.points_draw + self.adjustment
 
 
-def compute_standings(matches, teams) -> "list[Standing]":
+def compute_standings(matches, teams, points_win=3, points_draw=1,
+                      adjustments=None) -> "list[Standing]":
     """Return standings rows, fully sorted.
 
-    Win = 3, draw = 1, loss = 0. Only matches with both goal values present
-    are counted. Sort: points desc, GD desc, GF desc, then name (A-Z).
-    Teams with no played matches still appear, with zeros.
+    Points per win/draw default to 3/1 but come from competition_seasons in
+    the new schema; `adjustments` maps team code -> points_adjustment. Only
+    matches with both goal values present are counted. Sort: points desc,
+    GD desc, GF desc, then name (A-Z). Teams with no played matches still
+    appear, with zeros.
     """
-    table = {code: Standing(code, t.name) for code, t in teams.items()}
+    adjustments = adjustments or {}
+    table = {
+        code: Standing(code, t.name, points_win=points_win,
+                       points_draw=points_draw,
+                       adjustment=adjustments.get(code, 0))
+        for code, t in teams.items()
+    }
     for m in matches:
         if not m.played:
             continue
@@ -85,14 +97,14 @@ def recent_form(matches, teams, last_n=5):
     return {code: results[-last_n:] for code, results in form.items()}
 
 
-def _positions_through(matches, teams, matchday):
+def _positions_through(matches, teams, matchday, **table_kwargs):
     """Rank of every team (1-based) using only matches up to `matchday`."""
     subset = [m for m in matches if m.matchday <= matchday]
-    rows = compute_standings(subset, teams)
+    rows = compute_standings(subset, teams, **table_kwargs)
     return {s.code: i for i, s in enumerate(rows, start=1)}
 
 
-def position_changes(matches, teams):
+def position_changes(matches, teams, **table_kwargs):
     """Map each team code to 'up', 'down' or 'same' versus the previous matchday.
 
     Compares the table after the latest played matchday with the table after the
@@ -102,8 +114,8 @@ def position_changes(matches, teams):
     days = sorted({m.matchday for m in matches if m.played})
     if len(days) < 2:
         return {code: "same" for code in teams}
-    cur = _positions_through(matches, teams, days[-1])
-    prev = _positions_through(matches, teams, days[-2])
+    cur = _positions_through(matches, teams, days[-1], **table_kwargs)
+    prev = _positions_through(matches, teams, days[-2], **table_kwargs)
     out = {}
     for code in teams:
         # A smaller number is a higher position, so moving up means cur < prev.
@@ -116,7 +128,7 @@ def position_changes(matches, teams):
     return out
 
 
-def position_history(matches, teams):
+def position_history(matches, teams, **table_kwargs):
     """Return (matchdays, {code: [position, ...]}) — a team's rank after each
     played matchday, for plotting position over the season.
 
@@ -126,7 +138,7 @@ def position_history(matches, teams):
     days = sorted({m.matchday for m in matches if m.played})
     history = {code: [] for code in teams}
     for d in days:
-        pos = _positions_through(matches, teams, d)
+        pos = _positions_through(matches, teams, d, **table_kwargs)
         for code in teams:
             history[code].append(pos[code])
     return days, history

@@ -1,0 +1,10 @@
+competition_id,country,name,type,tier,gender,age_group,region,governing_body,logo
+MW_SL,mw,Super League of Malawi,league,1,m,senior,,FAM,sl.png
+MW_NDL,mw,National Division League,league,2,m,senior,,FAM,ndl.png
+MW_WP,mw,Women's Premiership,league,1,w,senior,,FAM,wp.png
+MW_SRFA,mw,SRFA Division League 1,league,3,m,senior,SRFA,SRFA,srfa.png
+MW_CRFA,mw,CRFA Division One League,league,3,m,senior,CRFA,CRFA,crfa.png
+MW_NRFA,mw,NRFA League One,league,3,m,senior,NRFA,NRFA,nrfa.png
+MW_SRFA2,mw,SRFA Division 2,league,3,m,senior,SRFA,SRFA,srfa2.png
+MW_KU19,mw,Katswiri U19 League,league,1,m,U19,SRFA,BDYFC,ku19.png
+MW_U16,mw,U16 Development League,league,1,m,U16,SRFA,BDYFC,
