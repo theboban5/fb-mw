@@ -1,11 +1,11 @@
 name: Build and deploy
 
-# Rebuild hourly from the published Google Sheet, plus on push and on demand.
+# Rebuild daily from the published Google Sheet, plus on push and on demand.
 # The build validates before rendering: any data error exits non-zero, the
 # job fails, and the deploy job never runs — production stays untouched.
 on:
   schedule:
-    - cron: "7 * * * *"  # hourly (:07 to dodge the on-the-hour cron rush)
+    - cron: "7 5 * * *"  # daily 05:07 UTC (:07 to dodge the on-the-hour cron rush)
   push:
     branches: [main]
   workflow_dispatch:
@@ -36,13 +36,17 @@ jobs:
         # baseline for the validator's deletion-drift check. Only commits
         # when the sheet actually changed. GITHUB_TOKEN pushes don't
         # retrigger workflows, so this can't loop.
+        #
+        # --autostash is required: the build regenerates tracked docs/, so the
+        # tree is always dirty here and a plain rebase would abort (exit 128).
+        # The stash pops afterwards, leaving docs/ fresh for the artifact upload.
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/canonical
           if ! git diff --cached --quiet; then
             git commit -m "data snapshot $(date -u +'%Y-%m-%d %H:%M') UTC"
-            git pull --rebase origin main
+            git pull --rebase --autostash origin main
             git push
           fi
       - uses: actions/upload-pages-artifact@v3
