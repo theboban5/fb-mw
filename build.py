@@ -348,6 +348,15 @@ def _write_landing(dist, ds, leagues):
 <meta name="color-scheme" content="light dark">
 <title>Malawi Football</title>
 <link rel="stylesheet" href="style.css?v={css_ver}">
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-RCV8V3DEKV"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){{dataLayer.push(arguments);}}
+  gtag('js', new Date());
+
+  gtag('config', 'G-RCV8V3DEKV');
+</script>
 </head>
 <body class="landing">
 <main class="landing-main">
