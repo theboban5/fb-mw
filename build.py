@@ -113,7 +113,9 @@ def _build_league(ds, cs, dist_root, updated):
         competition_id=league.competition_id,
         # Team names on league pages link to the cross-competition club hub;
         # the per-league club pages stay generated so their URLs keep working.
-        club_hrefs={code: f"../clubs/{t.club_id}.html"
+        # The #club-team-{code} fragment tells the hub which row to highlight
+        # as "currently viewing" (see hubs.render_club_hub).
+        club_hrefs={code: f"../clubs/{t.club_id}.html#club-team-{code}"
                     for code, t in league.teams.items()},
     )
     return league, rows, played_count

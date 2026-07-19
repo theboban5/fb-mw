@@ -5,7 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Matches &middot; SRFA Sultan Concrete Division 2</title>
-<link rel="stylesheet" href="../style.css?v=93d87f72">
+<link rel="stylesheet" href="../style.css?v=7b838dfd">
+<script>
+  /* Club hubs link in with a #club-team-{code} fragment so the right row
+     can be highlighted (see hubs.py). Strip the hash immediately, before
+     the browser gets to it, so the page doesn't jump past the banner to
+     scroll the row into view — the row is highlighted via JS instead
+     (see the script at the end of the hub's content). */
+  (function(){
+    var h = location.hash;
+    if (h.indexOf('#club-team-') === 0) {
+      window.__clubTeamTarget = h.slice(1);
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  })();
+</script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-RCV8V3DEKV"></script>
 <script>
@@ -20,7 +34,7 @@
 <header class="site-header">
   <img class="site-logo" src="../logos/competitions/MW_SRFA2.png" alt="">
   <h1>SRFA Sultan Concrete Division 2</h1>
-  <p class="updated">Last updated 19 July 2026, 12:19 CAT</p>
+  <p class="updated">Last updated 19 July 2026, 16:44 CAT</p>
 </header>
 <a href="../" class="back-link">&#x2190; All Leagues</a>
 <nav class="tabs">
@@ -52,15 +66,15 @@
 <tbody class="v2-md-group" data-md="1">
 <tr class="v2-md-row"><td colspan="3">MATCHDAY 1</td></tr>
 <tr class="v2-res-meta-row"><td colspan="3"><span class="v2-res-meta">12 Jul 2026 &middot; Luchenza Ground</span></td></tr>
-<tr class="v2-res-row v2-res-row-compact"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_MAS.html">Mazabuka All Stars</a></td><td class="v2-res-score">2:0</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_PSS.html">PS Sporting</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_MAS.html#club-team-SRFA2_MAS">Mazabuka All Stars</a></td><td class="v2-res-score">2:0</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_PSS.html#club-team-SRFA2_PSS">PS Sporting</a></td></tr>
 <tr class="v2-res-meta-row alt"><td colspan="3"><span class="v2-res-meta">19 Jul 2026 &middot; Neno Stadium</span></td></tr>
-<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_NYG.html">Neno Young Giants</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_MAS.html">Mazabuka All Stars</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_NYG.html#club-team-SRFA2_NYG">Neno Young Giants</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_MAS.html#club-team-SRFA2_MAS">Mazabuka All Stars</a></td></tr>
 <tr class="v2-res-meta-row"><td colspan="3"><span class="v2-res-meta">19 Jul 2026 &middot; Mbulumbuzi Ground</span></td></tr>
-<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_POYA.html">Poya FC</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_MYS.html">Mpemba Young Soccer</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_POYA.html#club-team-SRFA2_PFC">Poya FC</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_MYS.html#club-team-SRFA2_MYS">Mpemba Young Soccer</a></td></tr>
 <tr class="v2-res-meta-row alt"><td colspan="3"><span class="v2-res-meta">20 Jul 2026 &middot; Mpira Stadium</span></td></tr>
-<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_MICH.html">Michigan Select</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_LUN.html">Lunzu Sundowns</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_MICH.html#club-team-SRFA2_MS">Michigan Select</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_LUN.html#club-team-SRFA2_LUN">Lunzu Sundowns</a></td></tr>
 <tr class="v2-res-meta-row"><td colspan="3"><span class="v2-res-meta">20 Jul 2026 &middot; Kamuzu Stadium</span></td></tr>
-<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_PSS.html">PS Sporting</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_LIM.html">Limbe Sporting</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_PSS.html#club-team-SRFA2_PSS">PS Sporting</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_LIM.html#club-team-SRFA2_LIM">Limbe Sporting</a></td></tr>
 </tbody>
 </table>
 </div>

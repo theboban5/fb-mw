@@ -54,7 +54,11 @@ def render_club_hub(club, club_teams, crest_url):
     """The hub page body for one club.
 
     `club_teams` is a list of (team, league, standing, position, played,
-    recent_matches) tuples — one per squad that is entered in a built league.
+    recent_matches, code) tuples — one per squad that is entered in a built
+    league. `code` is that squad's team code within its league, used to
+    match the `#club-team-{code}` fragment a league page links in with
+    (see build.py) so the row for the team the user came from can be
+    highlighted via the CSS :target selector.
     """
     crest_img = (
         f'<img class="v2-mini-logo" src="{escape(crest_url)}" alt="">' if crest_url else ""
@@ -68,12 +72,12 @@ def render_club_hub(club, club_teams, crest_url):
         f'<p class="v2-season">{escape(place.upper())}</p>' if place else "",
         f'<h2 class="v2-mini-league">{escape(club.name.upper())}</h2>',
         "</div>",  # /v2-mini-banner
-        '<h3 class="v2-sec-title">Teams</h3>',
+        f'<h3 class="v2-sec-title">All {escape(club.name)} Teams</h3>',
     ]
 
     if club_teams:
         rows = []
-        for team, league, standing, position, _played, _recent in club_teams:
+        for team, league, standing, position, _played, _recent, code in club_teams:
             pos_txt = (
                 f"{render._ordinal(position)} &middot; {standing.points} pts"
                 if standing is not None and position is not None else "&ndash;"
@@ -81,7 +85,7 @@ def render_club_hub(club, club_teams, crest_url):
             team_href = f"../{league.slug}/clubs/{team.legacy_code or team.team_id}.html"
             league_href = f"../{league.slug}/"
             rows.append(
-                f'<tr class="v2-res-row">'
+                f'<tr class="v2-res-row" id="club-team-{escape(code)}">'
                 f'<td class="v2-res-home"><a class="club-link" href="{escape(team_href)}">'
                 f'{escape(league.teams[team.legacy_code].name if team.legacy_code in league.teams else team.team_id)}</a></td>'
                 f'<td class="v2-res-away"><a class="club-link" href="{escape(league_href)}">'
@@ -95,13 +99,22 @@ def render_club_hub(club, club_teams, crest_url):
             '<th class="v2-res-th-away">COMPETITION</th>'
             '<th class="v2-res-th-venue">POSITION</th></tr></thead>',
             "<tbody>", *rows, "</tbody></table></div>",
+            # Highlights the row for window.__clubTeamTarget (set in
+            # templates/base.html before the hash could scroll the page to
+            # it). Runs inline, after the rows above, so the target already
+            # exists in the DOM.
+            "<script>(function(){"
+            "var id=window.__clubTeamTarget;if(!id)return;"
+            "var el=document.getElementById(id);"
+            "if(el)el.classList.add('v2-current-team');"
+            "})();</script>",
         ]
     else:
         v2.append('<p class="v2-empty">No teams in a current competition.</p>')
 
     # Recent results across all of the club's competitions, newest first.
     all_recent = []
-    for _team, league, _standing, _position, _played, recent in club_teams:
+    for _team, league, _standing, _position, _played, recent, _code in club_teams:
         all_recent += [(m.date or "", m, league) for m in recent]
     all_recent.sort(key=lambda x: x[0], reverse=True)
     all_recent = all_recent[:RECENT_RESULTS]
@@ -159,7 +172,7 @@ def build_club_hubs(dist, templates_dir, static_dir, ds, leagues, standings_by_s
             played.sort(key=lambda m: (m.date, m.matchday), reverse=True)
             club_teams.append(
                 (team, league, standing, position, len(played),
-                 played[:RECENT_RESULTS]))
+                 played[:RECENT_RESULTS], code))
         if not club_teams:
             continue
 

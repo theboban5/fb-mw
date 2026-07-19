@@ -5,7 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Matches &middot; Katswiri U19 League</title>
-<link rel="stylesheet" href="../style.css?v=93d87f72">
+<link rel="stylesheet" href="../style.css?v=7b838dfd">
+<script>
+  /* Club hubs link in with a #club-team-{code} fragment so the right row
+     can be highlighted (see hubs.py). Strip the hash immediately, before
+     the browser gets to it, so the page doesn't jump past the banner to
+     scroll the row into view — the row is highlighted via JS instead
+     (see the script at the end of the hub's content). */
+  (function(){
+    var h = location.hash;
+    if (h.indexOf('#club-team-') === 0) {
+      window.__clubTeamTarget = h.slice(1);
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  })();
+</script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-RCV8V3DEKV"></script>
 <script>
@@ -20,7 +34,7 @@
 <header class="site-header">
   <img class="site-logo" src="../logos/competitions/MW_KU19.png" alt="">
   <h1>Katswiri U19 League</h1>
-  <p class="updated">Last updated 19 July 2026, 12:19 CAT</p>
+  <p class="updated">Last updated 19 July 2026, 16:44 CAT</p>
 </header>
 <a href="../" class="back-link">&#x2190; All Leagues</a>
 <nav class="tabs">
@@ -54,43 +68,43 @@
 <tbody class="v2-md-group" data-md="3">
 <tr class="v2-md-row"><td colspan="3">MATCHDAY 3</td></tr>
 <tr class="v2-res-meta-row"><td colspan="3"><span class="v2-res-meta">18 Jul 2026 &middot; Kamuzu Stadium</span></td></tr>
-<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_AS.html">Agumbala Stars</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_MM.html">Manchester Motors</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_AS.html#club-team-KU19_AS">Agumbala Stars</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_MM.html#club-team-KU19_MM">Manchester Motors</a></td></tr>
 <tr class="v2-res-meta-row alt"><td colspan="3"><span class="v2-res-meta">18 Jul 2026 &middot; Kamuzu Stadium</span></td></tr>
-<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_ND.html">Ndirande Dortmund</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_CCS.html">CC Stars</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_ND.html#club-team-KU19_ND">Ndirande Dortmund</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_CCS.html#club-team-KU19_CCS">CC Stars</a></td></tr>
 <tr class="v2-res-meta-row"><td colspan="3"><span class="v2-res-meta">18 Jul 2026 &middot; Chiwembe Stadium</span></td></tr>
-<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_RU.html">Rams United</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_BIA.html">Brothers in Arms</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_RU.html#club-team-KU19_RU">Rams United</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_BIA.html#club-team-KU19_BIA">Brothers in Arms</a></td></tr>
 <tr class="v2-res-meta-row alt"><td colspan="3"><span class="v2-res-meta">18 Jul 2026 &middot; Chiwembe Stadium</span></td></tr>
-<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_YY.html">Yizo Yizo</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_SM.html">Soche Madrid</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_YY.html#club-team-KU19_YY">Yizo Yizo</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_SM.html#club-team-KU19_SM">Soche Madrid</a></td></tr>
 <tr class="v2-res-meta-row"><td colspan="3"><span class="v2-res-meta">19 Jul 2026 &middot; Chiwembe Stadium</span></td></tr>
-<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_EH.html">Extending Hope</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_EFC.html"><img class="club-crest crest-pre" src="../logos/clubs/MW_EFC.png" alt="" loading="lazy">Ekhaya</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_EH.html#club-team-KU19_EH">Extending Hope</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_EFC.html#club-team-KU19_E"><img class="club-crest crest-pre" src="../logos/clubs/MW_EFC.png" alt="" loading="lazy">Ekhaya</a></td></tr>
 <tr class="v2-res-meta-row alt"><td colspan="3"><span class="v2-res-meta">19 Jul 2026 &middot; Kamuzu Stadium</span></td></tr>
-<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_GS.html">Griffin Stars</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_MW.html"><img class="club-crest crest-pre" src="../logos/clubs/MW_MW.png" alt="" loading="lazy">Wanderers</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_GS.html#club-team-KU19_GS">Griffin Stars</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_MW.html#club-team-KU19_W"><img class="club-crest crest-pre" src="../logos/clubs/MW_MW.png" alt="" loading="lazy">Wanderers</a></td></tr>
 <tr class="v2-res-meta-row"><td colspan="3"><span class="v2-res-meta">19 Jul 2026 &middot; Chiwembe Stadium</span></td></tr>
-<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_BULL.html">Nyasa Big Bullets<img class="club-crest crest-post" src="../logos/clubs/MW_BULL.png" alt="" loading="lazy"></a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_NY.html"><img class="club-crest crest-pre" src="../logos/clubs/MW_NY.png" alt="" loading="lazy">Nyambadwe United</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_BULL.html#club-team-KU19_NBB">Nyasa Big Bullets<img class="club-crest crest-post" src="../logos/clubs/MW_BULL.png" alt="" loading="lazy"></a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_NY.html#club-team-KU19_NU"><img class="club-crest crest-pre" src="../logos/clubs/MW_NY.png" alt="" loading="lazy">Nyambadwe United</a></td></tr>
 </tbody>
 <tbody class="v2-md-group" data-md="2">
 <tr class="v2-md-row"><td colspan="3">MATCHDAY 2</td></tr>
-<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_AS.html">Agumbala Stars</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_BIA.html">Brothers in Arms</a></td></tr>
-<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_EH.html">Extending Hope</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_CCS.html">CC Stars</a></td></tr>
-<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_YY.html">Yizo Yizo</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_MW.html"><img class="club-crest crest-pre" src="../logos/clubs/MW_MW.png" alt="" loading="lazy">Wanderers</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_AS.html#club-team-KU19_AS">Agumbala Stars</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_BIA.html#club-team-KU19_BIA">Brothers in Arms</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_EH.html#club-team-KU19_EH">Extending Hope</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_CCS.html#club-team-KU19_CCS">CC Stars</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_YY.html#club-team-KU19_YY">Yizo Yizo</a></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_MW.html#club-team-KU19_W"><img class="club-crest crest-pre" src="../logos/clubs/MW_MW.png" alt="" loading="lazy">Wanderers</a></td></tr>
 <tr class="v2-res-meta-row alt"><td colspan="3"><span class="v2-res-meta">11 Jul 2026</span></td></tr>
-<tr class="v2-res-row v2-res-row-compact alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_A.html">Airsport</a></td><td class="v2-res-score">0:2</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_SM.html">Soche Madrid</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_A.html#club-team-KU19_A">Airsport</a></td><td class="v2-res-score">0:2</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_SM.html#club-team-KU19_SM">Soche Madrid</a></td></tr>
 <tr class="v2-res-meta-row"><td colspan="3"><span class="v2-res-meta">11 Jul 2026</span></td></tr>
-<tr class="v2-res-row v2-res-row-compact"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_EFC.html">Ekhaya<img class="club-crest crest-post" src="../logos/clubs/MW_EFC.png" alt="" loading="lazy"></a></td><td class="v2-res-score">1:0</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_MM.html">Manchester Motors</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_EFC.html#club-team-KU19_E">Ekhaya<img class="club-crest crest-post" src="../logos/clubs/MW_EFC.png" alt="" loading="lazy"></a></td><td class="v2-res-score">1:0</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_MM.html#club-team-KU19_MM">Manchester Motors</a></td></tr>
 <tr class="v2-res-meta-row alt"><td colspan="3"><span class="v2-res-meta">11 Jul 2026</span></td></tr>
-<tr class="v2-res-row v2-res-row-compact alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_GS.html">Griffin Stars</a></td><td class="v2-res-score">0:2</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_BULL.html"><img class="club-crest crest-pre" src="../logos/clubs/MW_BULL.png" alt="" loading="lazy">Nyasa Big Bullets</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_GS.html#club-team-KU19_GS">Griffin Stars</a></td><td class="v2-res-score">0:2</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_BULL.html#club-team-KU19_NBB"><img class="club-crest crest-pre" src="../logos/clubs/MW_BULL.png" alt="" loading="lazy">Nyasa Big Bullets</a></td></tr>
 <tr class="v2-res-meta-row"><td colspan="3"><span class="v2-res-meta">11 Jul 2026</span></td></tr>
-<tr class="v2-res-row v2-res-row-compact"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_RU.html">Rams United</a></td><td class="v2-res-score">0:3</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_NY.html"><img class="club-crest crest-pre" src="../logos/clubs/MW_NY.png" alt="" loading="lazy">Nyambadwe United</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_RU.html#club-team-KU19_RU">Rams United</a></td><td class="v2-res-score">0:3</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_NY.html#club-team-KU19_NU"><img class="club-crest crest-pre" src="../logos/clubs/MW_NY.png" alt="" loading="lazy">Nyambadwe United</a></td></tr>
 </tbody>
 <tbody class="v2-md-group" data-md="1">
 <tr class="v2-md-row"><td colspan="3">MATCHDAY 1</td></tr>
-<tr class="v2-res-row v2-res-row-compact"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_A.html">Airsport</a></td><td class="v2-res-score">0:5</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_MW.html"><img class="club-crest crest-pre" src="../logos/clubs/MW_MW.png" alt="" loading="lazy">Wanderers</a></td></tr>
-<tr class="v2-res-row v2-res-row-compact alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_AS.html">Agumbala Stars</a></td><td class="v2-res-score">2:0</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_RU.html">Rams United</a></td></tr>
-<tr class="v2-res-row v2-res-row-compact"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_BIA.html">Brothers in Arms</a></td><td class="v2-res-score">1:1</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_EFC.html"><img class="club-crest crest-pre" src="../logos/clubs/MW_EFC.png" alt="" loading="lazy">Ekhaya</a></td></tr>
-<tr class="v2-res-row v2-res-row-compact alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_GS.html">Griffin Stars</a></td><td class="v2-res-score">1:1</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_NY.html"><img class="club-crest crest-pre" src="../logos/clubs/MW_NY.png" alt="" loading="lazy">Nyambadwe United</a></td></tr>
-<tr class="v2-res-row v2-res-row-compact"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_MM.html">Manchester Motors</a></td><td class="v2-res-score">1:1</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_CCS.html">CC Stars</a></td></tr>
-<tr class="v2-res-row v2-res-row-compact alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_ND.html">Ndirande Dortmund</a></td><td class="v2-res-score">1:3</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_SM.html">Soche Madrid</a></td></tr>
-<tr class="v2-res-row v2-res-row-compact"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_YY.html">Yizo Yizo</a></td><td class="v2-res-score">0:3</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_BULL.html"><img class="club-crest crest-pre" src="../logos/clubs/MW_BULL.png" alt="" loading="lazy">Nyasa Big Bullets</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_A.html#club-team-KU19_A">Airsport</a></td><td class="v2-res-score">0:5</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_MW.html#club-team-KU19_W"><img class="club-crest crest-pre" src="../logos/clubs/MW_MW.png" alt="" loading="lazy">Wanderers</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_AS.html#club-team-KU19_AS">Agumbala Stars</a></td><td class="v2-res-score">2:0</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_RU.html#club-team-KU19_RU">Rams United</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_BIA.html#club-team-KU19_BIA">Brothers in Arms</a></td><td class="v2-res-score">1:1</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_EFC.html#club-team-KU19_E"><img class="club-crest crest-pre" src="../logos/clubs/MW_EFC.png" alt="" loading="lazy">Ekhaya</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_GS.html#club-team-KU19_GS">Griffin Stars</a></td><td class="v2-res-score">1:1</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_NY.html#club-team-KU19_NU"><img class="club-crest crest-pre" src="../logos/clubs/MW_NY.png" alt="" loading="lazy">Nyambadwe United</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_MM.html#club-team-KU19_MM">Manchester Motors</a></td><td class="v2-res-score">1:1</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_CCS.html#club-team-KU19_CCS">CC Stars</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact alt"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_ND.html#club-team-KU19_ND">Ndirande Dortmund</a></td><td class="v2-res-score">1:3</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_SM.html#club-team-KU19_SM">Soche Madrid</a></td></tr>
+<tr class="v2-res-row v2-res-row-compact"><td class="v2-res-home"><a class="club-link" href="../clubs/MW_YY.html#club-team-KU19_YY">Yizo Yizo</a></td><td class="v2-res-score">0:3</td><td class="v2-res-away"><a class="club-link" href="../clubs/MW_BULL.html#club-team-KU19_NBB"><img class="club-crest crest-pre" src="../logos/clubs/MW_BULL.png" alt="" loading="lazy">Nyasa Big Bullets</a></td></tr>
 </tbody>
 </table>
 </div>

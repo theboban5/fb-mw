@@ -36,7 +36,7 @@ Requires Python 3.9+. Pillow (optional) downscales logos.
 ```bash
 python build.py                  # fetch, validate, build into docs/
 python build.py --dist staging --no-snapshot   # build elsewhere, e.g. parity checks
-python -m http.server -d docs 8000             # preview
+python -m http.server -d docs 8931             # preview
 python -m unittest discover -s tests           # tests
 ```
 

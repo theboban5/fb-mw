@@ -5,7 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Standings &middot; SRFA Sultan Concrete Division 2</title>
-<link rel="stylesheet" href="../style.css?v=93d87f72">
+<link rel="stylesheet" href="../style.css?v=7b838dfd">
+<script>
+  /* Club hubs link in with a #club-team-{code} fragment so the right row
+     can be highlighted (see hubs.py). Strip the hash immediately, before
+     the browser gets to it, so the page doesn't jump past the banner to
+     scroll the row into view — the row is highlighted via JS instead
+     (see the script at the end of the hub's content). */
+  (function(){
+    var h = location.hash;
+    if (h.indexOf('#club-team-') === 0) {
+      window.__clubTeamTarget = h.slice(1);
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  })();
+</script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-RCV8V3DEKV"></script>
 <script>
@@ -20,7 +34,7 @@
 <header class="site-header">
   <img class="site-logo" src="../logos/competitions/MW_SRFA2.png" alt="">
   <h1>SRFA Sultan Concrete Division 2</h1>
-  <p class="updated">Last updated 19 July 2026, 12:19 CAT</p>
+  <p class="updated">Last updated 19 July 2026, 16:44 CAT</p>
 </header>
 <a href="../" class="back-link">&#x2190; All Leagues</a>
 <nav class="tabs">
@@ -38,7 +52,7 @@
 <div class="v2-stat"><span class="v2-stat-num">2</span><span class="v2-stat-label">GOALS</span></div>
 <div class="v2-stat"><span class="v2-stat-num">2.0</span><span class="v2-stat-label">GOALS/GAME</span></div>
 </div>
-<p class="v2-updated">19 July 2026, 12:19 CAT</p>
+<p class="v2-updated">19 July 2026, 16:44 CAT</p>
 </div>
 <div class="v2-table-outer">
 <table class="v2-standings">
@@ -51,19 +65,19 @@
 <th class="v2-th-form">FORM</th>
 </tr></thead>
 <tbody>
-<tr class="pos-1"><td class="v2-pos v2-pos-leader"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 1.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_MAS.html">Mazabuka All Stars</a></td><td>1</td><td>1</td><td>0</td><td>0</td><td class="v2-tor">2:0</td><td>+2</td><td class="v2-pts">3</td><td class="v2-form"><span class="v2-form-badge v2-form-w">W</span></td></tr>
-<tr class="pos-2"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 2.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_CUNI.html">Catholic University</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
-<tr class="pos-3"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 3.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_GU.html">Gada United</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
-<tr class="pos-4"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 4.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_H.html">Hardknockers</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
-<tr class="pos-5"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 5.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_LIM.html">Limbe Sporting</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
-<tr class="pos-6"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 6.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_LUN.html">Lunzu Sundowns</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
-<tr class="pos-7"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 7.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_MICH.html">Michigan Select</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
-<tr class="pos-8"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 8.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_MNTI.html">Mnthunzi FC</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
-<tr class="pos-9"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 9.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_MYS.html">Mpemba Young Soccer</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
-<tr class="pos-10"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 10.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_MUB.html">MUBAS</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
-<tr class="pos-11"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 11.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_NYG.html">Neno Young Giants</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
-<tr class="pos-12"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 12.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_POYA.html">Poya FC</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
-<tr class="pos-13"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 13.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_PSS.html">PS Sporting</a></td><td>1</td><td>0</td><td>0</td><td>1</td><td class="v2-tor">0:2</td><td>-2</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-badge v2-form-l">L</span></td></tr>
+<tr class="pos-1"><td class="v2-pos v2-pos-leader"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 1.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_MAS.html#club-team-SRFA2_MAS">Mazabuka All Stars</a></td><td>1</td><td>1</td><td>0</td><td>0</td><td class="v2-tor">2:0</td><td>+2</td><td class="v2-pts">3</td><td class="v2-form"><span class="v2-form-badge v2-form-w">W</span></td></tr>
+<tr class="pos-2"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 2.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_CUNI.html#club-team-SRFA2_CU">Catholic University</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
+<tr class="pos-3"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 3.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_GU.html#club-team-SRFA2_GU">Gada United</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
+<tr class="pos-4"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 4.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_H.html#club-team-SRFA2_H">Hardknockers</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
+<tr class="pos-5"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 5.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_LIM.html#club-team-SRFA2_LIM">Limbe Sporting</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
+<tr class="pos-6"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 6.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_LUN.html#club-team-SRFA2_LUN">Lunzu Sundowns</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
+<tr class="pos-7"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 7.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_MICH.html#club-team-SRFA2_MS">Michigan Select</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
+<tr class="pos-8"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 8.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_MNTI.html#club-team-SRFA2_MFC">Mnthunzi FC</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
+<tr class="pos-9"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 9.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_MYS.html#club-team-SRFA2_MYS">Mpemba Young Soccer</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
+<tr class="pos-10"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 10.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_MUB.html#club-team-SRFA2_MUB">MUBAS</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
+<tr class="pos-11"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 11.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_NYG.html#club-team-SRFA2_NYG">Neno Young Giants</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
+<tr class="pos-12"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 12.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_POYA.html#club-team-SRFA2_PFC">Poya FC</a></td><td>0</td><td>0</td><td>0</td><td>0</td><td class="v2-tor">0:0</td><td>0</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-empty">&ndash;</span></td></tr>
+<tr class="pos-13"><td class="v2-pos"><span class="v2-arrow v2-arrow-same">&#x2192;</span> 13.</td><td class="v2-team-name"><a class="club-link" href="../clubs/MW_PSS.html#club-team-SRFA2_PSS">PS Sporting</a></td><td>1</td><td>0</td><td>0</td><td>1</td><td class="v2-tor">0:2</td><td>-2</td><td class="v2-pts">0</td><td class="v2-form"><span class="v2-form-badge v2-form-l">L</span></td></tr>
 </tbody></table>
 </div>
 </div>

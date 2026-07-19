@@ -5,7 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Raiply FC &middot; Raiply FC</title>
-<link rel="stylesheet" href="../style.css?v=93d87f72">
+<link rel="stylesheet" href="../style.css?v=7b838dfd">
+<script>
+  /* Club hubs link in with a #club-team-{code} fragment so the right row
+     can be highlighted (see hubs.py). Strip the hash immediately, before
+     the browser gets to it, so the page doesn't jump past the banner to
+     scroll the row into view — the row is highlighted via JS instead
+     (see the script at the end of the hub's content). */
+  (function(){
+    var h = location.hash;
+    if (h.indexOf('#club-team-') === 0) {
+      window.__clubTeamTarget = h.slice(1);
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  })();
+</script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-RCV8V3DEKV"></script>
 <script>
@@ -20,7 +34,7 @@
 <header class="site-header">
   
   <h1>Raiply FC</h1>
-  <p class="updated">Last updated 19 July 2026, 12:19 CAT</p>
+  <p class="updated">Last updated 19 July 2026, 16:44 CAT</p>
 </header>
 <a href="../" class="back-link">&#x2190; All Leagues</a>
 <nav class="tabs">
@@ -33,13 +47,14 @@
 <p class="v2-season">MZIMBA, NORTH</p>
 <h2 class="v2-mini-league">RAIPLY FC</h2>
 </div>
-<h3 class="v2-sec-title">Teams</h3>
+<h3 class="v2-sec-title">All Raiply FC Teams</h3>
 <div class="v2-results-outer">
 <table class="v2-results-table">
 <thead><tr><th class="v2-res-th-home">TEAM</th><th class="v2-res-th-away">COMPETITION</th><th class="v2-res-th-venue">POSITION</th></tr></thead>
 <tbody>
-<tr class="v2-res-row"><td class="v2-res-home"><a class="club-link" href="../nrfa/clubs/NRFA_RFC.html">Raiply FC</a></td><td class="v2-res-away"><a class="club-link" href="../nrfa/">Chiwemi Investment NRFA League One</a></td><td class="v2-res-venue">11th &middot; 0 pts</td></tr>
+<tr class="v2-res-row" id="club-team-NRFA_RFC"><td class="v2-res-home"><a class="club-link" href="../nrfa/clubs/NRFA_RFC.html">Raiply FC</a></td><td class="v2-res-away"><a class="club-link" href="../nrfa/">Chiwemi Investment NRFA League One</a></td><td class="v2-res-venue">11th &middot; 0 pts</td></tr>
 </tbody></table></div>
+<script>(function(){var id=window.__clubTeamTarget;if(!id)return;var el=document.getElementById(id);if(el)el.classList.add('v2-current-team');})();</script>
 <h3 class="v2-sec-title">Recent Results</h3>
 <div class="v2-results-outer">
 <table class="v2-results-table v2-results-compact">

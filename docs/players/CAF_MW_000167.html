@@ -5,7 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Maxwell Phodo &middot; Maxwell Phodo</title>
-<link rel="stylesheet" href="../style.css?v=93d87f72">
+<link rel="stylesheet" href="../style.css?v=7b838dfd">
+<script>
+  /* Club hubs link in with a #club-team-{code} fragment so the right row
+     can be highlighted (see hubs.py). Strip the hash immediately, before
+     the browser gets to it, so the page doesn't jump past the banner to
+     scroll the row into view — the row is highlighted via JS instead
+     (see the script at the end of the hub's content). */
+  (function(){
+    var h = location.hash;
+    if (h.indexOf('#club-team-') === 0) {
+      window.__clubTeamTarget = h.slice(1);
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  })();
+</script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-RCV8V3DEKV"></script>
 <script>
@@ -20,7 +34,7 @@
 <header class="site-header">
   
   <h1>Maxwell Phodo</h1>
-  <p class="updated">Last updated 19 July 2026, 12:19 CAT</p>
+  <p class="updated">Last updated 19 July 2026, 16:44 CAT</p>
 </header>
 <a href="../" class="back-link">&#x2190; All Leagues</a>
 <nav class="tabs">
