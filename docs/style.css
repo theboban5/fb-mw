@@ -302,6 +302,20 @@ table.v2-standings {
   color: #ffffff;
   line-height: 1.2;
 }
+/* Club overview page: link back up to the cross-competition club hub, so a
+   visitor can hop to another of the club's squads without going back. */
+.v2-hub-link {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #bfe8cf;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(191, 232, 207, 0.5);
+}
+.v2-hub-link:hover { color: #ffffff; border-bottom-color: #ffffff; }
 
 /* Clickable club names (standings + results) navigate to the club overview.
    Keep the surrounding text styling — links read as plain names until hovered. */

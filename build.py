@@ -117,6 +117,11 @@ def _build_league(ds, cs, dist_root, updated):
         # as "currently viewing" (see hubs.render_club_hub).
         club_hrefs={code: f"../clubs/{t.club_id}.html#club-team-{code}"
                     for code, t in league.teams.items()},
+        # Club overview pages link back up to the cross-competition hub, so
+        # a visitor can hop to another of the club's squads without going
+        # back through a league page (see render.render_club).
+        club_names={code: ds.clubs[t.club_id].name
+                    for code, t in league.teams.items() if t.club_id in ds.clubs},
     )
     return league, rows, played_count
 

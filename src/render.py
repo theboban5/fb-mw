@@ -647,13 +647,18 @@ def _club_match_table(section_matches, teams, crest, goals_by_match, show_scorer
 
 
 def render_club(code, matches, teams, rows, season="", league_name="", crest=None,
-                club_logo="", form=None, goals_by_match=None):
+                club_logo="", form=None, goals_by_match=None,
+                club_hub_href=None, club_name=None):
     """A single club's overview: crest, table position + form, fixtures, results.
 
     Scoped to one team within one league (the team you clicked). Fixtures are
     listed soonest-first, results newest-first. Scorers show under results only
     when the league supplies goal data (currently the Super League). No JS: a
     single club needs no matchday pager, so this works with JavaScript off.
+
+    `club_hub_href`/`club_name`, when given, add a link up to the club's
+    cross-competition hub (see hubs.render_club_hub) so a visitor can jump
+    to the club's other squads without going back through a league page.
     """
     crest = crest or (lambda c: None)
     form = form or {}
@@ -678,12 +683,19 @@ def render_club(code, matches, teams, rows, season="", league_name="", crest=Non
         f'<img class="v2-mini-logo" src="{escape(club_logo)}" alt="">' if club_logo else ""
     )
 
+    hub_link = (
+        f'<a class="v2-hub-link" href="{escape(club_hub_href)}">'
+        f'All {escape(club_name or name)} Teams &rarr;</a>'
+        if club_hub_href else ""
+    )
+
     v2 = [
         '<div class="v2-content">',
         '<div class="v2-mini-banner">',
         crest_img,
         f'<p class="v2-season">SEASON {escape(season)}</p>',
         f'<h2 class="v2-mini-league">{escape(name.upper())}</h2>',
+        hub_link,
         "</div>",  # /v2-mini-banner
     ]
 
@@ -885,7 +897,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
                goals_by_match=None, top_scorers=None, own_goal_total=0, team_scorers=None,
                more_scorers=None, promotion_spots=None, relegation_spots=None,
                withdrawn=None, adjustment_reasons=None, crest_keys=None,
-               competition_id="", club_hrefs=None):
+               competition_id="", club_hrefs=None, club_names=None):
     os.makedirs(dist, exist_ok=True)
     base = _read(os.path.join(templates_dir, "base.html"))
 
@@ -969,11 +981,17 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
     club_back = (
         f'<a href="../index.html" class="back-link">&#x2190; {escape(league_name)}</a>'
     )
+    club_names = club_names or {}
     for code, team in teams.items():
+        hub_href = (
+            f"{club_css_prefix}clubs/{team.club_id}.html#club-team-{code}"
+            if team.club_id else None
+        )
         content = render_club(
             code, matches, teams, rows, season=season, league_name=league_name,
             crest=club_crest, club_logo=club_crest(code) or "",
             form=form, goals_by_match=goals_by_match,
+            club_hub_href=hub_href, club_name=club_names.get(code, team.name),
         )
         html = (
             base.replace("{{TITLE}}", escape(team.name))
