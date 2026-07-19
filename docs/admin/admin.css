@@ -1,0 +1,283 @@
+/* EverLeague data-entry UI — standalone stylesheet (the public site's
+   style.css is deliberately not shared; this page evolves independently). */
+
+:root {
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --ink: #16181d;
+  --muted: #6b7280;
+  --line: #d9dde3;
+  --accent: #0a6e31;
+  --accent-ink: #ffffff;
+  --danger: #b42318;
+  --warn-bg: #fef3c7;
+  --warn-line: #f59e0b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101216;
+    --card: #1a1d23;
+    --ink: #e7e9ee;
+    --muted: #9aa1ad;
+    --line: #2c313a;
+    --accent: #2f9e57;
+    --accent-ink: #06130b;
+    --warn-bg: #3a2f10;
+    --warn-line: #a16207;
+  }
+}
+
+* { box-sizing: border-box; }
+/* The display rules below (form label, .card, …) would otherwise override
+   the hidden attribute's UA display:none. */
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.topbar h1 {
+  font-size: 1.05rem;
+  margin: 0;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+main {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 1rem 0.9rem 4rem;
+}
+h2 { font-size: 1.15rem; margin: 0.2rem 0 0.8rem; }
+.muted { color: var(--muted); font-size: 0.85rem; }
+code { font-size: 0.85em; }
+
+#banner {
+  padding: 0.6rem 0.9rem;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.9rem;
+}
+#banner button { margin-left: 0.6rem; }
+
+.card-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.8rem 0.9rem;
+  font-size: 1rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+.card:active { transform: scale(0.995); }
+.card .sub { display: block; color: var(--muted); font-size: 0.8rem; margin-top: 0.15rem; }
+.card .badge {
+  float: right;
+  font-size: 0.72rem;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  background: var(--line);
+  color: var(--ink);
+}
+.card .badge.saved { background: var(--accent); color: var(--accent-ink); }
+.matchday-head {
+  margin: 0.7rem 0 0.1rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+form label { display: block; margin: 0.65rem 0; font-size: 0.9rem; }
+form label.inline { display: inline-block; margin: 0.4rem 0 0; }
+input, select, button {
+  font: inherit;
+  color: inherit;
+}
+input[type="text"], input[type="number"], input[type="date"], input[type="time"],
+input[type="url"], input[type="password"], select {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+}
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
+
+button.primary {
+  display: block;
+  width: 100%;
+  margin-top: 1rem;
+  padding: 0.7rem;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+button.primary:disabled { opacity: 0.55; }
+button.ghost {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.warning {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.88rem;
+  margin-bottom: 0.6rem;
+}
+
+/* Scoreline */
+.scoreline {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.8rem 0;
+}
+.scoreline .dash { color: var(--muted); }
+.scorebox { flex: 1; display: flex; align-items: center; gap: 0.5rem; }
+.scorebox span { flex: 1; font-weight: 600; font-size: 0.92rem; }
+.scorebox input { width: 3.2rem; text-align: center; font-size: 1.2rem; margin: 0; }
+.scorebox:first-child { justify-content: flex-end; text-align: right; }
+
+/* Combobox (autocomplete) */
+.combo { position: relative; margin-top: 0.25rem; }
+.combo input {
+  width: 100%;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  margin: 0;
+}
+.combo input.selected { border-color: var(--accent); }
+.combo .options {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  max-height: 15rem;
+  overflow-y: auto;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+}
+.combo .options div {
+  padding: 0.5rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.92rem;
+}
+.combo .options div .sub { color: var(--muted); font-size: 0.78rem; margin-left: 0.4rem; }
+.combo .options div.hi { background: var(--line); }
+.combo .options div.special { color: var(--accent); font-weight: 600; }
+
+/* Scorer rows */
+fieldset {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 1rem 0 0;
+  padding: 0.6rem 0.8rem 0.8rem;
+}
+legend { font-size: 0.9rem; padding: 0 0.3rem; }
+.scorer-row {
+  border-bottom: 1px dashed var(--line);
+  padding: 0.55rem 0;
+}
+.scorer-row:last-of-type { border-bottom: 0; }
+.scorer-row .line1 { display: flex; gap: 0.5rem; align-items: center; }
+.scorer-row .line1 .combo { flex: 1; margin: 0; }
+.scorer-row .team-toggle {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  background: var(--card);
+  cursor: pointer;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  max-width: 7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scorer-row .line2 {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  align-items: center;
+}
+.scorer-row .line2 input[type="number"] { width: 4.2rem; margin: 0; }
+.scorer-row .line2 select { width: auto; flex: 1; margin: 0; }
+.scorer-row .remove {
+  background: none;
+  border: 0;
+  color: var(--danger);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+}
+
+/* Modals */
+dialog {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  width: min(92vw, 26rem);
+  padding: 1rem 1.1rem;
+}
+dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+.modal-actions .primary { width: auto; margin-top: 0; padding: 0.55rem 1rem; }
+
+/* Toast */
+#toast {
+  position: fixed;
+  bottom: 1.2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--bg);
+  padding: 0.6rem 1rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  z-index: 20;
+  max-width: 90vw;
+}
+#toast.error { background: var(--danger); color: #fff; }
