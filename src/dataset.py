@@ -95,6 +95,12 @@ SOURCE_TYPES = frozenset(
      "backfill", "placeholder", "unknown"}
 )
 CONFIDENCES = frozenset({"unconfirmed", "confirmed", "official"})
+# matches.stage vocabulary for knockout (type=cup) competitions. League rows
+# use free-form md_<n> stages instead; presentation order lives in adapt.
+# Two-legged ties are future work: a `leg` column would sit beside `stage`
+# in the matches tab (and as a field on Match below) — until then every tie
+# is single-leg.
+KNOCKOUT_STAGES = frozenset({"r64", "r32", "r16", "qf", "sf", "final", "3p"})
 # "" = ordinary goal with no recorded type; the sheet leaves the cell blank.
 GOAL_TYPES = frozenset({"", "open_play", "penalty", "free_kick", "header", "own_goal"})
 GENDERS = frozenset({"m", "w"})
@@ -211,6 +217,13 @@ class Match:
     confidence: str
     verified_by: str
     verified_at: str
+    # Knockout-only columns (validate.py rejects them on league rows). The
+    # goals columns are the full-time-of-record score — after extra time when
+    # extra_time is set; the shootout lives only in the pens columns and its
+    # kicks are never rows in the goals tab.
+    extra_time: bool = False
+    home_pens: "int | None" = None
+    away_pens: "int | None" = None
 
     @property
     def is_placeholder(self) -> bool:
@@ -405,6 +418,14 @@ def _date(value, label, tab, i, required=False):
     return value
 
 
+def _stage(value: str) -> str:
+    """Normalize matches.stage: the sheet mixes md_1 / matchday_1 / case."""
+    v = value.strip().lower()
+    if v.startswith("matchday_"):
+        v = "md_" + v[len("matchday_"):]
+    return v
+
+
 def _source_type(value, tab, i):
     """Blank source_type is common in the sheet; it means 'unknown'."""
     return _enum(value or "unknown", SOURCE_TYPES, "source_type", tab, i)
@@ -564,10 +585,22 @@ def parse_matches(text: str) -> "dict[str, Match]":
         for label, g in (("home_goals", hg), ("away_goals", ag)):
             if g is not None and g < 0:
                 raise DataError(f"matches row {i}: {label} cannot be negative ({g})")
+        # extra_time / home_pens / away_pens are newer optional columns: the
+        # header may be absent entirely (older snapshots), which reads the
+        # same as every cell blank.
+        et = r.get("extra_time", "")
+        if et not in ("", "0", "1"):
+            raise DataError(
+                f"matches row {i}: extra_time {et!r} must be blank, 0 or 1")
+        hp = _opt_int(r.get("home_pens", ""), "home_pens", "matches", i)
+        ap = _opt_int(r.get("away_pens", ""), "away_pens", "matches", i)
+        for label, p in (("home_pens", hp), ("away_pens", ap)):
+            if p is not None and p < 0:
+                raise DataError(f"matches row {i}: {label} cannot be negative ({p})")
         _put(out, mid, Match(
             mid, _require(r, "competition_id", "matches", i),
             _require(r, "season_id", "matches", i),
-            r.get("stage", ""),
+            _stage(r.get("stage", "")),
             _opt_int(r.get("matchday", ""), "matchday", "matches", i),
             _date(r.get("date", ""), "date", "matches", i),
             r.get("kickoff", ""), r.get("venue_id", ""),
@@ -580,6 +613,7 @@ def parse_matches(text: str) -> "dict[str, Match]":
             _enum(_require(r, "confidence", "matches", i), CONFIDENCES,
                   "confidence", "matches", i),
             r.get("verified_by", ""), r.get("verified_at", ""),
+            extra_time=(et == "1"), home_pens=hp, away_pens=ap,
         ), "matches", i)
     return out
 
