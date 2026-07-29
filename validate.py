@@ -213,6 +213,52 @@ def check_dates(ds):
     return errors
 
 
+def check_cup_rules(ds):
+    """Check 8: knockout columns and stages are used coherently.
+
+    A shootout exists only to break a level score, so pens require a full,
+    level score and can never themselves be level. Shootout kicks are not
+    goals rows (check 5 would reject them as exceeding the score), so pens
+    live only in these columns. extra_time/pens are meaningless outside a
+    cup. Cup stages must come from the knockout vocabulary; league stages
+    stay free-form — the historic sheet mixes md_1/matchday_2 and breaking
+    it retroactively helps nobody.
+    """
+    errors = []
+    for m in ds.matches.values():
+        lbl = f"matches {m.match_id}"
+        comp = ds.competitions.get(m.competition_id)
+        is_cup = comp is not None and comp.type == "cup"
+        if (m.home_pens is None) != (m.away_pens is None):
+            errors.append(f"{lbl}: only one of home_pens/away_pens present")
+        has_pens = m.home_pens is not None and m.away_pens is not None
+        if (has_pens or m.home_pens is not None or m.away_pens is not None
+                or m.extra_time) and not is_cup:
+            errors.append(
+                f"{lbl}: extra_time/pens on {m.competition_id!r}, "
+                f"which is not a cup"
+            )
+        if has_pens:
+            if not m.has_score:
+                errors.append(f"{lbl}: pens present but no score")
+            elif m.home_goals != m.away_goals:
+                errors.append(
+                    f"{lbl}: pens present but score {m.home_goals}:{m.away_goals} "
+                    f"is not level"
+                )
+            if m.home_pens == m.away_pens:
+                errors.append(
+                    f"{lbl}: home_pens == away_pens ({m.home_pens}) — "
+                    f"a shootout has a winner"
+                )
+        if is_cup and not m.is_placeholder and m.stage not in dataset.KNOCKOUT_STAGES:
+            errors.append(
+                f"{lbl}: stage {m.stage!r} is not a knockout stage "
+                f"({', '.join(sorted(dataset.KNOCKOUT_STAGES))})"
+            )
+    return errors
+
+
 def check_drift(texts, canonical_dir):
     """Check 7: every ID present in the previous snapshot must still exist.
 
@@ -253,6 +299,7 @@ def validate(texts, canonical_dir=CANONICAL_DIR, allow_deletions=False):
         errors += check_match_consistency(ds)
         errors += check_goal_counts(ds)
         errors += check_dates(ds)
+        errors += check_cup_rules(ds)
         try:
             ds.active_season()
         except dataset.DataError as err:
