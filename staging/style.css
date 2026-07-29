@@ -1,0 +1,976 @@
+:root {
+  --bg: #ffffff;
+  --ink: #16181c;
+  --muted: #6b7280;
+  --line: #e6e8eb;
+  --accent: #0b6b3a;
+  --row-alt: #fafbfc;
+  --max: 660px;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  line-height: 1.45;
+}
+
+.site-header { max-width: var(--max); margin: 0 auto; padding: 20px 16px 10px; }
+.site-header h1 { margin: 0; font-size: 1.35rem; letter-spacing: -0.01em; }
+.updated { margin: 3px 0 0; color: var(--muted); font-size: 0.8rem; }
+
+/* ─── Back link (league pages → landing) ─────────────── */
+.back-link {
+  display: block;
+  max-width: var(--max);
+  margin: 6px auto 0;
+  padding: 0 16px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+}
+.back-link:hover { color: var(--accent); }
+
+.tabs {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 0 16px;
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;            /* a 4th tab (SL) scrolls on narrow screens */
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;       /* hide the scrollbar; the row stays one line */
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tabs a {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 10px 12px;
+  text-decoration: none;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.95rem;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.tabs a.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+main { max-width: var(--max); margin: 0 auto; padding: 16px; }
+
+.empty { color: var(--muted); }
+
+/* ─── Club crests & league logos ─────────────────────── */
+.club-crest {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  vertical-align: middle;
+}
+.crest-pre { margin-right: 8px; }
+.crest-post { margin-left: 8px; }
+
+
+
+.site-footer {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 24px 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+@media (min-width: 560px) {
+  .site-header h1 { font-size: 1.6rem; }
+  .standings th, .standings td { padding: 9px 10px; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15171a;
+    --ink: #e9eaec;
+    --muted: #9aa1ab;
+    --line: #2a2e34;
+    --accent: #3fb37a;
+    --row-alt: #1b1e22;
+  }
+}
+
+
+/* ─── V2: fussball.de style ──────────────────────────── */
+
+.site-header { display: none; }
+
+/* hero banner */
+.v2-hero {
+  margin: -16px -16px 0;
+  padding: 28px 20px 32px;
+  background: linear-gradient(170deg, #163520 0%, #0d1c12 100%);
+  text-align: center;
+}
+.v2-season {
+  margin: 0 0 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.55);
+}
+.v2-league-name {
+  margin: 0 0 22px;
+  font-size: clamp(1.25rem, 5vw, 2rem);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #ffffff;
+  line-height: 1.15;
+}
+.v2-stats {
+  display: flex;
+  justify-content: center;
+  gap: 36px;
+}
+.v2-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.v2-stat-num {
+  font-size: clamp(2.8rem, 9vw, 4.5rem);
+  font-weight: 900;
+  line-height: 1;
+  color: #6dbf67;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.v2-stat-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6dbf67;
+  border: 1px solid #6dbf67;
+  padding: 2px 7px;
+  border-radius: 2px;
+}
+.v2-updated {
+  margin: 18px 0 0;
+  font-size: 0.68rem;
+  color: rgba(255,255,255,0.4);
+}
+.v2-hero-logo {
+  display: block;
+  width: 88px;
+  height: 88px;
+  margin: 0 auto 18px;
+  object-fit: contain;
+  background: #ffffff;
+  border-radius: 50%;
+  padding: 10px;
+  box-shadow: 0 2px 14px rgba(0,0,0,0.3);
+}
+.v2-mini-logo {
+  display: block;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 8px;
+  object-fit: contain;
+  background: #ffffff;
+  border-radius: 50%;
+  padding: 7px;
+  box-shadow: 0 1px 8px rgba(0,0,0,0.25);
+}
+
+/* V2 table */
+.v2-table-outer {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -16px;
+}
+table.v2-standings {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.88rem;
+  background: #ffffff;
+  color: #1c1c1c;
+}
+.v2-standings thead tr { background: #1c1c1c; }
+.v2-standings th {
+  padding: 10px 8px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  color: #ffffff;
+  border: none;
+  white-space: nowrap;
+}
+.v2-th-team { text-align: left; padding-left: 14px; }
+.v2-th-pos { width: 4.5rem; }
+.v2-standings td {
+  padding: 12px 8px;
+  text-align: center;
+  border-bottom: 1px solid #e4e4e4;
+  background: #ffffff;
+  color: #1c1c1c;
+  white-space: nowrap;
+}
+.v2-standings tbody tr:nth-child(even) td { background: #f5f5f5; }
+.v2-team-name { text-align: left; font-weight: 700; padding-left: 14px; }
+.v2-pos {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #555;
+}
+.v2-pos-leader {
+  background: #5aad4e !important;
+  color: #ffffff !important;
+  font-weight: 800;
+}
+.v2-pos-promotion {
+  background: #8fcf82 !important;
+  color: #ffffff !important;
+  font-weight: 800;
+}
+.v2-pos-relegation {
+  background: #c0392b !important;
+  color: #ffffff !important;
+  font-weight: 800;
+}
+.v2-arrow { color: #bbb; margin-right: 2px; font-size: 0.78rem; }
+.v2-pos-leader .v2-arrow,
+.v2-pos-promotion .v2-arrow,
+.v2-pos-relegation .v2-arrow { color: rgba(255,255,255,0.8); }
+.v2-pts {
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: #1c1c1c;
+}
+.v2-th-pts { text-align: center; }
+.v2-tor { font-variant-numeric: tabular-nums; }
+
+/* dynamic position-change arrows (override the neutral base, but never the
+   leader row whose arrow stays light against the green fill) */
+.v2-arrow-up { color: #2e9e4f; }
+.v2-arrow-down { color: #d33a3a; }
+.v2-arrow-same { color: #bbb; }
+
+/* form guide: five W/D/L badges, oldest left → newest right */
+.v2-th-form { text-align: center; }
+.v2-form { white-space: nowrap; }
+.v2-form-badge {
+  display: inline-block;
+  width: 17px;
+  height: 17px;
+  line-height: 17px;
+  margin: 0 1px;
+  border-radius: 3px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-align: center;
+  color: #ffffff;
+  vertical-align: middle;
+}
+.v2-form-w { background: #2e9e4f; }
+.v2-form-d { background: #9aa1ab; }
+.v2-form-l { background: #d33a3a; }
+.v2-form-empty { color: #bbb; }
+
+/* V2 results - mini banner */
+.v2-mini-banner {
+  margin: -16px -16px 0;
+  padding: 16px 20px 14px;
+  background: linear-gradient(170deg, #163520 0%, #0d1c12 100%);
+  text-align: center;
+}
+.v2-mini-league {
+  margin: 4px 0 0;
+  font-size: clamp(1.1rem, 3vw, 1.5rem);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #ffffff;
+  line-height: 1.2;
+}
+/* Club overview page: link back up to the cross-competition club hub, so a
+   visitor can hop to another of the club's squads without going back. */
+.v2-hub-link {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #bfe8cf;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(191, 232, 207, 0.5);
+}
+.v2-hub-link:hover { color: #ffffff; border-bottom-color: #ffffff; }
+
+/* Clickable club names (standings + results) navigate to the club overview.
+   Keep the surrounding text styling — links read as plain names until hovered. */
+.club-link { color: inherit; text-decoration: none; }
+.club-link:hover { text-decoration: underline; }
+
+/* Club overview: position/record/form summary beneath the mini banner. */
+.v2-club-summary {
+  padding: 14px 4px 4px;
+  text-align: center;
+}
+.v2-club-standing {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+.v2-club-record {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.v2-club-form { margin-top: 10px; }
+
+/* V2 results - matchday pager (one matchday at a time, JS-enhanced) */
+.v2-md-pager {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  margin-bottom: 2px;
+  background: #ffffff;
+  border-bottom: 1px solid #e4e4e4;
+}
+.v2-md-pager[hidden] { display: none; }
+.v2-md-strip {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+  padding: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.v2-md-strip::-webkit-scrollbar { display: none; }
+.v2-md-chip {
+  flex: 0 0 auto;
+  min-width: 2.2rem;
+  padding: 7px 11px;
+  border: 1px solid #d8d8d8;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1c1c1c;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.v2-md-chip-upcoming {
+  border-style: dashed;
+  color: #8a9099;
+}
+.v2-md-chip.active {
+  background: #0b6b3a;
+  border: 1px solid #0b6b3a;
+  color: #ffffff;
+}
+.v2-md-nav {
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d8d8d8;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #1c1c1c;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.v2-md-nav:disabled { opacity: 0.35; cursor: default; }
+.v2-md-group[hidden] { display: none; }
+
+/* V2 results - table */
+.v2-results-outer {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -16px;
+}
+table.v2-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.88rem;
+  background: #ffffff;
+  color: #1c1c1c;
+}
+.v2-results-table thead tr { background: #1c1c1c; }
+.v2-results-table th {
+  padding: 10px 10px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffffff;
+  border: none;
+  white-space: nowrap;
+  text-align: center;
+}
+.v2-res-th-date { text-align: left; padding-left: 14px; }
+.v2-res-th-home { text-align: right; padding-right: 14px; }
+.v2-res-th-away { text-align: left; padding-left: 14px; }
+.v2-res-th-venue { text-align: left; padding-left: 14px; }
+.v2-md-row td {
+  background: #2d2d2d;
+  color: #ffffff;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 14px;
+}
+.v2-res-row td {
+  padding: 11px 10px;
+  border-bottom: 1px solid #e4e4e4;
+  background: #ffffff;
+  color: #1c1c1c;
+  white-space: nowrap;
+}
+.v2-res-row.alt td { background: #f5f5f5; }
+/* Club hub "Teams" table: highlight the row for the team the visitor
+   arrived from (see build.py's #club-team-{code} fragment links). The
+   `.v2-current-team` class is added by JS without scrolling (hubs.py /
+   templates/base.html); `:target` is a no-JS fallback that does scroll. */
+.v2-res-row:target td,
+.v2-res-row.v2-current-team td {
+  background: #e5f6ea;
+  box-shadow: inset 3px 0 0 #0b6b3a;
+}
+.v2-res-row:target .v2-res-home a::after,
+.v2-res-row.v2-current-team .v2-res-home a::after {
+  content: " \2022 viewing";
+  margin-left: 4px;
+  font-size: 0.72em;
+  font-weight: 600;
+  color: #0b6b3a;
+}
+.v2-res-date {
+  text-align: left;
+  padding-left: 14px !important;
+  color: #666;
+  font-size: 0.82rem;
+  min-width: 7rem;
+}
+.v2-res-home {
+  text-align: right;
+  font-weight: 700;
+  padding-right: 14px !important;
+}
+.v2-res-score {
+  text-align: center;
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #1c1c1c;
+  letter-spacing: -0.01em;
+  padding: 11px 16px !important;
+}
+.v2-res-score.v2-res-vs {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9aa1ab;
+}
+.v2-res-away {
+  text-align: left;
+  font-weight: 700;
+  padding-left: 14px !important;
+}
+.v2-res-venue {
+  text-align: left;
+  padding-left: 14px !important;
+  color: #666;
+  font-size: 0.82rem;
+}
+.v2-empty {
+  background: #ffffff;
+  color: #666;
+  padding: 20px 14px;
+  font-size: 0.88rem;
+}
+
+/* ─── V2 mobile (≤ 540px) ───────────────────────────── */
+@media (max-width: 540px) {
+  /* standings: hide W, D, L, GOALS, DIFF — show POS TEAM P PTS FORM.
+     :not(.scorers-table) so the goalscorers table (which shares .v2-standings
+     but has GOALS as its 4th column) keeps every column. */
+  .v2-standings:not(.scorers-table) th:nth-child(4),
+  .v2-standings:not(.scorers-table) th:nth-child(5),
+  .v2-standings:not(.scorers-table) th:nth-child(6),
+  .v2-standings:not(.scorers-table) th:nth-child(7),
+  .v2-standings:not(.scorers-table) th:nth-child(8),
+  .v2-standings:not(.scorers-table) td:nth-child(4),
+  .v2-standings:not(.scorers-table) td:nth-child(5),
+  .v2-standings:not(.scorers-table) td:nth-child(6),
+  .v2-standings:not(.scorers-table) td:nth-child(7),
+  .v2-standings:not(.scorers-table) td:nth-child(8) { display: none; }
+  .v2-standings th,
+  .v2-standings td { padding: 11px 4px; }
+  .v2-form-badge { width: 16px; height: 16px; line-height: 16px; }
+  .v2-th-pos { width: 3rem; }
+  .v2-th-team,
+  .v2-team-name { padding-left: 8px !important; }
+  /* let long team names wrap so the FORM column still fits on a phone.
+     Note the td qualifier: it must out-specify `.v2-standings td { nowrap }`. */
+  .v2-standings td.v2-team-name { white-space: normal; }
+
+  /* results: hide date and venue columns — HOME RESULT AWAY is enough */
+  .v2-res-th-date,
+  .v2-res-date { display: none; }
+  .v2-res-th-venue,
+  .v2-res-venue { display: none; }
+  .v2-res-row td { padding: 11px 8px; }
+  .v2-res-home { padding-right: 10px !important; }
+  .v2-res-away { padding-left: 10px !important; }
+  .v2-res-score { padding: 11px 12px !important; }
+  .v2-md-row td { padding: 6px 10px; }
+
+  /* top scorers: fixed layout pins the table to the phone width so the GOALS
+     column stays visible; rank/goals get just enough, player & team wrap. */
+  table.scorers-table { table-layout: fixed; width: 100%; }
+  .scorers-table .scr-rank,
+  .scorers-table .scr-th-rank { width: 2.2rem; padding-left: 8px; }
+  .scorers-table .scr-goals,
+  .scorers-table .scr-th-goals { width: 3.4rem; }
+  .scorers-table .scr-player,
+  .scorers-table .scr-team { padding-left: 8px; }
+}
+
+/* ─── Season overview (position-by-matchday chart) ───── */
+.ov-caption { color: var(--muted); font-size: 0.78rem; margin: 0 0 12px; }
+.ov-chart-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+}
+.ov-chart-wrap svg {
+  display: block;
+  margin: 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.ov-legend {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 16px;
+}
+.ov-legend-item { display: flex; align-items: center; gap: 7px; font-size: 0.8rem; }
+.ov-swatch {
+  width: 16px;
+  height: 4px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+.ov-legend-name { color: var(--ink); }
+
+/* Design A: full-bleed white card. No overflow here — the chart-wrap scrolls
+   on its own and the legend wraps within this padding (never clipped). */
+.ov-outer {
+  margin: 0 -16px;
+  padding: 18px 16px 20px;
+  background: #ffffff;
+}
+.ov-caption { color: #666; }
+.ov-legend-name { color: #1c1c1c; }
+
+
+/* ─── Landing page ───────────────────────────────────── */
+/* The tabbed list fills the page top-down, so it isn't vertically centred. */
+body.landing {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.landing-main {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 32px 16px 48px;
+  width: 100%;
+}
+.landing-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+.landing-title {
+  margin: 0;
+  font-size: clamp(1.8rem, 6vw, 2.8rem);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.landing-sub {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* ─── Landing: category tabs ─────────────────────────── */
+/* Slim tabs stick to the top of the viewport; opaque background keeps the
+   list legible as it scrolls underneath. */
+.comp-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: 0 -16px;
+  padding: 0 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.comp-tab-row {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.comp-tab-row::-webkit-scrollbar { display: none; }
+.comp-tab {
+  flex: 1 0 auto;
+  min-height: 46px;
+  padding: 11px 18px;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font-family: inherit;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.comp-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.comp-panels { padding-top: 8px; }
+/* Belt-and-braces with the `hidden` attribute so inactive tabs stay hidden. */
+.comp-panel[hidden] { display: none; }
+
+/* ─── Landing: group subheadings + competition rows ──── */
+.lc-group {
+  margin: 26px 0 2px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+}
+.comp-panel > .lc-group:first-child { margin-top: 14px; }
+
+.lc-list {
+  display: flex;
+  flex-direction: column;
+}
+.lc-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+  color: inherit;
+}
+.lc-list .lc-row:last-child { border-bottom: 0; }
+.lc-logo {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+.lc-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0; /* let long competition names wrap instead of overflowing */
+  flex: 1 1 auto;
+}
+.lc-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+  overflow-wrap: anywhere; /* long league names wrap instead of overflowing on phones */
+}
+.lc-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.lc-arrow {
+  flex: 0 0 auto;
+  font-size: 1.15rem;
+  color: var(--muted);
+  transition: transform 0.15s, color 0.15s;
+}
+a.lc-row:hover .lc-name { color: var(--accent); }
+a.lc-row:hover .lc-arrow { color: var(--accent); transform: translateX(3px); }
+
+/* ─── Coming-soon (roadmap) rows ─────────────────────── */
+.lc-row.is-soon { cursor: default; }
+.lc-row.is-soon .lc-name { color: var(--muted); font-weight: 600; }
+.lc-badge {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  background: var(--row-alt);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ─── Landing: tier-pyramid disclosure (Men's leagues) ── */
+/* Native <details>/<summary>: tap to expand, no JS, works the same on touch
+   and desktop. */
+.tier-info { margin: 2px 0 12px; }
+.tier-info summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  list-style: none;
+}
+.tier-info summary::marker { content: ""; }
+.tier-info summary::-webkit-details-marker { display: none; }
+.tier-info-mark { font-size: 0.95rem; }
+
+.tier-pyramid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 0 4px;
+}
+.tier-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--row-alt);
+  border: 1px solid var(--line);
+}
+/* Widths grow tier 1 -> tier 3 so the stack reads as an inverted pyramid. */
+.tier-row.tier-1 { width: 58%; }
+.tier-row.tier-2 { width: 78%; }
+.tier-row.tier-3 { width: 100%; }
+.tier-num {
+  font-size: 0.64rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.tier-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.tier-link {
+  font-size: 0.8rem;
+  line-height: 1;
+  color: var(--muted);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   GOALSCORERS (Super League only — these classes are never emitted elsewhere)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Scorers under each match result ────────────────────── */
+.v2-scorers-row td {
+  padding: 4px 14px 9px;
+  border-bottom: 1px solid #e4e4e4;
+  background: #ffffff;
+  white-space: normal;
+}
+.v2-scorers-row.alt td { background: #f5f5f5; }
+/* Each side owns half the row and meets at a central gutter, so home & away
+   flank the score. Fixed halves mean a lone scorer keeps its column (home stays
+   left, away stays right) instead of drifting to the centre. */
+.v2-match-scorers {
+  display: flex;
+  font-size: 0.76rem;
+  color: #555;
+}
+.v2-ms-home, .v2-ms-away { flex: 1 1 0; }
+.v2-ms-home { text-align: right; padding-right: 17px; }
+.v2-ms-away { text-align: left; padding-left: 17px; }
+.v2-ms-line { display: block; line-height: 1.55; }
+
+/* Fixed layout pins the compact table to the container width and shares it
+   between three columns, so long team names wrap (instead of widening the table
+   and pushing the away team off a phone screen). Desktop has ample room, so names
+   still sit on one line there. */
+table.v2-results-compact { table-layout: fixed; width: 100%; }
+.v2-results-compact .v2-res-th-home,
+.v2-results-compact .v2-res-home,
+.v2-results-compact .v2-res-th-away,
+.v2-results-compact .v2-res-away { width: 42%; }
+.v2-results-compact .v2-res-th-score,
+.v2-results-compact .v2-res-score { width: 16%; }
+
+/* ── Compact (Super League) result row: date+venue as a centred caption ── */
+.v2-res-meta-row td {
+  padding: 9px 14px 1px;
+  text-align: center;
+  border-top: 1px solid #e4e4e4;
+  background: #ffffff;
+}
+.v2-res-meta-row.alt td { background: #f5f5f5; }
+.v2-res-meta {
+  font-size: 0.72rem;
+  color: #888;
+  letter-spacing: 0.02em;
+}
+/* The result cells in a compact group share the caption's background and lose
+   their own divider — the caption's top border separates one match from the next.
+   white-space:normal lets long team names wrap so the row fits a phone instead of
+   overflowing and clipping the away team (out-specifies `.v2-res-row td`'s nowrap). */
+.v2-res-row-compact td {
+  border-bottom: none;
+  padding-top: 4px;
+  white-space: normal;
+}
+
+/* On phones keep the two columns (home left, away right) rather than collapsing
+   to one centred stack — so it stays clear who scored for whom. Just tighten the
+   font and central gutter so both sides fit. */
+@media (max-width: 430px) {
+  .v2-match-scorers { font-size: 0.72rem; }
+  .v2-ms-home { padding-right: 8px; }
+  .v2-ms-away { padding-left: 8px; }
+}
+
+/* ── Top scorers table (reuses the league-table look) ───── */
+.scorers-table { margin-top: 6px; }
+.scorers-table .scr-player, .scorers-table .scr-team,
+.scorers-table .scr-th-player, .scorers-table .scr-th-team {
+  text-align: left;
+  white-space: normal;
+}
+.scorers-table .scr-rank, .scorers-table .scr-th-rank { width: 2rem; color: var(--muted); }
+.scorers-table .scr-goals, .scorers-table .scr-th-goals { font-weight: 800; }
+.scorers-table .scr-og-row td,
+.scorers-table .scr-more-row td { color: var(--muted); font-style: italic; }
+
+/* v2 needs higher specificity to beat the centred .v2-standings td/th rules. */
+.scorers-table .scr-player,
+.scorers-table .scr-team {
+  text-align: left;
+  padding-left: 14px;
+  white-space: normal;
+}
+.scorers-table .scr-th-player,
+.scorers-table .scr-th-team { text-align: left; padding-left: 14px; }
+.scorers-table .scr-rank { color: #555; }
+.scorers-table .scr-goals { font-size: 1.05rem; font-weight: 900; }
+
+/* Section heading for the v2 (Design A) overview goalscorer blocks. */
+.v2-sec-title {
+  margin: 26px 0 10px;
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #1c1c1c;
+}
+
+/* ── Per-team top-3 scorer cards ─────────────────────────── */
+.ts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 6px;
+}
+.ts-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.ts-team {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+.ts-crest { width: 20px; height: 20px; flex: 0 0 auto; }
+.ts-list { list-style: none; margin: 0; padding: 0; }
+.ts-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 0.82rem;
+}
+.ts-name { color: var(--ink); font-weight: 600; }
+.ts-goals { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--ink); }
+.ts-name { color: #1c1c1c; }
+.ts-goals { color: #1c1c1c; }
+
+/* ─── New-schema markers (badges, footnotes, unconfirmed) ───────────── */
+.v2-res-score.v2-res-badge {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #b3541e;
+}
+.v2-res-unconf { color: #9aa1ab; font-weight: 700; margin-left: 1px; }
+.v2-res-legend {
+  background: #ffffff;
+  color: #666;
+  padding: 8px 14px 12px;
+  margin: 0;
+  font-size: 0.78rem;
+}
+.v2-team-withdrawn { text-decoration: line-through; color: #9aa1ab; }
+.v2-pts-adj { color: #b3541e; font-weight: 800; margin-left: 1px; }
+.v2-footnotes {
+  list-style: none;
+  margin: 8px 2px 0;
+  padding: 0;
+  color: #666;
+  font-size: 0.78rem;
+}
+.v2-footnote { padding: 2px 0; }

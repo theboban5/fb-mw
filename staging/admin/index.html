@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>EverLeague — data entry</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+<header class="topbar">
+  <button id="back-btn" class="ghost" hidden>&larr; Back</button>
+  <h1 id="topbar-title">Data entry</h1>
+  <button id="settings-btn" class="ghost" title="Settings">&#9881;</button>
+</header>
+
+<div id="banner" hidden></div>
+
+<main id="main">
+  <!-- Home: league picker -->
+  <section id="view-home" hidden>
+    <p id="season-line" class="muted"></p>
+    <div id="league-list" class="card-list"></div>
+  </section>
+
+  <!-- League hub: choose an action -->
+  <section id="view-league" hidden>
+    <h2 id="league-title"></h2>
+    <div class="card-list">
+      <button class="card action" id="goto-fixture">＋ New fixture</button>
+      <button class="card action" id="goto-result">✎ Enter result</button>
+    </div>
+  </section>
+
+  <!-- New fixture -->
+  <section id="view-fixture" hidden>
+    <h2>New fixture</h2>
+    <form id="fixture-form" autocomplete="off">
+      <div class="row2">
+        <label>Matchday
+          <input type="number" id="fx-matchday" min="1" inputmode="numeric">
+        </label>
+        <label>Date
+          <input type="date" id="fx-date" required>
+        </label>
+      </div>
+      <div class="row2">
+        <label>Kickoff <span class="muted">(optional)</span>
+          <input type="time" id="fx-kickoff">
+        </label>
+        <label>Venue <span class="muted">(optional)</span>
+          <input type="text" id="fx-venue" list="venue-list" placeholder="Start typing…">
+          <datalist id="venue-list"></datalist>
+        </label>
+      </div>
+      <label>Home team
+        <div class="combo" id="fx-home"></div>
+      </label>
+      <label>Away team
+        <div class="combo" id="fx-away"></div>
+      </label>
+      <div class="row2">
+        <label>Source
+          <select id="fx-source"></select>
+        </label>
+        <label>Confidence
+          <select id="fx-confidence"></select>
+        </label>
+      </div>
+      <label>Source link <span class="muted">(optional)</span>
+        <input type="url" id="fx-ref" placeholder="link to post / article">
+      </label>
+      <p class="muted">Next ID (provisional): <code id="fx-provisional"></code></p>
+      <button type="submit" class="primary" id="fx-submit">Save fixture</button>
+    </form>
+  </section>
+
+  <!-- Enter result: match picker -->
+  <section id="view-picker" hidden>
+    <h2>Pick a match</h2>
+    <p id="picker-status" class="muted"></p>
+    <div id="match-list" class="card-list"></div>
+  </section>
+
+  <!-- Enter result: the result form -->
+  <section id="view-result" hidden>
+    <h2 id="result-title"></h2>
+    <p class="muted" id="result-meta"></p>
+    <form id="result-form" autocomplete="off">
+      <div id="replace-warning" class="warning" hidden>
+        This match already has a result. Saving again will <strong>replace</strong>
+        the score and all its goal rows.
+        <label class="inline"><input type="checkbox" id="rs-replace"> I want to replace it</label>
+      </div>
+      <div class="scoreline">
+        <div class="scorebox">
+          <span id="rs-home-name"></span>
+          <input type="number" id="rs-home-goals" min="0" inputmode="numeric">
+        </div>
+        <span class="dash">–</span>
+        <div class="scorebox">
+          <input type="number" id="rs-away-goals" min="0" inputmode="numeric">
+          <span id="rs-away-name"></span>
+        </div>
+      </div>
+      <div class="row2">
+        <label>Status
+          <select id="rs-status">
+            <option value="played">played</option>
+            <option value="postponed">postponed</option>
+            <option value="abandoned">abandoned</option>
+            <option value="cancelled">cancelled</option>
+          </select>
+        </label>
+        <label>Confidence
+          <select id="rs-confidence"></select>
+        </label>
+      </div>
+      <div class="row2">
+        <label>Source
+          <select id="rs-source"></select>
+        </label>
+        <label>Source link <span class="muted">(optional)</span>
+          <input type="url" id="rs-ref" placeholder="link to post / article">
+        </label>
+      </div>
+
+      <fieldset id="scorers-wrap">
+        <legend>Scorers <span id="scorer-counter" class="muted"></span></legend>
+        <div id="scorer-rows"></div>
+        <button type="button" class="ghost" id="add-scorer">＋ Add scorer</button>
+      </fieldset>
+
+      <button type="submit" class="primary" id="rs-submit">Save result</button>
+    </form>
+  </section>
+</main>
+
+<!-- New player modal -->
+<dialog id="player-modal">
+  <form id="player-form" method="dialog" autocomplete="off">
+    <h2>New player</h2>
+    <label>Full name
+      <input type="text" id="pl-name" required>
+    </label>
+    <label>Known as <span class="muted">(optional)</span>
+      <input type="text" id="pl-known">
+    </label>
+    <div class="row2">
+      <label>Position <span class="muted">(optional)</span>
+        <select id="pl-position">
+          <option value=""></option>
+          <option value="GK">GK</option>
+          <option value="DF">DF</option>
+          <option value="MF">MF</option>
+          <option value="FW">FW</option>
+        </select>
+      </label>
+      <label>Date of birth <span class="muted">(optional)</span>
+        <input type="date" id="pl-dob">
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="ghost" id="pl-cancel">Cancel</button>
+      <button type="submit" class="primary" id="pl-save">Create player</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Settings drawer -->
+<dialog id="settings-modal">
+  <form id="settings-form" method="dialog" autocomplete="off">
+    <h2>Settings</h2>
+    <label>Apps Script URL
+      <input type="url" id="set-url" placeholder="https://script.google.com/macros/s/…/exec">
+    </label>
+    <label>Entry token
+      <input type="password" id="set-token">
+    </label>
+    <p class="muted" id="set-ping-result"></p>
+    <div class="modal-actions">
+      <button type="button" class="ghost" id="set-ping">Ping</button>
+      <button type="submit" class="primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" hidden></div>
+
+<script src="admin.js"></script>
+</body>
+</html>

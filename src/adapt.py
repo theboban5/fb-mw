@@ -31,6 +31,7 @@ COMPETITION_SLUGS = {
     "MW_CRFA": "crfa",
     "MW_NRFA": "nrfa",
     "MW_SRFA2": "srfa2",
+    "MW_CRFA2": "crfa2",
     "MW_WP": "wp",
     "MW_KU19": "ku19",
     "MW_U16": "u16",
