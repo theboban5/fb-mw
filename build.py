@@ -75,15 +75,31 @@ def _build_league(ds, cs, dist_root, updated):
     """Render one competition+season into dist_root/<slug>/."""
     league = adapt.league_data(ds, cs.competition_id, cs.season_id)
 
-    table_kwargs = {
-        "points_win": league.points_win,
-        "points_draw": league.points_draw,
-        "adjustments": league.adjustments,
-    }
-    rows = standings.compute_standings(league.matches, league.teams, **table_kwargs)
-    form = standings.recent_form(league.matches, league.teams)
-    changes = standings.position_changes(league.matches, league.teams, **table_kwargs)
-    days, history = standings.position_history(league.matches, league.teams, **table_kwargs)
+    # A knockout has no table: skip every standings-shaped computation and
+    # render a bracket front page instead. Penalties never reach standings.py.
+    is_cup = league.kind == "cup"
+    if is_cup:
+        rows, form, changes, days, history = [], {}, {}, [], {}
+        cup_kwargs = {
+            "kind": "cup",
+            "md_labels": {md: adapt.STAGE_LABELS.get(s, s)
+                          for md, s in league.stage_of_matchday.items()},
+            "md_chips": {md: adapt.STAGE_CHIPS.get(s, s.upper())
+                         for md, s in league.stage_of_matchday.items()},
+            "bracket_rounds": adapt.cup_rounds(league.matches),
+            "stage_labels": adapt.STAGE_LABELS,
+        }
+    else:
+        table_kwargs = {
+            "points_win": league.points_win,
+            "points_draw": league.points_draw,
+            "adjustments": league.adjustments,
+        }
+        rows = standings.compute_standings(league.matches, league.teams, **table_kwargs)
+        form = standings.recent_form(league.matches, league.teams)
+        changes = standings.position_changes(league.matches, league.teams, **table_kwargs)
+        days, history = standings.position_history(league.matches, league.teams, **table_kwargs)
+        cup_kwargs = {}
     played_count = sum(1 for m in league.matches if m.played)
     total_goals = sum(m.home_goals + m.away_goals for m in league.matches if m.played)
     goals_per_game = total_goals / played_count if played_count > 0 else 0.0
@@ -123,6 +139,7 @@ def _build_league(ds, cs, dist_root, updated):
         # back through a league page (see render.render_club).
         club_names={code: ds.clubs[t.club_id].name
                     for code, t in league.teams.items() if t.club_id in ds.clubs},
+        **cup_kwargs,
     )
     return league, rows, played_count
 
@@ -280,9 +297,10 @@ def _landing_categories(ds, leagues):
     for items in buckets.values():
         items.sort(key=lambda it: it["sort"])
 
+    # The Airtel Top 8 left this roadmap when it went live from the data;
+    # listing it here as well would show it twice.
     men_cups = buckets[("men", "cup")] + [
         _soon("Cup", "FAM Charity Shield"),
-        _soon("Cup", "Airtel Top 8"),
         _soon("Cup", "Castel Challenge Cup"),
         _soon("Cup", "FDH Bank Cup"),
     ]

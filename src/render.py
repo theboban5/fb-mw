@@ -12,6 +12,13 @@ NAV_ITEMS = (
     ("overview.html", "Season Overview"),
 )
 
+# Cup pages: the bracket replaces standings as the front page, and there is
+# no Season Overview (position-over-time is meaningless in a knockout).
+CUP_NAV_ITEMS = (
+    ("index.html", "Bracket"),
+    ("results.html", "Matches"),
+)
+
 # Glyph + CSS modifier for the position-change arrow in the standings table.
 # up = slanted top-right, down = slanted bottom-right, same = sideways.
 _ARROW = {
@@ -415,7 +422,12 @@ def _score_cell(m):
     """
     if m.played:
         star = '<span class="v2-res-unconf">*</span>' if getattr(m, "unconfirmed", False) else ""
-        return f'<td class="v2-res-score">{m.home_goals}:{m.away_goals}{star}</td>', ""
+        # Knockout context — "(4–3 pens)" / "(AET)". Always "" on league
+        # matches, so their pages keep rendering byte-identically.
+        note = getattr(m, "score_note", "")
+        note_html = f'<span class="v2-res-note">{escape(note)}</span>' if note else ""
+        return (f'<td class="v2-res-score">{m.home_goals}:{m.away_goals}{star}'
+                f'{note_html}</td>'), ""
     badge = getattr(m, "status_badge", "")
     if badge:
         return (f'<td class="v2-res-score v2-res-badge">{escape(badge)}</td>',
@@ -442,7 +454,11 @@ def _unconfirmed_legend(matches):
 
 
 def render_results(matches, teams, season="", league_name="", crest=None, league_logo="",
-                   goals_by_match=None, compact=False, club_hrefs=None):
+                   goals_by_match=None, compact=False, club_hrefs=None,
+                   md_labels=None, md_chips=None):
+    # `md_labels`/`md_chips` (cup pages) override the round header and the
+    # pager chip text per matchday — "SEMI-FINALS"/"SF" instead of
+    # "MATCHDAY 1"/"1". Leagues never pass them.
     # `compact` (the Super League, which shows scorers) drops the DATE/VENUE
     # columns to a centred caption so the v2 table fits the 660px column without
     # horizontal scroll — which is what lets the away scorers stay on screen.
@@ -489,8 +505,9 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
         v2.append('<div class="v2-md-strip" data-md-strip>')
         for md in all_days:
             up_cls = "" if any(m.played for m in by_day[md]) else " v2-md-chip-upcoming"
+            chip = escape(str((md_chips or {}).get(md, md)))
             v2.append(f'<button type="button" class="v2-md-chip{up_cls}" '
-                      f'data-md-chip="{md}">{md}</button>')
+                      f'data-md-chip="{md}">{chip}</button>')
         v2.append("</div>")  # /v2-md-strip
         v2.append('<button type="button" class="v2-md-nav" data-md-next '
                   'aria-label="Later matchday">&rsaquo;</button>')
@@ -513,8 +530,10 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
         for md in sorted(by_day, reverse=True):
             day_matches = sorted(by_day[md], key=lambda x: (x.date, x.home_code))
             v2.append(f'<tbody class="v2-md-group" data-md="{md}">')
+            header = (md_labels or {}).get(md)
+            header = escape(header.upper()) if header else f"MATCHDAY {md}"
             v2.append(
-                f'<tr class="v2-md-row"><td colspan="{colspan}">MATCHDAY {md}</td></tr>'
+                f'<tr class="v2-md-row"><td colspan="{colspan}">{header}</td></tr>'
             )
             for j, m in enumerate(day_matches):
                 alt_cls = " alt" if j % 2 == 1 else ""
@@ -577,6 +596,104 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
         v2.append("</div>")  # /v2-results-outer
     v2.append("</div>")  # /v2-content
 
+    return "\n".join(v2)
+
+
+# ── Cup bracket ──────────────────────────────────────────────────────────────
+
+def _bracket_side(code, score_html, is_winner, teams, crest, club_hrefs):
+    name = teams[code].name if code in teams else code
+    c = _crest_img(crest(code), "crest-pre")
+    href = (club_hrefs or {}).get(code)
+    label = (f'<a class="club-link" href="{escape(href)}">{c}{escape(name)}</a>'
+             if href else f"{c}{escape(name)}")
+    cls = "v2-br-side v2-br-win" if is_winner else "v2-br-side"
+    return (f'<div class="{cls}"><span class="v2-br-team">{label}</span>'
+            f"{score_html}</div>")
+
+
+def _bracket_tie(m, teams, crest, club_hrefs):
+    """One tie card: meta line, both sides (winner marked), score note."""
+    winner = getattr(m, "winner_code", None)
+    parts = []
+    meta = _match_meta(m, escape(_format_date(m.date)))
+    if meta:
+        parts.append(f'<p class="v2-br-meta">{meta}</p>')
+    if m.played:
+        # One unconfirmed-star per tie, as on the results page; it sits on
+        # the second score so the pair still reads as a single result.
+        star = ('<span class="v2-res-unconf">*</span>'
+                if getattr(m, "unconfirmed", False) else "")
+        home_score = f'<span class="v2-br-score">{m.home_goals}</span>'
+        away_score = f'<span class="v2-br-score">{m.away_goals}{star}</span>'
+        parts.append(_bracket_side(m.home_code, home_score,
+                                   winner == m.home_code, teams, crest, club_hrefs))
+        parts.append(_bracket_side(m.away_code, away_score,
+                                   winner == m.away_code, teams, crest, club_hrefs))
+        note = getattr(m, "score_note", "")
+        if note:
+            parts.append(f'<p class="v2-br-note">{escape(note)}</p>')
+    else:
+        badge = getattr(m, "status_badge", "")
+        divider = (f'<p class="v2-br-vs v2-br-badge">{escape(badge)}</p>' if badge
+                   else '<p class="v2-br-vs">vs</p>')
+        parts.append(_bracket_side(m.home_code, "", False, teams, crest, club_hrefs))
+        parts.append(divider)
+        parts.append(_bracket_side(m.away_code, "", False, teams, crest, club_hrefs))
+    return f'<div class="v2-br-tie">{"".join(parts)}</div>'
+
+
+def _bracket_placeholder():
+    """The empty slot for a round with no match row yet (e.g. the final while
+    the semis run): em-dash sides, no date. Unknown participants are a
+    rendering concern — never fake rows in clubs/teams."""
+    side = ('<div class="v2-br-side v2-br-tbd">'
+            '<span class="v2-br-team">&mdash;</span></div>')
+    return (f'<div class="v2-br-tie v2-br-tie-tbd">{side}'
+            f'<p class="v2-br-vs">vs</p>{side}</div>')
+
+
+def render_bracket(rounds, teams, stage_labels=None, season="", league_name="",
+                   league_logo="", crest=None, club_hrefs=None):
+    """The knockout bracket: one block per round, earliest round first.
+
+    Plain HTML/CSS, no JS: rounds stack vertically on phones and sit
+    side-by-side from 560px up. `rounds` comes from adapt.cup_rounds; an
+    empty round renders a single placeholder tie.
+    """
+    crest = crest or (lambda code: None)
+    stage_labels = stage_labels or {}
+    cols = []
+    all_matches = []
+    for stage, ties in rounds:
+        title = escape(stage_labels.get(stage, stage).upper())
+        cards = ([_bracket_tie(m, teams, crest, club_hrefs) for m in ties]
+                 or [_bracket_placeholder()])
+        cols.append(
+            f'<section class="v2-br-round">'
+            f'<h3 class="v2-br-title">{title}</h3>'
+            f'<div class="v2-br-ties">{"".join(cards)}</div>'
+            f"</section>"
+        )
+        all_matches += ties
+
+    v2 = [
+        '<div class="v2-content">',
+        '<div class="v2-mini-banner">',
+        f'<img class="v2-mini-logo" src="{escape(league_logo)}" alt="">' if league_logo else "",
+        f'<p class="v2-season">SEASON {escape(season)}</p>',
+        f'<h2 class="v2-mini-league">{escape(league_name.upper())}</h2>',
+        "</div>",  # /v2-mini-banner
+        '<div class="v2-br-outer">',
+    ]
+    if cols:
+        v2.append(f'<div class="v2-bracket">{"".join(cols)}</div>')
+        legend = _unconfirmed_legend(all_matches)
+        if legend:
+            v2.append(legend)
+    else:
+        v2.append('<p class="v2-empty">No matches have been scheduled yet.</p>')
+    v2 += ["</div>", "</div>"]  # /v2-br-outer /v2-content
     return "\n".join(v2)
 
 
@@ -897,7 +1014,9 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
                goals_by_match=None, top_scorers=None, own_goal_total=0, team_scorers=None,
                more_scorers=None, promotion_spots=None, relegation_spots=None,
                withdrawn=None, adjustment_reasons=None, crest_keys=None,
-               competition_id="", club_hrefs=None, club_names=None):
+               competition_id="", club_hrefs=None, club_names=None,
+               kind="league", md_labels=None, md_chips=None,
+               bracket_rounds=None, stage_labels=None):
     os.makedirs(dist, exist_ok=True)
     base = _read(os.path.join(templates_dir, "base.html"))
 
@@ -912,34 +1031,48 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
         f'<img class="site-logo" src="{escape(league_logo)}" alt="">' if league_logo else ""
     )
 
-    pages = {
-        "index.html": ("Standings", render_standings(
-            rows, season=season, league_name=league_name,
-            total_goals=total_goals, goals_per_game=goals_per_game, updated=updated,
-            form=form, changes=changes, crest=crest, league_logo=league_logo,
-            league_slug=slug, promotion_spots=promotion_spots,
-            relegation_spots=relegation_spots, withdrawn=withdrawn,
-            adjustment_reasons=adjustment_reasons, club_hrefs=club_hrefs,
-        )),
-        "results.html": ("Matches", render_results(
-            matches, teams, season=season, league_name=league_name,
-            crest=crest, league_logo=league_logo,
-            # Every league uses the compact (centred date/venue caption above
-            # each result) layout — it fits without horizontal scroll and leaves
-            # room for an optional scorer block. The block stays empty until a
-            # league supplies goal data, so leagues without goals are unchanged
-            # apart from the tidier layout.
-            goals_by_match=goals_by_match, compact=True, club_hrefs=club_hrefs,
-        )),
-        "overview.html": ("Season Overview", render_overview(
-            matches, teams, days or [], history or {}, rows,
-            season=season, league_name=league_name, league_logo=league_logo,
-        )),
-    }
+    results_page = ("Matches", render_results(
+        matches, teams, season=season, league_name=league_name,
+        crest=crest, league_logo=league_logo,
+        # Every league uses the compact (centred date/venue caption above
+        # each result) layout — it fits without horizontal scroll and leaves
+        # room for an optional scorer block. The block stays empty until a
+        # league supplies goal data, so leagues without goals are unchanged
+        # apart from the tidier layout.
+        goals_by_match=goals_by_match, compact=True, club_hrefs=club_hrefs,
+        md_labels=md_labels, md_chips=md_chips,
+    ))
+
+    if kind == "cup":
+        pages = {
+            "index.html": ("Bracket", render_bracket(
+                bracket_rounds or [], teams, stage_labels=stage_labels,
+                season=season, league_name=league_name, league_logo=league_logo,
+                crest=crest, club_hrefs=club_hrefs,
+            )),
+            "results.html": results_page,
+        }
+        nav_items = list(CUP_NAV_ITEMS)
+    else:
+        pages = {
+            "index.html": ("Standings", render_standings(
+                rows, season=season, league_name=league_name,
+                total_goals=total_goals, goals_per_game=goals_per_game, updated=updated,
+                form=form, changes=changes, crest=crest, league_logo=league_logo,
+                league_slug=slug, promotion_spots=promotion_spots,
+                relegation_spots=relegation_spots, withdrawn=withdrawn,
+                adjustment_reasons=adjustment_reasons, club_hrefs=club_hrefs,
+            )),
+            "results.html": results_page,
+            "overview.html": ("Season Overview", render_overview(
+                matches, teams, days or [], history or {}, rows,
+                season=season, league_name=league_name, league_logo=league_logo,
+            )),
+        }
+        nav_items = list(NAV_ITEMS)
 
     # The Goal Scorers tab/page exists only when there is goal data (the Super
     # League). Other leagues keep the original three-tab nav untouched.
-    nav_items = list(NAV_ITEMS)
     if top_scorers or own_goal_total or team_scorers:
         nav_items.insert(2, ("goalscorers.html", "Goal Scorers"))
         pages["goalscorers.html"] = ("Goal Scorers", render_goalscorers(
@@ -961,6 +1094,12 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             .replace("{{BACK_LINK}}", back_link)
         )
         _write(os.path.join(dist, filename), html)
+
+    # Cups get no per-competition club pages: every team name on a cup page
+    # already links to the cross-competition club hub (club_hrefs), so no
+    # clubs/{code}.html URL is ever emitted for them.
+    if kind == "cup":
+        return
 
     # One overview page per club under clubs/<code>.html. These sit a directory
     # deeper than the league pages, so their asset paths and nav/back links need

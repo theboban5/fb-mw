@@ -82,7 +82,10 @@ def render_club_hub(club, club_teams, crest_url):
                 f"{render._ordinal(position)} &middot; {standing.points} pts"
                 if standing is not None and position is not None else "&ndash;"
             )
-            team_href = f"../{league.slug}/clubs/{team.legacy_code or team.team_id}.html"
+            # Cups emit no per-competition club pages, so their row links to
+            # the competition itself instead of a clubs/ URL that never exists.
+            team_href = (f"../{league.slug}/" if league.kind == "cup"
+                         else f"../{league.slug}/clubs/{team.legacy_code or team.team_id}.html")
             league_href = f"../{league.slug}/"
             rows.append(
                 f'<tr class="v2-res-row" id="club-team-{escape(code)}">'
@@ -149,10 +152,13 @@ def build_club_hubs(dist, templates_dir, static_dir, ds, leagues, standings_by_s
     out_dir = os.path.join(dist, "clubs")
     os.makedirs(out_dir, exist_ok=True)
 
-    league_of_team = {}
+    # A team can be in several built competitions at once (a league and a
+    # cup), so this maps team_id -> every (league, code) it appears in; the
+    # hub then lists one row per competition, not one per squad.
+    leagues_of_team = {}
     for league in leagues:
         for code, tv in league.teams.items():
-            league_of_team[tv.team_id] = (league, code)
+            leagues_of_team.setdefault(tv.team_id, []).append((league, code))
 
     crest = render._crest_lookup(static_dir, "../")
 
@@ -160,19 +166,19 @@ def build_club_hubs(dist, templates_dir, static_dir, ds, leagues, standings_by_s
     for club in ds.clubs.values():
         club_teams = []
         for team in ds.teams.values():
-            if team.club_id != club.club_id or team.team_id not in league_of_team:
+            if team.club_id != club.club_id:
                 continue
-            league, code = league_of_team[team.team_id]
-            rows = standings_by_slug.get(league.slug, [])
-            standing = next((s for s in rows if s.code == code), None)
-            position = next(
-                (i for i, s in enumerate(rows, start=1) if s.code == code), None)
-            played = [m for m in league.matches
-                      if code in (m.home_code, m.away_code) and m.played]
-            played.sort(key=lambda m: (m.date, m.matchday), reverse=True)
-            club_teams.append(
-                (team, league, standing, position, len(played),
-                 played[:RECENT_RESULTS], code))
+            for league, code in leagues_of_team.get(team.team_id, []):
+                rows = standings_by_slug.get(league.slug, [])
+                standing = next((s for s in rows if s.code == code), None)
+                position = next(
+                    (i for i, s in enumerate(rows, start=1) if s.code == code), None)
+                played = [m for m in league.matches
+                          if code in (m.home_code, m.away_code) and m.played]
+                played.sort(key=lambda m: (m.date, m.matchday), reverse=True)
+                club_teams.append(
+                    (team, league, standing, position, len(played),
+                     played[:RECENT_RESULTS], code))
         if not club_teams:
             continue
 

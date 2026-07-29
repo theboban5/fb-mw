@@ -974,3 +974,107 @@ table.v2-results-compact { table-layout: fixed; width: 100%; }
   font-size: 0.78rem;
 }
 .v2-footnote { padding: 2px 0; }
+
+/* Shootout / extra-time note beside a knockout score — "(4–3 pens)". Block so
+   it sits under the score inside the narrow RESULT cell instead of widening it. */
+.v2-res-note {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #888;
+  white-space: nowrap;
+}
+
+/* ─── Cup bracket (cup index page) ───────────────────── */
+/* Mobile-first: rounds stack top-to-bottom (design target ~380px). From 560px
+   they sit side by side, each round's ties vertically centred against the
+   previous round's, so the final reads as fed by the semi winners. No JS. */
+.v2-br-outer {
+  margin: 0 -16px;
+  padding: 16px 16px 20px;
+  background: #ffffff;
+}
+.v2-bracket {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+@media (min-width: 560px) {
+  .v2-bracket { flex-direction: row; align-items: stretch; gap: 14px; }
+  .v2-br-round { flex: 1 1 0; display: flex; flex-direction: column; min-width: 0; }
+  .v2-br-ties { flex: 1; justify-content: space-around; }
+}
+.v2-br-title {
+  margin: 0 0 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #666;
+  text-align: center;
+}
+.v2-br-ties {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.v2-br-tie {
+  border: 1px solid #e4e4e4;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 8px 10px;
+}
+.v2-br-meta {
+  margin: 0 0 4px;
+  text-align: center;
+  font-size: 0.68rem;
+  color: #888;
+  letter-spacing: 0.02em;
+}
+.v2-br-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 6px;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #1c1c1c;
+}
+.v2-br-team {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere; /* long names wrap rather than overflow at 380px */
+}
+.v2-br-score {
+  flex: 0 0 auto;
+  font-size: 1.05rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+/* The advancing team, marked like the "currently viewing" hub row. */
+.v2-br-win {
+  background: #e5f6ea;
+  box-shadow: inset 3px 0 0 #0b6b3a;
+}
+.v2-br-vs {
+  margin: 0;
+  text-align: center;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9aa1ab;
+}
+.v2-br-vs.v2-br-badge { color: #b3541e; } /* PPD / CANC / ABD, as on results */
+/* Unknown participant (round not yet reached): em-dash, clearly not a team. */
+.v2-br-tbd { color: #9aa1ab; font-weight: 600; }
+.v2-br-tie-tbd { border-style: dashed; }
+.v2-br-note {
+  margin: 2px 0 0;
+  text-align: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #888;
+}
