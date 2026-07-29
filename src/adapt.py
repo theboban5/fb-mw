@@ -35,7 +35,33 @@ COMPETITION_SLUGS = {
     "MW_WP": "wp",
     "MW_KU19": "ku19",
     "MW_U16": "u16",
+    # Derivation would give the same slug, but this dict doubles as the
+    # landing-page order (build._LANDING_ORDER), so listing it pins the row's
+    # place in the men's cup group as well as the URL.
+    "MW_TOP8": "top8",
 }
+
+
+# Presentation of matches.stage. A md_<n> league stage is not listed here:
+# stage-label lookups fall back to the classic "MATCHDAY <n>" header derived
+# from MatchView.matchday, so league pages render byte-identically.
+STAGE_LABELS = {
+    "r64": "Round of 64",
+    "r32": "Round of 32",
+    "r16": "Round of 16",
+    "qf": "Quarter-finals",
+    "sf": "Semi-finals",
+    "3p": "Third-place play-off",
+    "final": "Final",
+}
+
+# Sort rank, earliest round first. The third-place play-off sits between the
+# semis and the final because that is when it is played.
+STAGE_ORDER = {"r64": 0, "r32": 1, "r16": 2, "qf": 3, "sf": 4, "3p": 5, "final": 6}
+
+# Short labels for the results pager chips ("SF", not a bare round number).
+STAGE_CHIPS = {"r64": "R64", "r32": "R32", "r16": "R16", "qf": "QF",
+               "sf": "SF", "3p": "3P", "final": "F"}
 
 
 def competition_slug(competition_id: str, country: str = "mw") -> str:
@@ -84,6 +110,10 @@ class MatchView:
     status: str = "played"
     confidence: str = "confirmed"
     awarded_note: str = ""
+    stage: str = ""
+    extra_time: bool = False
+    home_pens: "int | None" = None
+    away_pens: "int | None" = None
 
     @property
     def played(self) -> bool:
@@ -99,6 +129,36 @@ class MatchView:
     @property
     def unconfirmed(self) -> bool:
         return self.confidence == "unconfirmed"
+
+    @property
+    def score_note(self) -> str:
+        """"(4–3 pens)", "(AET)" or "(4–3 pens, AET)" beside a knockout score.
+
+        Always "" on league matches (the validator keeps pens/extra_time off
+        them), so league pages are untouched by rendering it unconditionally.
+        """
+        parts = []
+        if self.home_pens is not None and self.away_pens is not None:
+            parts.append(f"{self.home_pens}–{self.away_pens} pens")
+        if self.extra_time:
+            parts.append("AET")
+        return f"({', '.join(parts)})" if parts else ""
+
+    @property
+    def winner_code(self) -> "str | None":
+        """Who advances from a knockout tie: goals, else pens, else None.
+
+        Penalties break only a level score — they never touch standings
+        (standings.py reads goals alone).
+        """
+        if not self.played:
+            return None
+        if self.home_goals != self.away_goals:
+            return self.home_code if self.home_goals > self.away_goals else self.away_code
+        if (self.home_pens is not None and self.away_pens is not None
+                and self.home_pens != self.away_pens):
+            return self.home_code if self.home_pens > self.away_pens else self.away_code
+        return None
 
 
 @dataclass(frozen=True)
@@ -161,6 +221,9 @@ class LeagueData:
     own_goal_total: int                     # includes unknown-player own goals
     promotion_places: int = 0
     relegation_places: int = 0
+    kind: str = "league"                    # competitions.type: league | cup
+    # Cup only: derived matchday -> stage code, for round headers/pager chips.
+    stage_of_matchday: "dict[int, str]" = field(default_factory=dict)
 
 
 def _goal_display_minute(g: "dataset.Goal") -> str:
@@ -213,17 +276,33 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
         if e.status in ("withdrawn", "expelled"):
             withdrawn[code] = e.status
 
-    matches: "list[MatchView]" = []
-    kept_match_ids = set()
+    kept: "list[tuple[int, dataset.Match]]" = []
     for i, m in enumerate(ds.matches.values(), start=2):
         if m.competition_id != competition_id or m.season_id != season_id:
             continue
         if m.is_placeholder:
             continue  # known-fake seed rows render nowhere
+        kept.append((i, m))
+
+    # Cups order their rounds by stage, not by a hand-maintained matchday
+    # column: dense-rank the stages actually present so adding a later round
+    # (quarter-finals, the final) is purely a sheet edit. The sheet's matchday
+    # column is ignored for cups; leagues keep it exactly as before.
+    is_cup = comp.type == "cup"
+    cup_md: "dict[str, int]" = {}
+    if is_cup:
+        present = sorted({m.stage for _i, m in kept},
+                         key=lambda s: STAGE_ORDER.get(s, len(STAGE_ORDER)))
+        cup_md = {s: n for n, s in enumerate(present, start=1)}
+
+    matches: "list[MatchView]" = []
+    kept_match_ids = set()
+    for i, m in kept:
         venue = ds.venues.get(m.venue_id)
         matches.append(MatchView(
             row=i,
-            matchday=m.matchday if m.matchday is not None else 0,
+            matchday=cup_md[m.stage] if is_cup
+                     else (m.matchday if m.matchday is not None else 0),
             date=m.date,
             home_code=code_of.get(m.home_team_id, m.home_team_id),
             away_code=code_of.get(m.away_team_id, m.away_team_id),
@@ -234,6 +313,10 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
             status=m.status,
             confidence=m.confidence,
             awarded_note=m.awarded_note,
+            stage=m.stage,
+            extra_time=m.extra_time,
+            home_pens=m.home_pens,
+            away_pens=m.away_pens,
         ))
         kept_match_ids.add(m.match_id)
 
@@ -275,7 +358,29 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
         own_goal_total=own_goal_total,
         promotion_places=cs.promotion_places or 0,
         relegation_places=cs.relegation_places or 0,
+        kind="cup" if is_cup else "league",
+        stage_of_matchday={n: s for s, n in cup_md.items()},
     )
+
+
+def cup_rounds(matches: "list[MatchView]") -> "list[tuple[str, list[MatchView]]]":
+    """Group a cup's matches into bracket rounds, earliest round first.
+
+    When the highest round present is not the final, an empty ("final", [])
+    round is appended: the bracket renders it as a placeholder tie fed by the
+    winners of the last round present. Unknown participants are a rendering
+    concern — never fake team rows — and "final comes last" is read off
+    STAGE_ORDER, not hardcoded per competition.
+    """
+    by_stage: "dict[str, list[MatchView]]" = {}
+    for m in matches:
+        by_stage.setdefault(m.stage, []).append(m)
+    stages = sorted(by_stage, key=lambda s: STAGE_ORDER.get(s, len(STAGE_ORDER)))
+    rounds = [(s, sorted(by_stage[s], key=lambda m: (m.date, m.home_code)))
+              for s in stages]
+    if stages and stages[-1] != "final":
+        rounds.append(("final", []))
+    return rounds
 
 
 def current_competition_seasons(ds: "dataset.Dataset") -> "list[dataset.CompetitionSeason]":
