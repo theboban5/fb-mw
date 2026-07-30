@@ -587,11 +587,13 @@ def parse_matches(text: str) -> "dict[str, Match]":
                 raise DataError(f"matches row {i}: {label} cannot be negative ({g})")
         # extra_time / home_pens / away_pens are newer optional columns: the
         # header may be absent entirely (older snapshots), which reads the
-        # same as every cell blank.
-        et = r.get("extra_time", "")
-        if et not in ("", "0", "1"):
+        # same as every cell blank. TRUE/FALSE is how a Sheets checkbox
+        # column exports, so it is accepted alongside 0/1.
+        et = r.get("extra_time", "").lower()
+        if et not in ("", "0", "1", "false", "true"):
             raise DataError(
-                f"matches row {i}: extra_time {et!r} must be blank, 0 or 1")
+                f"matches row {i}: extra_time {et!r} must be blank, 0/1 or "
+                f"TRUE/FALSE")
         hp = _opt_int(r.get("home_pens", ""), "home_pens", "matches", i)
         ap = _opt_int(r.get("away_pens", ""), "away_pens", "matches", i)
         for label, p in (("home_pens", hp), ("away_pens", ap)):
@@ -613,7 +615,7 @@ def parse_matches(text: str) -> "dict[str, Match]":
             _enum(_require(r, "confidence", "matches", i), CONFIDENCES,
                   "confidence", "matches", i),
             r.get("verified_by", ""), r.get("verified_at", ""),
-            extra_time=(et == "1"), home_pens=hp, away_pens=ap,
+            extra_time=(et in ("1", "true")), home_pens=hp, away_pens=ap,
         ), "matches", i)
     return out
 

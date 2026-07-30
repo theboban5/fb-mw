@@ -60,6 +60,11 @@ class StageNormalisationTest(unittest.TestCase):
         with self.assertRaises(dataset.DataError):
             make_match(et="yes")
 
+    def test_extra_time_checkbox_export_accepted(self):
+        # A Sheets checkbox column exports TRUE/FALSE, not 0/1.
+        self.assertTrue(make_match(et="TRUE").extra_time)
+        self.assertFalse(make_match(et="FALSE").extra_time)
+
 
 def cup_dataset(match_rows):
     """A minimal cup Dataset: one club, two teams, entered, plus match_rows."""
