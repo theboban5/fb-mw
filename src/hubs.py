@@ -87,8 +87,13 @@ def render_club_hub(club, club_teams, crest_url):
             team_href = (f"../{league.slug}/" if league.kind == "cup"
                          else f"../{league.slug}/clubs/{team.legacy_code or team.team_id}.html")
             league_href = f"../{league.slug}/"
+            # Only league rows carry the highlight id: a squad can hold the
+            # same code in a league and a cup, and only league pages link in
+            # with the #club-team-{code} fragment (see build.py).
+            row_id = (f' id="club-team-{escape(code)}"'
+                      if league.kind != "cup" else "")
             rows.append(
-                f'<tr class="v2-res-row" id="club-team-{escape(code)}">'
+                f'<tr class="v2-res-row"{row_id}>'
                 f'<td class="v2-res-home"><a class="club-link" href="{escape(team_href)}">'
                 f'{escape(league.teams[team.legacy_code].name if team.legacy_code in league.teams else team.team_id)}</a></td>'
                 f'<td class="v2-res-away"><a class="club-link" href="{escape(league_href)}">'

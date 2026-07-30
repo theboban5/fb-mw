@@ -131,8 +131,11 @@ def _build_league(ds, cs, dist_root, updated):
         # Team names on league pages link to the cross-competition club hub;
         # the per-league club pages stay generated so their URLs keep working.
         # The #club-team-{code} fragment tells the hub which row to highlight
-        # as "currently viewing" (see hubs.render_club_hub).
-        club_hrefs={code: f"../clubs/{t.club_id}.html#club-team-{code}"
+        # as "currently viewing" (see hubs.render_club_hub). Cup pages link
+        # without it: the id belongs to the league row (a team can hold the
+        # same code in a league and a cup, and ids must stay unique).
+        club_hrefs={code: f"../clubs/{t.club_id}.html"
+                          + ("" if is_cup else f"#club-team-{code}")
                     for code, t in league.teams.items()},
         # Club overview pages link back up to the cross-competition hub, so
         # a visitor can hop to another of the club's squads without going

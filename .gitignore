@@ -2,3 +2,8 @@
 __pycache__/
 *.pyc
 .DS_Store
+# Local dev fixtures (copies of data/canonical/ with fake rows) and parity
+# builds. Fake data must never land in data/canonical/.
+data/scratch/
+staging/
+staging-*/
