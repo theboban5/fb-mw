@@ -612,8 +612,8 @@ def _bracket_side(code, score_html, is_winner, teams, crest, club_hrefs):
             f"{score_html}</div>")
 
 
-def _bracket_tie(m, teams, crest, club_hrefs):
-    """One tie card: meta line, both sides (winner marked), score note."""
+def _single_leg_tie(m, teams, crest, club_hrefs):
+    """The tie card for an ordinary one-match tie."""
     winner = getattr(m, "winner_code", None)
     parts = []
     meta = _match_meta(m, escape(_format_date(m.date)))
@@ -643,6 +643,75 @@ def _bracket_tie(m, teams, crest, club_hrefs):
     return f'<div class="v2-br-tie">{"".join(parts)}</div>'
 
 
+def _leg_breakdown(tie):
+    """"1st leg 0–0 · 2nd leg 1–1 (7–6 pens, AET)" for the played/abnormal legs.
+
+    The pens/AET note stays attached to its own leg so it is clear where the
+    shootout happened; an abnormal leg shows its badge ("2nd leg PPD").
+    """
+    bits = []
+    for i, m in enumerate(tie.legs, start=1):
+        label = f"{_ordinal(i)} leg"
+        if m.played:
+            leg = f"{label} {m.home_goals}–{m.away_goals}"
+            note = getattr(m, "score_note", "")
+            if note:
+                leg += f" {note}"
+            bits.append(escape(leg))
+        else:
+            badge = getattr(m, "status_badge", "")
+            if badge:
+                bits.append(escape(f"{label} {badge}"))
+    return " &middot; ".join(bits)
+
+
+def _two_leg_tie(tie, teams, crest, club_hrefs):
+    """The tie card for a two-legged tie: aggregate sides, per-leg breakdown."""
+    parts = []
+    if tie.any_played:
+        next_leg = next((m for m in tie.legs if not m.played), None)
+        if next_leg is None:
+            parts.append('<p class="v2-br-meta">Aggregate</p>')
+        else:
+            label = f"{_ordinal(tie.legs.index(next_leg) + 1)} leg"
+            meta = _match_meta(next_leg, escape(_format_date(next_leg.date)))
+            parts.append(f'<p class="v2-br-meta">{escape(label)}'
+                         + (f" &middot; {meta}" if meta else "") + "</p>")
+        star = '<span class="v2-res-unconf">*</span>' if tie.unconfirmed else ""
+        winner = tie.winner_code
+        home_score = f'<span class="v2-br-score">{tie.agg_home}</span>'
+        away_score = f'<span class="v2-br-score">{tie.agg_away}{star}</span>'
+        parts.append(_bracket_side(tie.home_code, home_score,
+                                   winner == tie.home_code, teams, crest, club_hrefs))
+        parts.append(_bracket_side(tie.away_code, away_score,
+                                   winner == tie.away_code, teams, crest, club_hrefs))
+        breakdown = _leg_breakdown(tie)
+        if breakdown:
+            parts.append(f'<p class="v2-br-note">{breakdown}</p>')
+        if tie.decided_by_away_goals:
+            name = teams[winner].name if winner in teams else winner
+            parts.append(f'<p class="v2-br-note">{escape(name)} advance on '
+                         f"away goals</p>")
+    else:
+        dates = [escape(_format_date(m.date)) for m in tie.legs]
+        legs = " &middot; ".join(
+            f"{_ordinal(i)} leg {d}" for i, d in enumerate(dates, start=1) if d)
+        if legs:
+            parts.append(f'<p class="v2-br-meta">{legs}</p>')
+        parts.append(_bracket_side(tie.home_code, "", False, teams, crest, club_hrefs))
+        parts.append('<p class="v2-br-vs">vs</p>')
+        parts.append(_bracket_side(tie.away_code, "", False, teams, crest, club_hrefs))
+    return f'<div class="v2-br-tie">{"".join(parts)}</div>'
+
+
+def _bracket_tie(tie, teams, crest, club_hrefs):
+    """One tie card; a two-legged tie reads as one tie, not two matches."""
+    if getattr(tie, "two_legged", False):
+        return _two_leg_tie(tie, teams, crest, club_hrefs)
+    m = tie.legs[0] if hasattr(tie, "legs") else tie
+    return _single_leg_tie(m, teams, crest, club_hrefs)
+
+
 def _bracket_placeholder():
     """The empty slot for a round with no match row yet (e.g. the final while
     the semis run): em-dash sides, no date. Unknown participants are a
@@ -667,7 +736,7 @@ def render_bracket(rounds, teams, stage_labels=None, season="", league_name="",
     all_matches = []
     for stage, ties in rounds:
         title = escape(stage_labels.get(stage, stage).upper())
-        cards = ([_bracket_tie(m, teams, crest, club_hrefs) for m in ties]
+        cards = ([_bracket_tie(t, teams, crest, club_hrefs) for t in ties]
                  or [_bracket_placeholder()])
         cols.append(
             f'<section class="v2-br-round">'
@@ -675,7 +744,8 @@ def render_bracket(rounds, teams, stage_labels=None, season="", league_name="",
             f'<div class="v2-br-ties">{"".join(cards)}</div>'
             f"</section>"
         )
-        all_matches += ties
+        for t in ties:
+            all_matches += getattr(t, "legs", [t])
 
     v2 = [
         '<div class="v2-content">',

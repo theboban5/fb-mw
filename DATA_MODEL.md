@@ -105,6 +105,15 @@ hubs, player pages and the snapshot audit trail work exactly as for leagues.
 - **Round order is derived from `stage`**, earliest round first; the sheet's
   `matchday` column is ignored for cups (leave it blank). Adding a later
   round is purely a sheet edit.
+- **Two-legged ties need no extra column.** Two matches in the same
+  competition+season+stage between the same two teams with home and away
+  swapped are the two legs of one tie (leg order by date); a repeat with the
+  *same* home team is a replay, not a leg. The bracket shows such a pair as
+  one tie with the aggregate score and a per-leg breakdown. The winner is
+  decided by aggregate, then **away goals**, then the deciding leg's
+  shootout — so pens/`extra_time` belong on the second leg's row, and a
+  shootout on a deciding leg is valid whenever the aggregate is level, even
+  if that leg itself is not.
 - Three optional matches columns exist for knockouts only (the validator
   rejects them on leagues): `extra_time` (blank/0/1), `home_pens`,
   `away_pens`. The goals columns hold the full-time-of-record score — after
@@ -135,9 +144,10 @@ hubs, player pages and the snapshot audit trail work exactly as for leagues.
    incomplete scorer data is expected).
 6. Match dates fall inside their season's date range.
 7. Knockout coherence: pens/`extra_time` only on `type=cup` competitions;
-   pens require a full, level score, come in pairs, and are never level
-   themselves; a cup match's stage must be in the knockout vocabulary
-   (league stages stay free-form).
+   pens come in pairs, are never level themselves, sit only on a tie's
+   deciding leg, and require the match — or, on the deciding leg of a
+   two-legged tie, the aggregate — to be level; a cup match's stage must be
+   in the knockout vocabulary (league stages stay free-form).
 8. **Drift**: any match/team/club/player ID present in the previous
    `data/canonical/` snapshot but missing from the current fetch is a hard
    fail (catches accidental row deletion). Escape hatch:

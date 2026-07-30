@@ -167,6 +167,69 @@ class CupRoundsTest(unittest.TestCase):
         self.assertEqual([s for s, _ in rounds], ["qf", "sf", "final"])
 
 
+def leg(row, date, home, away, hg=None, ag=None, stage="qf", hp=None, ap=None):
+    status = "played" if hg is not None else "scheduled"
+    return MatchView(row, 1, date, home, away, hg, ag, status=status,
+                     stage=stage, home_pens=hp, away_pens=ap)
+
+
+class TwoLeggedTieTest(unittest.TestCase):
+    def test_mirrored_matches_pair_into_one_tie(self):
+        rounds = adapt.cup_rounds([
+            leg(2, "2026-06-13", "AAA", "BBB", 0, 0),
+            leg(3, "2026-07-11", "BBB", "AAA", 1, 1),
+        ])
+        ties = rounds[0][1]
+        self.assertEqual(len(ties), 1)
+        self.assertTrue(ties[0].two_legged)
+        # Legs in date order; sides presented in first-leg order.
+        self.assertEqual(ties[0].legs[0].date, "2026-06-13")
+        self.assertEqual(ties[0].home_code, "AAA")
+
+    def test_same_orientation_repeat_is_not_a_leg(self):
+        # A replay keeps the same home team — it must stay its own tie.
+        rounds = adapt.cup_rounds([
+            leg(2, "2026-06-13", "AAA", "BBB", 1, 1),
+            leg(3, "2026-06-20", "AAA", "BBB", 2, 0),
+        ])
+        self.assertEqual(len(rounds[0][1]), 2)
+
+    def test_aggregate_decides(self):
+        tie = adapt.TieView([
+            leg(2, "2026-06-14", "AAA", "BBB", 2, 0),
+            leg(3, "2026-07-12", "BBB", "AAA", 1, 1),
+        ])
+        self.assertEqual((tie.agg_home, tie.agg_away), (3, 1))
+        self.assertEqual(tie.winner_code, "AAA")
+        self.assertFalse(tie.decided_by_away_goals)
+
+    def test_away_goals_break_level_aggregate(self):
+        # 0-0 away, then 1-1 at home: AAA's away goal separates a 1-1 tie.
+        tie = adapt.TieView([
+            leg(2, "2026-06-13", "BBB", "AAA", 0, 0),
+            leg(3, "2026-07-11", "AAA", "BBB", 1, 1),
+        ])
+        self.assertEqual((tie.agg_home, tie.agg_away), (1, 1))
+        self.assertEqual(tie.winner_code, "BBB")
+        self.assertTrue(tie.decided_by_away_goals)
+
+    def test_pens_break_level_aggregate_and_away_goals(self):
+        tie = adapt.TieView([
+            leg(2, "2026-06-13", "AAA", "BBB", 1, 1),
+            leg(3, "2026-07-11", "BBB", "AAA", 1, 1, hp=7, ap=6),
+        ])
+        self.assertEqual(tie.winner_code, "BBB")
+        self.assertFalse(tie.decided_by_away_goals)
+
+    def test_unfinished_tie_has_no_winner(self):
+        tie = adapt.TieView([
+            leg(2, "2026-06-13", "AAA", "BBB", 2, 0),
+            leg(3, "2026-07-11", "BBB", "AAA"),
+        ])
+        self.assertIsNone(tie.winner_code)
+        self.assertEqual((tie.agg_home, tie.agg_away), (2, 0))
+
+
 class ValidatorCupTest(unittest.TestCase):
     def errors(self, row, comp_type="cup"):
         ds = cup_dataset([row])
@@ -222,6 +285,29 @@ class ValidatorCupTest(unittest.TestCase):
             errs = self.errors(
                 f"M1,CUP,S1,{stage},,2026-08-01,,T1,T2,,,scheduled,fa,confirmed,,,")
             self.assertEqual(errs, [], stage)
+
+    def errors_pair(self, row1, row2):
+        ds = cup_dataset([row1, row2])
+        return validate.check_cup_rules(ds)
+
+    def test_pens_on_decisive_deciding_leg_with_level_aggregate_pass(self):
+        # Leg 2 is 2-0 (not level) but the aggregate is 2-2: legal shootout.
+        errs = self.errors_pair(
+            "L1,CUP,S1,qf,,2026-06-13,,T1,T2,2,0,played,fa,confirmed,,,",
+            "L2,CUP,S1,qf,,2026-07-11,,T2,T1,2,0,played,fa,confirmed,,4,3")
+        self.assertEqual(errs, [])
+
+    def test_pens_with_unlevel_aggregate_fail(self):
+        errs = self.errors_pair(
+            "L1,CUP,S1,qf,,2026-06-13,,T1,T2,2,0,played,fa,confirmed,,,",
+            "L2,CUP,S1,qf,,2026-07-11,,T2,T1,1,2,played,fa,confirmed,,4,3")
+        self.assertTrue(any("neither is the aggregate" in e for e in errs))
+
+    def test_pens_on_first_leg_fail(self):
+        errs = self.errors_pair(
+            "L1,CUP,S1,qf,,2026-06-13,,T1,T2,1,1,played,fa,confirmed,,4,3",
+            "L2,CUP,S1,qf,,2026-07-11,,T2,T1,,,scheduled,fa,confirmed,,,")
+        self.assertTrue(any("non-deciding leg" in e for e in errs))
 
     def test_unknown_stage_on_league_tolerated(self):
         # The historic sheet mixes md_1/matchday_2 and worse; league stages

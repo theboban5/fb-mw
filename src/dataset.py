@@ -97,9 +97,8 @@ SOURCE_TYPES = frozenset(
 CONFIDENCES = frozenset({"unconfirmed", "confirmed", "official"})
 # matches.stage vocabulary for knockout (type=cup) competitions. League rows
 # use free-form md_<n> stages instead; presentation order lives in adapt.
-# Two-legged ties are future work: a `leg` column would sit beside `stage`
-# in the matches tab (and as a field on Match below) — until then every tie
-# is single-leg.
+# Two-legged ties carry no leg column: a reversed fixture between the same
+# two teams within one stage IS the second leg (see adapt.TieView).
 KNOCKOUT_STAGES = frozenset({"r64", "r32", "r16", "qf", "sf", "final", "3p"})
 # "" = ordinary goal with no recorded type; the sheet leaves the cell blank.
 GOAL_TYPES = frozenset({"", "open_play", "penalty", "free_kick", "header", "own_goal"})

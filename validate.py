@@ -216,15 +216,48 @@ def check_dates(ds):
 def check_cup_rules(ds):
     """Check 7: knockout columns and stages are used coherently.
 
-    A shootout exists only to break a level score, so pens require a full,
-    level score and can never themselves be level. Shootout kicks are not
-    goals rows (check 5 would reject them as exceeding the score), so pens
-    live only in these columns. extra_time/pens are meaningless outside a
-    cup. Cup stages must come from the knockout vocabulary; league stages
-    stay free-form — the historic sheet mixes md_1/matchday_2 and breaking
-    it retroactively helps nobody.
+    A shootout exists only to break a level tie: on a single-leg tie the
+    match itself must be level; on the deciding leg of a two-legged tie the
+    AGGREGATE must be level (the leg itself may be decisive). Pens on a
+    non-deciding leg are always wrong, and pens can never themselves be
+    level. Shootout kicks are not goals rows (check 5 would reject them as
+    exceeding the score), so pens live only in these columns.
+    extra_time/pens are meaningless outside a cup. Cup stages must come from
+    the knockout vocabulary; league stages stay free-form — the historic
+    sheet mixes md_1/matchday_2 and breaking it retroactively helps nobody.
     """
     errors = []
+
+    # Pair mirrored legs per (competition, season, stage) — the same rule
+    # adapt.cup_rounds uses: a reversed fixture between the same two teams
+    # is a second leg; a repeat with the same home team is a replay.
+    pair_of = {}   # match_id -> [leg1, leg2] in leg order
+    open_tie = {}
+    seq = {mid: n for n, mid in enumerate(ds.matches)}
+    for m in sorted(ds.matches.values(), key=lambda m: (m.date, seq[m.match_id])):
+        comp = ds.competitions.get(m.competition_id)
+        if comp is None or comp.type != "cup" or m.is_placeholder:
+            continue
+        key = (m.competition_id, m.season_id, m.stage,
+               frozenset((m.home_team_id, m.away_team_id)))
+        first = open_tie.get(key)
+        if first is not None and m.home_team_id == first.away_team_id:
+            legs = [first, m]
+            pair_of[first.match_id] = legs
+            pair_of[m.match_id] = legs
+            del open_tie[key]
+        else:
+            open_tie[key] = m
+
+    def aggregate_level(m, legs):
+        """Both legs scored and the tie is level on aggregate."""
+        if not all(leg.has_score for leg in legs):
+            return False
+        first, second = legs
+        a = first.home_goals + second.away_goals
+        b = first.away_goals + second.home_goals
+        return a == b
+
     for m in ds.matches.values():
         lbl = f"matches {m.match_id}"
         comp = ds.competitions.get(m.competition_id)
@@ -239,12 +272,20 @@ def check_cup_rules(ds):
                 f"which is not a cup"
             )
         if has_pens:
-            if not m.has_score:
+            legs = pair_of.get(m.match_id)
+            if legs is not None and m is not legs[-1]:
+                errors.append(
+                    f"{lbl}: pens on a non-deciding leg (the mirrored leg "
+                    f"{legs[-1].match_id} is later)"
+                )
+            elif not m.has_score:
                 errors.append(f"{lbl}: pens present but no score")
-            elif m.home_goals != m.away_goals:
+            elif m.home_goals != m.away_goals and not (
+                    legs is not None and aggregate_level(m, legs)):
                 errors.append(
                     f"{lbl}: pens present but score {m.home_goals}:{m.away_goals} "
                     f"is not level"
+                    + ("" if legs is None else " and neither is the aggregate")
                 )
             if m.home_pens == m.away_pens:
                 errors.append(

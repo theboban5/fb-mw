@@ -363,8 +363,115 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
     )
 
 
-def cup_rounds(matches: "list[MatchView]") -> "list[tuple[str, list[MatchView]]]":
-    """Group a cup's matches into bracket rounds, earliest round first.
+@dataclass
+class TieView:
+    """One knockout tie: a single match, or a two-legged pair in leg order.
+
+    Two matches form a tie when they share a stage and pair the same two
+    teams with home and away swapped — that mirror is what distinguishes a
+    second leg from a replay, so no `leg` column is needed in the sheet.
+    The tie's winner is decided by aggregate, then away goals (the rule this
+    pyramid's ties observably play to), then the deciding leg's shootout.
+    """
+    legs: "list[MatchView]"
+
+    @property
+    def two_legged(self) -> bool:
+        return len(self.legs) > 1
+
+    # Sides are presented in first-leg order throughout.
+    @property
+    def home_code(self) -> str:
+        return self.legs[0].home_code
+
+    @property
+    def away_code(self) -> str:
+        return self.legs[0].away_code
+
+    @property
+    def all_played(self) -> bool:
+        return all(m.played for m in self.legs)
+
+    @property
+    def any_played(self) -> bool:
+        return any(m.played for m in self.legs)
+
+    def _totals(self, code: str) -> "tuple[int, int]":
+        """(aggregate goals, away goals) for one side over the played legs."""
+        agg = away = 0
+        for m in self.legs:
+            if not m.played:
+                continue
+            if m.home_code == code:
+                agg += m.home_goals
+            else:
+                agg += m.away_goals
+                away += m.away_goals
+        return agg, away
+
+    @property
+    def agg_home(self) -> "int | None":
+        return self._totals(self.home_code)[0] if self.any_played else None
+
+    @property
+    def agg_away(self) -> "int | None":
+        return self._totals(self.away_code)[0] if self.any_played else None
+
+    @property
+    def winner_code(self) -> "str | None":
+        if not self.all_played:
+            return None
+        if not self.two_legged:
+            return self.legs[0].winner_code
+        (h_agg, h_away) = self._totals(self.home_code)
+        (a_agg, a_away) = self._totals(self.away_code)
+        if h_agg != a_agg:
+            return self.home_code if h_agg > a_agg else self.away_code
+        if h_away != a_away:
+            return self.home_code if h_away > a_away else self.away_code
+        # Level on aggregate and away goals: the deciding leg's shootout.
+        last = self.legs[-1]
+        if (last.home_pens is not None and last.away_pens is not None
+                and last.home_pens != last.away_pens):
+            return (last.home_code if last.home_pens > last.away_pens
+                    else last.away_code)
+        return None
+
+    @property
+    def decided_by_away_goals(self) -> bool:
+        """True when only the away-goals rule separates the sides."""
+        if not (self.two_legged and self.all_played):
+            return False
+        (h_agg, h_away) = self._totals(self.home_code)
+        (a_agg, a_away) = self._totals(self.away_code)
+        return h_agg == a_agg and h_away != a_away
+
+    @property
+    def unconfirmed(self) -> bool:
+        return any(m.unconfirmed and m.played for m in self.legs)
+
+
+def _pair_legs(stage_matches: "list[MatchView]") -> "list[TieView]":
+    """Fold a round's matches into ties, pairing mirrored home/away legs."""
+    ties: "list[TieView]" = []
+    open_tie: "dict[frozenset, TieView]" = {}
+    for m in sorted(stage_matches, key=lambda m: (m.date, m.row)):
+        key = frozenset((m.home_code, m.away_code))
+        first = open_tie.get(key)
+        # Only a reversed fixture is a second leg; a repeat with the same
+        # home team is something else (a replay) and stays its own tie.
+        if first is not None and m.home_code == first.away_code:
+            first.legs.append(m)
+            del open_tie[key]
+            continue
+        tie = TieView([m])
+        ties.append(tie)
+        open_tie[key] = tie
+    return ties
+
+
+def cup_rounds(matches: "list[MatchView]") -> "list[tuple[str, list[TieView]]]":
+    """Group a cup's matches into bracket rounds of ties, earliest round first.
 
     When the highest round present is not the final, an empty ("final", [])
     round is appended: the bracket renders it as a placeholder tie fed by the
@@ -376,8 +483,7 @@ def cup_rounds(matches: "list[MatchView]") -> "list[tuple[str, list[MatchView]]]
     for m in matches:
         by_stage.setdefault(m.stage, []).append(m)
     stages = sorted(by_stage, key=lambda s: STAGE_ORDER.get(s, len(STAGE_ORDER)))
-    rounds = [(s, sorted(by_stage[s], key=lambda m: (m.date, m.home_code)))
-              for s in stages]
+    rounds = [(s, _pair_legs(by_stage[s])) for s in stages]
     if stages and stages[-1] != "final":
         rounds.append(("final", []))
     return rounds
