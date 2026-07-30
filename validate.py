@@ -11,7 +11,7 @@ Usage:
     python validate.py [--allow-deletions] [--no-snapshot]
 
 --allow-deletions   skip the drift hard-fail when rows were deliberately
-                    removed from the sheet (check 7's escape hatch).
+                    removed from the sheet (check 8's escape hatch).
 --no-snapshot       validate only; do not update data/canonical/.
 """
 
@@ -45,7 +45,7 @@ PRIMARY_KEYS = {
 }
 
 # The identifier columns whose disappearance between fetches means someone
-# deleted rows from the sheet (check 7).
+# deleted rows from the sheet (check 8).
 DRIFT_IDS = {
     "matches": "match_id",
     "teams": "team_id",
@@ -214,7 +214,7 @@ def check_dates(ds):
 
 
 def check_cup_rules(ds):
-    """Check 8: knockout columns and stages are used coherently.
+    """Check 7: knockout columns and stages are used coherently.
 
     A shootout exists only to break a level score, so pens require a full,
     level score and can never themselves be level. Shootout kicks are not
@@ -260,7 +260,7 @@ def check_cup_rules(ds):
 
 
 def check_drift(texts, canonical_dir):
-    """Check 7: every ID present in the previous snapshot must still exist.
+    """Check 8: every ID present in the previous snapshot must still exist.
 
     Catches accidental row deletion in the sheet. First run (no snapshot yet)
     passes vacuously.
