@@ -59,17 +59,34 @@ TAB_GIDS = {
 
 TABS = tuple(TAB_GIDS)
 
+# The national-team tabs, same spreadsheet. They are a separate schema with
+# their own ids (nt_teams.team_code, not teams.team_id) and are parsed by
+# src/nt.py, so they stay out of TABS/Dataset — nothing in the league pipeline
+# sees them. This module remains the only place that knows any CSV URL.
+NT_TAB_GIDS = {
+    "nt_teams": 1346178487,
+    "nt_matches": 933880169,
+    "nt_goals": 1559520207,
+    "nt_squads": 591651148,
+    "nt_competitions": 966765466,
+    "nt_lineups": 1873964167,
+}
+
+NT_TABS = tuple(NT_TAB_GIDS)
+
+_ALL_GIDS = {**TAB_GIDS, **NT_TAB_GIDS}
+
 UNKNOWN_PLAYER_ID = "CAF_MW_UNKNOWN"
 
 
 def tab_url(tab: str) -> str:
     base = os.environ.get("DATASET_BASE_URL", BASE_URL)
-    return f"{base}?gid={TAB_GIDS[tab]}&single=true&output=csv"
+    return f"{base}?gid={_ALL_GIDS[tab]}&single=true&output=csv"
 
 
 def fetch_tab(tab: str) -> str:
     """Return the raw CSV text of one tab (network, or DATASET_LOCAL_DIR)."""
-    if tab not in TAB_GIDS:
+    if tab not in _ALL_GIDS:
         raise DataError(f"unknown tab {tab!r}")
     local = os.environ.get("DATASET_LOCAL_DIR")
     if local:
@@ -83,6 +100,11 @@ def fetch_tab(tab: str) -> str:
 def fetch_all() -> "dict[str, str]":
     """Fetch every tab; returns {tab_name: csv_text}."""
     return {tab: fetch_tab(tab) for tab in TABS}
+
+
+def fetch_nt_all() -> "dict[str, str]":
+    """Fetch the six national-team tabs; returns {tab_name: csv_text}."""
+    return {tab: fetch_tab(tab) for tab in NT_TABS}
 
 
 # ── Enums (as built) ─────────────────────────────────────────────────────────

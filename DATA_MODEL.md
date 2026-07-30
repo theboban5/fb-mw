@@ -1,7 +1,8 @@
 # Data model
 
-The site builds from a single published Google Spreadsheet with 13 tabs,
-fetched as CSV by `src/dataset.py` (the only module that knows the URLs).
+The site builds from a single published Google Spreadsheet: 13 league tabs
+plus six `nt_*` national-team tabs (a separate schema — see "National teams"
+below), fetched as CSV by `src/dataset.py` (the only module that knows the URLs).
 Every build validates the whole dataset first (`validate.py`); any ERROR
 aborts the build before a page is written. The last validated fetch is
 committed to `data/canonical/`, making git history the audit log and giving
@@ -132,6 +133,54 @@ hubs, player pages and the snapshot audit trail work exactly as for leagues.
   position chart is meaningless) and no per-competition `clubs/` pages —
   team names link straight to the cross-competition club hub.
 
+## National teams (`nt_*` tabs)
+
+Six tabs in the same spreadsheet, parsed by `src/nt.py` and rendered by
+`src/nt_page.py`. They are **a separate schema, not part of the `Dataset`** —
+they share no ids with the league tabs, so nothing in the league build path
+sees them. Currently one page is built from them: the women's senior team
+(`MW_W`, "Malawi Scorchers") at `/scorchers/`.
+
+- **nt_teams** — `team_code` (`MW_W`, `MW_M`, `MW_U20W`, …) + `team_name` +
+  `category`. These are **not** `teams.team_id` values.
+- **nt_matches** — one row per match *from our team's perspective*:
+  `team_code`, `opponent`, `team_score`/`opponent_score`, `home_away`,
+  `neutral`, `venue`/`city`/`country`, `coach`, and the knockout columns
+  `extra_time`/`penalty_shootout`/`extra_time_result`.
+  `status` is `scheduled | played | awarded` (no postponed/abandoned yet).
+- **nt_goals**, **nt_lineups** — hold **both sides'** rows, distinguished by
+  `team_id`: ours is the `team_code`, the opponent's is a code like
+  `NIGERIA_W`. `goal_type` is already display vocabulary here — blank,
+  `penalty`, or `own goal` (the underscore form also parses).
+- **nt_squads** — one row per player per announcement. The **current squad is
+  the row group sharing the most recent `announcement_date`**. `notes` carries
+  free text; "captain" / "vice-captain" there drives the badge.
+- **nt_competitions** — a hand-maintained group-table snapshot, displayed
+  as-is with its `last_update` and a link out to `wikipedia_url`. **Never
+  computed from matches**, unlike a league table.
+
+Rules that differ from the league schema, and why:
+
+- **`opponent` is a display name, not a code.** So a goal or line-up row is
+  attributed by asking "is this `team_id` our `team_code`?" — the opponent
+  side has nothing to resolve against, and the validator does not try.
+- **`nt_matches.date` may be the literal `tbd`** (a fixture with no date yet;
+  `tba` also parses). It becomes `""` and renders as "Date TBC". Anything
+  else must still be strict `YYYY-MM-DD`.
+- **National-team `player_id`s are their own namespace** (`MW_W_001`,
+  `W_INT_NI_002`) and are absent from the `players` tab, so scorer names come
+  from `nt_goals.player_name` — the opposite of the league rule. There are no
+  links to `/players/` pages.
+- **`nt_squads.domestic_team_id` is the only join back into the league data**
+  (`-> teams.team_id`, for the club-hub link). It is blank for foreign-based
+  players — expected, not an error.
+- **A line-up section renders only when `nt_lineups` has rows for that
+  match**, the same graceful degradation as scorers on club pages. Most
+  matches have none.
+- **The results list is always from Malawi's perspective** (Malawi in the
+  left column whatever `home_away` says) so the scorer columns stay aligned
+  with the sides above them; home/away/neutral moves into the caption.
+
 ## Validation (`validate.py`, first build step)
 
 1. No duplicate or blank primary keys in any tab.
@@ -148,7 +197,13 @@ hubs, player pages and the snapshot audit trail work exactly as for leagues.
    deciding leg, and require the match — or, on the deciding leg of a
    two-legged tie, the aggregate — to be level; a cup match's stage must be
    in the knockout vocabulary (league stages stay free-form).
-8. **Drift**: any match/team/club/player ID present in the previous
+8. **Drift**: any match/team/club/player/nt_match ID present in the previous
    `data/canonical/` snapshot but missing from the current fetch is a hard
    fail (catches accidental row deletion). Escape hatch:
    `python validate.py --allow-deletions` (or the same flag on `build.py`).
+9. **National teams**: `nt_matches.team_code` resolves; score presence agrees
+   with status; goal rows per match+side never exceed that side's score; a
+   line-up has at most 11 starters per side, every `sub_on` row has a
+   `minute_on`, and its `replaced_player` names someone in that line-up.
+   `nt_goals`/`nt_lineups` `team_id` is deliberately not resolved — the
+   opponent's code has no `nt_teams` row.

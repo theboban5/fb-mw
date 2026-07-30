@@ -603,6 +603,11 @@ table.v2-results-table {
 }
 .ov-caption { color: #666; }
 .ov-legend-name { color: #1c1c1c; }
+/* Section headings default to --ink for the pages that put them straight on
+   the page background (club pages, hubs, the national team). Inside this white
+   card — the Goal Scorers page — they need fixed ink or they vanish in dark
+   mode, same reason as .ov-legend-name above. */
+.ov-outer .v2-sec-title { color: #1c1c1c; }
 
 
 /* ─── Landing page ───────────────────────────────────── */
@@ -904,13 +909,16 @@ table.v2-results-compact { table-layout: fixed; width: 100%; }
 .scorers-table .scr-goals { font-size: 1.05rem; font-weight: 900; }
 
 /* Section heading for the v2 (Design A) overview goalscorer blocks. */
+/* Section headings sit directly on the page background, not on one of the
+   hardcoded-white cards, so they take --ink (which flips with the colour
+   scheme). A fixed #1c1c1c here was invisible in dark mode. */
 .v2-sec-title {
   margin: 26px 0 10px;
   font-size: 0.92rem;
   font-weight: 800;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  color: #1c1c1c;
+  color: var(--ink);
 }
 
 /* ── Per-team top-3 scorer cards ─────────────────────────── */
@@ -1077,4 +1085,228 @@ table.v2-results-compact { table-layout: fixed; width: 100%; }
   font-size: 0.68rem;
   font-weight: 700;
   color: #888;
+}
+
+/* ─── National team page (/scorchers/) ────────────────
+   Mobile-first single column throughout: the line-up is a grouped list by
+   position, never a pitch diagram, so it stays readable at 320px. */
+
+.nt-coach {
+  margin: 6px 0 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #bfe8cf;
+}
+
+/* Next match card. Like every card on the site this is hardcoded light, so it
+   must set its own ink too — inheriting --ink would go white-on-white in dark
+   mode. Same for .nt-pos-group below. */
+.nt-next {
+  border: 1px solid #e4e4e4;
+  border-radius: 10px;
+  padding: 14px 12px;
+  text-align: center;
+  background: #ffffff;
+  color: #1c1c1c;
+}
+.nt-next-comp {
+  margin: 0;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #0b6b3a;
+}
+.nt-next-teams {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 8px 0 0;
+  font-size: 1.02rem;
+  font-weight: 800;
+  color: #1c1c1c;
+}
+.nt-next-side { flex: 1 1 0; min-width: 0; }
+.nt-next-side:first-of-type { text-align: right; }
+.nt-next-side:last-of-type { text-align: left; }
+.nt-next-v {
+  flex: 0 0 auto;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9aa1ab;
+}
+.nt-next-meta {
+  margin: 8px 0 0;
+  font-size: 0.72rem;
+  color: #666;
+}
+
+/* Group-table snapshot. Its own table class, not .v2-standings: the league
+   table's narrow-screen rules hide columns 4-8, which here are W/D/L/PTS. */
+table.nt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.88rem;
+  background: #ffffff;
+  color: #1c1c1c;
+}
+.nt-table thead tr { background: #1c1c1c; }
+.nt-table th {
+  padding: 10px 6px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  color: #ffffff;
+  white-space: nowrap;
+}
+.nt-table td {
+  padding: 12px 6px;
+  text-align: center;
+  border-bottom: 1px solid #e4e4e4;
+}
+.nt-th-team, .nt-team { text-align: left; padding-left: 12px; font-weight: 700; }
+.nt-th-pos { width: 3.4rem; }
+.nt-pos { font-weight: 700; color: #555; }
+.nt-th-pts, .nt-pts { font-weight: 900; }
+.nt-link { color: #0b6b3a; font-weight: 700; text-decoration: none; }
+.nt-link:hover { text-decoration: underline; }
+
+/* Line-up block under a result */
+.nt-lineup-row td {
+  padding: 0 10px 12px;
+  background: #fafafa;
+  border-bottom: 1px solid #e4e4e4;
+}
+.nt-lineup { font-size: 0.8rem; color: #1c1c1c; }
+.nt-lineup-summary {
+  padding: 8px 0;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #0b6b3a;
+  cursor: pointer;
+}
+.nt-lineup-title {
+  margin: 10px 0 6px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #555;
+}
+.nt-lineup-title-quiet { color: #9aa1ab; }
+.nt-pos-title {
+  margin: 8px 0 2px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #9aa1ab;
+}
+
+/* Player lists (line-up + squad) */
+.nt-players { list-style: none; margin: 0; padding: 0; }
+.nt-player {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+}
+.nt-shirt {
+  flex: 0 0 1.6rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: #9aa1ab;
+  font-size: 0.76rem;
+}
+.nt-player-name { font-weight: 600; }
+.nt-player-main { display: flex; flex-direction: column; min-width: 0; }
+.nt-club { font-size: 0.74rem; color: #666; }
+.nt-club-country { color: #9aa1ab; }
+
+/* Captain / vice-captain badge */
+.nt-cap {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #0b6b3a;
+  color: #ffffff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  vertical-align: 1px;
+}
+.nt-cap-vice { background: #9aa1ab; }
+
+/* Cards: drawn in CSS, no images to load */
+.nt-card {
+  display: inline-block;
+  width: 8px;
+  height: 11px;
+  margin-left: 5px;
+  border-radius: 1.5px;
+  vertical-align: -1px;
+}
+.nt-card-y { background: #f2c200; }
+.nt-card-r { background: #d33a3a; }
+.nt-card-yr { background: linear-gradient(135deg, #f2c200 50%, #d33a3a 50%); }
+
+.nt-off { margin-left: 6px; font-size: 0.72rem; color: #d33a3a; font-weight: 700; }
+
+/* Substitutions */
+.nt-subs { list-style: none; margin: 0; padding: 0; }
+.nt-sub { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; }
+.nt-sub-min {
+  flex: 0 0 2.2rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: #0b6b3a;
+  font-size: 0.76rem;
+}
+.nt-sub-on { font-weight: 700; }
+.nt-sub-for { color: #9aa1ab; }
+.nt-sub-off { color: #666; }
+.nt-unused { margin: 0; font-size: 0.74rem; color: #888; line-height: 1.5; }
+
+/* Squad. The note sits on the page background rather than in a white card, so
+   it takes --muted (which flips with the colour scheme) not a fixed grey. */
+.nt-squad-note { margin: 0 0 10px; font-size: 0.74rem; color: var(--muted); }
+.nt-squad { display: flex; flex-direction: column; gap: 14px; }
+.nt-pos-group {
+  border: 1px solid #e4e4e4;
+  border-radius: 10px;
+  padding: 10px 12px 12px;
+  background: #ffffff;
+  color: #1c1c1c;
+}
+.nt-pos-heading {
+  margin: 0 0 6px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0b6b3a;
+}
+.nt-squad-players .nt-player { padding: 5px 0; border-bottom: 1px solid #f0f0f0; }
+.nt-squad-players .nt-player:last-child { border-bottom: 0; }
+
+/* From 560px the line-up groups and squad cards sit side by side. */
+@media (min-width: 560px) {
+  .nt-lineup-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 20px;
+  }
+  .nt-squad { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 }

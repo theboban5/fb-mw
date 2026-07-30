@@ -1,0 +1,626 @@
+"""National-team data layer: the six nt_* tabs, filtered to one team.
+
+A separate schema from the 13 league tabs, deliberately kept apart:
+
+  * Its ids are its own. `nt_teams.team_code` (MW_W) is not a `teams.team_id`,
+    and national-team `player_id`s (MW_W_001, W_INT_NI_002) are not in the
+    `players` tab. The only join back into the league data is
+    `nt_squads.domestic_team_id` -> `teams.team_id`, which is blank for
+    foreign-based players (expected, not an error).
+  * A match row is one team's perspective: `opponent` is a NAME, not a code,
+    while `nt_goals.team_id` / `nt_lineups.team_id` use codes (MW_W,
+    NIGERIA_W). So goals split by "is this our team_code or not", never by
+    resolving the opponent.
+  * `nt_matches.date` may be the literal "tbd" (fixture with no date yet).
+    That parses to "" here; the renderer shows "Date TBC".
+
+**Every filter to one team lives in `team_data`** (which `load_team` calls
+after parsing). Downstream code receives an NTTeamData that contains no other
+team's rows, so a men's or U20 row can never leak onto the women's page.
+"""
+
+from dataclasses import dataclass, field
+
+from . import dataset
+from .dataset import DataError, _enum, _opt_int, _put, _require, _rows
+
+# The women's senior side — the team this site currently builds a page for.
+SCORCHERS = "MW_W"
+
+# Squad/lineup position vocabulary, in the order squads are always listed.
+POSITIONS = ("GK", "DF", "MF", "FW")
+POSITION_LABELS = {
+    "GK": "Goalkeepers",
+    "DF": "Defenders",
+    "MF": "Midfielders",
+    "FW": "Forwards",
+}
+
+# _enum lowercases before comparing, so the position check needs a lowercase
+# vocabulary; parsed values are upper-cased straight back to GK/DF/MF/FW.
+_POSITION_SET = frozenset(p.lower() for p in POSITIONS)
+
+NT_MATCH_STATUSES = frozenset({"scheduled", "played", "awarded"})
+NT_ROLES = frozenset({"starting", "sub_on", "unused_sub"})
+# Already the display vocabulary in this tab ("own goal", not "own_goal" as in
+# the league goals tab); the underscore form is accepted so either spelling works.
+NT_GOAL_TYPES = frozenset({"", "penalty", "own goal", "own_goal"})
+
+# What the sheet writes in a date cell for a fixture that has no date yet.
+_NO_DATE = ("tbd", "tba")
+
+
+# ── Parsing helpers ──────────────────────────────────────────────────────────
+
+def _nt_date(value: str, label: str, tab: str, i: int) -> str:
+    """Strict YYYY-MM-DD, but "tbd"/"tba" (unscheduled) parses to ""."""
+    if value.strip().lower() in _NO_DATE:
+        return ""
+    return dataset._date(value, label, tab, i)
+
+
+def _flag(value: str, label: str, tab: str, i: int) -> bool:
+    """A Sheets checkbox column: blank | 0/1 | FALSE/TRUE."""
+    v = value.strip().lower()
+    if v not in ("", "0", "1", "false", "true"):
+        raise DataError(
+            f"{tab} row {i}: {label} {value!r} must be blank, 0/1 or TRUE/FALSE")
+    return v in ("1", "true")
+
+
+def _id_sort(value: str) -> "tuple[int, int, str]":
+    """Sort ids numerically when they are numbers, else lexically."""
+    try:
+        return (0, int(value), "")
+    except ValueError:
+        return (1, 0, value)
+
+
+# ── Records ──────────────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class NTTeam:
+    team_code: str
+    team_name: str
+    category: str        # senior | youth
+
+
+@dataclass(frozen=True)
+class NTMatch:
+    match_id: str
+    team_code: str
+    date: str            # YYYY-MM-DD, or "" when the sheet says tbd
+    competition: str
+    opponent: str        # a display NAME, never a code
+    home_away: str       # home | away (from our team's perspective)
+    neutral: bool
+    venue: str
+    city: str
+    country: str
+    team_score: "int | None"
+    opponent_score: "int | None"
+    status: str          # scheduled | played | awarded
+    coach: str
+    extra_time: bool
+    penalty_shootout: bool
+    extra_time_result: str
+
+    @property
+    def has_score(self) -> bool:
+        return self.team_score is not None and self.opponent_score is not None
+
+    @property
+    def played(self) -> bool:
+        return self.status in ("played", "awarded") and self.has_score
+
+    @property
+    def scheduled(self) -> bool:
+        return self.status == "scheduled"
+
+    @property
+    def venue_label(self) -> str:
+        """"Al Medina Stadium, Rabat" — blank parts and "tbd" dropped."""
+        parts = [p for p in (self.venue, self.city)
+                 if p and p.strip().lower() not in _NO_DATE]
+        return ", ".join(parts)
+
+    @property
+    def ground_label(self) -> str:
+        """Home / Away / Neutral — neutral wins, as it is the useful fact."""
+        if self.neutral:
+            return "Neutral"
+        return "Home" if self.home_away == "home" else "Away"
+
+    @property
+    def score_note(self) -> str:
+        """"(AET)" / "(pens)" / "(AET, lost on pens)" beside a score."""
+        parts = []
+        if self.extra_time:
+            parts.append("AET")
+        if self.penalty_shootout:
+            result = self.extra_time_result.strip().lower()
+            outcome = {"win": "won", "loss": "lost"}.get(result, "")
+            parts.append(f"{outcome} on pens" if outcome else "pens")
+        return f"({', '.join(parts)})" if parts else ""
+
+    @property
+    def sort_key(self):
+        """Chronological; an undated fixture sorts after every dated one."""
+        return (self.date == "", self.date, _id_sort(self.match_id))
+
+    @property
+    def recent_key(self):
+        """Reverse-chronological ordering that still leaves undated rows last."""
+        return (self.date != "", self.date, _id_sort(self.match_id))
+
+
+@dataclass(frozen=True)
+class NTGoal:
+    goal_id: str
+    match_id: str
+    team_id: str         # the side the goal counted FOR (own goals: beneficiary)
+    player_name: str
+    player_id: str
+    minute: str
+    stoppage: str
+    period: str
+    goal_type: str       # "" | penalty | own goal
+    source_ref: str
+
+    @property
+    def is_penalty(self) -> bool:
+        return self.goal_type == "penalty"
+
+    @property
+    def is_own_goal(self) -> bool:
+        return self.goal_type == "own goal"
+
+    @property
+    def minute_label(self) -> str:
+        """"73", "90+5", or "" when the minute is unrecorded."""
+        if not self.minute:
+            return ""
+        return f"{self.minute}+{self.stoppage}" if self.stoppage else self.minute
+
+    @property
+    def minute_sort(self) -> "tuple[int, int]":
+        """45 < 45+1 < 46; an unknown minute sorts last."""
+        try:
+            base = int(self.minute)
+        except ValueError:
+            return (10**6, 0)
+        try:
+            added = int(self.stoppage) if self.stoppage else 0
+        except ValueError:
+            added = 0
+        return (base, added)
+
+    @property
+    def annotation(self) -> str:
+        """"Temwa Chawinga 90+5'", with " (P)" / " (OG)" appended."""
+        label = (f"{self.player_name} {self.minute_label}'"
+                 if self.minute_label else self.player_name)
+        if self.is_penalty:
+            label += " (P)"
+        elif self.is_own_goal:
+            label += " (OG)"
+        return label
+
+
+@dataclass(frozen=True)
+class NTSquadPlayer:
+    squad_id: str
+    competition: str
+    team_id: str
+    announcement_date: str
+    competition_context: str
+    player_name: str
+    player_id: str
+    position: str        # GK | DF | MF | FW
+    shirt_number: str
+    club: str
+    domestic_team_id: str   # -> teams.team_id; blank for foreign-based players
+    club_country: str
+    notes: str           # free text; carries "captain" / "vice-captain"
+    coach: str
+
+    @property
+    def is_vice_captain(self) -> bool:
+        return "vice" in self.notes.lower() and "captain" in self.notes.lower()
+
+    @property
+    def is_captain(self) -> bool:
+        # Tested before the vice check everywhere, so exclude it here: a
+        # vice-captain must never render as the captain.
+        return "captain" in self.notes.lower() and not self.is_vice_captain
+
+    @property
+    def shirt_sort(self) -> "tuple[int, int, str]":
+        return _id_sort(self.shirt_number)
+
+
+@dataclass(frozen=True)
+class NTLineupRow:
+    match_id: str
+    team_id: str
+    player_name: str
+    player_id: str
+    shirt_number: str
+    position: str
+    role: str            # starting | sub_on | unused_sub
+    captain: bool
+    minute_on: str
+    minute_off: str
+    replaced_player: str  # a NAME (this tab has no replaced_player_id)
+    yellow_card: bool
+    yellow_red_card: bool
+    red_card: bool
+
+    @property
+    def shirt_sort(self) -> "tuple[int, int, str]":
+        return _id_sort(self.shirt_number)
+
+
+@dataclass(frozen=True)
+class NTGroupRow:
+    """A hand-maintained group-table snapshot — never computed from matches."""
+    team_code: str
+    competition_name: str
+    group_name: str
+    position: str
+    played: str
+    won: str
+    drawn: str
+    lost: str
+    points: str
+    last_update: str
+    wikipedia_url: str
+
+    @property
+    def title(self) -> str:
+        return (f"{self.competition_name} · {self.group_name}"
+                if self.group_name else self.competition_name)
+
+
+# ── Tab parsers ──────────────────────────────────────────────────────────────
+
+def parse_nt_teams(text: str) -> "dict[str, NTTeam]":
+    out: "dict[str, NTTeam]" = {}
+    for i, r in _rows(text, "nt_teams", {"team_code", "team_name"}):
+        code = _require(r, "team_code", "nt_teams", i)
+        _put(out, code, NTTeam(
+            code, _require(r, "team_name", "nt_teams", i),
+            r.get("category", "").lower(),
+        ), "nt_teams", i)
+    return out
+
+
+def parse_nt_matches(text: str) -> "dict[str, NTMatch]":
+    out: "dict[str, NTMatch]" = {}
+    required = {"match_id", "team_code", "date", "competition", "opponent",
+                "home_away", "status"}
+    for i, r in _rows(text, "nt_matches", required):
+        mid = _require(r, "match_id", "nt_matches", i)
+        ts = _opt_int(r.get("team_score", ""), "team_score", "nt_matches", i)
+        os_ = _opt_int(r.get("opponent_score", ""), "opponent_score", "nt_matches", i)
+        for label, g in (("team_score", ts), ("opponent_score", os_)):
+            if g is not None and g < 0:
+                raise DataError(f"nt_matches row {i}: {label} cannot be negative ({g})")
+        _put(out, mid, NTMatch(
+            mid, _require(r, "team_code", "nt_matches", i),
+            _nt_date(r.get("date", ""), "date", "nt_matches", i),
+            _require(r, "competition", "nt_matches", i),
+            _require(r, "opponent", "nt_matches", i),
+            _enum(_require(r, "home_away", "nt_matches", i), {"home", "away"},
+                  "home_away", "nt_matches", i),
+            _flag(r.get("neutral", ""), "neutral", "nt_matches", i),
+            r.get("venue", ""), r.get("city", ""), r.get("country", ""),
+            ts, os_,
+            _enum(_require(r, "status", "nt_matches", i), NT_MATCH_STATUSES,
+                  "status", "nt_matches", i),
+            r.get("coach", ""),
+            _flag(r.get("extra_time", ""), "extra_time", "nt_matches", i),
+            _flag(r.get("penalty_shootout", ""), "penalty_shootout", "nt_matches", i),
+            r.get("extra_time_result", ""),
+        ), "nt_matches", i)
+    return out
+
+
+def parse_nt_goals(text: str) -> "dict[str, NTGoal]":
+    out: "dict[str, NTGoal]" = {}
+    required = {"goal_id", "match_id", "team_id", "player_name", "minute"}
+    for i, r in _rows(text, "nt_goals", required):
+        gid = _require(r, "goal_id", "nt_goals", i)
+        # Unlike the league goals tab, player_name IS the display name here:
+        # national-team player_ids are not in the players tab.
+        _put(out, gid, NTGoal(
+            gid, _require(r, "match_id", "nt_goals", i),
+            _require(r, "team_id", "nt_goals", i),
+            _require(r, "player_name", "nt_goals", i),
+            r.get("player_id", ""), r.get("minute", ""), r.get("stoppage", ""),
+            r.get("period", ""),
+            _enum(r.get("goal_type", ""), NT_GOAL_TYPES,
+                  "goal_type", "nt_goals", i).replace("_", " "),
+            r.get("source_ref", ""),
+        ), "nt_goals", i)
+    return out
+
+
+def parse_nt_squads(text: str) -> "list[NTSquadPlayer]":
+    """A list, not a dict: (squad_id, player) is the key, one row per player."""
+    out: "list[NTSquadPlayer]" = []
+    required = {"squad_id", "team_id", "player_name", "position"}
+    for i, r in _rows(text, "nt_squads", required):
+        out.append(NTSquadPlayer(
+            _require(r, "squad_id", "nt_squads", i),
+            r.get("competition", ""),
+            _require(r, "team_id", "nt_squads", i),
+            _nt_date(r.get("announcement_date", ""), "announcement_date",
+                     "nt_squads", i),
+            r.get("competition_context", ""),
+            _require(r, "player_name", "nt_squads", i),
+            r.get("player_id", ""),
+            _enum(_require(r, "position", "nt_squads", i), _POSITION_SET,
+                  "position", "nt_squads", i).upper(),
+            r.get("shirt_number", ""), r.get("club", ""),
+            r.get("domestic_team_id", ""), r.get("club_country", ""),
+            r.get("notes", ""), r.get("coach", ""),
+        ))
+    return out
+
+
+def parse_nt_lineups(text: str) -> "list[NTLineupRow]":
+    out: "list[NTLineupRow]" = []
+    required = {"match_id", "team_id", "player_name", "position", "role"}
+    for i, r in _rows(text, "nt_lineups", required):
+        out.append(NTLineupRow(
+            _require(r, "match_id", "nt_lineups", i),
+            _require(r, "team_id", "nt_lineups", i),
+            _require(r, "player_name", "nt_lineups", i),
+            r.get("player_id", ""), r.get("shirt_number", ""),
+            _enum(_require(r, "position", "nt_lineups", i), _POSITION_SET,
+                  "position", "nt_lineups", i).upper(),
+            _enum(_require(r, "role", "nt_lineups", i), NT_ROLES,
+                  "role", "nt_lineups", i),
+            _flag(r.get("captain", ""), "captain", "nt_lineups", i),
+            r.get("minute_on", ""), r.get("minute_off", ""),
+            r.get("replaced_player", ""),
+            _flag(r.get("yellow_card", ""), "yellow_card", "nt_lineups", i),
+            _flag(r.get("yellow_red_card", ""), "yellow_red_card", "nt_lineups", i),
+            _flag(r.get("red_card", ""), "red_card", "nt_lineups", i),
+        ))
+    return out
+
+
+def parse_nt_competitions(text: str) -> "list[NTGroupRow]":
+    out: "list[NTGroupRow]" = []
+    required = {"team_code", "competition_name"}
+    for i, r in _rows(text, "nt_competitions", required):
+        out.append(NTGroupRow(
+            _require(r, "team_code", "nt_competitions", i),
+            _require(r, "competition_name", "nt_competitions", i),
+            r.get("group_name", ""), r.get("position", ""), r.get("played", ""),
+            r.get("won", ""), r.get("drawn", ""), r.get("lost", ""),
+            r.get("points", ""),
+            _nt_date(r.get("last_update", ""), "last_update", "nt_competitions", i),
+            r.get("wikipedia_url", ""),
+        ))
+    return out
+
+
+_NT_PARSERS = {
+    "nt_teams": parse_nt_teams,
+    "nt_matches": parse_nt_matches,
+    "nt_goals": parse_nt_goals,
+    "nt_squads": parse_nt_squads,
+    "nt_competitions": parse_nt_competitions,
+    "nt_lineups": parse_nt_lineups,
+}
+
+
+@dataclass
+class NTData:
+    """Every national-team tab, parsed — all teams, nothing filtered yet."""
+    nt_teams: "dict[str, NTTeam]" = field(default_factory=dict)
+    nt_matches: "dict[str, NTMatch]" = field(default_factory=dict)
+    nt_goals: "dict[str, NTGoal]" = field(default_factory=dict)
+    nt_squads: "list[NTSquadPlayer]" = field(default_factory=list)
+    nt_competitions: "list[NTGroupRow]" = field(default_factory=list)
+    nt_lineups: "list[NTLineupRow]" = field(default_factory=list)
+
+
+def parse_all(texts: "dict[str, str]") -> NTData:
+    missing = set(dataset.NT_TABS) - set(texts)
+    if missing:
+        raise DataError(f"missing national-team tab(s): {', '.join(sorted(missing))}")
+    return NTData(**{tab: _NT_PARSERS[tab](texts[tab]) for tab in dataset.NT_TABS})
+
+
+# ── One team's view ──────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class NTSubstitution:
+    on: NTLineupRow
+    off: "NTLineupRow | None"    # None when the replaced player has no row
+    minute: str
+
+    @property
+    def off_name(self) -> str:
+        return self.off.player_name if self.off else self.on.replaced_player
+
+
+@dataclass
+class NTLineup:
+    """One match's line-up, from our team's rows only."""
+    starting: "list[NTLineupRow]"
+    substitutions: "list[NTSubstitution]"
+    unused: "list[NTLineupRow]"
+
+    @property
+    def any_rows(self) -> bool:
+        return bool(self.starting or self.substitutions or self.unused)
+
+    def starting_by_position(self) -> "list[tuple[str, list[NTLineupRow]]]":
+        """[(label, rows)] in GK/DF/MF/FW order; empty groups omitted."""
+        return _group_by_position(self.starting)
+
+
+@dataclass
+class NTResult:
+    """A played match with both sides' scorers and any line-up attached."""
+    match: NTMatch
+    our_goals: "list[NTGoal]"
+    their_goals: "list[NTGoal]"
+    lineup: "NTLineup | None"
+
+
+@dataclass
+class NTSquad:
+    """The current squad: the row group sharing the latest announcement_date."""
+    announcement_date: str
+    competition_context: str
+    coach: str
+    players: "list[NTSquadPlayer]"
+
+    def by_position(self) -> "list[tuple[str, list[NTSquadPlayer]]]":
+        return _group_by_position(self.players)
+
+
+@dataclass
+class NTTeamData:
+    """One national team's whole page-worth of data. Contains no other team."""
+    team: NTTeam
+    coach: str
+    next_match: "NTMatch | None"
+    fixtures: "list[NTMatch]"       # scheduled, chronological
+    results: "list[NTResult]"       # played, reverse chronological
+    groups: "list[NTGroupRow]"
+    squad: "NTSquad | None"
+
+
+def _group_by_position(rows):
+    """Group squad/line-up rows GK -> DF -> MF -> FW, by shirt number within."""
+    out = []
+    for pos in POSITIONS:
+        group = sorted((r for r in rows if r.position == pos),
+                       key=lambda r: (r.shirt_sort, r.player_name))
+        if group:
+            out.append((POSITION_LABELS[pos], group))
+    return out
+
+
+def _lineup_for(rows: "list[NTLineupRow]") -> "NTLineup | None":
+    """Fold one match's rows into starters, substitutions and unused subs.
+
+    `replaced_player` is a name, so a substitution pairs by name against the
+    same match's rows (that is all the tab offers). A sub_on row whose name
+    does not match anything still renders — with the raw name and no minute
+    from the other side — rather than being dropped.
+    """
+    if not rows:
+        return None
+    by_name = {r.player_name: r for r in rows}
+    starting = [r for r in rows if r.role == "starting"]
+    unused = [r for r in rows if r.role == "unused_sub"]
+    subs = []
+    for r in sorted((r for r in rows if r.role == "sub_on"),
+                    key=lambda r: (_id_sort(r.minute_on), r.player_name)):
+        off = by_name.get(r.replaced_player) if r.replaced_player else None
+        minute = r.minute_on or (off.minute_off if off else "")
+        subs.append(NTSubstitution(on=r, off=off, minute=minute))
+    lineup = NTLineup(starting=starting, substitutions=subs, unused=unused)
+    return lineup if lineup.any_rows else None
+
+
+def _current_squad(rows: "list[NTSquadPlayer]") -> "NTSquad | None":
+    """The row group sharing the most recent announcement_date.
+
+    Rows with no announcement_date are only used when no dated row exists at
+    all, in which case the highest squad_id wins — a squad list is still
+    better than no squad list.
+    """
+    if not rows:
+        return None
+    dated = [r for r in rows if r.announcement_date]
+    if dated:
+        latest = max(r.announcement_date for r in dated)
+        group = [r for r in dated if r.announcement_date == latest]
+    else:
+        latest_id = max((r.squad_id for r in rows), key=_id_sort)
+        group = [r for r in rows if r.squad_id == latest_id]
+    first = group[0]
+    return NTSquad(
+        announcement_date=first.announcement_date,
+        competition_context=first.competition_context or first.competition,
+        coach=next((r.coach for r in group if r.coach), ""),
+        players=group,
+    )
+
+
+def load_team(texts: "dict[str, str]", team_code: str = SCORCHERS) -> NTTeamData:
+    """Parse the nt_* tabs and reduce them to one team's page data.
+
+    This is the only filter to `team_code` in the codebase: the tabs hold
+    other teams' rows (MW_M, MW_U20W, ...) and opponent-coded goal/line-up
+    rows (NIGERIA_W), none of which survive past this function except as the
+    opponent side of one of *our* matches.
+    """
+    nt = parse_all(texts)
+    return team_data(nt, team_code)
+
+
+def team_data(nt: NTData, team_code: str = SCORCHERS) -> NTTeamData:
+    """The filtering half of load_team, for callers that already parsed."""
+    team = nt.nt_teams.get(team_code)
+    if team is None:
+        raise DataError(f"nt_teams has no row for {team_code!r}")
+
+    matches = [m for m in nt.nt_matches.values() if m.team_code == team_code]
+    our_ids = {m.match_id for m in matches}
+
+    # Goals for our matches, BOTH sides: ours are the rows whose team_id is
+    # our code, the opponent's are everything else (the opponent has no code
+    # we could resolve — see the module docstring).
+    goals_by_match: "dict[str, list[NTGoal]]" = {}
+    for g in nt.nt_goals.values():
+        if g.match_id in our_ids:
+            goals_by_match.setdefault(g.match_id, []).append(g)
+
+    lineup_rows: "dict[str, list[NTLineupRow]]" = {}
+    for r in nt.nt_lineups:
+        if r.match_id in our_ids and r.team_id == team_code:
+            lineup_rows.setdefault(r.match_id, []).append(r)
+
+    results = []
+    for m in sorted((m for m in matches if m.played),
+                    key=lambda m: m.recent_key, reverse=True):
+        gs = sorted(goals_by_match.get(m.match_id, []),
+                    key=lambda g: (g.minute_sort, g.player_name))
+        results.append(NTResult(
+            match=m,
+            our_goals=[g for g in gs if g.team_id == team_code],
+            their_goals=[g for g in gs if g.team_id != team_code],
+            lineup=_lineup_for(lineup_rows.get(m.match_id, [])),
+        ))
+
+    fixtures = sorted((m for m in matches if m.scheduled), key=lambda m: m.sort_key)
+    # Soonest dated fixture; an undated one only if that is all there is.
+    next_match = fixtures[0] if fixtures else None
+
+    squad = _current_squad([r for r in nt.nt_squads if r.team_id == team_code])
+    # The coach of record: the most recent match that names one (the sheet
+    # leaves the column blank on older rows), else the current squad's.
+    coach = next((m.coach for m in sorted(matches, key=lambda m: m.recent_key,
+                                          reverse=True) if m.coach), "")
+    if not coach and squad:
+        coach = squad.coach
+
+    return NTTeamData(
+        team=team,
+        coach=coach,
+        next_match=next_match,
+        fixtures=fixtures,
+        results=results,
+        groups=[c for c in nt.nt_competitions if c.team_code == team_code],
+        squad=squad,
+    )

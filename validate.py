@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Validate the new-schema data; the first build step.
 
-Fetches all 13 tabs (or reads DATASET_LOCAL_DIR), runs every check, and:
+Fetches all 13 league tabs plus the six national-team tabs (or reads
+DATASET_LOCAL_DIR), runs every check, and:
   * any ERROR -> prints them all and exits 1; the build must not proceed and
     production stays untouched;
   * success   -> writes the fetched CSVs to data/canonical/ (the drift
@@ -23,7 +24,7 @@ import sys
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
-from src import dataset  # noqa: E402
+from src import dataset, nt  # noqa: E402
 
 CANONICAL_DIR = os.path.join(ROOT, "data", "canonical")
 
@@ -44,6 +45,18 @@ PRIMARY_KEYS = {
     "reporters": ("reporter_id",),
 }
 
+# The national-team tabs (src/nt.py). nt_squads and nt_lineups hold one row per
+# player, so their key is the group plus the player; nt_competitions is one
+# hand-maintained snapshot row per team+competition.
+NT_PRIMARY_KEYS = {
+    "nt_teams": ("team_code",),
+    "nt_matches": ("match_id",),
+    "nt_goals": ("goal_id",),
+    "nt_squads": ("squad_id", "player_name"),
+    "nt_competitions": ("team_code", "competition_name"),
+    "nt_lineups": ("match_id", "player_name"),
+}
+
 # The identifier columns whose disappearance between fetches means someone
 # deleted rows from the sheet (check 8).
 DRIFT_IDS = {
@@ -51,6 +64,7 @@ DRIFT_IDS = {
     "teams": "team_id",
     "clubs": "club_id",
     "players": "player_id",
+    "nt_matches": "match_id",
 }
 
 
@@ -63,10 +77,10 @@ def _non_blank_rows(text):
             yield i, row
 
 
-def check_primary_keys(texts):
+def check_primary_keys(texts, keys=None):
     """Check 1: no duplicate and no blank primary keys, in any tab."""
     errors = []
-    for tab, pk in PRIMARY_KEYS.items():
+    for tab, pk in (keys or PRIMARY_KEYS).items():
         seen = {}
         for i, row in _non_blank_rows(texts[tab]):
             key = tuple(row.get(c, "") for c in pk)
@@ -300,6 +314,95 @@ def check_cup_rules(ds):
     return errors
 
 
+def check_nt(ntd):
+    """Check 9: the national-team tabs are internally coherent.
+
+    Deliberately narrow, because this schema records one team's perspective:
+    `nt_matches.opponent` is a display name with no code to resolve, so the
+    only checkable side is ours. Everything here mirrors a league check —
+    FK resolution, score/status agreement, goal rows never exceeding the
+    score — plus the line-up rules the page relies on.
+    """
+    errors = []
+    for m in ntd.nt_matches.values():
+        lbl = f"nt_matches {m.match_id}"
+        if m.team_code not in ntd.nt_teams:
+            errors.append(f"{lbl}: team_code {m.team_code!r} does not resolve")
+        if (m.team_score is None) != (m.opponent_score is None):
+            errors.append(f"{lbl}: only one of team_score/opponent_score present")
+        elif m.status in ("played", "awarded") and not m.has_score:
+            errors.append(f"{lbl}: status={m.status} but the score is blank")
+        elif m.status == "scheduled" and m.has_score:
+            errors.append(f"{lbl}: status=scheduled but a score is present")
+
+    # Goal rows per match+side never exceed that side's score (fewer is fine —
+    # incomplete scorer data is expected). Own-goal rows already credit the
+    # benefiting side, so counting by team_id lines up with the score.
+    per_side = {}
+    for g in ntd.nt_goals.values():
+        m = ntd.nt_matches.get(g.match_id)
+        if m is None:
+            errors.append(
+                f"nt_goals {g.goal_id}: match_id {g.match_id!r} does not resolve")
+            continue
+        ours = g.team_id == m.team_code
+        per_side[(m.match_id, ours)] = per_side.get((m.match_id, ours), 0) + 1
+    for (mid, ours), n in sorted(per_side.items()):
+        m = ntd.nt_matches[mid]
+        side = m.team_code if ours else f"the opponent ({m.opponent})"
+        if not m.has_score:
+            errors.append(f"nt_matches {mid}: has {n} goal row(s) but no score")
+            continue
+        score = m.team_score if ours else m.opponent_score
+        if n > score:
+            errors.append(
+                f"nt_matches {mid}: {n} goal rows for {side} exceed its "
+                f"score of {score}"
+            )
+
+    for c in ntd.nt_competitions:
+        if c.team_code not in ntd.nt_teams:
+            errors.append(
+                f"nt_competitions {c.competition_name!r}: team_code "
+                f"{c.team_code!r} does not resolve")
+    for s in ntd.nt_squads:
+        if s.team_id not in ntd.nt_teams:
+            errors.append(
+                f"nt_squads {s.squad_id}/{s.player_name}: team_id "
+                f"{s.team_id!r} does not resolve")
+
+    # Line-ups: one XI per match+side, substitutions that name a real player.
+    # team_id is deliberately NOT resolved: like nt_goals, a line-up row may
+    # belong to the opponent (NIGERIA_W), which has no nt_teams row to hit.
+    by_match = {}
+    for r in ntd.nt_lineups:
+        if r.match_id not in ntd.nt_matches:
+            errors.append(
+                f"nt_lineups {r.match_id}/{r.player_name}: match_id "
+                f"{r.match_id!r} does not resolve")
+            continue
+        by_match.setdefault((r.match_id, r.team_id), []).append(r)
+    for (mid, tid), rows in sorted(by_match.items()):
+        names = {r.player_name for r in rows}
+        starting = [r for r in rows if r.role == "starting"]
+        if len(starting) > 11:
+            errors.append(
+                f"nt_lineups {mid}/{tid}: {len(starting)} starting rows "
+                f"(a starting XI is 11)")
+        for r in rows:
+            if r.role != "sub_on":
+                continue
+            if not r.minute_on:
+                errors.append(
+                    f"nt_lineups {mid}/{r.player_name}: role=sub_on but "
+                    f"minute_on is blank")
+            if r.replaced_player and r.replaced_player not in names:
+                errors.append(
+                    f"nt_lineups {mid}/{r.player_name}: replaced_player "
+                    f"{r.replaced_player!r} is not in this match's line-up")
+    return errors
+
+
 def check_drift(texts, canonical_dir):
     """Check 8: every ID present in the previous snapshot must still exist.
 
@@ -309,7 +412,7 @@ def check_drift(texts, canonical_dir):
     errors = []
     for tab, id_col in DRIFT_IDS.items():
         path = os.path.join(canonical_dir, f"{tab}.csv")
-        if not os.path.exists(path):
+        if tab not in texts or not os.path.exists(path):
             continue
         with open(path, encoding="utf-8") as fh:
             previous = {row.get(id_col, "") for _i, row in _non_blank_rows(fh.read())}
@@ -323,8 +426,15 @@ def check_drift(texts, canonical_dir):
     return errors
 
 
-def validate(texts, canonical_dir=CANONICAL_DIR, allow_deletions=False):
-    """Run every check; returns (dataset_or_None, [error strings])."""
+def validate(texts, canonical_dir=CANONICAL_DIR, allow_deletions=False,
+             nt_texts=None):
+    """Run every check; returns (dataset_or_None, [error strings]).
+
+    `nt_texts` (the six nt_* tabs) is optional: when given, the national-team
+    checks run too and its rows join the drift baseline. The two schemas are
+    validated independently — they share no ids — but a failure in either
+    aborts the build, so a broken sheet can never deploy a partial site.
+    """
     errors = check_primary_keys(texts)
     ds = None
     if not errors:
@@ -345,19 +455,29 @@ def validate(texts, canonical_dir=CANONICAL_DIR, allow_deletions=False):
             ds.active_season()
         except dataset.DataError as err:
             errors.append(str(err))
+
+    if nt_texts is not None:
+        errors += check_primary_keys(nt_texts, keys=NT_PRIMARY_KEYS)
+        try:
+            errors += check_nt(nt.parse_all(nt_texts))
+        except dataset.DataError as err:
+            errors.append(str(err))
+
     # Drift works on the raw texts, so it runs even when parsing failed.
     if not allow_deletions:
-        errors += check_drift(texts, canonical_dir)
+        errors += check_drift({**texts, **(nt_texts or {})}, canonical_dir)
     return ds, errors
 
 
-def write_snapshot(texts, canonical_dir=CANONICAL_DIR):
+def write_snapshot(texts, canonical_dir=CANONICAL_DIR, nt_texts=None):
     """Persist the validated fetch as the new drift baseline / audit log."""
     os.makedirs(canonical_dir, exist_ok=True)
-    for tab in dataset.TABS:
+    tabs = list(dataset.TABS) + (list(dataset.NT_TABS) if nt_texts else [])
+    both = {**texts, **(nt_texts or {})}
+    for tab in tabs:
         with open(os.path.join(canonical_dir, f"{tab}.csv"), "w",
                   encoding="utf-8", newline="") as fh:
-            fh.write(texts[tab])
+            fh.write(both[tab])
 
 
 def main(argv):
@@ -366,11 +486,13 @@ def main(argv):
 
     try:
         texts = dataset.fetch_all()
+        nt_texts = dataset.fetch_nt_all()
     except OSError as err:
         print(f"ERROR: could not fetch data: {err}", file=sys.stderr)
         return 1
 
-    _ds, errors = validate(texts, allow_deletions=allow_deletions)
+    _ds, errors = validate(texts, allow_deletions=allow_deletions,
+                           nt_texts=nt_texts)
     if errors:
         print(f"VALIDATION FAILED — {len(errors)} error(s):", file=sys.stderr)
         for e in errors:
@@ -378,7 +500,7 @@ def main(argv):
         return 1
 
     if snapshot:
-        write_snapshot(texts)
+        write_snapshot(texts, nt_texts=nt_texts)
         print(f"Validation OK — snapshot written to {CANONICAL_DIR}/")
     else:
         print("Validation OK")

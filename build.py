@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
 import validate  # noqa: E402
-from src import adapt, dataset, hubs, render, scorers, standings  # noqa: E402
+from src import adapt, dataset, hubs, nt, nt_page, render, scorers, standings  # noqa: E402
 
 STATIC = os.path.join(ROOT, "static")
 TEMPLATES = os.path.join(ROOT, "templates")
@@ -198,6 +198,16 @@ def _soon(tier, name, region=None):
     return {"live": False, "tier": tier, "name": name, "region": region}
 
 
+def _live_page(name, tier, href, meta, logo=""):
+    """A live row for a page that is not a competition+season (the national team).
+
+    `href` and `meta` are given outright, where a league row derives them from
+    its slug and season.
+    """
+    return {"live": True, "tier": tier, "name": name, "href": href,
+            "meta": meta, "logo": logo, "sort": (0, 0, name)}
+
+
 def _live_item(ds, league):
     comp = ds.competitions[league.competition_id]
     return {
@@ -218,8 +228,10 @@ def _live_item(ds, league):
 
 def _logo_html(item):
     """League logo <img> when one exists on disk (new naming, then old)."""
+    if item.get("logo"):
+        return f'<img class="lc-logo" src="{item["logo"]}" alt="">'
     for subdir, key in (("competitions", item.get("competition_id", "")),
-                        ("leagues", item["slug"])):
+                        ("leagues", item.get("slug", ""))):
         if not key:
             continue
         for ext in (".svg", ".png"):
@@ -233,9 +245,10 @@ def _row(item):
     tier = item["tier"]
     name = item["name"]
     if item["live"]:
-        meta = f"{tier} &middot; Season {item['season']}"
+        meta = item.get("meta") or f"{tier} &middot; Season {item['season']}"
+        href = item.get("href") or f"{item['slug']}/"
         return (
-            f'<a href="{item["slug"]}/" class="lc-row">'
+            f'<a href="{href}" class="lc-row">'
             f"{_logo_html(item)}"
             f'<span class="lc-main">'
             f'<span class="lc-name">{name}</span>'
@@ -276,11 +289,13 @@ def _panel(cat, active=False):
     )
 
 
-def _landing_categories(ds, leagues):
+def _landing_categories(ds, leagues, scorchers_meta=None):
     """Group the live leagues by competitions.gender / age_group / type.
 
     Men's / Women's / Youth tabs; leagues vs cups within each. Roadmap
     ("Coming Soon") rows stay editorial until those competitions have data.
+    `scorchers_meta` (when the national-team page was built) turns the Women's
+    National Team row from a roadmap card into a live link.
     """
     buckets = {
         ("men", "league"): [], ("men", "cup"): [],
@@ -321,6 +336,14 @@ def _landing_categories(ds, leagues):
     girls_items = buckets[("youth-girls", "league")] + [
         _soon("Youth", "Girls&#x2019; Youth Competitions"),
     ]
+    # The Scorchers page is built from the nt_* tabs; the men's, youth and cup
+    # National Team rows stay on the roadmap until those tabs are filled in.
+    scorchers = (
+        _live_page("Malawi Scorchers", "National Team",
+                   f"{nt_page.SLUG}/", scorchers_meta,
+                   logo=nt_page.FLAG_FILE)
+        if scorchers_meta else _soon("National Team", "Malawi Scorchers")
+    )
 
     return [
         {"key": "men", "label": "Men&#x2019;s", "groups": [
@@ -336,9 +359,7 @@ def _landing_categories(ds, leagues):
             {"label": "Cups", "items": buckets[("women", "cup")] + [
                 _soon("Cup", "Women&#x2019;s Cups"),
             ]},
-            {"label": "National Team", "items": [
-                _soon("National Team", "Malawi Scorchers"),
-            ]},
+            {"label": "National Team", "items": [scorchers]},
         ]},
         {"key": "youth", "label": "Youth", "groups": [
             {"label": "Boys", "items": boys_items},
@@ -351,9 +372,9 @@ def _landing_categories(ds, leagues):
     ]
 
 
-def _write_landing(dist, ds, leagues):
+def _write_landing(dist, ds, leagues, scorchers_meta=None):
     css_ver = render.css_version(STATIC)
-    categories = _landing_categories(ds, leagues)
+    categories = _landing_categories(ds, leagues, scorchers_meta)
 
     tabs = "".join(
         f'<button class="comp-tab{" active" if i == 0 else ""}" type="button" '
@@ -423,10 +444,12 @@ def main(argv):
     # so a broken sheet can never produce a partial or wrong site.
     try:
         texts = dataset.fetch_all()
+        nt_texts = dataset.fetch_nt_all()
     except OSError as err:
         print(f"ERROR: could not fetch data: {err}", file=sys.stderr)
         return 1
-    ds, errors = validate.validate(texts, allow_deletions=allow_deletions)
+    ds, errors = validate.validate(texts, allow_deletions=allow_deletions,
+                                   nt_texts=nt_texts)
     if errors:
         print(f"VALIDATION FAILED — {len(errors)} error(s):", file=sys.stderr)
         for e in errors:
@@ -436,7 +459,7 @@ def main(argv):
     # 2. Snapshot the validated fetch (git history of data/canonical/ is the
     # audit log; also the drift baseline for the next build).
     if snapshot:
-        validate.write_snapshot(texts)
+        validate.write_snapshot(texts, nt_texts=nt_texts)
 
     # 3. Render.
     os.makedirs(dist, exist_ok=True)
@@ -455,7 +478,19 @@ def main(argv):
         standings_by_slug[league.slug] = rows
         parts.append(f"{league.slug}: {len(league.teams)} teams, {n_played} results")
 
-    _write_landing(dist, ds, leagues)
+    # The national team (nt_* tabs): its own schema, its own page. Built before
+    # the landing page, which needs its current competition for the card meta.
+    scorchers = nt.load_team(nt_texts)
+    # Club hubs exist for every club with a team in a built league — the same
+    # set hubs.build_club_hubs writes — so squad club links only point at one
+    # of those.
+    club_hub_ids = {tv.club_id for league in leagues
+                    for tv in league.teams.values() if tv.club_id}
+    nt_page.build_page(dist, TEMPLATES, STATIC, scorchers, ds, updated,
+                       club_hub_ids=club_hub_ids)
+
+    _write_landing(dist, ds, leagues,
+                   scorchers_meta=nt_page.landing_meta(scorchers))
 
     # Cross-competition pages: club hubs and player pages.
     n_clubs = hubs.build_club_hubs(
@@ -463,7 +498,9 @@ def main(argv):
     n_players = hubs.build_player_pages(dist, TEMPLATES, STATIC, ds, updated)
 
     print(f"Built {dist}/  " + " | ".join(parts)
-          + f" | {n_clubs} club hubs | {n_players} player pages")
+          + f" | {n_clubs} club hubs | {n_players} player pages"
+          + f" | {nt_page.SLUG}: {len(scorchers.results)} results,"
+          + f" {len(scorchers.fixtures)} fixtures")
     return 0
 
 

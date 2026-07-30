@@ -2,8 +2,9 @@
 
 A lightweight, mobile-first static site for football standings and results at
 every level of the Malawi pyramid. No backend, no database, no JavaScript
-framework — data lives in one normalized Google Spreadsheet (13 tabs,
-published as CSV) and a single Python script builds the whole site.
+framework — data lives in one normalized Google Spreadsheet (13 league tabs
+plus six national-team tabs, published as CSV) and a single Python script
+builds the whole site.
 
 **Live site:** https://everyleague.co
 
@@ -12,12 +13,14 @@ published as CSV) and a single Python script builds the whole site.
 ```
 build.py             ← entry point: fetch → validate → snapshot → render
 validate.py          ← data validation; any ERROR aborts the build
-src/dataset.py       ← the 13-tab data layer (only place that knows the URLs)
+src/dataset.py       ← the tab data layer (only place that knows the URLs)
 src/adapt.py         ← new schema → renderer-ready per-league shapes
 src/standings.py     ← standings computation
 src/scorers.py       ← goalscorer aggregation
 src/render.py        ← data → HTML
 src/hubs.py          ← club hub + player pages (cross-competition views)
+src/nt.py            ← national-team tabs (nt_*), filtered to one team
+src/nt_page.py       ← the national-team page (/scorchers/)
 templates/base.html  ← page shell
 static/style.css     ← hand-written, mobile-first
 data/canonical/      ← last validated fetch (drift baseline + audit log)
@@ -27,7 +30,8 @@ DATA_MODEL.md        ← the schema, ID conventions, enums, and build rules
 ```
 
 See `DATA_MODEL.md` for the spreadsheet schema and the rules the build
-enforces (placeholder exclusion, own-goal handling, season resolution, …).
+enforces (placeholder exclusion, own-goal handling, season resolution, the
+separate `nt_*` national-team schema, …).
 
 ## Local development
 
