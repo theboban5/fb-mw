@@ -19,7 +19,9 @@ HOME_BACK = '<a href="../" class="back-link">&#x2190; All Leagues</a>'
 
 def _page(base, title, content, updated, css_ver, header_logo=""):
     return (
-        base.replace("{{TITLE}}", escape(title))
+        # A hub belongs to no single competition, so the <title>'s second half
+        # is the site, not the page again ("Mighty Wanderers · Everyleague").
+        base.replace("{{TITLE}}", escape(f"{title} · {render.SITE_NAME}"))
         .replace("{{LEAGUE_NAME}}", escape(title))
         .replace("{{LEAGUE_LOGO}}", header_logo)
         .replace("{{LAST_UPDATED}}", escape(updated))

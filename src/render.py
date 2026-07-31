@@ -1260,7 +1260,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
 
     for filename, (title, content) in pages.items():
         html = (
-            base.replace("{{TITLE}}", escape(title))
+            base.replace("{{TITLE}}", escape(f"{title} · {league_name}"))
             .replace("{{LEAGUE_NAME}}", escape(league_name))
             .replace("{{LEAGUE_LOGO}}", header_logo)
             .replace("{{LAST_UPDATED}}", escape(updated))
@@ -1312,7 +1312,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             club_hub_href=hub_href, club_name=club_names.get(code, team.name),
         )
         html = (
-            base.replace("{{TITLE}}", escape(team.name))
+            base.replace("{{TITLE}}", escape(f"{team.name} · {league_name}"))
             .replace("{{LEAGUE_NAME}}", escape(league_name))
             .replace("{{LEAGUE_LOGO}}", club_header_logo)
             .replace("{{LAST_UPDATED}}", escape(updated))

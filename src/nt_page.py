@@ -524,9 +524,14 @@ def build_page(dist, templates_dir, static_dir, team_data, ds, updated,
     }
     header_logo = (f'<img class="site-logo" src="{escape(flag_url)}" alt="">'
                    if flag_url else "")
+    # The nav label is what distinguishes these four pages, so it is the first
+    # half of the <title> — the same shape league pages use ("Results · Malawi
+    # Scorchers"), instead of the team name twice.
+    nav_labels = dict(NAV_ITEMS)
     for filename, content in pages.items():
+        page_title = nav_labels.get(filename, DISPLAY_NAME)
         html = (
-            base.replace("{{TITLE}}", escape(DISPLAY_NAME))
+            base.replace("{{TITLE}}", escape(f"{page_title} · {DISPLAY_NAME}"))
             .replace("{{LEAGUE_NAME}}", escape(DISPLAY_NAME))
             .replace("{{LEAGUE_LOGO}}", header_logo)
             .replace("{{LAST_UPDATED}}", escape(updated))
@@ -536,7 +541,8 @@ def build_page(dist, templates_dir, static_dir, team_data, ds, updated,
             .replace("{{CSS_VER}}", css_ver)
             .replace("{{BACK_LINK}}", BACK_LINK)
             .replace("{{FOOTER}}", render.footer(updated))
-            .replace("{{SOCIAL}}", render.social_meta(DISPLAY_NAME))
+            .replace("{{SOCIAL}}",
+                     render.social_meta(f"{page_title} · {DISPLAY_NAME}"))
         )
         render._write(os.path.join(out_dir, filename), html)
     return len(pages)
