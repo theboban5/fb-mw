@@ -459,6 +459,7 @@ def _write_landing(dist, ds, leagues, updated, scorchers_meta=None, scorchers=No
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Malawi Football</title>
+{render.social_meta("Everyleague — Malawi football", url=render.SITE_URL + "/")}
 <link rel="stylesheet" href="style.css?v={css_ver}">
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" type="image/png" href="favicon-48.png" sizes="48x48">

@@ -536,6 +536,7 @@ def build_page(dist, templates_dir, static_dir, team_data, ds, updated,
             .replace("{{CSS_VER}}", css_ver)
             .replace("{{BACK_LINK}}", BACK_LINK)
             .replace("{{FOOTER}}", render.footer(updated))
+            .replace("{{SOCIAL}}", render.social_meta(DISPLAY_NAME))
         )
         render._write(os.path.join(out_dir, filename), html)
     return len(pages)

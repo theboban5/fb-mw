@@ -6,6 +6,47 @@ import hashlib
 import os
 import shutil
 
+# ── Site identity / link previews ────────────────────────────────────────────
+
+SITE_URL = "https://everyleague.co"          # matches the CNAME build.py writes
+SITE_NAME = "Everyleague"
+SITE_DESCRIPTION = (
+    "Fixtures, results and tables across Malawian football — top flight to "
+    "regional divisions, women’s, youth and the Scorchers."
+)
+# Absolute by requirement: WhatsApp, Slack, iMessage and Facebook all refuse a
+# relative og:image. Regenerate with scripts/make_og_image.py.
+OG_IMAGE = f"{SITE_URL}/og-image.png"
+
+
+def social_meta(title: str, url: str = "") -> str:
+    """Open Graph + Twitter tags, so a shared link previews as a card.
+
+    Without these a chat client has nothing to show but the bare domain — it
+    does not fall back to <title>. `title` is the raw (unescaped) page title.
+    """
+    t, d = escape(title), escape(SITE_DESCRIPTION)
+    tags = [
+        f'<meta name="description" content="{d}">',
+        f'<meta property="og:site_name" content="{SITE_NAME}">',
+        '<meta property="og:type" content="website">',
+        f'<meta property="og:title" content="{t}">',
+        f'<meta property="og:description" content="{d}">',
+        f'<meta property="og:image" content="{OG_IMAGE}">',
+        '<meta property="og:image:width" content="1200">',
+        '<meta property="og:image:height" content="630">',
+        f'<meta property="og:image:alt" content="{SITE_NAME} '
+        '— every league, every level">',
+        '<meta name="twitter:card" content="summary_large_image">',
+        f'<meta name="twitter:title" content="{t}">',
+        f'<meta name="twitter:description" content="{d}">',
+        f'<meta name="twitter:image" content="{OG_IMAGE}">',
+    ]
+    if url:
+        tags.insert(3, f'<meta property="og:url" content="{escape(url)}">')
+    return "\n".join(tags)
+
+
 # ── Site footer ──────────────────────────────────────────────────────────────
 
 # Where "Send us a message" points. Set this empty to pull the contact line
@@ -1229,6 +1270,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             .replace("{{CSS_VER}}", css_ver)
             .replace("{{BACK_LINK}}", back_link)
             .replace("{{FOOTER}}", footer(updated))
+            .replace("{{SOCIAL}}", social_meta(f"{title} · {league_name}"))
         )
         _write(os.path.join(dist, filename), html)
 
@@ -1280,6 +1322,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             .replace("{{CSS_VER}}", css_ver)
             .replace("{{BACK_LINK}}", club_back)
             .replace("{{FOOTER}}", footer(updated))
+            .replace("{{SOCIAL}}", social_meta(f"{team.name} · {league_name}"))
         )
         _write(os.path.join(clubs_dir, f"{code}.html"), html)
 
