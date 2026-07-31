@@ -430,7 +430,7 @@ def _scorchers_feature(fl, team_data):
   </a>"""
 
 
-def _write_landing(dist, ds, leagues, scorchers_meta=None, scorchers=None):
+def _write_landing(dist, ds, leagues, updated, scorchers_meta=None, scorchers=None):
     css_ver = render.css_version(STATIC)
     categories = _landing_categories(ds, leagues, scorchers_meta)
     fl = flags.Flags(STATIC)
@@ -486,6 +486,7 @@ def _write_landing(dist, ds, leagues, scorchers_meta=None, scorchers=None):
     </div>
   </div>
 </main>
+{render.footer(updated)}
 <script>{_NAV_JS}</script>
 </body>
 </html>"""
@@ -525,6 +526,9 @@ def main(argv):
         validate.write_snapshot(texts, nt_texts=nt_texts)
 
     # 3. Render.
+    if not render.FEEDBACK_URL:
+        print("WARNING: render.FEEDBACK_URL is unset; the footer ships without "
+              "its 'Send us a message' line (better than a dead link).")
     os.makedirs(dist, exist_ok=True)
     render.copy_static_tree(STATIC, dist)
     render._write(os.path.join(dist, ".nojekyll"), "")
@@ -552,7 +556,7 @@ def main(argv):
     nt_page.build_page(dist, TEMPLATES, STATIC, scorchers, ds, updated,
                        club_hub_ids=club_hub_ids)
 
-    _write_landing(dist, ds, leagues,
+    _write_landing(dist, ds, leagues, updated,
                    scorchers_meta=nt_page.landing_meta(scorchers),
                    scorchers=scorchers)
 

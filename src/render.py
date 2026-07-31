@@ -1,10 +1,76 @@
 """Rendering layer: turn computed data into static HTML pages."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from html import escape
 import hashlib
 import os
 import shutil
+
+# ── Site footer ──────────────────────────────────────────────────────────────
+
+# Where "Send us a message" points. Set this empty to pull the contact line
+# from the footer entirely — better than shipping a dead link — and the build
+# warns that it did. Every page picks up a change here on the next build.
+FEEDBACK_URL = "https://forms.gle/51iV85AcdS4XJNa8A"
+
+# When this build ran, for the footer's "Updated N minutes ago". Read at import
+# so it needs no plumbing through every renderer; a build takes seconds, which
+# is well inside the resolution of a relative stamp. The absolute stamp each
+# page already carries stays the visible fallback when JS is off.
+BUILD_ISO = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+_FOOTER_JS = """
+(function(){
+  var el=document.querySelector('.ft-updated[datetime]');
+  if(!el) return;
+  var then=Date.parse(el.getAttribute('datetime'));
+  if(isNaN(then)) return;               // leave the absolute stamp in place
+  var secs=Math.floor((Date.now()-then)/1000);
+  var out;
+  if(secs<60){ out='just now'; }
+  else {
+    var mins=Math.floor(secs/60);
+    if(mins<60){ out=mins+' minute'+(mins===1?'':'s')+' ago'; }
+    else {
+      var hrs=Math.floor(mins/60);
+      if(hrs<24){ out=hrs+' hour'+(hrs===1?'':'s')+' ago'; }
+      else { var days=Math.floor(hrs/24); out=days+' day'+(days===1?'':'s')+' ago'; }
+    }
+  }
+  el.textContent='Updated '+out;
+})();
+"""
+
+
+def footer(updated: str) -> str:
+    """The site-wide footer. Same markup on every page, landing included.
+
+    `updated` is the absolute build stamp ("31 July 2026, 10:35 CAT"); it is
+    what a visitor without JS sees, and stays as the <time> title either way.
+    """
+    contact = ""
+    if FEEDBACK_URL:
+        contact = (
+            '<p class="ft-contact">Spot an error or want to contribute? '
+            f'<a class="ft-link" href="{escape(FEEDBACK_URL)}" target="_blank" '
+            'rel="noopener">Send us a message</a></p>'
+        )
+    stamp = escape(updated)
+    return (
+        '<footer class="site-footer">'
+        '<p class="ft-meta">'
+        f'<time class="ft-updated" datetime="{BUILD_ISO}" title="{stamp}">'
+        f"Updated {stamp}</time>"
+        '<span class="ft-sep" aria-hidden="true">&middot;</span>'
+        "<span>Community-maintained data</span>"
+        "</p>"
+        '<p class="ft-about">Everyleague is an independent, community-built '
+        "football results platform.</p>"
+        f"{contact}"
+        "</footer>"
+        f"<script>{_FOOTER_JS}</script>"
+    )
+
 
 NAV_ITEMS = (
     ("index.html", "Standings"),
@@ -1162,6 +1228,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             .replace("{{CSS_PREFIX}}", css_prefix)
             .replace("{{CSS_VER}}", css_ver)
             .replace("{{BACK_LINK}}", back_link)
+            .replace("{{FOOTER}}", footer(updated))
         )
         _write(os.path.join(dist, filename), html)
 
@@ -1212,6 +1279,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             .replace("{{CSS_PREFIX}}", club_css_prefix)
             .replace("{{CSS_VER}}", css_ver)
             .replace("{{BACK_LINK}}", club_back)
+            .replace("{{FOOTER}}", footer(updated))
         )
         _write(os.path.join(clubs_dir, f"{code}.html"), html)
 

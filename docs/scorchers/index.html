@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Malawi Scorchers &middot; Malawi Scorchers</title>
-<link rel="stylesheet" href="../style.css?v=52b7ce67">
+<link rel="stylesheet" href="../style.css?v=2676df97">
 <link rel="icon" href="../favicon.ico" sizes="any">
 <link rel="icon" type="image/png" href="../favicon-48.png" sizes="48x48">
 <link rel="apple-touch-icon" href="../apple-touch-icon.png">
@@ -37,7 +37,7 @@
 <header class="site-header">
   <img class="site-logo" src="../malawi_flag.svg" alt="">
   <h1>Malawi Scorchers</h1>
-  <p class="updated">Last updated 31 July 2026, 11:40 CAT</p>
+  <p class="updated">Last updated 31 July 2026, 12:04 CAT</p>
 </header>
 <a href="../" class="back-link">&#x2190; All Leagues</a>
 <nav class="tabs">
@@ -55,9 +55,27 @@
 <h3 class="v2-sec-title">WAFCON Fixtures</h3><div class="v2-results-outer"><table class="v2-results-table v2-results-compact"><thead><tr><th class="v2-res-th-home">MALAWI</th><th class="v2-res-th-score">RESULT</th><th class="v2-res-th-away">OPPONENT</th></tr></thead><tbody><tr class="v2-res-meta-row"><td colspan="3"><span class="v2-res-meta">1 Aug 2026 &middot; WAFCON &middot; Neutral &middot; Moulay El Hassan Stadium, Rabat</span></td></tr><tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home">Malawi<img class="nt-flag nt-flag-post" src="../flags/mw.png" alt="" loading="lazy" decoding="async"></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><img class="nt-flag nt-flag-pre" src="../flags/eg.png" alt="" loading="lazy" decoding="async">Egypt</td></tr><tr class="v2-res-meta-row"><td colspan="3"><span class="v2-res-meta">5 Aug 2026 &middot; WAFCON &middot; Neutral &middot; Al Medina Stadium, Rabat</span></td></tr><tr class="v2-res-row v2-res-row-compact v2-res-row-fixture"><td class="v2-res-home">Malawi<img class="nt-flag nt-flag-post" src="../flags/mw.png" alt="" loading="lazy" decoding="async"></td><td class="v2-res-score v2-res-vs">vs</td><td class="v2-res-away"><img class="nt-flag nt-flag-pre" src="../flags/zm.png" alt="" loading="lazy" decoding="async">Zambia</td></tr></tbody></table></div><p class="nt-more"><a class="nt-link" href="fixtures.html">All fixtures &rarr;</a></p>
 </div>
 </main>
-<footer class="site-footer">
-  <p>Malawi Scorchers</p>
-</footer>
+<footer class="site-footer"><p class="ft-meta"><time class="ft-updated" datetime="2026-07-31T10:04:56+00:00" title="31 July 2026, 12:04 CAT">Updated 31 July 2026, 12:04 CAT</time><span class="ft-sep" aria-hidden="true">&middot;</span><span>Community-maintained data</span></p><p class="ft-about">Everyleague is an independent, community-built football results platform.</p><p class="ft-contact">Spot an error or want to contribute? <a class="ft-link" href="https://forms.gle/51iV85AcdS4XJNa8A" target="_blank" rel="noopener">Send us a message</a></p></footer><script>
+(function(){
+  var el=document.querySelector('.ft-updated[datetime]');
+  if(!el) return;
+  var then=Date.parse(el.getAttribute('datetime'));
+  if(isNaN(then)) return;               // leave the absolute stamp in place
+  var secs=Math.floor((Date.now()-then)/1000);
+  var out;
+  if(secs<60){ out='just now'; }
+  else {
+    var mins=Math.floor(secs/60);
+    if(mins<60){ out=mins+' minute'+(mins===1?'':'s')+' ago'; }
+    else {
+      var hrs=Math.floor(mins/60);
+      if(hrs<24){ out=hrs+' hour'+(hrs===1?'':'s')+' ago'; }
+      else { var days=Math.floor(hrs/24); out=days+' day'+(days===1?'':'s')+' ago'; }
+    }
+  }
+  el.textContent='Updated '+out;
+})();
+</script>
 <script>
 (function(){
   var pager=document.querySelector('.v2-content [data-md-pager]');

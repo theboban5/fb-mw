@@ -28,6 +28,7 @@ def _page(base, title, content, updated, css_ver, header_logo=""):
         .replace("{{CSS_PREFIX}}", "../")
         .replace("{{CSS_VER}}", css_ver)
         .replace("{{BACK_LINK}}", HOME_BACK)
+        .replace("{{FOOTER}}", render.footer(updated))
     )
 
 
