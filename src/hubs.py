@@ -19,9 +19,9 @@ HOME_BACK = '<a href="../" class="back-link">&#x2190; All Leagues</a>'
 
 def _page(base, title, content, updated, css_ver, header_logo=""):
     return (
-        # A hub belongs to no single competition, so the <title>'s second half
-        # is the site, not the page again ("Mighty Wanderers · Everyleague").
-        base.replace("{{TITLE}}", escape(f"{title} · {render.SITE_NAME}"))
+        # A hub belongs to no single competition, so there is no second half to
+        # the <title> — just the club or player name.
+        base.replace("{{TITLE}}", escape(title))
         .replace("{{LEAGUE_NAME}}", escape(title))
         .replace("{{LEAGUE_LOGO}}", header_logo)
         .replace("{{LAST_UPDATED}}", escape(updated))
@@ -88,8 +88,13 @@ def render_club_hub(club, club_teams, crest_url):
             )
             # Cups emit no per-competition club pages, so their row links to
             # the competition itself instead of a clubs/ URL that never exists.
+            # `code` is this squad's key in league.teams — the same key
+            # render.py names its per-league club pages after, and the only
+            # one guaranteed to resolve. legacy_code is blank for teams added
+            # under the new schema (all of srfa2/crfa2), so keying off it
+            # silently missed and fell back to the raw team id.
             team_href = (f"../{league.slug}/" if league.kind == "cup"
-                         else f"../{league.slug}/clubs/{team.legacy_code or team.team_id}.html")
+                         else f"../{league.slug}/clubs/{code}.html")
             league_href = f"../{league.slug}/"
             # Only league rows carry the highlight id: a squad can hold the
             # same code in a league and a cup, and only league pages link in
@@ -99,7 +104,7 @@ def render_club_hub(club, club_teams, crest_url):
             rows.append(
                 f'<tr class="v2-res-row"{row_id}>'
                 f'<td class="v2-res-home"><a class="club-link" href="{escape(team_href)}">'
-                f'{escape(league.teams[team.legacy_code].name if team.legacy_code in league.teams else team.team_id)}</a></td>'
+                f'{escape(league.teams[code].name)}</a></td>'
                 f'<td class="v2-res-away"><a class="club-link" href="{escape(league_href)}">'
                 f'{escape(league.league_name)}</a></td>'
                 f'<td class="v2-res-venue">{pos_txt}</td></tr>'
