@@ -6,6 +6,10 @@
   --accent: #0b6b3a;
   --row-alt: #fafbfc;
   --max: 660px;
+  /* Featured-card tint: a wash of --accent that has to sit on either page
+     background, so it is a pair of theme values rather than one alpha. */
+  --feature-bg: linear-gradient(135deg, #eef9f2 0%, #e2f3ea 52%, #ffffff 100%);
+  --feature-line: #cbe6d7;
 }
 
 * { box-sizing: border-box; }
@@ -100,6 +104,8 @@ main { max-width: var(--max); margin: 0 auto; padding: 16px; }
     --line: #2a2e34;
     --accent: #3fb37a;
     --row-alt: #1b1e22;
+    --feature-bg: linear-gradient(135deg, #14361f 0%, #10261a 52%, #171a1e 100%);
+    --feature-line: #2f5c42;
   }
 }
 
@@ -620,24 +626,151 @@ body.landing {
 .landing-main {
   max-width: var(--max);
   margin: 0 auto;
-  padding: 32px 16px 48px;
+  padding: 22px 16px 48px;
   width: 100%;
 }
-.landing-header {
-  text-align: center;
-  margin-bottom: 20px;
+
+/* ─── Landing: Everyleague hero ──────────────────────── */
+/* Brand on the left, country on the right; below them the positioning line.
+   The row is flex-wrap, so on a narrow phone the country label drops under
+   the wordmark and both stay left-aligned. */
+.el-hero { margin-bottom: 16px; }
+.el-brand-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 16px;
 }
-.landing-title {
+.el-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+/* Height-only so the intrinsic 360x242 ratio is what scales it. */
+.el-brand-logo {
+  height: 30px;
+  width: auto;
+  flex: 0 0 auto;
+}
+.el-brand-name {
+  font-size: 1.3rem;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+/* Quieter than the wordmark: muted, small, regular weight-ish. */
+.el-locale {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
-  font-size: clamp(1.8rem, 6vw, 2.8rem);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.el-locale-sep { opacity: 0.55; }
+/* Sized in em so the same flag works in the small locale label and in the
+   feature title, which is three times the size. */
+.el-flag {
+  width: 1.15em;
+  height: auto;
+  border-radius: 2px;
+  vertical-align: -0.14em;
+}
+.el-title {
+  margin: 14px 0 0;
+  font-size: clamp(1.5rem, 5.6vw, 2.05rem);
   font-weight: 900;
   letter-spacing: -0.02em;
   color: var(--ink);
 }
-.landing-sub {
-  margin: 6px 0 0;
+.el-tagline {
+  margin: 5px 0 0;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+/* ─── Landing: featured Scorchers card ───────────────── */
+/* The whole card is the link; the CTA is a span because an <a> cannot nest.
+   No squad photo ships with the repo, so the mark itself is the artwork —
+   oversized, clipped and faded into the bottom-right corner. */
+.el-feature {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0 0 6px;
+  padding: 18px 18px 20px;
+  border: 1px solid var(--feature-line);
+  border-radius: 14px;
+  background: var(--feature-bg);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.el-feature::after {
+  content: "";
+  position: absolute;
+  right: -46px;
+  bottom: -40px;
+  z-index: 0;
+  width: 260px;
+  height: 175px;
+  background: url("everyleague_logo.png") no-repeat center / contain;
+  opacity: 0.1;
+  pointer-events: none;
+}
+.el-feature > span {
+  position: relative;
+  z-index: 1;
+}
+.el-feature-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--accent);
+}
+.el-feature-title {
+  font-size: clamp(1.25rem, 4.6vw, 1.55rem);
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: var(--ink);
+}
+.el-feature-copy {
+  max-width: 30rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+.el-feature-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 7px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+.el-feature-arrow { transition: transform 0.15s; }
+
+.el-feature:hover { border-color: var(--accent); transform: translateY(-1px); }
+.el-feature:hover .el-feature-arrow { transform: translateX(3px); }
+.el-feature:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-color: var(--accent);
 }
 
 /* ─── Landing: category tabs ─────────────────────────── */

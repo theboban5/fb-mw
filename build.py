@@ -24,7 +24,8 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
 import validate  # noqa: E402
-from src import adapt, dataset, hubs, nt, nt_page, render, scorers, standings  # noqa: E402
+from src import (adapt, dataset, flags, hubs, nt, nt_page, render, scorers,  # noqa: E402
+                 standings)
 
 STATIC = os.path.join(ROOT, "static")
 TEMPLATES = os.path.join(ROOT, "templates")
@@ -383,9 +384,52 @@ def _landing_categories(ds, leagues, scorchers_meta=None):
     ]
 
 
+def _brand_header(fl):
+    """The Everyleague hero: wordmark + country label, then the tagline.
+
+    The country label uses the same flag PNGs as the rest of the site rather
+    than a flag emoji, which renders as two letters on Windows.
+    """
+    flag = fl.img_for("Malawi", cls="el-flag")
+    return f"""<header class="el-hero">
+    <div class="el-brand-row">
+      <div class="el-brand">
+        <img class="el-brand-logo" src="everyleague_logo.png" alt=""
+             width="360" height="242" decoding="async">
+        <span class="el-brand-name">Everyleague</span>
+      </div>
+      <p class="el-locale">{flag}Malawi <span class="el-locale-sep">&middot;</span> Beta</p>
+    </div>
+    <h1 class="el-title">Every league. Every level.</h1>
+    <p class="el-tagline">Fixtures, results and tables across Malawian football.</p>
+  </header>"""
+
+
+def _scorchers_feature(fl):
+    """The featured Scorchers card, or "" when the national-team page is absent.
+
+    One <a> wrapping the whole card — the CTA is a styled span, since a link
+    inside a link is invalid — so the hit area is the card and the keyboard
+    focus ring lands on it once.
+    """
+    flag = fl.img_for("Malawi", cls="el-flag")
+    return f"""<a class="el-feature" href="{nt_page.SLUG}/">
+    <span class="el-feature-eyebrow">{flag}Scorchers at WAFCON</span>
+    <span class="el-feature-title">History in the making {flag}</span>
+    <span class="el-feature-copy">Follow the Scorchers&#x2019; historic first
+      Women&#x2019;s Africa Cup of Nations campaign.</span>
+    <span class="el-feature-cta">Fixtures, results and squad
+      <span class="el-feature-arrow">&#x2192;</span></span>
+  </a>"""
+
+
 def _write_landing(dist, ds, leagues, scorchers_meta=None):
     css_ver = render.css_version(STATIC)
     categories = _landing_categories(ds, leagues, scorchers_meta)
+    fl = flags.Flags(STATIC)
+    # No national-team page built means the card would link at a 404, so the
+    # hero simply runs straight into the tabs.
+    feature = _scorchers_feature(fl) if scorchers_meta else ""
 
     tabs = "".join(
         f'<button class="comp-tab{" active" if i == 0 else ""}" type="button" '
@@ -409,6 +453,9 @@ def _write_landing(dist, ds, leagues, scorchers_meta=None):
 <meta name="color-scheme" content="light dark">
 <title>Malawi Football</title>
 <link rel="stylesheet" href="style.css?v={css_ver}">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="favicon-48.png" sizes="48x48">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-RCV8V3DEKV"></script>
 <script>
@@ -421,10 +468,8 @@ def _write_landing(dist, ds, leagues, scorchers_meta=None):
 </head>
 <body class="landing">
 <main class="landing-main">
-  <header class="landing-header">
-    <h1 class="landing-title">Malawi Football</h1>
-    <p class="landing-sub">Live tables &amp; results</p>
-  </header>
+  {_brand_header(fl)}
+  {feature}
   <div class="comp-nav">
     <div class="comp-sticky">
       {tabs}
