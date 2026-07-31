@@ -545,3 +545,39 @@ def landing_meta(team_data) -> str:
     if team_data.groups:
         return f"National Team &middot; {escape(team_data.groups[0].competition_name)}"
     return "National Team"
+
+
+def landing_next_match(team_data, fl) -> str:
+    """The next-match panel for the landing page's featured card, or "".
+
+    The same fixture the team's own page leads on — the soonest scheduled match
+    — so it moves on by itself: once a played match is entered as a result it
+    leaves `fixtures`, and the next hourly build promotes the one behind it.
+    Spans rather than <p>/<h3> because the whole card is one <a>.
+    """
+    match = team_data.next_match
+    if match is None:
+        return ""
+    # Date and ground on one line, the venue on its own: in a column this
+    # narrow a single run would break stadium names mid-name.
+    meta = " &middot; ".join(escape(p) for p in (_date_label(match),
+                                                match.ground_label) if p)
+    venue = (f'<span class="el-next-venue">{escape(match.venue_label)}</span>'
+             if match.venue_label else "")
+    return (
+        '<div class="el-next">'
+        '<span class="el-next-label">Next match</span>'
+        '<span class="el-next-card">'
+        + (f'<span class="el-next-comp">{escape(match.competition)}</span>'
+           if match.competition else "")
+        + '<span class="el-next-teams">'
+        f'<span class="el-next-side">{escape(SIDE_NAME)}'
+        f'{fl.img_for(OUR_COUNTRY, "nt-flag nt-flag-post")}</span>'
+        f'<span class="el-next-v">vs</span>'
+        f'<span class="el-next-side">'
+        f'{fl.img_for(match.opponent, "nt-flag nt-flag-pre")}'
+        f"{escape(match.opponent)}</span>"
+        "</span>"
+        f'<span class="el-next-meta">{meta}</span>{venue}'
+        "</span></div>"
+    )

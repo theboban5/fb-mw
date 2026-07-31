@@ -405,31 +405,38 @@ def _brand_header(fl):
   </header>"""
 
 
-def _scorchers_feature(fl):
+def _scorchers_feature(fl, team_data):
     """The featured Scorchers card, or "" when the national-team page is absent.
 
     One <a> wrapping the whole card — the CTA is a styled span, since a link
     inside a link is invalid — so the hit area is the card and the keyboard
-    focus ring lands on it once.
+    focus ring lands on it once. With a match scheduled the card runs two
+    columns and the next-match panel takes the right one; without, it is a
+    single column and the logo watermark fills the space instead.
     """
     flag = fl.img_for("Malawi", cls="el-flag")
-    return f"""<a class="el-feature" href="{nt_page.SLUG}/">
-    <span class="el-feature-eyebrow">{flag}Scorchers at WAFCON</span>
-    <span class="el-feature-title">History in the making {flag}</span>
-    <span class="el-feature-copy">Follow the Scorchers&#x2019; historic first
-      Women&#x2019;s Africa Cup of Nations campaign.</span>
-    <span class="el-feature-cta">Fixtures, results and squad
-      <span class="el-feature-arrow">&#x2192;</span></span>
+    nxt = nt_page.landing_next_match(team_data, fl)
+    split = " has-next" if nxt else ""
+    return f"""<a class="el-feature{split}" href="{nt_page.SLUG}/">
+    <div class="el-feature-body">
+      <span class="el-feature-eyebrow">{flag}Scorchers at WAFCON</span>
+      <span class="el-feature-title">History in the making {flag}</span>
+      <span class="el-feature-copy">Follow the Scorchers&#x2019; historic first
+        Women&#x2019;s Africa Cup of Nations campaign.</span>
+      <span class="el-feature-cta">Fixtures, results and squad
+        <span class="el-feature-arrow">&#x2192;</span></span>
+    </div>
+    {nxt}
   </a>"""
 
 
-def _write_landing(dist, ds, leagues, scorchers_meta=None):
+def _write_landing(dist, ds, leagues, scorchers_meta=None, scorchers=None):
     css_ver = render.css_version(STATIC)
     categories = _landing_categories(ds, leagues, scorchers_meta)
     fl = flags.Flags(STATIC)
     # No national-team page built means the card would link at a 404, so the
     # hero simply runs straight into the tabs.
-    feature = _scorchers_feature(fl) if scorchers_meta else ""
+    feature = _scorchers_feature(fl, scorchers) if scorchers_meta else ""
 
     tabs = "".join(
         f'<button class="comp-tab{" active" if i == 0 else ""}" type="button" '
@@ -546,7 +553,8 @@ def main(argv):
                        club_hub_ids=club_hub_ids)
 
     _write_landing(dist, ds, leagues,
-                   scorchers_meta=nt_page.landing_meta(scorchers))
+                   scorchers_meta=nt_page.landing_meta(scorchers),
+                   scorchers=scorchers)
 
     # Cross-competition pages: club hubs and player pages.
     n_clubs = hubs.build_club_hubs(
