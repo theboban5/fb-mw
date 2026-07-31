@@ -1176,8 +1176,33 @@ table.nt-table {
 .nt-th-pos { width: 3.4rem; }
 .nt-pos { font-weight: 700; color: #555; }
 .nt-th-pts, .nt-pts { font-weight: 900; }
+.nt-goals { font-variant-numeric: tabular-nums; color: #444; }
+/* Our own line in a group table. The tint has to be light enough that the
+   black table text stays readable — this row is the one a reader looks for,
+   not a highlight to shout with. */
+.nt-row-us td {
+  background: #eef7f1;
+  font-weight: 700;
+}
+.nt-row-us .nt-pos { color: #0b6b3a; }
+.nt-row-us td:first-child { box-shadow: inset 3px 0 0 #0b6b3a; }
 .nt-link { color: #0b6b3a; font-weight: 700; text-decoration: none; }
 .nt-link:hover { text-decoration: underline; }
+.nt-more { margin: 10px 0 0; font-size: 0.78rem; }
+
+/* Country flags beside team names. Fixed width with automatic height, because
+   flag ratios differ (2:1 Nigeria, 3:2 Egypt) and a forced box would either
+   crop or squash them. Positioned like the club crests: nearest the score. */
+.nt-flag {
+  display: inline-block;
+  width: 18px;
+  height: auto;
+  vertical-align: -2px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.12);
+}
+.nt-flag-pre { margin-right: 7px; }
+.nt-flag-post { margin-left: 7px; }
 
 /* Line-up block under a result */
 .nt-lineup-row td {

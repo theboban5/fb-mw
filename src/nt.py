@@ -15,8 +15,11 @@ A separate schema from the 13 league tabs, deliberately kept apart:
     That parses to "" here; the renderer shows "Date TBC".
 
 **Every filter to one team lives in `team_data`** (which `load_team` calls
-after parsing). Downstream code receives an NTTeamData that contains no other
-team's rows, so a men's or U20 row can never leak onto the women's page.
+after parsing). Downstream code receives an NTTeamData holding no other
+*tracked* team's rows, so a men's or U20 row can never leak onto the women's
+page. The single deliberate exception is a group table, which is about the
+rivals: `NTGroup` carries their rows too, and they are exactly the rows with no
+`nt_teams` code of their own.
 """
 
 from dataclasses import dataclass, field
@@ -263,7 +266,13 @@ class NTLineupRow:
 
 @dataclass(frozen=True)
 class NTGroupRow:
-    """A hand-maintained group-table snapshot — never computed from matches."""
+    """One team's line in a hand-maintained group table — never computed.
+
+    A row is either **ours** (`team_code` is an `nt_teams` code) or **a rival's**
+    (`team_code` is anything unique within the group — `NIGERIA_W`, `EGYPT_W` —
+    which is why `team_name` exists: those codes have no `nt_teams` row to read
+    a display name from).
+    """
     team_code: str
     competition_name: str
     group_name: str
@@ -275,11 +284,58 @@ class NTGroupRow:
     points: str
     last_update: str
     wikipedia_url: str
+    team_name: str = ""
+    goals_for: str = ""
+    goals_against: str = ""
 
     @property
     def title(self) -> str:
         return (f"{self.competition_name} · {self.group_name}"
                 if self.group_name else self.competition_name)
+
+    @property
+    def group_key(self) -> "tuple[str, str]":
+        return (self.competition_name, self.group_name)
+
+    @property
+    def has_goals(self) -> bool:
+        return bool(self.goals_for or self.goals_against)
+
+    @property
+    def goals_label(self) -> str:
+        """"6:0" — blank when neither goals column is filled in."""
+        if not self.has_goals:
+            return ""
+        return f"{self.goals_for or '0'}:{self.goals_against or '0'}"
+
+    @property
+    def goal_difference(self) -> str:
+        """"+6" / "-1" / "0", or "" when the goals columns cannot give one."""
+        try:
+            gd = int(self.goals_for or 0) - int(self.goals_against or 0)
+        except ValueError:
+            return ""
+        if not self.has_goals:
+            return ""
+        return f"+{gd}" if gd > 0 else str(gd)
+
+    @property
+    def sort_key(self):
+        """`position` when the sheet gives one, else points then goal difference.
+
+        The sheet is the authority on order — a group table's tie-breaks are
+        competition-specific and not worth re-deriving — so a blank position
+        only falls back to the obvious ranking rather than trying to be right.
+        """
+        def num(value, default=0):
+            try:
+                return int(value)
+            except ValueError:
+                return default
+
+        if self.position:
+            return (0, num(self.position, 99), 0, 0, self.team_code)
+        return (1, 0, -num(self.points), -num(self.goal_difference), self.team_code)
 
 
 # ── Tab parsers ──────────────────────────────────────────────────────────────
@@ -404,6 +460,10 @@ def parse_nt_competitions(text: str) -> "list[NTGroupRow]":
             r.get("points", ""),
             _nt_date(r.get("last_update", ""), "last_update", "nt_competitions", i),
             r.get("wikipedia_url", ""),
+            # Optional columns: a sheet that predates the full group table has
+            # neither, and one row per team still parses.
+            r.get("team_name", ""),
+            r.get("goals_for", ""), r.get("goals_against", ""),
         ))
     return out
 
@@ -487,6 +547,47 @@ class NTSquad:
 
 
 @dataclass
+class NTGroup:
+    """A whole group table: our row plus every rival's, in table order.
+
+    The one place another team's rows legitimately reach the page — a group
+    table is *about* the other teams. They are rival rows only: rows belonging
+    to another team this site tracks (MW_M, MW_U20W) are dropped upstream, so
+    a men's line can still never appear on the women's page.
+    """
+    competition_name: str
+    group_name: str
+    our_code: str
+    rows: "list[NTGroupRow]"
+
+    @property
+    def title(self) -> str:
+        return (f"{self.competition_name} · {self.group_name}"
+                if self.group_name else self.competition_name)
+
+    @property
+    def our_row(self) -> "NTGroupRow | None":
+        return next((r for r in self.rows if r.team_code == self.our_code), None)
+
+    @property
+    def has_goals(self) -> bool:
+        """Goals/difference columns render only when some row supplies them."""
+        return any(r.has_goals for r in self.rows)
+
+    @property
+    def last_update(self) -> str:
+        """The freshest `last_update` in the group — one caption for the table."""
+        return max((r.last_update for r in self.rows if r.last_update), default="")
+
+    @property
+    def wikipedia_url(self) -> str:
+        return next((r.wikipedia_url for r in self.rows if r.wikipedia_url), "")
+
+    def is_us(self, row: NTGroupRow) -> bool:
+        return row.team_code == self.our_code
+
+
+@dataclass
 class NTTeamData:
     """One national team's whole page-worth of data. Contains no other team."""
     team: NTTeam
@@ -494,8 +595,32 @@ class NTTeamData:
     next_match: "NTMatch | None"
     fixtures: "list[NTMatch]"       # scheduled, chronological
     results: "list[NTResult]"       # played, reverse chronological
-    groups: "list[NTGroupRow]"
+    groups: "list[NTGroup]"
     squad: "NTSquad | None"
+
+    @property
+    def current_competition(self) -> str:
+        """The tournament the team is in right now, as `nt_matches` names it.
+
+        The next scheduled match decides it; with nothing scheduled, the most
+        recent result does. Friendlies are not a tournament, so they answer ""
+        — the page then has no current-competition section to show.
+        """
+        candidates = []
+        if self.next_match is not None:
+            candidates.append(self.next_match.competition)
+        if self.results:
+            candidates.append(self.results[0].match.competition)
+        for comp in candidates:
+            if comp and comp.strip().lower() != "friendly":
+                return comp
+        return ""
+
+    def competition_results(self, competition: str) -> "list[NTResult]":
+        return [r for r in self.results if r.match.competition == competition]
+
+    def competition_fixtures(self, competition: str) -> "list[NTMatch]":
+        return [m for m in self.fixtures if m.competition == competition]
 
 
 def _group_by_position(rows):
@@ -621,6 +746,33 @@ def team_data(nt: NTData, team_code: str = SCORCHERS) -> NTTeamData:
         next_match=next_match,
         fixtures=fixtures,
         results=results,
-        groups=[c for c in nt.nt_competitions if c.team_code == team_code],
+        groups=_groups_for(nt, team_code),
         squad=squad,
     )
+
+
+def _groups_for(nt: NTData, team_code: str) -> "list[NTGroup]":
+    """Every group table our team appears in, each carrying its rivals' rows.
+
+    Membership is by (competition_name, group_name): the sheet's rival rows sit
+    in the same group as ours. Rows for *another* tracked national team are
+    excluded even when they share a group key, so the filter promise in the
+    module docstring still holds — only rivals with no `nt_teams` row join ours.
+    """
+    ours = [c for c in nt.nt_competitions if c.team_code == team_code]
+    keys = []
+    for row in ours:
+        if row.group_key not in keys:
+            keys.append(row.group_key)
+
+    out = []
+    for key in keys:
+        rows = [
+            c for c in nt.nt_competitions
+            if c.group_key == key
+            and (c.team_code == team_code or c.team_code not in nt.nt_teams)
+        ]
+        rows.sort(key=lambda r: r.sort_key)
+        out.append(NTGroup(competition_name=key[0], group_name=key[1],
+                           our_code=team_code, rows=rows))
+    return out

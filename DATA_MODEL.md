@@ -155,9 +155,16 @@ sees them. Currently one page is built from them: the women's senior team
 - **nt_squads** — one row per player per announcement. The **current squad is
   the row group sharing the most recent `announcement_date`**. `notes` carries
   free text; "captain" / "vice-captain" there drives the badge.
-- **nt_competitions** — a hand-maintained group-table snapshot, displayed
-  as-is with its `last_update` and a link out to `wikipedia_url`. **Never
-  computed from matches**, unlike a league table.
+- **nt_competitions** — a hand-maintained group table, **one row per team in
+  the group**, displayed as-is with its `last_update` and a link out to
+  `wikipedia_url`. **Never computed from matches**, unlike a league table.
+  Rows belong to a group by `competition_name` + `group_name`. Our row uses an
+  `nt_teams` `team_code`; a rival's uses any code unique within the group
+  (`NIGERIA_W`) and must fill `team_name`, since there is no `nt_teams` row to
+  read a name from. `position` sets the order (blank falls back to points then
+  goal difference), and the optional `goals_for`/`goals_against` columns add
+  the GOALS and DIFF columns to the table when any row supplies them. A group
+  holding only our own row still renders — as a one-line snapshot.
 
 Rules that differ from the league schema, and why:
 
@@ -180,6 +187,13 @@ Rules that differ from the league schema, and why:
 - **The results list is always from Malawi's perspective** (Malawi in the
   left column whatever `home_away` says) so the scorer columns stay aligned
   with the sides above them; home/away/neutral moves into the caption.
+- **Country flags replace crests** (`src/flags.py` -> `static/flags/<code>.png`).
+  The lookup is by country NAME, because that is all `opponent` gives; an
+  unmapped country renders no flag rather than a placeholder. Add a name to
+  `flags._NAMES` and the matching PNG to teach it a new one.
+- **A group table is the one place rival rows reach the page.** Everything
+  else in `NTTeamData` is filtered to one `team_code`; `NTGroup` also carries
+  the rows whose code is *not* in `nt_teams`, which is exactly the rivals.
 
 ## Validation (`validate.py`, first build step)
 
@@ -206,4 +220,7 @@ Rules that differ from the league schema, and why:
    line-up has at most 11 starters per side, every `sub_on` row has a
    `minute_on`, and its `replaced_player` names someone in that line-up.
    `nt_goals`/`nt_lineups` `team_id` is deliberately not resolved — the
-   opponent's code has no `nt_teams` row.
+   opponent's code has no `nt_teams` row. In `nt_competitions`, a row whose
+   `team_code` does not resolve must carry a `team_name` (it is a rival's
+   line), and every group must hold at least one row for a team in `nt_teams`
+   — otherwise that group belongs to no page and would never render.

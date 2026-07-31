@@ -1,29 +1,41 @@
-"""The national-team page: /scorchers/index.html.
+"""The national-team pages: /scorchers/.
 
-One page, sections stacked in reading order: header, next match, group table,
-recent results (with scorers and, where the data exists, line-ups), upcoming
-fixtures, current squad. Like `hubs.py` this reuses `render.py`'s helpers and
-the site's existing `v2-*` CSS classes, so it inherits the league pages' look
-without touching their build path.
+Four pages sharing one banner and one tab strip, the same flat-file shape the
+league pages use (index.html + siblings, never subdirectories):
 
-Two deliberate departures from the club pages:
+  * **index.html** — the tournament the team is in right now: next match, the
+    group table, that tournament's results and its remaining fixtures. Nothing
+    else; a visitor arriving mid-WAFCON should see WAFCON.
+  * **results.html** — every result, with scorers and (where the data exists)
+    line-ups.
+  * **fixtures.html** — every scheduled match.
+  * **squad.html** — the current squad.
+
+Like `hubs.py` this reuses `render.py`'s helpers and the site's existing `v2-*`
+CSS classes, so it inherits the league pages' look without touching their build
+path.
+
+Three deliberate departures from the club pages:
 
   * **Malawi is always the left-hand side**, whatever `home_away` says, so the
     scorer columns stay aligned with the teams above them (home/away/neutral
     moves into the caption line). A national-team results list reads from one
     team's perspective; a club results table does not.
+  * **Country flags stand in for crests** (`flags.py`), with the club pages'
+    placement: the left side's flag sits after its name, the right side's
+    before, both nearest the score. An unmapped country renders no flag.
   * **A line-up section renders only when `nt_lineups` has rows for that
     match** — the same graceful degradation as scorers on club pages. Most
     matches have no line-up data and simply omit the block.
 
-No JavaScript: the line-up is a `<details>` element, and a single team needs no
-matchday pager.
+No JavaScript: the line-up is a `<details>` element, the tabs are links, and a
+single team needs no matchday pager.
 """
 
 from html import escape
 import os
 
-from . import render
+from . import flags, render
 
 # Editorial name, matching the landing-page card this page replaces. The data's
 # own `nt_teams.team_name` ("Malawi (Women's)") shows above it as the eyebrow.
@@ -33,9 +45,24 @@ DISPLAY_NAME = "Malawi Scorchers"
 SIDE_NAME = "Malawi"
 SLUG = "scorchers"
 
+# The country whose flag stands beside SIDE_NAME. Split from it because the
+# table label is editorial and the flag lookup is a country name.
+OUR_COUNTRY = "Malawi"
+
 FLAG_FILE = "malawi_flag.svg"
 
 BACK_LINK = '<a href="../" class="back-link">&#x2190; All Leagues</a>'
+
+NAV_ITEMS = (
+    ("index.html", "Home"),
+    ("results.html", "Results"),
+    ("fixtures.html", "Fixtures"),
+    ("squad.html", "Squad"),
+)
+
+# How many matches the home page shows when there is no tournament on — enough
+# to be worth reading, short enough to still be a summary.
+HOME_FALLBACK_LIMIT = 5
 
 _DASH = "&ndash;"
 
@@ -68,16 +95,19 @@ def _score_cell(match) -> str:
             f"{note_html}</td>")
 
 
-def _match_rows(match, extra_rows=()):
+def _match_rows(match, fl, extra_rows=()):
     """The caption row + result row for one match, plus any extra full-width rows."""
     out = [
         f'<tr class="v2-res-meta-row"><td colspan="3">'
         f'<span class="v2-res-meta">{_meta_line(match)}</span></td></tr>',
         f'<tr class="v2-res-row v2-res-row-compact'
         f'{"" if match.played else " v2-res-row-fixture"}">'
-        f'<td class="v2-res-home">{escape(SIDE_NAME)}</td>'
+        f'<td class="v2-res-home">{escape(SIDE_NAME)}'
+        f'{fl.img_for(OUR_COUNTRY, "nt-flag nt-flag-post")}</td>'
         f"{_score_cell(match)}"
-        f'<td class="v2-res-away">{escape(match.opponent)}</td></tr>',
+        f'<td class="v2-res-away">'
+        f'{fl.img_for(match.opponent, "nt-flag nt-flag-pre")}'
+        f"{escape(match.opponent)}</td></tr>",
     ]
     out += [r for r in extra_rows if r]
     return "".join(out)
@@ -94,6 +124,11 @@ def _results_table(body: str) -> str:
         "</tr></thead>"
         f"<tbody>{body}</tbody></table></div>"
     )
+
+
+def _more_link(href: str, label: str) -> str:
+    return (f'<p class="nt-more"><a class="nt-link" href="{href}">'
+            f"{escape(label)} &rarr;</a></p>")
 
 
 def _cards(row) -> str:
@@ -139,7 +174,7 @@ def _header(team_data, flag_url) -> str:
 
 # ── 2. Next match ────────────────────────────────────────────────────────────
 
-def _next_match(match) -> str:
+def _next_match(match, fl) -> str:
     if match is None:
         return ""
     meta = [_date_label(match), match.ground_label]
@@ -151,9 +186,12 @@ def _next_match(match) -> str:
         + (f'<p class="nt-next-comp">{escape(match.competition)}</p>'
            if match.competition else "")
         + '<p class="nt-next-teams">'
-        f'<span class="nt-next-side">{escape(SIDE_NAME)}</span>'
+        f'<span class="nt-next-side">{escape(SIDE_NAME)}'
+        f'{fl.img_for(OUR_COUNTRY, "nt-flag nt-flag-post")}</span>'
         f'<span class="nt-next-v">vs</span>'
-        f'<span class="nt-next-side">{escape(match.opponent)}</span>'
+        f'<span class="nt-next-side">'
+        f'{fl.img_for(match.opponent, "nt-flag nt-flag-pre")}'
+        f"{escape(match.opponent)}</span>"
         "</p>"
         f'<p class="nt-next-meta">{" &middot; ".join(escape(p) for p in meta)}</p>'
         "</div>"
@@ -162,13 +200,36 @@ def _next_match(match) -> str:
 
 # ── 3. Group table ───────────────────────────────────────────────────────────
 
-def _group_table(group) -> str:
-    """One hand-maintained group-table row, as recorded — never computed."""
+def _group_row(group, row, fl) -> str:
+    """One team's line. Ours is highlighted and uses the site's short label."""
+    ours = group.is_us(row)
+    name = SIDE_NAME if ours else (row.team_name or row.team_code)
     cells = "".join(
         f"<td>{escape(v) if v else _DASH}</td>"
-        for v in (group.played, group.won, group.drawn, group.lost)
+        for v in (row.played, row.won, row.drawn, row.lost)
     )
-    position = f"{escape(group.position)}." if group.position else _DASH
+    if group.has_goals:
+        cells += (f'<td class="nt-goals">{escape(row.goals_label) or _DASH}</td>'
+                  f"<td>{escape(row.goal_difference) or _DASH}</td>")
+    return (
+        f'<tr class="{"nt-row-us" if ours else ""}">'
+        f'<td class="nt-pos">{escape(row.position) + "." if row.position else _DASH}</td>'
+        f'<td class="nt-team">{fl.img_for(name, "nt-flag nt-flag-pre")}'
+        f"{escape(name)}</td>"
+        f"{cells}"
+        f'<td class="nt-pts">{escape(row.points) if row.points else _DASH}</td>'
+        "</tr>"
+    )
+
+
+def _group_table(group, fl) -> str:
+    """One hand-maintained group table, as recorded — never computed.
+
+    Renders however many rows the sheet holds: with only our own row it is the
+    one-line snapshot this page started with, and it grows into the full group
+    as the rivals' rows are filled in.
+    """
+    goals_head = "<th>GOALS</th><th>DIFF</th>" if group.has_goals else ""
     legend = []
     if group.last_update:
         legend.append(f"As of {escape(render._format_date(group.last_update))}")
@@ -186,20 +247,18 @@ def _group_table(group) -> str:
         '<th class="nt-th-pos">POS</th>'
         '<th class="nt-th-team">TEAM</th>'
         "<th>P</th><th>W</th><th>D</th><th>L</th>"
+        f"{goals_head}"
         '<th class="nt-th-pts">PTS</th>'
         "</tr></thead>"
-        "<tbody><tr>"
-        f'<td class="nt-pos">{position}</td>'
-        f'<td class="nt-team">{escape(SIDE_NAME)}</td>'
-        f"{cells}"
-        f'<td class="nt-pts">{escape(group.points) if group.points else _DASH}</td>'
-        "</tr></tbody></table></div>"
+        "<tbody>"
+        + "".join(_group_row(group, r, fl) for r in group.rows)
+        + "</tbody></table></div>"
         + (f'<p class="v2-res-legend">{" &middot; ".join(legend)}</p>'
            if legend else "")
     )
 
 
-# ── 4. Recent results ────────────────────────────────────────────────────────
+# ── 4. Results ───────────────────────────────────────────────────────────────
 
 def _scorers_row(result) -> str:
     """Both sides' scorers under one result: ours left, the opponent's right."""
@@ -299,24 +358,27 @@ def _lineup_row(lineup) -> str:
     )
 
 
-def _results(results) -> str:
-    title = '<h3 class="v2-sec-title">Recent Results</h3>'
+def _results(results, fl, title="Recent Results", empty="No results yet.",
+             more=None) -> str:
+    head = f'<h3 class="v2-sec-title">{escape(title)}</h3>'
     if not results:
-        return title + '<p class="v2-empty">No results yet.</p>'
+        return head + f'<p class="v2-empty">{escape(empty)}</p>'
     body = "".join(
-        _match_rows(r.match, extra_rows=(_scorers_row(r), _lineup_row(r.lineup)))
+        _match_rows(r.match, fl, extra_rows=(_scorers_row(r), _lineup_row(r.lineup)))
         for r in results
     )
-    return title + _results_table(body)
+    return head + _results_table(body) + (more or "")
 
 
-# ── 5. Upcoming fixtures ─────────────────────────────────────────────────────
+# ── 5. Fixtures ──────────────────────────────────────────────────────────────
 
-def _fixtures(fixtures) -> str:
-    title = '<h3 class="v2-sec-title">Upcoming Fixtures</h3>'
+def _fixtures(fixtures, fl, title="Upcoming Fixtures",
+              empty="No upcoming fixtures.", more=None) -> str:
+    head = f'<h3 class="v2-sec-title">{escape(title)}</h3>'
     if not fixtures:
-        return title + '<p class="v2-empty">No upcoming fixtures.</p>'
-    return title + _results_table("".join(_match_rows(m) for m in fixtures))
+        return head + f'<p class="v2-empty">{escape(empty)}</p>'
+    body = "".join(_match_rows(m, fl) for m in fixtures)
+    return head + _results_table(body) + (more or "")
 
 
 # ── 6. Current squad ─────────────────────────────────────────────────────────
@@ -375,49 +437,107 @@ def _squad(squad, ds, club_hub_ids) -> str:
     )
 
 
-# ── Page ─────────────────────────────────────────────────────────────────────
+# ── Pages ────────────────────────────────────────────────────────────────────
 
-def render_page(team_data, ds, club_hub_ids=(), flag_url="") -> str:
-    return "\n".join(x for x in [
-        '<div class="v2-content">',
+def _page(parts) -> str:
+    return "\n".join(x for x in ['<div class="v2-content">', *parts, "</div>"] if x)
+
+
+def render_home(team_data, fl, flag_url="") -> str:
+    """The tournament the team is in right now — and nothing else.
+
+    With a tournament on (WAFCON, qualifiers, a COSAFA), the sections below the
+    banner are all about it. Between tournaments there is nothing to be current
+    about, so the page falls back to the most recent handful of matches, with
+    the full lists a tab away either way.
+    """
+    competition = team_data.current_competition
+    if competition:
+        results = team_data.competition_results(competition)
+        fixtures = team_data.competition_fixtures(competition)
+        result_block = _results(
+            results, fl, title=f"{competition} Results",
+            empty=f"No {competition} matches played yet.",
+            more=_more_link("results.html", "All results"))
+        fixture_block = _fixtures(
+            fixtures, fl, title=f"{competition} Fixtures",
+            empty=f"No {competition} matches left to play.",
+            more=_more_link("fixtures.html", "All fixtures"))
+    else:
+        result_block = _results(
+            team_data.results[:HOME_FALLBACK_LIMIT], fl,
+            more=_more_link("results.html", "All results"))
+        fixture_block = _fixtures(
+            team_data.fixtures[:HOME_FALLBACK_LIMIT], fl,
+            more=_more_link("fixtures.html", "All fixtures"))
+
+    return _page([
         _header(team_data, flag_url),
-        _next_match(team_data.next_match),
-        *[_group_table(g) for g in team_data.groups],
-        _results(team_data.results),
-        _fixtures(team_data.fixtures),
+        _next_match(team_data.next_match, fl),
+        *[_group_table(g, fl) for g in team_data.groups],
+        result_block,
+        fixture_block,
+    ])
+
+
+def render_results(team_data, fl, flag_url="") -> str:
+    return _page([
+        _header(team_data, flag_url),
+        _results(team_data.results, fl, title="All Results"),
+    ])
+
+
+def render_fixtures(team_data, fl, flag_url="") -> str:
+    return _page([
+        _header(team_data, flag_url),
+        _fixtures(team_data.fixtures, fl, title="All Fixtures"),
+    ])
+
+
+def render_squad(team_data, fl, ds, club_hub_ids=(), flag_url="") -> str:
+    return _page([
+        _header(team_data, flag_url),
         _squad(team_data.squad, ds, club_hub_ids),
-        "</div>",  # /v2-content
-    ] if x)
+    ])
 
 
 def build_page(dist, templates_dir, static_dir, team_data, ds, updated,
                club_hub_ids=()):
-    """Write dist/scorchers/index.html. Returns the number of pages written."""
+    """Write dist/scorchers/*.html. Returns the number of pages written."""
     out_dir = os.path.join(dist, SLUG)
     os.makedirs(out_dir, exist_ok=True)
     base = render._read(os.path.join(templates_dir, "base.html"))
     css_ver = render.css_version(static_dir)
-    # The flag sits at the static root, so it needs the page's "../" prefix;
-    # a missing file simply renders no logo (as with club crests).
+    # Every page of this section sits one level down, so the flag and the CSS
+    # share the same "../" prefix; a missing file simply renders no logo (as
+    # with club crests).
     flag_url = ("../" + FLAG_FILE
                 if os.path.exists(os.path.join(static_dir, FLAG_FILE)) else "")
+    fl = flags.Flags(static_dir, prefix="../")
 
-    content = render_page(team_data, ds, club_hub_ids, flag_url=flag_url)
+    pages = {
+        "index.html": render_home(team_data, fl, flag_url=flag_url),
+        "results.html": render_results(team_data, fl, flag_url=flag_url),
+        "fixtures.html": render_fixtures(team_data, fl, flag_url=flag_url),
+        "squad.html": render_squad(team_data, fl, ds, club_hub_ids,
+                                   flag_url=flag_url),
+    }
     header_logo = (f'<img class="site-logo" src="{escape(flag_url)}" alt="">'
                    if flag_url else "")
-    html = (
-        base.replace("{{TITLE}}", escape(DISPLAY_NAME))
-        .replace("{{LEAGUE_NAME}}", escape(DISPLAY_NAME))
-        .replace("{{LEAGUE_LOGO}}", header_logo)
-        .replace("{{LAST_UPDATED}}", escape(updated))
-        .replace("{{NAV}}", render._nav("", items=(("../", "Home"),)))
-        .replace("{{CONTENT}}", content)
-        .replace("{{CSS_PREFIX}}", "../")
-        .replace("{{CSS_VER}}", css_ver)
-        .replace("{{BACK_LINK}}", BACK_LINK)
-    )
-    render._write(os.path.join(out_dir, "index.html"), html)
-    return 1
+    for filename, content in pages.items():
+        html = (
+            base.replace("{{TITLE}}", escape(DISPLAY_NAME))
+            .replace("{{LEAGUE_NAME}}", escape(DISPLAY_NAME))
+            .replace("{{LEAGUE_LOGO}}", header_logo)
+            .replace("{{LAST_UPDATED}}", escape(updated))
+            .replace("{{NAV}}", render._nav(filename, items=NAV_ITEMS))
+            .replace("{{CONTENT}}", content)
+            .replace("{{CSS_PREFIX}}", "../")
+            .replace("{{CSS_VER}}", css_ver)
+            .replace("{{BACK_LINK}}", BACK_LINK)
+        )
+        render._write(os.path.join(out_dir, filename), html)
+    return len(pages)
 
 
 def landing_meta(team_data) -> str:

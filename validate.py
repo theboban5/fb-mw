@@ -47,7 +47,9 @@ PRIMARY_KEYS = {
 
 # The national-team tabs (src/nt.py). nt_squads and nt_lineups hold one row per
 # player, so their key is the group plus the player; nt_competitions is one
-# hand-maintained snapshot row per team+competition.
+# hand-maintained row per team per competition — ours plus one per rival in the
+# same group. group_name stays out of the key: a team plays in one group of a
+# competition, and a competition without groups leaves the column blank.
 NT_PRIMARY_KEYS = {
     "nt_teams": ("team_code",),
     "nt_matches": ("match_id",),
@@ -360,11 +362,28 @@ def check_nt(ntd):
                 f"score of {score}"
             )
 
+    # A group table holds our row plus one per rival. Ours resolves to nt_teams;
+    # a rival's code is a local label (NIGERIA_W) with no row to resolve to, so
+    # it must carry its own team_name instead — otherwise it would render
+    # nameless. A group with no row of ours at all is orphaned: nothing links it
+    # to a page, so it would silently never appear.
+    groups = {}
     for c in ntd.nt_competitions:
-        if c.team_code not in ntd.nt_teams:
+        lbl = f"nt_competitions {c.team_code!r}/{c.competition_name!r}"
+        ours = c.team_code in ntd.nt_teams
+        groups.setdefault(c.group_key, []).append(ours)
+        if not ours and not c.team_name:
             errors.append(
-                f"nt_competitions {c.competition_name!r}: team_code "
-                f"{c.team_code!r} does not resolve")
+                f"{lbl}: team_code does not resolve, so the row needs a "
+                f"team_name (rival rows in a group table have no nt_teams row)")
+    for (competition_name, group_name), flags_ in sorted(groups.items()):
+        if not any(flags_):
+            where = f"{competition_name!r}"
+            if group_name:
+                where += f" {group_name!r}"
+            errors.append(
+                f"nt_competitions {where}: no row for a team in nt_teams, so "
+                f"this group table belongs to no page")
     for s in ntd.nt_squads:
         if s.team_id not in ntd.nt_teams:
             errors.append(

@@ -11,10 +11,14 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src import flags  # noqa: E402
 from src import nt  # noqa: E402
 from src import nt_page  # noqa: E402
 from src.dataset import DataError  # noqa: E402
 import validate  # noqa: E402
+
+STATIC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                      "static")
 
 TEAMS = (
     "team_code,team_name,category\n"
@@ -47,7 +51,7 @@ LINEUP_HEADER = (
 
 COMP_HEADER = (
     "team_code,competition_name,group_name,position,played,won,drawn,lost,"
-    "points,last_update,wikipedia_url\n"
+    "points,last_update,wikipedia_url,team_name,goals_for,goals_against\n"
 )
 
 # ── The match-36 fixture, trimmed to what the page renders ───────────────────
@@ -103,10 +107,18 @@ M36_SQUADS = SQUAD_HEADER + (
     "Silver Strikers,,Malawi,,\n"
 )
 
+# The whole of Group C: our row plus one per rival. Rival codes resolve to
+# nothing, which is why each carries a team_name.
 M36_COMPS = COMP_HEADER + (
+    "ZAMBIA_W,2026 Women's Africa Cup of Nations,Group C,1,1,1,0,0,3,"
+    "2026-07-30,,Zambia,6,0\n"
     "MW_W,2026 Women's Africa Cup of Nations,Group C,2,1,1,0,0,3,2026-07-30,"
-    "https://en.wikipedia.org/wiki/2026\n"
-    "MW_M,2026 Four Nations Tournament,,,,,,,,,\n"
+    "https://en.wikipedia.org/wiki/2026,,3,2\n"
+    "NIGERIA_W,2026 Women's Africa Cup of Nations,Group C,3,1,0,0,1,0,"
+    "2026-07-30,,Nigeria,2,3\n"
+    "EGYPT_W,2026 Women's Africa Cup of Nations,Group C,4,1,0,0,1,0,"
+    "2026-07-30,,Egypt,0,6\n"
+    "MW_M,2026 Four Nations Tournament,,,,,,,,,,,,\n"
 )
 
 
@@ -414,6 +426,22 @@ class ValidatorTest(unittest.TestCase):
     def test_clean_fixture_passes(self):
         self.assertEqual(self.errors(), [])
 
+    def test_a_rival_group_row_must_carry_its_own_name(self):
+        comps = COMP_HEADER + (
+            "MW_W,2026 Women's Africa Cup of Nations,Group C,2,1,1,0,0,3,"
+            "2026-07-30,,,3,2\n"
+            "NIGERIA_W,2026 Women's Africa Cup of Nations,Group C,3,1,0,0,1,0,"
+            "2026-07-30,,,2,3\n")
+        errs = self.errors(comps=comps)
+        self.assertTrue(any("needs a team_name" in e for e in errs), errs)
+
+    def test_a_group_with_no_row_of_ours_is_orphaned(self):
+        comps = COMP_HEADER + (
+            "NIGERIA_W,2027 Africa Cup of Nations,Group A,1,1,1,0,0,3,"
+            "2027-01-01,,Nigeria,2,0\n")
+        errs = self.errors(comps=comps)
+        self.assertTrue(any("belongs to no page" in e for e in errs), errs)
+
     def test_goal_rows_may_not_exceed_the_score(self):
         goals = GOAL_HEADER + "".join(
             f"{n},36,MW_W,Player {n},P{n},{n},,2h,,ref\n" for n in range(1, 6))
@@ -488,13 +516,29 @@ class FakeDataset:
     teams = {"MW_CSUW_W1": FakeTeam("MW_CSU")}
 
 
+def pages(team_data=None, **kwargs):
+    """The four rendered pages, keyed by filename — what build_page writes."""
+    td = team_data if team_data is not None else load(**kwargs)
+    fl = flags.Flags(STATIC, prefix="../")
+    flag_url = "../malawi_flag.svg"
+    return {
+        "index.html": nt_page.render_home(td, fl, flag_url=flag_url),
+        "results.html": nt_page.render_results(td, fl, flag_url=flag_url),
+        "fixtures.html": nt_page.render_fixtures(td, fl, flag_url=flag_url),
+        "squad.html": nt_page.render_squad(td, fl, FakeDataset(),
+                                           club_hub_ids={"MW_CSU"},
+                                           flag_url=flag_url),
+    }
+
+
 class PageTest(unittest.TestCase):
-    """The rendered page — the match-36 sense check, end to end."""
+    """The rendered pages — the match-36 sense check, end to end."""
 
     def setUp(self):
-        self.html = nt_page.render_page(
-            load(), FakeDataset(), club_hub_ids={"MW_CSU"},
-            flag_url="../malawi_flag.svg")
+        self.pages = pages()
+        # Assertions about the section a piece of content lives in name the
+        # page; the rest just ask whether the section rendered at all.
+        self.html = "\n".join(self.pages.values())
 
     def test_header_shows_the_team_and_coach(self):
         self.assertIn("MALAWI SCORCHERS", self.html)
@@ -511,8 +555,40 @@ class PageTest(unittest.TestCase):
         self.assertIn("As of 30 Jul 2026", self.html)
         self.assertIn("Full group table on Wikipedia", self.html)
 
+    def test_group_table_lists_every_team_in_table_order(self):
+        home = self.pages["index.html"]
+        table = home[home.index("nt-table"):home.index("</table>")]
+        order = [n for n in ("Zambia", "Malawi", "Nigeria", "Egypt")
+                 if n in table]
+        self.assertEqual(order, ["Zambia", "Malawi", "Nigeria", "Egypt"])
+        self.assertLess(table.index("Zambia"), table.index("Malawi"))
+        self.assertLess(table.index("Nigeria"), table.index("Egypt"))
+
+    def test_group_table_highlights_our_row_and_only_ours(self):
+        home = self.pages["index.html"]
+        us = home.index('<tr class="nt-row-us">')
+        row = home[us:home.index("</tr>", us)]
+        self.assertIn("Malawi", row)
+        self.assertEqual(home.count('<tr class="nt-row-us">'), 1)
+
+    def test_group_table_shows_goals_and_difference(self):
+        home = self.pages["index.html"]
+        self.assertIn("<th>GOALS</th><th>DIFF</th>", home)
+        self.assertIn(">6:0</td><td>+6</td>", home)
+        self.assertIn(">0:6</td><td>-6</td>", home)
+
+    def test_group_table_without_goal_columns_omits_them(self):
+        comps = COMP_HEADER + (
+            "MW_W,2026 Women's Africa Cup of Nations,Group C,2,1,1,0,0,3,"
+            "2026-07-30,,,,\n")
+        home = pages(comps=comps)["index.html"]
+        self.assertIn("nt-table", home)
+        self.assertNotIn("<th>GOALS</th>", home)
+
     def test_scoreline_is_malawi_first(self):
-        self.assertIn(">Malawi</td><td class=\"v2-res-score\">3:2</td>", self.html)
+        self.assertIn('>Malawi<img class="nt-flag nt-flag-post" '
+                      'src="../flags/mw.png"', self.html)
+        self.assertIn('<td class="v2-res-score">3:2</td>', self.html)
 
     def test_our_scorers(self):
         for line in ("Temwa Chawinga 73&#x27;", "Temwa Chawinga 90+5&#x27;",
@@ -555,24 +631,133 @@ class PageTest(unittest.TestCase):
         matches = MATCH_HEADER + (
             "1,MW_W,tbd,AFCON Qualification,Kenya,home,FALSE,tbd,tbd,Malawi,"
             ",,scheduled,,FALSE,FALSE,\n")
-        html = nt_page.render_page(
-            load(matches=matches, goals=GOAL_HEADER, lineups=LINEUP_HEADER),
-            FakeDataset())
+        html = pages(matches=matches, goals=GOAL_HEADER,
+                     lineups=LINEUP_HEADER)["fixtures.html"]
         self.assertIn("Date TBC", html)
 
     def test_empty_states(self):
-        html = nt_page.render_page(
-            load(matches=MATCH_HEADER, goals=GOAL_HEADER,
-                 lineups=LINEUP_HEADER, squads=SQUAD_HEADER, comps=COMP_HEADER),
-            FakeDataset())
-        self.assertIn("No results yet.", html)
-        self.assertIn("No upcoming fixtures.", html)
-        self.assertIn("No squad announced yet.", html)
+        empty = pages(matches=MATCH_HEADER, goals=GOAL_HEADER,
+                      lineups=LINEUP_HEADER, squads=SQUAD_HEADER,
+                      comps=COMP_HEADER)
+        self.assertIn("No results yet.", empty["results.html"])
+        self.assertIn("No upcoming fixtures.", empty["fixtures.html"])
+        self.assertIn("No squad announced yet.", empty["squad.html"])
+        # With no matches at all there is no current competition either, so the
+        # home page falls back to the same empty states rather than blank space.
+        self.assertIn("No results yet.", empty["index.html"])
+
+    def test_opponent_flags_render_and_unknown_countries_do_not(self):
+        results = self.pages["results.html"]
+        self.assertIn('src="../flags/ng.png"', results)
+        matches = MATCH_HEADER + (
+            "1,MW_W,2026-05-01,Friendly,Wakanda,home,FALSE,,,,1,0,played,,"
+            "FALSE,FALSE,\n")
+        html = pages(matches=matches, goals=GOAL_HEADER,
+                     lineups=LINEUP_HEADER)["results.html"]
+        self.assertIn("Wakanda", html)
+        self.assertNotIn("nt-flag-pre", html)
 
     def test_landing_meta_names_the_current_competition(self):
         self.assertEqual(
             nt_page.landing_meta(load()),
             "National Team &middot; 2026 Women&#x27;s Africa Cup of Nations")
+
+
+# The home page's whole job is to be about the tournament that is on, so it gets
+# its own fixture: a tournament match, a friendly either side of it, and a
+# tournament fixture still to play.
+MIXED_MATCHES = MATCH_HEADER + (
+    "35,MW_W,2026-07-16,Friendly,Morocco,away,FALSE,Al Medina Stadium,Rabat,"
+    "Morocco,1,2,played,,FALSE,FALSE,\n"
+    "36,MW_W,2026-07-28,WAFCON,Nigeria,away,TRUE,Al Medina Stadium,Rabat,"
+    "Morocco,3,2,played,Lovemore Fazili,FALSE,FALSE,\n"
+    "37,MW_W,2026-08-01,WAFCON,Egypt,away,TRUE,Moulay El Hassan Stadium,"
+    "Rabat,Morocco,,,scheduled,,FALSE,FALSE,\n"
+    "40,MW_W,2026-09-10,Friendly,Kenya,home,FALSE,Bingu Stadium,Lilongwe,"
+    "Malawi,,,scheduled,,FALSE,FALSE,\n"
+)
+
+
+class HomePageTest(unittest.TestCase):
+    """index.html shows the current tournament; the tabs show everything."""
+
+    def setUp(self):
+        self.pages = pages(matches=MIXED_MATCHES, goals=GOAL_HEADER,
+                           lineups=LINEUP_HEADER)
+
+    def test_current_competition_comes_from_the_next_match(self):
+        self.assertEqual(
+            load(matches=MIXED_MATCHES).current_competition, "WAFCON")
+
+    def test_home_keeps_the_tournament_and_drops_the_friendlies(self):
+        home = self.pages["index.html"]
+        self.assertIn("WAFCON Results", home)
+        self.assertIn("WAFCON Fixtures", home)
+        self.assertIn("Nigeria", home)   # the tournament result
+        self.assertIn("Egypt", home)     # the tournament fixture
+        self.assertNotIn("Morocco", home)  # a friendly already played
+        self.assertNotIn("Kenya", home)    # a friendly still to play
+
+    def test_the_tabs_still_carry_everything(self):
+        self.assertIn("Morocco", self.pages["results.html"])
+        self.assertIn("Kenya", self.pages["fixtures.html"])
+
+    def test_home_links_on_to_the_full_lists(self):
+        home = self.pages["index.html"]
+        self.assertIn('href="results.html"', home)
+        self.assertIn('href="fixtures.html"', home)
+
+    def test_friendlies_alone_are_not_a_tournament(self):
+        matches = MATCH_HEADER + (
+            "1,MW_W,2026-06-03,Friendly,Tanzania,away,FALSE,,,,0,1,played,,"
+            "FALSE,FALSE,\n"
+            "2,MW_W,2026-09-10,Friendly,Kenya,home,FALSE,,,,,,scheduled,,"
+            "FALSE,FALSE,\n")
+        td = load(matches=matches, goals=GOAL_HEADER, lineups=LINEUP_HEADER)
+        self.assertEqual(td.current_competition, "")
+        home = pages(td)["index.html"]
+        self.assertIn("Recent Results", home)
+        self.assertIn("Tanzania", home)
+
+    def test_home_falls_back_to_a_capped_list_without_a_tournament(self):
+        rows = "".join(
+            f"{i},MW_W,2026-0{i}-01,Friendly,Kenya,home,FALSE,,,,1,0,played,,"
+            "FALSE,FALSE,\n" for i in range(1, 8))
+        td = load(matches=MATCH_HEADER + rows, goals=GOAL_HEADER,
+                  lineups=LINEUP_HEADER)
+        self.assertEqual(len(td.results), 7)
+        home = pages(td)["index.html"]
+        self.assertEqual(home.count("v2-res-row-compact"),
+                         nt_page.HOME_FALLBACK_LIMIT)
+
+
+class FlagsTest(unittest.TestCase):
+    def test_known_country(self):
+        self.assertEqual(flags.code_for("Nigeria"), "ng")
+
+    def test_case_accents_and_punctuation_are_ignored(self):
+        self.assertEqual(flags.code_for("CÔTE D'IVOIRE"), "ci")
+        self.assertEqual(flags.code_for("Sao Tome and Principe"), "st")
+
+    def test_alternative_names(self):
+        self.assertEqual(flags.code_for("Ivory Coast"), "ci")
+        self.assertEqual(flags.code_for("Swaziland"), "sz")
+        self.assertEqual(flags.code_for("Cape Verde"), flags.code_for("Cabo Verde"))
+
+    def test_a_trailing_qualifier_still_finds_the_country(self):
+        self.assertEqual(flags.code_for("Nigeria U20"), "ng")
+
+    def test_unknown_country_has_no_code_and_no_image(self):
+        self.assertEqual(flags.code_for("Wakanda"), "")
+        self.assertEqual(flags.Flags(STATIC).img_for("Wakanda"), "")
+
+    def test_every_mapped_code_has_a_file(self):
+        available = flags.Flags(STATIC).available
+        self.assertEqual(sorted(set(flags.CODES) - available), [])
+
+    def test_a_missing_flags_directory_degrades_to_no_flags(self):
+        fl = flags.Flags(os.path.join(STATIC, "does-not-exist"))
+        self.assertEqual(fl.img_for("Nigeria"), "")
 
 
 if __name__ == "__main__":

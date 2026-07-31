@@ -20,7 +20,8 @@ src/scorers.py       ← goalscorer aggregation
 src/render.py        ← data → HTML
 src/hubs.py          ← club hub + player pages (cross-competition views)
 src/nt.py            ← national-team tabs (nt_*), filtered to one team
-src/nt_page.py       ← the national-team page (/scorchers/)
+src/nt_page.py       ← the national-team pages (/scorchers/)
+src/flags.py         ← country name → static/flags/<code>.png
 templates/base.html  ← page shell
 static/style.css     ← hand-written, mobile-first
 data/canonical/      ← last validated fetch (drift baseline + audit log)
