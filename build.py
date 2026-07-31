@@ -54,6 +54,12 @@ TIER_LABELS = {
 _TIER_WORDS = {1: "Top Tier", 2: "Second Division", 3: "Third Division",
                4: "Fourth Division"}
 
+# Competitions whose pages are still built — so their URLs keep working — but
+# which get no row on the landing page, and so are unreachable by navigation.
+# The escape hatch for a competition that is in the data before it is ready to
+# be read: MW_U16 is a placeholder with entries but no results.
+HIDDEN_ON_LANDING = {"MW_U16"}
+
 # Landing-page ordering of live competitions inside a group; anything not
 # listed sorts after these by (tier, name).
 _LANDING_ORDER = list(adapt.COMPETITION_SLUGS)
@@ -295,7 +301,9 @@ def _landing_categories(ds, leagues, scorchers_meta=None):
     Men's / Women's / Youth tabs; leagues vs cups within each. Roadmap
     ("Coming Soon") rows stay editorial until those competitions have data.
     `scorchers_meta` (when the national-team page was built) turns the Women's
-    National Team row from a roadmap card into a live link.
+    National Team row from a roadmap card into a live link. Anything in
+    HIDDEN_ON_LANDING gets no row at all — its pages exist but nothing links
+    to them.
     """
     buckets = {
         ("men", "league"): [], ("men", "cup"): [],
@@ -303,6 +311,8 @@ def _landing_categories(ds, leagues, scorchers_meta=None):
         ("youth-boys", "league"): [], ("youth-girls", "league"): [],
     }
     for league in leagues:
+        if league.competition_id in HIDDEN_ON_LANDING:
+            continue
         comp = ds.competitions[league.competition_id]
         if comp.age_group != "senior":
             key = "youth-girls" if comp.gender == "w" else "youth-boys"
@@ -328,11 +338,7 @@ def _landing_categories(ds, leagues, scorchers_meta=None):
         _soon("Premier Division", "Northern Region Women&#x2019;s Premier Division", region="Northern"),
     ]
     boys = buckets[("youth-boys", "league")]
-    boys_items = (
-        [_soon("Under-23", "National Bank U23 Championship")]
-        + boys
-        + [_soon("Under-14", "U14 Development League")]
-    )
+    boys_items = [_soon("Under-23", "National Bank U23 Championship")] + boys
     girls_items = buckets[("youth-girls", "league")] + [
         _soon("Youth", "Girls&#x2019; Youth Competitions"),
     ]
@@ -364,9 +370,14 @@ def _landing_categories(ds, leagues, scorchers_meta=None):
         {"key": "youth", "label": "Youth", "groups": [
             {"label": "Boys", "items": boys_items},
             {"label": "Girls", "items": girls_items},
+            # The four youth sides already have nt_teams rows (MW_U20M,
+            # MW_U17M, MW_U20W, MW_U17W); they stay on the roadmap until those
+            # tabs carry matches, the same way the Scorchers row did.
             {"label": "National Team", "items": [
-                _soon("National Team", "Boys&#x2019; Youth National Team"),
-                _soon("National Team", "Girls&#x2019; Youth National Team"),
+                _soon("Under-20", "U20 National Team (Men&#x2019;s)"),
+                _soon("Under-17", "U17 National Team (Men&#x2019;s)"),
+                _soon("Under-20", "U20 National Team (Women&#x2019;s)"),
+                _soon("Under-17", "U17 National Team (Women&#x2019;s)"),
             ]},
         ]},
     ]
