@@ -1,7 +1,7 @@
 # Data-entry tooling
 
-A fast entry UI for fixtures, results, and scorers, replacing hand-typed rows
-in the Google Sheet. Two halves:
+A fast entry UI for fixtures, results, scorers, and venues, replacing
+hand-typed rows in the Google Sheet. Two halves:
 
 - **`static/admin/`** — a static page (published as `everyleague.co/admin/` by
   every build; `copy_static_tree` copies it into `docs/` automatically). It
@@ -85,11 +85,48 @@ hard-fails the drift check and the next build needs
 So: smoke-test production with a *real* upcoming fixture. If a bad row does
 slip in, delete it in the sheet and run one build with `--allow-deletions`.
 
-## Notes and limits (v1)
+## The four entry modes
+
+Each league hub offers one-at-a-time entry and a batch grid:
+
+- **New fixture** / **Enter result** — the original single-match forms.
+- **Matchday of fixtures** — shared matchday (or knockout round), date,
+  kickoff, venue and source across N rows of `home v away`, each row free to
+  override date/kickoff/venue. A fresh row appears as you fill the last one.
+- **Day of results** — every match of one matchday or date as a score row,
+  with a collapsible scorer panel per match. Rows left blank are skipped, so
+  a half-finished day is fine.
+
+Both grids save by **looping the same single-item script actions** —
+`create_fixture` / `save_result`, one HTTP round-trip per row — so the grids
+cannot outrun the deployed `WebApp.gs`. Each row carries its own ✓/✗; a
+failure leaves that row editable and the rest saved. Should a full matchday
+ever feel slow, the upgrade path is array actions in the script with the same
+client shape (nothing in the UI assumes one-row-per-request except the
+progress counter). Unsaved grid rows are snapshotted to `sessionStorage`, so a
+refresh mid-matchday does not lose the typing.
+
+**Leagues vs cups.** Leagues write `md_<n>` to `matches.stage`; cups write the
+knockout vocabulary (`r64` … `3p`, mirroring `dataset.KNOCKOUT_STAGES`) and
+leave `matchday` blank. Both fixture forms swap the Matchday field for a Round
+picker when the competition's `type` is `cup`, and the results grid defaults
+its filter to date rather than matchday there.
+
+## Notes and limits (v2)
 
 - **Season setup is manual by design.** A team without an `entries` row for
   the competition+season cannot be picked — that mirrors validate.py check 3.
   At season start, add entries/clubs/teams in the sheet first.
+- **New venues** work like new players: ＋ New venue… in any venue picker.
+  The venue code is the one ID the *client* proposes (slugged from the name,
+  editable) because the venues tab has no derivable convention and nothing
+  parses those IDs — the script still owns collisions, appending a numeric
+  suffix under the lock and returning the code it actually wrote.
+- **`entryAppendRow_` demands a key per sheet column.** Adding a column to
+  matches/goals/players/venues in the sheet breaks the matching create action
+  until `WebApp.gs` names it (this is deliberate — a silent misaligned row
+  would be worse). Cup support added `extra_time`/`home_pens`/`away_pens` to
+  matches and broke `create_fixture` exactly this way; v2 fixes it.
 - **Scorer suggestions** are ranked by each player's most recent goal (the
   `registrations` tab is empty; if it ever gets populated, prefer it in
   `buildIndexes`). New players and unknown scorers (`CAF_MW_UNKNOWN`) are

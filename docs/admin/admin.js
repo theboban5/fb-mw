@@ -64,6 +64,14 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+function debounce(fn, ms) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+}
+
 let toastTimer = null;
 function toast(msg, isError = false) {
   const t = $("toast");
@@ -179,6 +187,22 @@ const pending = {
   },
 };
 
+// ── Batch-grid drafts ────────────────────────────────────────────────────────
+// A half-entered matchday is a lot of typing to lose to a stray refresh, so
+// both grids snapshot themselves (IDs and primitives only) on every edit.
+
+const drafts = {
+  key(kind, compId) { return `entry.draft.${kind}.${compId}`; },
+  load(kind, compId) {
+    try { return JSON.parse(sessionStorage.getItem(this.key(kind, compId))); }
+    catch { return null; }
+  },
+  save(kind, compId, data) {
+    sessionStorage.setItem(this.key(kind, compId), JSON.stringify(data));
+  },
+  clear(kind, compId) { sessionStorage.removeItem(this.key(kind, compId)); },
+};
+
 // ── Dataset + indexes ────────────────────────────────────────────────────────
 
 const DB = {};        // raw rows per tab
@@ -200,14 +224,22 @@ function buildIndexes() {
   IX.competitions = Object.fromEntries(DB.competitions.map((c) => [c.competition_id, c]));
   IX.clubs = Object.fromEntries(DB.clubs.map((c) => [c.club_id, c]));
   IX.teams = Object.fromEntries(DB.teams.map((t) => [t.team_id, t]));
-  IX.venues = DB.venues;
-  IX.venueByName = Object.fromEntries(DB.venues.map((v) => [v.name.toLowerCase(), v.venue_id]));
+  IX.venues = DB.venues
+    .map((v) => ({
+      venue_id: v.venue_id,
+      label: v.name,
+      city: v.city,
+      search: `${v.name} ${v.city}`.toLowerCase(),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  IX.venueIds = new Set(DB.venues.map((v) => v.venue_id.toUpperCase()));
 
   IX.leagues = DB.competition_seasons
     .filter((cs) => cs.season_id === IX.season.season_id)
     .map((cs) => ({
       ...cs,
       display: cs.sponsor_name || IX.competitions[cs.competition_id]?.name || cs.competition_id,
+      type: IX.competitions[cs.competition_id]?.type || "league",
     }));
 
   // Fast-entry aliases are club-level: expose them on every team of the club.
@@ -332,6 +364,9 @@ function makeCombo(container, { placeholder, getItems, onPick }) {
 
   return {
     get value() { return selected; },
+    // What has been typed but not picked — lets a "＋ New …" item prefill the
+    // creation modal with the name the user was already halfway through.
+    get query() { return input.value.trim(); },
     set(item) { pick(item); },
     clear() {
       selected = null; input.value = "";
@@ -339,6 +374,7 @@ function makeCombo(container, { placeholder, getItems, onPick }) {
       items = []; render();
     },
     focus() { input.focus(); },
+    setDisabled(v) { input.disabled = v; },
   };
 }
 
@@ -377,9 +413,62 @@ function playerItems(query, preferTeamId, leagueTeamIds) {
   return ranked;
 }
 
+function venueItems(query) {
+  const ranked = IX.venues
+    .map((v) => ({ ...v, q: matchQuality(v.search, v.label, query) }))
+    .filter((v) => v.q >= 0)
+    .sort((a, b) => a.q - b.q || a.label.localeCompare(b.label))
+    .slice(0, 10)
+    .map((v) => ({ id: v.venue_id, label: v.label, sub: v.city || "" }));
+  ranked.push({ id: "__new__", label: "＋ New venue…", special: true });
+  return ranked;
+}
+
+/** A venue picker wired to the new-venue modal. Replaces the container's DOM. */
+function makeVenueCombo(container) {
+  container.innerHTML = "";
+  const combo = makeCombo(container, {
+    placeholder: "Venue…",
+    getItems: (q) => venueItems(q),
+    onPick: (item) => { if (item.id === "__new__") openVenueModal(combo); },
+  });
+  return combo;
+}
+
+// Words that say "this is a sports ground", not which one — dropping them
+// keeps a suggested code short and distinctive.
+const VENUE_STOPWORDS = new Set([
+  "stadium", "ground", "grounds", "community", "school", "secondary", "cdss",
+  "park", "club", "field", "complex", "centre", "center", "mini", "the", "of", "and",
+]);
+
+/**
+ * Suggest a venue code from its name ("Mpira Stadium" -> MW_MPIRA). The venues
+ * tab has no convention to follow (MW_ADL_G, MW_MCJ_001 and MW_NENO all
+ * coexist) and nothing parses these IDs, so this only has to be unique and
+ * legible — the user can overwrite it, and the script re-checks collisions
+ * against live data.
+ */
+function suggestVenueId(name) {
+  const words = String(name || "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim().split(/\s+/).filter(Boolean);
+  const significant = words.filter((w) => !VENUE_STOPWORDS.has(w.toLowerCase()));
+  const parts = significant.length ? significant : words;
+  if (!parts.length) return "";
+  let base = parts.slice(0, 2).join("_");
+  if (base.length > 12) base = parts[0].slice(0, 12);
+  let id = `MW_${base}`;
+  if (IX.venueIds.has(id)) {
+    let n = 2;
+    while (IX.venueIds.has(`${id}_${n}`)) n++;
+    id = `${id}_${n}`;
+  }
+  return id;
+}
+
 // ── Views / navigation ───────────────────────────────────────────────────────
 
-const VIEWS = ["view-home", "view-league", "view-fixture", "view-picker", "view-result"];
+const VIEWS = ["view-home", "view-league", "view-fixture", "view-picker", "view-result",
+               "view-batch-fixtures", "view-batch-results"];
 
 function showView(id, push = true) {
   if (push && !state.stack.length) state.stack = ["view-home"];
@@ -417,9 +506,41 @@ function renderLeague() {
   $("league-title").textContent = state.league.display;
 }
 
+// ── Matchday vs knockout round ───────────────────────────────────────────────
+// Leagues put free-form md_<n> in matches.stage; cups use the fixed knockout
+// vocabulary from src/dataset.py (KNOCKOUT_STAGES) and leave matchday blank.
+// Both fixture forms swap the field to suit the competition they were opened
+// from — no cup competition should ever be given an md_ stage.
+
+const KNOCKOUT_STAGES = ["r64", "r32", "r16", "qf", "sf", "final", "3p"];
+const STAGE_LABELS = {
+  r64: "Round of 64", r32: "Round of 32", r16: "Round of 16",
+  qf: "Quarter-final", sf: "Semi-final", final: "Final", "3p": "Third-place play-off",
+};
+
+function leagueIsCup() {
+  return state.league.type === "cup";
+}
+
+function setupStageField(prefix) {
+  const cup = leagueIsCup();
+  $(`${prefix}-matchday-label`).hidden = cup;
+  $(`${prefix}-stage-label`).hidden = !cup;
+  if (!cup) return;
+  const sel = $(`${prefix}-stage`);
+  sel.innerHTML = "";
+  for (const s of KNOCKOUT_STAGES) sel.append(el("option", { value: s }, STAGE_LABELS[s]));
+}
+
+function stagePayload(prefix) {
+  if (leagueIsCup()) return { stage: $(`${prefix}-stage`).value, matchday: "" };
+  const matchday = $(`${prefix}-matchday`).value.trim();
+  return { stage: matchday ? `md_${matchday}` : "", matchday };
+}
+
 // ── New fixture ──────────────────────────────────────────────────────────────
 
-let fxHome, fxAway;
+let fxHome, fxAway, fxVenue;
 
 function fillSelect(sel, values, current) {
   sel.innerHTML = "";
@@ -438,6 +559,11 @@ function leagueMatches(compId) {
   return fromCsv.concat(created.filter((m) => !have.has(m.match_id)));
 }
 
+function nextMatchday(compId) {
+  const mds = leagueMatches(compId).map((m) => parseInt(m.matchday, 10)).filter(Number.isFinite);
+  return mds.length ? Math.max(...mds) + 1 : 1;
+}
+
 function provisionalMatchId(compId) {
   let best = null;
   for (const m of leagueMatches(compId)) {
@@ -452,20 +578,16 @@ function provisionalMatchId(compId) {
 
 function renderFixtureForm(keepSticky = false) {
   const compId = state.league.competition_id;
+  setupStageField("fx");
   if (!keepSticky) {
-    const mds = leagueMatches(compId).map((m) => parseInt(m.matchday, 10)).filter(Number.isFinite);
-    $("fx-matchday").value = mds.length ? Math.max(...mds) + 1 : 1;
+    $("fx-matchday").value = leagueIsCup() ? "" : nextMatchday(compId);
     $("fx-date").value = "";
   }
   $("fx-date").min = IX.season.start_date;
   $("fx-date").max = IX.season.end_date;
   $("fx-kickoff").value = "";
-  $("fx-venue").value = "";
   $("fx-ref").value = "";
-
-  const dl = $("venue-list");
-  dl.innerHTML = "";
-  for (const v of IX.venues) dl.append(el("option", { value: v.name }));
+  fxVenue = makeVenueCombo($("fx-venue"));
 
   fillSelect($("fx-source"), SOURCE_TYPES, "facebook");
   fillSelect($("fx-confidence"), CONFIDENCES, "confirmed");
@@ -489,16 +611,15 @@ async function submitFixture(ev) {
   if (!home || !away) return toast("Pick both teams from the list", true);
   if (home.id === away.id) return toast("Home and away can't be the same team", true);
 
-  const venueText = $("fx-venue").value.trim();
-  const venueId = venueText ? IX.venueByName[venueText.toLowerCase()] : "";
-  if (venueText && !venueId) return toast("Pick a venue from the list (or clear it)", true);
+  if (!fxVenue.value && fxVenue.query) {
+    return toast("Pick the venue from the list, or add it with ＋ New venue…", true);
+  }
+  const venueId = fxVenue.value ? fxVenue.value.id : "";
 
-  const matchday = $("fx-matchday").value.trim();
   const payload = {
     competition_id: compId,
     season_id: IX.season.season_id,
-    stage: matchday ? `md_${matchday}` : "",
-    matchday,
+    ...stagePayload("fx"),
     date: $("fx-date").value,
     kickoff: $("fx-kickoff").value,
     venue_id: venueId || "",
@@ -588,7 +709,133 @@ async function renderPicker() {
 
 // ── Result entry: form + scorer rows ─────────────────────────────────────────
 
-const scorers = []; // [{teamId, combo, row, minuteEl, stoppageEl, typeEl}]
+/**
+ * Goal-attribution rows for one match, mounted into `host`. Owns its own DOM
+ * and "＋ Add scorer" button, so the batch view can hang one off every result
+ * row without the single-result form and the grid fighting over globals.
+ *
+ * opts.getScore -> {hg, ag} (either may be null); decides which side a fresh
+ *                  row defaults to. opts.onChange fires on any row/team change.
+ */
+function makeScorerPanel(host, match, opts = {}) {
+  const getScore = opts.getScore || (() => ({ hg: null, ag: null }));
+  const changed = () => opts.onChange && opts.onChange();
+  const leagueTeams = (IX.teamsByLeague[match.competition_id] || []).map((t) => t.team_id);
+
+  const rowsEl = el("div", { class: "scorer-rows" });
+  const addBtn = el("button", { type: "button", class: "ghost" }, "＋ Add scorer");
+  host.innerHTML = "";
+  host.append(rowsEl, addBtn);
+  const rows = [];
+
+  function counts() {
+    let home = 0, away = 0;
+    for (const s of rows) { if (s.teamId === match.home_team_id) home++; else away++; }
+    return { home, away };
+  }
+
+  function defaultTeam() {
+    const { hg, ag } = getScore();
+    const { home, away } = counts();
+    if (home < (hg ?? 0)) return match.home_team_id;
+    if (away < (ag ?? 0)) return match.away_team_id;
+    return match.home_team_id;
+  }
+
+  function addRow(preset = {}) {
+    const entry = { teamId: preset.teamId || defaultTeam() };
+
+    const toggle = el("button", { type: "button", class: "team-toggle" }, teamName(entry.teamId));
+    toggle.addEventListener("click", () => {
+      entry.teamId = entry.teamId === match.home_team_id ? match.away_team_id : match.home_team_id;
+      toggle.textContent = teamName(entry.teamId);
+      changed();
+    });
+
+    const comboWrap = el("div", { class: "combo" });
+    const minute = el("input", { type: "number", min: "1", max: "130", placeholder: "min", inputmode: "numeric" });
+    const stoppage = el("input", { type: "number", min: "1", max: "15", placeholder: "+", inputmode: "numeric" });
+    const type = el("select");
+    for (const gt of GOAL_TYPES) type.append(el("option", { value: gt }, gt === "" ? "goal" : gt.replace("_", " ")));
+
+    const remove = el("button", { type: "button", class: "remove", title: "Remove" }, "✕");
+    const row = el("div", { class: "scorer-row" },
+      el("div", { class: "line1" }, toggle, comboWrap, remove),
+      el("div", { class: "line2" }, minute, stoppage, type));
+    rowsEl.append(row);
+
+    entry.row = row;
+    entry.minuteEl = minute;
+    entry.stoppageEl = stoppage;
+    entry.typeEl = type;
+    entry.combo = makeCombo(comboWrap, {
+      placeholder: "Scorer…",
+      getItems: (q) => playerItems(q, entry.teamId, leagueTeams),
+      onPick: (item) => { if (item.id === "__new__") openPlayerModal(entry); },
+    });
+
+    remove.addEventListener("click", () => {
+      row.remove();
+      rows.splice(rows.indexOf(entry), 1);
+      changed();
+    });
+
+    if (preset.playerId) entry.combo.set({ id: preset.playerId, label: preset.label || preset.playerId });
+    if (preset.minute) minute.value = preset.minute;
+    if (preset.stoppage) stoppage.value = preset.stoppage;
+    if (preset.goalType) type.value = preset.goalType;
+
+    rows.push(entry);
+    changed();
+    if (!preset.playerId) entry.combo.focus();
+    return entry;
+  }
+
+  addBtn.addEventListener("click", () => addRow());
+
+  return {
+    rows,
+    counts,
+    addRow,
+    /** goals[] for save_result; throws a user-facing Error if a row is empty. */
+    collect() {
+      return rows.map((s) => {
+        if (!s.combo.value) throw new Error("Every scorer row needs a player (or remove the row)");
+        const minute = s.minuteEl.value.trim();
+        return {
+          team_id: s.teamId,
+          player_id: s.combo.value.id,
+          minute,
+          stoppage: s.stoppageEl.value.trim(),
+          period: minute === "" ? "" : parseInt(minute, 10) <= 45 ? "1h" : "2h",
+          goal_type: s.typeEl.value,
+        };
+      });
+    },
+    /** Plain-data form for drafts; feed each item back to addRow(). */
+    snapshot() {
+      return rows.map((s) => ({
+        teamId: s.teamId,
+        playerId: s.combo.value ? s.combo.value.id : "",
+        label: s.combo.value ? s.combo.value.label : "",
+        minute: s.minuteEl.value.trim(),
+        stoppage: s.stoppageEl.value.trim(),
+        goalType: s.typeEl.value,
+      }));
+    },
+    setDisabled(v) {
+      addBtn.disabled = v;
+      for (const s of rows) {
+        s.combo.setDisabled(v);
+        s.minuteEl.disabled = v;
+        s.stoppageEl.disabled = v;
+        s.typeEl.disabled = v;
+      }
+    },
+  };
+}
+
+let resultPanel = null;
 
 function renderResultForm() {
   const m = state.match;
@@ -608,8 +855,10 @@ function renderResultForm() {
   fillSelect($("rs-source"), SOURCE_TYPES, "facebook");
   fillSelect($("rs-confidence"), CONFIDENCES, "confirmed");
 
-  scorers.length = 0;
-  $("scorer-rows").innerHTML = "";
+  resultPanel = makeScorerPanel($("scorer-host"), m, {
+    getScore: () => ({ hg: scoreVal("rs-home-goals"), ag: scoreVal("rs-away-goals") }),
+    onChange: updateScorerUi,
+  });
   updateScorerUi();
 }
 
@@ -628,69 +877,9 @@ function updateScorerUi() {
     $("scorer-counter").textContent = "— enter the score to track attribution";
     return;
   }
-  let home = 0, away = 0;
-  for (const s of scorers) {
-    if (s.teamId === m.home_team_id) home++;
-    else away++;
-  }
+  const { home, away } = resultPanel.counts();
   $("scorer-counter").textContent =
     `— ${home}/${hg} ${teamName(m.home_team_id)}, ${away}/${ag} ${teamName(m.away_team_id)}`;
-}
-
-function defaultScorerTeam() {
-  const m = state.match;
-  const hg = scoreVal("rs-home-goals") ?? 0, ag = scoreVal("rs-away-goals") ?? 0;
-  let home = 0, away = 0;
-  for (const s of scorers) {
-    if (s.teamId === m.home_team_id) home++;
-    else away++;
-  }
-  return home < hg ? m.home_team_id : away < ag ? m.away_team_id : m.home_team_id;
-}
-
-function addScorerRow() {
-  const m = state.match;
-  const leagueTeams = (IX.teamsByLeague[m.competition_id] || []).map((t) => t.team_id);
-  const entry = { teamId: defaultScorerTeam() };
-
-  const toggle = el("button", { type: "button", class: "team-toggle" }, teamName(entry.teamId));
-  toggle.addEventListener("click", () => {
-    entry.teamId = entry.teamId === m.home_team_id ? m.away_team_id : m.home_team_id;
-    toggle.textContent = teamName(entry.teamId);
-    updateScorerUi();
-  });
-
-  const comboWrap = el("div", { class: "combo" });
-  const minute = el("input", { type: "number", min: "1", max: "130", placeholder: "min", inputmode: "numeric" });
-  const stoppage = el("input", { type: "number", min: "1", max: "15", placeholder: "+", inputmode: "numeric" });
-  const type = el("select");
-  for (const gt of GOAL_TYPES) type.append(el("option", { value: gt }, gt === "" ? "goal" : gt.replace("_", " ")));
-
-  const remove = el("button", { type: "button", class: "remove", title: "Remove" }, "✕");
-  const row = el("div", { class: "scorer-row" },
-    el("div", { class: "line1" }, toggle, comboWrap, remove),
-    el("div", { class: "line2" }, minute, stoppage, type));
-  $("scorer-rows").append(row);
-
-  entry.row = row;
-  entry.minuteEl = minute;
-  entry.stoppageEl = stoppage;
-  entry.typeEl = type;
-  entry.combo = makeCombo(comboWrap, {
-    placeholder: "Scorer…",
-    getItems: (q) => playerItems(q, entry.teamId, leagueTeams),
-    onPick: (item) => { if (item.id === "__new__") openPlayerModal(entry); },
-  });
-
-  remove.addEventListener("click", () => {
-    row.remove();
-    scorers.splice(scorers.indexOf(entry), 1);
-    updateScorerUi();
-  });
-
-  scorers.push(entry);
-  updateScorerUi();
-  entry.combo.focus();
 }
 
 async function submitResult(ev) {
@@ -707,21 +896,10 @@ async function submitResult(ev) {
     return toast("Tick the replace box to overwrite the existing result", true);
   }
 
-  const goals = [];
-  let home = 0, away = 0;
-  for (const s of scorers) {
-    if (!s.combo.value) return toast("Every scorer row needs a player (or remove the row)", true);
-    if (s.teamId === m.home_team_id) home++; else away++;
-    const minute = s.minuteEl.value.trim();
-    goals.push({
-      team_id: s.teamId,
-      player_id: s.combo.value.id,
-      minute,
-      stoppage: s.stoppageEl.value.trim(),
-      period: minute === "" ? "" : parseInt(minute, 10) <= 45 ? "1h" : "2h",
-      goal_type: s.typeEl.value,
-    });
-  }
+  let goals;
+  try { goals = resultPanel.collect(); }
+  catch (err) { return toast(err.message, true); }
+  const { home, away } = resultPanel.counts();
   if (hg !== null && (home > hg || away > ag)) return toast("More scorer rows than goals on one side", true);
 
   const btn = $("rs-submit");
@@ -748,13 +926,506 @@ async function submitResult(ev) {
   }
 }
 
+// ── Batch: a matchday of fixtures ────────────────────────────────────────────
+// Both grids save by looping the same one-at-a-time script actions the single
+// forms use — no bulk endpoint, so nothing here can outrun the deployed
+// WebApp.gs. The cost is one round-trip per row, which is why each row carries
+// its own ✓/✗ and a failure leaves that row editable for a retry.
+
+const bfx = { rows: [], venue: null };
+
+function renderBatchFixtures() {
+  const compId = state.league.competition_id;
+  setupStageField("bfx");
+  $("bfx-matchday").value = leagueIsCup() ? "" : nextMatchday(compId);
+  $("bfx-date").value = "";
+  $("bfx-date").min = IX.season.start_date;
+  $("bfx-date").max = IX.season.end_date;
+  $("bfx-kickoff").value = "";
+  $("bfx-ref").value = "";
+  fillSelect($("bfx-source"), SOURCE_TYPES, "facebook");
+  fillSelect($("bfx-confidence"), CONFIDENCES, "confirmed");
+  bfx.venue = makeVenueCombo($("bfx-venue"));
+
+  bfx.rows.length = 0;
+  $("bfx-rows").innerHTML = "";
+
+  const draft = drafts.load("fixtures", compId);
+  if (draft && draft.rows && draft.rows.length) {
+    $("bfx-matchday").value = draft.shared.matchday;
+    if (draft.shared.stage) $("bfx-stage").value = draft.shared.stage;
+    $("bfx-date").value = draft.shared.date;
+    $("bfx-kickoff").value = draft.shared.kickoff;
+    $("bfx-ref").value = draft.shared.ref;
+    $("bfx-source").value = draft.shared.source || "facebook";
+    $("bfx-confidence").value = draft.shared.confidence || "confirmed";
+    if (draft.shared.venueId) bfx.venue.set({ id: draft.shared.venueId, label: draft.shared.venueLabel });
+    draft.rows.forEach(addFixtureRow);
+    toast("Restored your unsaved fixtures");
+  }
+  while (bfx.rows.length < 3) addFixtureRow();
+}
+
+function saveFixtureDraft() {
+  const compId = state.league.competition_id;
+  const rows = bfx.rows.filter((r) => !r.saved && (r.home.value || r.away.value)).map((r) => ({
+    homeId: r.home.value ? r.home.value.id : "",
+    homeLabel: r.home.value ? r.home.value.label : "",
+    awayId: r.away.value ? r.away.value.id : "",
+    awayLabel: r.away.value ? r.away.value.label : "",
+    date: r.dateEl.value,
+    kickoff: r.kickoffEl.value,
+    venueId: r.venue.value ? r.venue.value.id : "",
+    venueLabel: r.venue.value ? r.venue.value.label : "",
+  }));
+  if (!rows.length) return drafts.clear("fixtures", compId);
+  drafts.save("fixtures", compId, {
+    shared: {
+      matchday: $("bfx-matchday").value,
+      stage: leagueIsCup() ? $("bfx-stage").value : "",
+      date: $("bfx-date").value,
+      kickoff: $("bfx-kickoff").value,
+      ref: $("bfx-ref").value,
+      source: $("bfx-source").value,
+      confidence: $("bfx-confidence").value,
+      venueId: bfx.venue.value ? bfx.venue.value.id : "",
+      venueLabel: bfx.venue.value ? bfx.venue.value.label : "",
+    },
+    rows,
+  });
+}
+
+function addFixtureRow(preset = {}) {
+  const compId = state.league.competition_id;
+  const entry = { saved: false };
+
+  const homeWrap = el("div", { class: "combo" });
+  const awayWrap = el("div", { class: "combo" });
+  const venueWrap = el("div", { class: "combo" });
+  const remove = el("button", { type: "button", class: "remove", title: "Remove this row" }, "✕");
+  const date = el("input", { type: "date", min: IX.season.start_date, max: IX.season.end_date, title: "Date (overrides the shared date)" });
+  const kickoff = el("input", { type: "time", title: "Kickoff (overrides the shared kickoff)" });
+  const status = el("p", { class: "row-status" });
+
+  const row = el("div", { class: "batch-row" },
+    el("div", { class: "line1" }, homeWrap, el("span", { class: "v" }, "v"), awayWrap, remove),
+    el("div", { class: "line-overrides" }, date, kickoff, venueWrap),
+    status);
+  $("bfx-rows").append(row);
+
+  entry.row = row;
+  entry.dateEl = date;
+  entry.kickoffEl = kickoff;
+  entry.statusEl = status;
+  entry.home = makeCombo(homeWrap, {
+    placeholder: "Home…",
+    getItems: (q) => teamItems(compId, q, entry.away && entry.away.value ? entry.away.value.id : null),
+  });
+  entry.away = makeCombo(awayWrap, {
+    placeholder: "Away…",
+    getItems: (q) => teamItems(compId, q, entry.home && entry.home.value ? entry.home.value.id : null),
+    onPick: () => {
+      // Filling the last row's away team means there is probably another
+      // match to come — keep an empty row waiting.
+      if (bfx.rows[bfx.rows.length - 1] === entry) addFixtureRow();
+      saveFixtureDraft();
+    },
+  });
+  entry.venue = makeVenueCombo(venueWrap);
+
+  remove.addEventListener("click", () => {
+    row.remove();
+    bfx.rows.splice(bfx.rows.indexOf(entry), 1);
+    if (!bfx.rows.length) addFixtureRow();
+    saveFixtureDraft();
+  });
+
+  if (preset.homeId) entry.home.set({ id: preset.homeId, label: preset.homeLabel });
+  if (preset.awayId) entry.away.set({ id: preset.awayId, label: preset.awayLabel });
+  if (preset.venueId) entry.venue.set({ id: preset.venueId, label: preset.venueLabel });
+  date.value = preset.date || "";
+  kickoff.value = preset.kickoff || "";
+
+  bfx.rows.push(entry);
+  return entry;
+}
+
+function lockFixtureRow(entry) {
+  entry.home.setDisabled(true);
+  entry.away.setDisabled(true);
+  entry.venue.setDisabled(true);
+  entry.dateEl.disabled = true;
+  entry.kickoffEl.disabled = true;
+  entry.row.classList.add("done");
+}
+
+async function submitBatchFixtures(ev) {
+  ev.preventDefault();
+  const compId = state.league.competition_id;
+  const sharedDate = $("bfx-date").value;
+  const stage = stagePayload("bfx");
+
+  const rows = bfx.rows.filter((r) => !r.saved && (r.home.value || r.away.value || r.home.query || r.away.query));
+  if (!rows.length) return toast("Nothing to save yet — pick some teams", true);
+  if (rows.some((r) => !r.home.value || !r.away.value)) {
+    return toast("Every match needs both teams picked from the list (or clear the row)", true);
+  }
+  if (rows.some((r) => r.home.value.id === r.away.value.id)) {
+    return toast("A match has the same team home and away", true);
+  }
+  if (rows.some((r) => !(r.dateEl.value || sharedDate))) {
+    return toast("Set the shared date, or give every match its own", true);
+  }
+  if (bfx.venue.query && !bfx.venue.value) {
+    return toast("Pick the shared venue from the list, or clear it", true);
+  }
+  if (rows.some((r) => r.venue.query && !r.venue.value)) {
+    return toast("Pick each row's venue from the list, or clear it", true);
+  }
+  // A team twice in one matchday is nearly always a typo, but double-headers
+  // and per-row date overrides make it legal — warn, don't block.
+  const seen = new Map();
+  for (const r of rows) {
+    for (const t of [r.home.value, r.away.value]) seen.set(t.id, (seen.get(t.id) || 0) + 1);
+  }
+  const twice = [...seen.entries()].filter(([, n]) => n > 1).map(([id]) => teamName(id));
+  if (twice.length && !confirm(`${twice.join(", ")} appear${twice.length === 1 ? "s" : ""} in more than one match. Save anyway?`)) {
+    return;
+  }
+
+  const btn = $("bfx-submit");
+  btn.disabled = true;
+  let saved = 0, failed = 0;
+  for (const [i, r] of rows.entries()) {
+    btn.textContent = `Saving ${i + 1}/${rows.length}…`;
+    r.statusEl.textContent = "Saving…";
+    r.statusEl.className = "row-status";
+    const payload = {
+      competition_id: compId,
+      season_id: IX.season.season_id,
+      ...stage,
+      date: r.dateEl.value || sharedDate,
+      kickoff: r.kickoffEl.value || $("bfx-kickoff").value,
+      venue_id: (r.venue.value && r.venue.value.id) || (bfx.venue.value && bfx.venue.value.id) || "",
+      home_team_id: r.home.value.id,
+      away_team_id: r.away.value.id,
+      source_type: $("bfx-source").value,
+      source_ref: $("bfx-ref").value.trim(),
+      confidence: $("bfx-confidence").value,
+    };
+    try {
+      const res = await api("create_fixture", payload);
+      pending.addCreated({ ...payload, match_id: res.match_id, status: "scheduled" });
+      r.saved = true;
+      r.statusEl.textContent = `✓ saved as ${res.match_id}`;
+      r.statusEl.className = "row-status ok";
+      lockFixtureRow(r);
+      saved++;
+    } catch (err) {
+      r.statusEl.textContent = `✗ ${err.message}`;
+      r.statusEl.className = "row-status bad";
+      failed++;
+    }
+  }
+  btn.textContent = "Save all";
+  btn.disabled = false;
+  saveFixtureDraft();
+  toast(failed
+    ? `${saved} saved, ${failed} failed — fix the marked rows and save again`
+    : `Saved ${saved} fixture${saved === 1 ? "" : "s"}`, Boolean(failed));
+}
+
+// ── Batch: a day of results ──────────────────────────────────────────────────
+
+const brs = { matches: [], live: false, rows: [] };
+
+async function renderBatchResults(refetch = true) {
+  const compId = state.league.competition_id;
+  if (refetch) {
+    $("brs-status").textContent = "Loading…";
+    $("brs-rows").innerHTML = "";
+    fillSelect($("brs-source"), SOURCE_TYPES, "facebook");
+    fillSelect($("brs-confidence"), CONFIDENCES, "confirmed");
+    $("brs-ref").value = "";
+
+    let matches, live = false;
+    if (settings.configured()) {
+      try {
+        const res = await api("live_matches", { season_id: IX.season.season_id });
+        matches = res.matches.filter((m) => m.competition_id === compId);
+        live = true;
+      } catch (err) {
+        toast(`Live fetch failed (${err.message}); using cached data`, true);
+      }
+    }
+    if (!matches) matches = leagueMatches(compId);
+    brs.matches = matches.filter((m) => m.source_type !== "placeholder");
+    brs.live = live;
+
+    // Cup rows carry no matchday, so that filter would come up empty.
+    $("brs-filter-kind").value = leagueIsCup() ? "date" : "matchday";
+    const draft = drafts.load("results", compId);
+    if (draft && draft.shared) {
+      $("brs-source").value = draft.shared.source || "facebook";
+      $("brs-confidence").value = draft.shared.confidence || "confirmed";
+      $("brs-ref").value = draft.shared.ref || "";
+      if (draft.filterKind) $("brs-filter-kind").value = draft.filterKind;
+      $("brs-include-done").checked = Boolean(draft.includeDone);
+    }
+    populateBatchResultFilter(draft ? draft.filterValue : null);
+  }
+  renderBatchResultRows();
+}
+
+/** Matchday / date choices, defaulting to the earliest one still outstanding. */
+function populateBatchResultFilter(preferred) {
+  const kind = $("brs-filter-kind").value;
+  const sel = $("brs-filter-value");
+  sel.innerHTML = "";
+  sel.disabled = kind === "all";
+  if (kind === "all") {
+    sel.append(el("option", { value: "" }, "everything outstanding"));
+    return;
+  }
+  const key = (m) => (kind === "matchday" ? m.matchday : m.date);
+  const outstanding = new Set(brs.matches.filter(isOutstanding).map(key).filter(Boolean));
+  const all = [...new Set(brs.matches.map(key).filter(Boolean))].sort((a, b) =>
+    kind === "matchday" ? parseInt(a, 10) - parseInt(b, 10) : a.localeCompare(b));
+  for (const v of all) {
+    sel.append(el("option", { value: v },
+      (kind === "matchday" ? `MD ${v}` : v) + (outstanding.has(v) ? "" : " · all entered")));
+  }
+  const fallback = all.find((v) => outstanding.has(v)) || all[all.length - 1] || "";
+  sel.value = preferred && all.includes(preferred) ? preferred : fallback;
+}
+
+function isOutstanding(m) {
+  return ["scheduled", "postponed"].includes(m.status) && !pending.load().saved[m.match_id];
+}
+
+function saveResultDraft() {
+  const compId = state.league.competition_id;
+  const rows = {};
+  for (const r of brs.rows) {
+    if (r.saved) continue;
+    const snap = {
+      hg: r.homeGoalsEl.value,
+      ag: r.awayGoalsEl.value,
+      status: r.statusSelect.value,
+      replace: r.replaceEl.checked,
+      scorers: r.panel.snapshot(),
+    };
+    const touched = snap.hg !== "" || snap.ag !== "" || snap.status !== "played" || snap.scorers.length;
+    if (touched) rows[r.match.match_id] = snap;
+  }
+  const shared = {
+    source: $("brs-source").value,
+    confidence: $("brs-confidence").value,
+    ref: $("brs-ref").value,
+  };
+  if (!Object.keys(rows).length) return drafts.clear("results", compId);
+  drafts.save("results", compId, {
+    shared,
+    rows,
+    filterKind: $("brs-filter-kind").value,
+    filterValue: $("brs-filter-value").value,
+    includeDone: $("brs-include-done").checked,
+  });
+}
+
+function renderBatchResultRows() {
+  const kind = $("brs-filter-kind").value;
+  const value = $("brs-filter-value").value;
+  const includeDone = $("brs-include-done").checked;
+  const draft = drafts.load("results", state.league.competition_id);
+  const draftRows = (draft && draft.rows) || {};
+
+  let matches = brs.matches.filter((m) => includeDone || isOutstanding(m));
+  if (kind === "matchday") matches = matches.filter((m) => m.matchday === value);
+  else if (kind === "date") matches = matches.filter((m) => m.date === value);
+  matches.sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999") || a.match_id.localeCompare(b.match_id));
+
+  $("brs-status").textContent = (brs.live
+    ? "Live from the sheet."
+    : "From the published CSV (can lag ~5 min) — configure Settings (⚙) for live data.") +
+    ` ${matches.length} match${matches.length === 1 ? "" : "es"} shown.`;
+
+  brs.rows.length = 0;
+  $("brs-rows").innerHTML = "";
+  for (const m of matches) addResultRow(m, draftRows[m.match_id]);
+  if (!matches.length) {
+    $("brs-rows").append(el("p", { class: "muted" },
+      includeDone ? "Nothing here." : "Every match here already has a result — tick the box above to edit them."));
+  }
+}
+
+function addResultRow(m, preset) {
+  const done = ["played", "awarded"].includes(m.status) || Boolean(pending.load().saved[m.match_id]);
+  const entry = { match: m, saved: false, alreadyDone: done };
+
+  const homeGoals = el("input", { type: "number", min: "0", inputmode: "numeric" });
+  const awayGoals = el("input", { type: "number", min: "0", inputmode: "numeric" });
+  const statusSelect = el("select", { title: "Status" });
+  for (const s of ["played", "postponed", "abandoned", "cancelled"]) {
+    statusSelect.append(el("option", { value: s }, s));
+  }
+  const scorerToggle = el("button", { type: "button", class: "ghost scorer-toggle" }, "Scorers");
+  const replaceBox = el("input", { type: "checkbox" });
+  const replaceLabel = el("label", { class: "inline replace" }, replaceBox, " replace existing");
+  replaceLabel.hidden = !done;
+  const scorerHost = el("div", { class: "scorer-host" });
+  scorerHost.hidden = true;
+  const status = el("p", { class: "row-status" });
+
+  const row = el("div", { class: "batch-row result" + (done ? " already" : "") },
+    el("p", { class: "row-meta" },
+      [m.matchday ? `MD ${m.matchday}` : m.stage, m.date || "no date", m.match_id].filter(Boolean).join(" · ")),
+    el("div", { class: "scoreline" },
+      el("div", { class: "scorebox" }, el("span", {}, teamName(m.home_team_id)), homeGoals),
+      el("span", { class: "dash" }, "–"),
+      el("div", { class: "scorebox" }, awayGoals, el("span", {}, teamName(m.away_team_id)))),
+    el("div", { class: "line2" }, statusSelect, scorerToggle, replaceLabel),
+    scorerHost,
+    status);
+  $("brs-rows").append(row);
+
+  Object.assign(entry, {
+    row,
+    homeGoalsEl: homeGoals,
+    awayGoalsEl: awayGoals,
+    statusSelect,
+    replaceEl: replaceBox,
+    statusEl: status,
+  });
+
+  const refreshToggle = () => {
+    const { home, away } = entry.panel.counts();
+    const hg = homeGoals.value === "" ? "?" : homeGoals.value;
+    const ag = awayGoals.value === "" ? "?" : awayGoals.value;
+    scorerToggle.textContent = `Scorers ${home}/${hg} – ${away}/${ag}`;
+    scorerToggle.classList.toggle("filled", home + away > 0);
+    saveResultDraft();
+  };
+  entry.panel = makeScorerPanel(scorerHost, m, {
+    getScore: () => ({
+      hg: homeGoals.value === "" ? null : parseInt(homeGoals.value, 10),
+      ag: awayGoals.value === "" ? null : parseInt(awayGoals.value, 10),
+    }),
+    onChange: refreshToggle,
+  });
+
+  scorerToggle.addEventListener("click", () => {
+    scorerHost.hidden = !scorerHost.hidden;
+    // Opening an empty panel on a scoring match: start it off with one row.
+    if (!scorerHost.hidden && !entry.panel.rows.length && (homeGoals.value || awayGoals.value)) {
+      entry.panel.addRow();
+    }
+  });
+  for (const input of [homeGoals, awayGoals]) {
+    input.addEventListener("input", refreshToggle);
+  }
+  statusSelect.addEventListener("change", saveResultDraft);
+  replaceBox.addEventListener("change", saveResultDraft);
+
+  if (preset) {
+    homeGoals.value = preset.hg || "";
+    awayGoals.value = preset.ag || "";
+    statusSelect.value = preset.status || "played";
+    replaceBox.checked = Boolean(preset.replace);
+    for (const s of preset.scorers || []) entry.panel.addRow(s);
+    if ((preset.scorers || []).length) scorerHost.hidden = false;
+  }
+  refreshToggle();
+
+  brs.rows.push(entry);
+  return entry;
+}
+
+async function submitBatchResults(ev) {
+  ev.preventDefault();
+  const jobs = [];
+  for (const r of brs.rows) {
+    if (r.saved) continue;
+    const hg = r.homeGoalsEl.value.trim() === "" ? null : parseInt(r.homeGoalsEl.value, 10);
+    const ag = r.awayGoalsEl.value.trim() === "" ? null : parseInt(r.awayGoalsEl.value, 10);
+    const status = r.statusSelect.value;
+    const hasScorers = r.panel.rows.length > 0;
+    if (hg === null && ag === null && status === "played" && !hasScorers) continue; // untouched
+
+    const fail = (msg) => {
+      r.statusEl.textContent = `✗ ${msg}`;
+      r.statusEl.className = "row-status bad";
+      r.row.scrollIntoView({ block: "center", behavior: "smooth" });
+      toast(`${teamName(r.match.home_team_id)} v ${teamName(r.match.away_team_id)}: ${msg}`, true);
+      return null;
+    };
+    if ((hg === null) !== (ag === null)) return fail("enter both scores or neither");
+    if (status === "played" && hg === null) return fail("a played match needs a score");
+    if (r.alreadyDone && !r.replaceEl.checked) return fail("tick “replace existing” to overwrite this result");
+    let goals;
+    try { goals = r.panel.collect(); }
+    catch (err) { return fail(err.message); }
+    const { home, away } = r.panel.counts();
+    if (hg !== null && (home > hg || away > ag)) return fail("more scorer rows than goals on one side");
+    if (hg === null && goals.length) return fail("goal rows need a score");
+
+    r.statusEl.textContent = "";
+    jobs.push({ row: r, hg, ag, status, goals });
+  }
+  if (!jobs.length) return toast("Nothing filled in yet", true);
+
+  const btn = $("brs-submit");
+  btn.disabled = true;
+  let saved = 0, failed = 0;
+  for (const [i, job] of jobs.entries()) {
+    const r = job.row;
+    btn.textContent = `Saving ${i + 1}/${jobs.length}…`;
+    r.statusEl.textContent = "Saving…";
+    r.statusEl.className = "row-status";
+    try {
+      await api("save_result", {
+        match_id: r.match.match_id,
+        home_goals: job.hg === null ? "" : String(job.hg),
+        away_goals: job.ag === null ? "" : String(job.ag),
+        status: job.status,
+        source_type: $("brs-source").value,
+        source_ref: $("brs-ref").value.trim(),
+        confidence: $("brs-confidence").value,
+        replace_goals: Boolean(r.alreadyDone && r.replaceEl.checked),
+        goals: job.goals,
+      });
+      pending.addSaved(r.match.match_id, { status: job.status, home_goals: job.hg, away_goals: job.ag });
+      r.saved = true;
+      r.statusEl.textContent = `✓ saved (${job.goals.length} goal${job.goals.length === 1 ? "" : "s"})`;
+      r.statusEl.className = "row-status ok";
+      r.homeGoalsEl.disabled = true;
+      r.awayGoalsEl.disabled = true;
+      r.statusSelect.disabled = true;
+      r.replaceEl.disabled = true;
+      r.panel.setDisabled(true);
+      r.row.classList.add("done");
+      saved++;
+    } catch (err) {
+      r.statusEl.textContent = `✗ ${err.message}`;
+      r.statusEl.className = "row-status bad";
+      failed++;
+    }
+  }
+  btn.textContent = "Save all";
+  btn.disabled = false;
+  saveResultDraft();
+  toast(failed
+    ? `${saved} saved, ${failed} failed — fix the marked rows and save again`
+    : `Saved ${saved} result${saved === 1 ? "" : "s"}`, Boolean(failed));
+}
+
 // ── New player modal ─────────────────────────────────────────────────────────
 
 let playerModalTarget = null;
 
 function openPlayerModal(scorerEntry) {
   playerModalTarget = scorerEntry;
-  $("pl-name").value = "";
+  $("pl-name").value = scorerEntry ? scorerEntry.combo.query : "";
   $("pl-known").value = "";
   $("pl-position").value = "";
   $("pl-dob").value = "";
@@ -793,6 +1464,62 @@ async function submitPlayer(ev) {
     }
     $("player-modal").close();
     toast(`Created ${res.player_id}: ${item.label}`);
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── New venue modal ──────────────────────────────────────────────────────────
+
+let venueModalTarget = null;
+let venueCodeEdited = false;
+
+function openVenueModal(combo) {
+  venueModalTarget = combo;
+  venueCodeEdited = false;
+  $("vn-name").value = combo ? combo.query : "";
+  $("vn-city").value = "";
+  $("vn-capacity").value = "";
+  $("vn-code").value = suggestVenueId($("vn-name").value);
+  $("venue-modal").showModal();
+  $("vn-name").focus();
+}
+
+async function submitVenue(ev) {
+  ev.preventDefault();
+  const name = $("vn-name").value.trim();
+  const code = $("vn-code").value.trim().toUpperCase();
+  if (!name || !code) return;
+  const dup = IX.venues.find((v) => v.label.toLowerCase() === name.toLowerCase());
+  if (dup && !confirm(`"${dup.label}" already exists (${dup.venue_id}). Add a second venue with the same name?`)) {
+    return;
+  }
+  const btn = $("vn-save");
+  btn.disabled = true;
+  try {
+    const res = await api("create_venue", {
+      name,
+      city: $("vn-city").value.trim(),
+      capacity: $("vn-capacity").value.trim(),
+      venue_id: code,
+    });
+    const item = {
+      venue_id: res.venue_id,
+      label: name,
+      city: $("vn-city").value.trim(),
+      search: `${name} ${$("vn-city").value}`.toLowerCase(),
+    };
+    IX.venues.push(item);
+    IX.venues.sort((a, b) => a.label.localeCompare(b.label));
+    IX.venueIds.add(res.venue_id.toUpperCase());
+    if (venueModalTarget) venueModalTarget.set({ id: res.venue_id, label: name });
+    $("venue-modal").close();
+    // The script appends a suffix if the code was taken since the page loaded.
+    toast(res.venue_id === code
+      ? `Created ${res.venue_id}: ${name}`
+      : `Created ${res.venue_id}: ${name} (${code} was taken)`);
   } catch (err) {
     toast(err.message, true);
   } finally {
@@ -845,14 +1572,31 @@ document.addEventListener("DOMContentLoaded", () => {
   $("settings-btn").addEventListener("click", openSettings);
   $("goto-fixture").addEventListener("click", () => { renderFixtureForm(); showView("view-fixture"); });
   $("goto-result").addEventListener("click", () => { renderPicker(); showView("view-picker"); });
+  $("goto-batch-fixture").addEventListener("click", () => { renderBatchFixtures(); showView("view-batch-fixtures"); });
+  $("goto-batch-result").addEventListener("click", () => { renderBatchResults(); showView("view-batch-results"); });
   $("fixture-form").addEventListener("submit", submitFixture);
   $("result-form").addEventListener("submit", submitResult);
-  $("add-scorer").addEventListener("click", addScorerRow);
   $("rs-status").addEventListener("change", updateScorerUi);
   $("rs-home-goals").addEventListener("input", updateScorerUi);
   $("rs-away-goals").addEventListener("input", updateScorerUi);
+
+  $("bfx-add").addEventListener("click", () => addFixtureRow().home.focus());
+  $("bfx-form").addEventListener("submit", submitBatchFixtures);
+  $("bfx-form").addEventListener("input", debounce(saveFixtureDraft, 400));
+  $("brs-form").addEventListener("submit", submitBatchResults);
+  $("brs-form").addEventListener("input", debounce(saveResultDraft, 400));
+  $("brs-filter-kind").addEventListener("change", () => { populateBatchResultFilter(); renderBatchResults(false); });
+  $("brs-filter-value").addEventListener("change", () => renderBatchResults(false));
+  $("brs-include-done").addEventListener("change", () => renderBatchResults(false));
+
   $("player-form").addEventListener("submit", submitPlayer);
   $("pl-cancel").addEventListener("click", () => $("player-modal").close());
+  $("venue-form").addEventListener("submit", submitVenue);
+  $("vn-cancel").addEventListener("click", () => $("venue-modal").close());
+  $("vn-code").addEventListener("input", () => { venueCodeEdited = true; });
+  $("vn-name").addEventListener("input", () => {
+    if (!venueCodeEdited) $("vn-code").value = suggestVenueId($("vn-name").value);
+  });
   $("set-ping").addEventListener("click", pingScript);
   $("settings-form").addEventListener("submit", () => {
     settings.save({ url: $("set-url").value.trim(), token: $("set-token").value.trim() });

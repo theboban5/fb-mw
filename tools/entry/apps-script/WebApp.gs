@@ -27,7 +27,7 @@
  */
 
 var ENTRY = {
-  VERSION: "1",
+  VERSION: "2",
   // Mirrors src/dataset.py enums — keep in sync by hand.
   MATCH_STATUSES: ["scheduled", "played", "postponed", "abandoned", "awarded", "cancelled"],
   SOURCE_TYPES: ["reporter", "rfa", "fa", "club", "facebook", "newspaper", "whatsapp", "backfill", "placeholder", "unknown"],
@@ -71,6 +71,8 @@ function doPost(e) {
         return entryJson_(entryWithLock_(function () { return entrySaveResult_(payload); }));
       case "create_player":
         return entryJson_(entryWithLock_(function () { return entryCreatePlayer_(payload); }));
+      case "create_venue":
+        return entryJson_(entryWithLock_(function () { return entryCreateVenue_(payload); }));
       default:
         return entryJson_({ ok: false, error: "unknown action: " + body.action });
     }
@@ -131,6 +133,11 @@ function entryCreateFixture_(p) {
     confidence: p.confidence,
     verified_by: "",
     verified_at: "",
+    // Knockout columns (added with cup support). entryAppendRow_ demands a key
+    // per sheet column, so every column the matches tab grows must land here.
+    extra_time: "",
+    home_pens: "",
+    away_pens: "",
   });
   return { ok: true, match_id: matchId };
 }
@@ -245,6 +252,41 @@ function entryCreatePlayer_(p) {
     status: "active",
   });
   return { ok: true, player_id: playerId };
+}
+
+/**
+ * Venue IDs are the one ID the client proposes rather than the server minting:
+ * the tab has no derivable convention (MW_ADL_G, MW_MCJ_001, MW_NENO all
+ * coexist and nothing parses them — validate.py only checks uniqueness and the
+ * matches FK), so the UI suggests a slug the user can edit. Authority over
+ * collisions still lives here, against live data under the lock: a taken code
+ * gets a numeric suffix rather than an error, and the id actually written is
+ * returned for the client to use.
+ */
+function entryCreateVenue_(p) {
+  entryNeed_(p, ["name", "venue_id"]);
+  var wanted = String(p.venue_id).trim().toUpperCase();
+  if (!/^[A-Z][A-Z0-9_]{2,23}$/.test(wanted)) {
+    entryFail_("venue_id must be 3-24 chars of A-Z, 0-9 and _, starting with a letter; got " +
+               JSON.stringify(wanted));
+  }
+  if (p.capacity) entryMustCount_(p.capacity, "capacity");
+
+  var t = entryReadTab_("venues");
+  var taken = {};
+  for (var i = 0; i < t.rows.length; i++) {
+    taken[entryGet_(t, t.rows[i], "venue_id").toUpperCase()] = true;
+  }
+  var venueId = wanted;
+  for (var n = 2; taken[venueId]; n++) venueId = wanted + "_" + n;
+
+  entryAppendRow_("venues", {
+    venue_id: venueId,
+    name: String(p.name).trim(),
+    city: p.city ? String(p.city).trim() : "",
+    capacity: p.capacity ? String(p.capacity).trim() : "",
+  });
+  return { ok: true, venue_id: venueId };
 }
 
 // ── ID minting ───────────────────────────────────────────────────────────────

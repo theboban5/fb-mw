@@ -27,8 +27,14 @@
   <section id="view-league" hidden>
     <h2 id="league-title"></h2>
     <div class="card-list">
-      <button class="card action" id="goto-fixture">＋ New fixture</button>
-      <button class="card action" id="goto-result">✎ Enter result</button>
+      <button class="card action" id="goto-fixture">＋ New fixture
+        <span class="sub">One at a time</span></button>
+      <button class="card action" id="goto-result">✎ Enter result
+        <span class="sub">Pick a match, then fill it in</span></button>
+      <button class="card action" id="goto-batch-fixture">＋＋ Matchday of fixtures
+        <span class="sub">Several fixtures on one screen</span></button>
+      <button class="card action" id="goto-batch-result">✎✎ Day of results
+        <span class="sub">Every match of a matchday or date at once</span></button>
     </div>
   </section>
 
@@ -37,8 +43,11 @@
     <h2>New fixture</h2>
     <form id="fixture-form" autocomplete="off">
       <div class="row2">
-        <label>Matchday
+        <label id="fx-matchday-label">Matchday
           <input type="number" id="fx-matchday" min="1" inputmode="numeric">
+        </label>
+        <label id="fx-stage-label" hidden>Round
+          <select id="fx-stage"></select>
         </label>
         <label>Date
           <input type="date" id="fx-date" required>
@@ -49,8 +58,7 @@
           <input type="time" id="fx-kickoff">
         </label>
         <label>Venue <span class="muted">(optional)</span>
-          <input type="text" id="fx-venue" list="venue-list" placeholder="Start typing…">
-          <datalist id="venue-list"></datalist>
+          <div class="combo" id="fx-venue"></div>
         </label>
       </div>
       <label>Home team
@@ -127,11 +135,92 @@
 
       <fieldset id="scorers-wrap">
         <legend>Scorers <span id="scorer-counter" class="muted"></span></legend>
-        <div id="scorer-rows"></div>
-        <button type="button" class="ghost" id="add-scorer">＋ Add scorer</button>
+        <div id="scorer-host"></div>
       </fieldset>
 
       <button type="submit" class="primary" id="rs-submit">Save result</button>
+    </form>
+  </section>
+
+  <!-- Batch: a whole matchday of fixtures -->
+  <section id="view-batch-fixtures" hidden>
+    <h2>Matchday of fixtures</h2>
+    <form id="bfx-form" autocomplete="off">
+      <fieldset class="shared">
+        <legend>Shared by every match below</legend>
+        <div class="row2">
+          <label id="bfx-matchday-label">Matchday
+            <input type="number" id="bfx-matchday" min="1" inputmode="numeric">
+          </label>
+          <label id="bfx-stage-label" hidden>Round
+            <select id="bfx-stage"></select>
+          </label>
+          <label>Date
+            <input type="date" id="bfx-date" required>
+          </label>
+        </div>
+        <div class="row2">
+          <label>Kickoff <span class="muted">(optional)</span>
+            <input type="time" id="bfx-kickoff">
+          </label>
+          <label>Venue <span class="muted">(optional)</span>
+            <div class="combo" id="bfx-venue"></div>
+          </label>
+        </div>
+        <div class="row2">
+          <label>Source
+            <select id="bfx-source"></select>
+          </label>
+          <label>Confidence
+            <select id="bfx-confidence"></select>
+          </label>
+        </div>
+        <label>Source link <span class="muted">(optional)</span>
+          <input type="url" id="bfx-ref" placeholder="link to post / article">
+        </label>
+      </fieldset>
+      <p class="muted">Per-match date, kickoff and venue override the shared values; leave them blank to use the ones above.</p>
+      <div id="bfx-rows"></div>
+      <button type="button" class="ghost" id="bfx-add">＋ Add match</button>
+      <button type="submit" class="primary" id="bfx-submit">Save all</button>
+    </form>
+  </section>
+
+  <!-- Batch: every result of a matchday / date -->
+  <section id="view-batch-results" hidden>
+    <h2>Day of results</h2>
+    <div class="row2">
+      <label>Show
+        <select id="brs-filter-kind">
+          <option value="matchday">Matchday</option>
+          <option value="date">Date</option>
+          <option value="all">Everything outstanding</option>
+        </select>
+      </label>
+      <label>Which
+        <select id="brs-filter-value"></select>
+      </label>
+    </div>
+    <label class="inline"><input type="checkbox" id="brs-include-done"> Include matches that already have a result</label>
+    <p id="brs-status" class="muted"></p>
+    <form id="brs-form" autocomplete="off">
+      <fieldset class="shared">
+        <legend>Shared by every result below</legend>
+        <div class="row2">
+          <label>Source
+            <select id="brs-source"></select>
+          </label>
+          <label>Confidence
+            <select id="brs-confidence"></select>
+          </label>
+        </div>
+        <label>Source link <span class="muted">(optional)</span>
+          <input type="url" id="brs-ref" placeholder="link to post / article">
+        </label>
+      </fieldset>
+      <p class="muted">Rows you leave blank are skipped, so a half-finished day is fine — come back for the rest later.</p>
+      <div id="brs-rows"></div>
+      <button type="submit" class="primary" id="brs-submit">Save all</button>
     </form>
   </section>
 </main>
@@ -163,6 +252,32 @@
     <div class="modal-actions">
       <button type="button" class="ghost" id="pl-cancel">Cancel</button>
       <button type="submit" class="primary" id="pl-save">Create player</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- New venue modal -->
+<dialog id="venue-modal">
+  <form id="venue-form" method="dialog" autocomplete="off">
+    <h2>New venue</h2>
+    <label>Name
+      <input type="text" id="vn-name" required placeholder="e.g. Mpira Stadium">
+    </label>
+    <div class="row2">
+      <label>City / town <span class="muted">(optional)</span>
+        <input type="text" id="vn-city">
+      </label>
+      <label>Capacity <span class="muted">(optional)</span>
+        <input type="number" id="vn-capacity" min="0" inputmode="numeric">
+      </label>
+    </div>
+    <label>Code
+      <input type="text" id="vn-code" required spellcheck="false">
+      <span class="muted">Suggested from the name — edit it if you'd rather.</span>
+    </label>
+    <div class="modal-actions">
+      <button type="button" class="ghost" id="vn-cancel">Cancel</button>
+      <button type="submit" class="primary" id="vn-save">Create venue</button>
     </div>
   </form>
 </dialog>

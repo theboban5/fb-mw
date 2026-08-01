@@ -248,6 +248,56 @@ legend { font-size: 0.9rem; padding: 0 0.3rem; }
   padding: 0.2rem 0.4rem;
 }
 
+/* Batch grids (matchday of fixtures / day of results) */
+fieldset.shared { margin: 0 0 0.9rem; }
+fieldset.shared label { margin: 0.45rem 0; }
+
+.batch-row {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+  margin-bottom: 0.55rem;
+}
+.batch-row.done { opacity: 0.6; }
+.batch-row.already { border-left: 3px solid var(--warn-line); }
+.batch-row .line1 { display: flex; gap: 0.4rem; align-items: center; }
+.batch-row .line1 .combo { flex: 1; margin: 0; min-width: 0; }
+.batch-row .line1 .v { color: var(--muted); font-size: 0.85rem; }
+.batch-row .line-overrides {
+  display: grid;
+  grid-template-columns: 1fr 5.5rem 1fr;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+.batch-row .line-overrides input { margin: 0; font-size: 0.85rem; padding: 0.4rem 0.45rem; }
+.batch-row .line-overrides .combo { margin: 0; }
+.batch-row .line-overrides .combo input { font-size: 0.85rem; padding: 0.4rem 0.45rem; }
+.batch-row .remove {
+  background: none;
+  border: 0;
+  color: var(--danger);
+  font-size: 1.05rem;
+  cursor: pointer;
+  padding: 0.2rem 0.3rem;
+}
+.batch-row .row-meta { margin: 0 0 0.2rem; color: var(--muted); font-size: 0.78rem; }
+.batch-row .scoreline { margin: 0.2rem 0 0.4rem; }
+.batch-row.result .line2 {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.batch-row.result .line2 select { width: auto; margin: 0; font-size: 0.85rem; padding: 0.35rem 0.45rem; }
+.batch-row .scorer-toggle { font-size: 0.82rem; }
+.batch-row .scorer-toggle.filled { border-color: var(--accent); color: var(--accent); }
+.batch-row .replace { font-size: 0.8rem; margin: 0; }
+.batch-row .scorer-host { margin-top: 0.5rem; border-top: 1px dashed var(--line); }
+.row-status { margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--muted); }
+.row-status.ok { color: var(--accent); }
+.row-status.bad { color: var(--danger); }
+
 /* Modals */
 dialog {
   border: 1px solid var(--line);
