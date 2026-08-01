@@ -35,5 +35,5 @@ match_id,team_code,date,competition,opponent,home_away,neutral,venue,city,countr
 34,MW_W,2026-06-06,Friendly,Tanzania,away,FALSE,KMC Complex,Dar es Salaam,Tanzania,0,0,played,,FALSE,FALSE,
 35,MW_W,2026-07-16,Friendly,Morocco,away,FALSE,Al Medina Stadium,Rabat,Morocco,1,2,played,,FALSE,FALSE,
 36,MW_W,2026-07-28,WAFCON,Nigeria,away,TRUE,Al Medina Stadium,Rabat,Morocco,3,2,played,Lovemore Fazili,FALSE,FALSE,
-37,MW_W,2026-08-01,WAFCON,Egypt,away,TRUE,Moulay El Hassan Stadium,Rabat,Morocco,,,scheduled,,FALSE,FALSE,
+37,MW_W,2026-08-01,WAFCON,Egypt,away,TRUE,Moulay El Hassan Stadium,Rabat,Morocco,3,1,played,Lovemore Fazili,FALSE,FALSE,
 38,MW_W,2026-08-05,WAFCON,Zambia,away,TRUE,Al Medina Stadium,Rabat,Morocco,,,scheduled,,FALSE,FALSE,

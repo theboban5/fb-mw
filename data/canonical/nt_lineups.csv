@@ -1,26 +1,51 @@
 match_id,team_id,player_name,player_id,shirt_number,position,role,captain,minute_on,minute_off,replaced_player,yellow_card,yellow_red_card,red_card
-36,MW_W,Bernadette Mkandawire,MW_W_003,22,DF,starting,FALSE,,,,FALSE,FALSE,FALSE
-36,MW_W,Chikondi Gondwe,MW_W_027,24,MF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
-36,MW_W,Chimwemwe Madise,MW_W_017,4,DF,starting,FALSE,,,,TRUE,FALSE,FALSE
-36,MW_W,Chisomo Banda,MW_W_025,19,DF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
-36,MW_W,Deborah Henry,MW_W_009,3,FW,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
-36,MW_W,Esther Maulidi,MW_W_021,23,GK,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
-36,MW_W,Faith Chinzimu,MW_W_007,17,MF,starting,FALSE,,,,FALSE,FALSE,FALSE
-36,MW_W,Ireen Khumalo,MW_W_008,18,DF,starting,FALSE,,,,FALSE,FALSE,FALSE
-36,MW_W,Leticia Chinyamula,MW_W_019,15,MF,starting,FALSE,,,,FALSE,FALSE,FALSE
-36,MW_W,Lyna James,MW_W_024,25,MF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
-36,MW_W,Madyina Nguluwe,MW_W_018,12,MF,starting,FALSE,,50,,TRUE,FALSE,FALSE
-36,MW_W,Maggie Chavula,MW_W_022,14,DF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
 36,MW_W,Mercy Sikelo,MW_W_014,1,GK,starting,FALSE,,,,FALSE,FALSE,FALSE
 36,MW_W,Olivia Phikani,MW_W_012,2,DF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
-36,MW_W,Rose Alufandika,MW_W_016,21,DF,starting,FALSE,,,,FALSE,FALSE,FALSE
-36,MW_W,Rose Kadzere,MW_W_002,6,FW,starting,FALSE,,90,,FALSE,FALSE,FALSE
-36,MW_W,Sabinah Thom,MW_W_006,9,FW,sub_on,FALSE,50,,Madyina Nguluwe,FALSE,FALSE,FALSE
-36,MW_W,Sarah Mulimbika,MW_W_023,20,MF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
-36,MW_W,Tabitha Chawinga,MW_W_001,11,FW,starting,TRUE,,,,FALSE,FALSE,FALSE
-36,MW_W,Temwa Chawinga,MW_W_013,10,FW,starting,FALSE,,,,FALSE,FALSE,FALSE
-36,MW_W,Tendai Sani,MW_W_004,8,MF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Deborah Henry,MW_W_009,3,FW,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Chimwemwe Madise,MW_W_017,4,DF,starting,FALSE,,,,TRUE,FALSE,FALSE
 36,MW_W,Tionge Phiri,MW_W_026,5,DF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Rose Kadzere,MW_W_002,6,FW,starting,FALSE,,90,,FALSE,FALSE,FALSE
+36,MW_W,Tendai Sani,MW_W_004,8,MF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Sabinah Thom,MW_W_006,9,FW,sub_on,FALSE,50,,Madyina Nguluwe,FALSE,FALSE,FALSE
+36,MW_W,Temwa Chawinga,MW_W_013,10,FW,starting,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Tabitha Chawinga,MW_W_001,11,FW,starting,TRUE,,,,FALSE,FALSE,FALSE
+36,MW_W,Madyina Nguluwe,MW_W_018,12,MF,starting,FALSE,,50,,TRUE,FALSE,FALSE
 36,MW_W,Vanessa Chikupila,MW_W_010,13,MF,sub_on,FALSE,90,,Rose Kadzere,FALSE,FALSE,FALSE
-36,MW_W,Vitumbiko Mkandawire,MW_W_011,26,FW,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Maggie Chavula,MW_W_022,14,DF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Leticia Chinyamula,MW_W_019,15,MF,starting,FALSE,,,,FALSE,FALSE,FALSE
 36,MW_W,Yamikani Kawonga,MW_W_020,16,GK,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Faith Chinzimu,MW_W_007,17,MF,starting,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Ireen Khumalo,MW_W_008,18,DF,starting,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Chisomo Banda,MW_W_025,19,DF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Sarah Mulimbika,MW_W_023,20,MF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Rose Alufandika,MW_W_016,21,DF,starting,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Bernadette Mkandawire,MW_W_003,22,DF,starting,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Esther Maulidi,MW_W_021,23,GK,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Chikondi Gondwe,MW_W_027,24,MF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Lyna James,MW_W_024,25,MF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+36,MW_W,Vitumbiko Mkandawire,MW_W_011,26,FW,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Mercy Sikelo,MW_W_014,1,GK,starting,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Olivia Phikani,MW_W_012,2,DF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Deborah Henry,MW_W_009,3,FW,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Chimwemwe Madise,MW_W_017,4,DF,starting,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Tionge Phiri,MW_W_026,5,DF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Rose Kadzere,MW_W_002,6,MF,starting,FALSE,,90,,FALSE,FALSE,FALSE
+37,MW_W,Tendai Sani,MW_W_004,8,MF,sub_on,FALSE,90,,Rose Kadzere,FALSE,FALSE,FALSE
+37,MW_W,Sabinah Thom,MW_W_006,9,FW,sub_on,FALSE,89,,Leticia Chinyamula,FALSE,FALSE,FALSE
+37,MW_W,Temwa Chawinga,MW_W_013,10,FW,starting,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Tabitha Chawinga,MW_W_001,11,MF,starting,TRUE,,,,FALSE,FALSE,FALSE
+37,MW_W,Madyina Nguluwe,MW_W_018,12,MF,starting,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Vanessa Chikupila,MW_W_010,13,FW,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Maggie Chavula,MW_W_022,14,DF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Leticia Chinyamula,MW_W_019,15,MF,starting,FALSE,,89,,TRUE,FALSE,FALSE
+37,MW_W,Yamikani Kawonga,MW_W_020,16,GK,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Faith Chinzimu,MW_W_007,17,MF,starting,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Ireen Khumalo,MW_W_008,18,DF,starting,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Chisomo Banda,MW_W_025,19,DF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Sarah Mulimbika,MW_W_023,20,MF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Rose Alufandika,MW_W_016,21,DF,starting,FALSE,,,,FALSE,FALSE,TRUE
+37,MW_W,Bernadette Mkandawire,MW_W_003,22,DF,starting,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Esther Maulidi,MW_W_021,23,GK,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Chikondi Gondwe,MW_W_027,24,MF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Lyna James,MW_W_024,25,MF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+37,MW_W,Vitumbiko Mkandawire,MW_W_011,26,FW,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
