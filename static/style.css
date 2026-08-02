@@ -1458,12 +1458,18 @@ table.nt-table {
 .nt-flag-pre { margin-right: 7px; }
 .nt-flag-post { margin-left: 7px; }
 
-/* Line-up block under a result */
+/* Line-up block under a result. It reads as a drawer hanging off the bottom of
+   its match: no divider above it (see the .v2-scorers-row rule below), and a
+   heavier divider below, so the stronger line is always the one between two
+   matches rather than the one between a match and its own line-up. */
 .nt-lineup-row td {
   padding: 0 10px 12px;
   background: #fafafa;
-  border-bottom: 1px solid #e4e4e4;
+  border-bottom: 2px solid #d4d4d4;
 }
+/* Drop the scorers' divider only when a line-up follows, so the two rows join
+   into one block. A match with no line-up keeps its normal 1px rule. */
+.v2-scorers-row:has(+ .nt-lineup-row) td { border-bottom: none; }
 .nt-lineup { font-size: 0.8rem; color: #1c1c1c; }
 .nt-lineup-summary {
   padding: 8px 0;
