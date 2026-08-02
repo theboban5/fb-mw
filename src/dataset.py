@@ -23,6 +23,9 @@ from datetime import datetime
 import csv
 import io
 import os
+import socket
+import time
+import urllib.error
 import urllib.request
 
 
@@ -93,8 +96,17 @@ def fetch_tab(tab: str) -> str:
         with open(os.path.join(local, f"{tab}.csv"), encoding="utf-8") as fh:
             return fh.read()
     req = urllib.request.Request(tab_url(tab), headers={"User-Agent": "fb-mw-build"})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return resp.read().decode("utf-8")
+    attempts = 3
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                return resp.read().decode("utf-8")
+        except (socket.timeout, urllib.error.URLError) as err:
+            timed_out = isinstance(err, socket.timeout) or isinstance(
+                getattr(err, "reason", None), socket.timeout)
+            if not timed_out or attempt == attempts:
+                raise
+            time.sleep(2 ** attempt)
 
 
 def fetch_all() -> "dict[str, str]":
