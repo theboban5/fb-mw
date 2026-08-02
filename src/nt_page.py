@@ -351,7 +351,7 @@ def _lineup_row(lineup) -> str:
         return ""
     return (
         '<tr class="nt-lineup-row"><td colspan="3">'
-        '<details class="nt-lineup" open>'
+        '<details class="nt-lineup">'
         '<summary class="nt-lineup-summary">Line-up</summary>'
         f'<div class="nt-lineup-body">{"".join(parts)}</div>'
         "</details></td></tr>"
