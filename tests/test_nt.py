@@ -29,7 +29,7 @@ TEAMS = (
 MATCH_HEADER = (
     "match_id,team_code,date,competition,opponent,home_away,neutral,venue,"
     "city,country,team_score,opponent_score,status,coach,extra_time,"
-    "penalty_shootout,extra_time_result\n"
+    "penalty_shootout,extra_time_result,kickoff\n"
 )
 
 GOAL_HEADER = (
@@ -60,7 +60,7 @@ M36_MATCHES = MATCH_HEADER + (
     "36,MW_W,2026-07-28,WAFCON,Nigeria,away,TRUE,Al Medina Stadium,Rabat,"
     "Morocco,3,2,played,Lovemore Fazili,FALSE,FALSE,\n"
     "37,MW_W,2026-08-01,WAFCON,Egypt,away,TRUE,Moulay El Hassan Stadium,"
-    "Rabat,Morocco,,,scheduled,,FALSE,FALSE,\n"
+    "Rabat,Morocco,,,scheduled,,FALSE,FALSE,,20:00\n"
     # Another team's row: must never reach the women's page.
     "11,MW_M,2026-03-31,Four Nations,Botswana,home,TRUE,Obed Stadium,"
     "Francistown,Botswana,0,1,played,,FALSE,FALSE,\n"
@@ -161,6 +161,29 @@ class DateParsingTest(unittest.TestCase):
         with self.assertRaises(DataError):
             parse_match("14,MW_W,28/07/2026,WAFCON,Nigeria,away,FALSE,,,,3,2,"
                         "played,,FALSE,FALSE,")
+
+    def test_kickoff_parses_and_labels_in_malawi_time(self):
+        m = parse_match("14,MW_W,2026-08-05,WAFCON,Zambia,away,TRUE,,,,,,"
+                        "scheduled,,FALSE,FALSE,,20:00")
+        self.assertEqual(m.kickoff, "20:00")
+        self.assertEqual(m.kickoff_label, "20:00 CAT")
+
+    def test_kickoff_with_seconds_normalises_to_hh_mm(self):
+        m = parse_match("14,MW_W,2026-08-05,WAFCON,Zambia,away,TRUE,,,,,,"
+                        "scheduled,,FALSE,FALSE,,20:00:00")
+        self.assertEqual(m.kickoff, "20:00")
+
+    def test_missing_or_tbd_kickoff_leaves_the_label_blank(self):
+        for value in ("", "tbd", "TBA"):
+            m = parse_match(f"14,MW_W,2026-08-05,WAFCON,Zambia,away,TRUE,,,,,,"
+                            f"scheduled,,FALSE,FALSE,,{value}")
+            self.assertEqual(m.kickoff_label, "", repr(value))
+
+    def test_malformed_kickoff_fails_the_build(self):
+        for value in ("8pm", "20.00", "25:00"):
+            with self.assertRaises(DataError, msg=value):
+                parse_match(f"14,MW_W,2026-08-05,WAFCON,Zambia,away,TRUE,,,,,,"
+                            f"scheduled,,FALSE,FALSE,,{value}")
 
     def test_tbd_venue_dropped_from_the_venue_label(self):
         m = parse_match("14,MW_M,tbd,AFCON,Angola,home,FALSE,tbd,tbd,Malawi,"
@@ -548,6 +571,21 @@ class PageTest(unittest.TestCase):
         self.assertIn("Next Match", self.html)
         self.assertIn("Egypt", self.html)
         self.assertIn("1 Aug 2026", self.html)
+        self.assertIn("20:00 CAT", self.html)
+
+    def test_landing_card_shows_the_kickoff_beside_the_date(self):
+        card = nt_page.landing_next_match(load(), flags.Flags(STATIC))
+        self.assertIn("1 Aug 2026 &middot; 20:00 CAT &middot; Neutral", card)
+
+    def test_landing_card_omits_the_kickoff_when_it_is_unknown(self):
+        matches = MATCH_HEADER + (
+            "37,MW_W,2026-08-01,WAFCON,Egypt,away,TRUE,,,,,,scheduled,,"
+            "FALSE,FALSE,,\n")
+        card = nt_page.landing_next_match(
+            load(matches=matches, goals=GOAL_HEADER, lineups=LINEUP_HEADER),
+            flags.Flags(STATIC))
+        self.assertIn("1 Aug 2026 &middot; Neutral", card)
+        self.assertNotIn("CAT", card)
 
     def test_group_table(self):
         self.assertIn("2026 Women&#x27;s Africa Cup of Nations · Group C",

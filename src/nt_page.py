@@ -177,7 +177,8 @@ def _header(team_data, flag_url) -> str:
 def _next_match(match, fl) -> str:
     if match is None:
         return ""
-    meta = [_date_label(match), match.ground_label]
+    meta = [p for p in (_date_label(match), match.kickoff_label,
+                        match.ground_label) if p]
     if match.venue_label:
         meta.append(match.venue_label)
     return (
@@ -566,9 +567,10 @@ def landing_next_match(team_data, fl) -> str:
     match = team_data.next_match
     if match is None:
         return ""
-    # Date and ground on one line, the venue on its own: in a column this
-    # narrow a single run would break stadium names mid-name.
+    # Date, kickoff and ground on one line, the venue on its own: in a column
+    # this narrow a single run would break stadium names mid-name.
     meta = " &middot; ".join(escape(p) for p in (_date_label(match),
+                                                match.kickoff_label,
                                                 match.ground_label) if p)
     venue = (f'<span class="el-next-venue">{escape(match.venue_label)}</span>'
              if match.venue_label else "")

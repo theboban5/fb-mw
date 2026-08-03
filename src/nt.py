@@ -23,6 +23,7 @@ rivals: `NTGroup` carries their rows too, and they are exactly the rows with no
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from . import dataset
 from .dataset import DataError, _enum, _opt_int, _put, _require, _rows
@@ -52,6 +53,10 @@ NT_GOAL_TYPES = frozenset({"", "penalty", "own goal", "own_goal"})
 # What the sheet writes in a date cell for a fixture that has no date yet.
 _NO_DATE = ("tbd", "tba")
 
+# Kickoff times are entered — and shown — in Malawi's clock, so a reader here
+# never has to convert one. Malawi keeps CAT (UTC+2) year round, no DST.
+KICKOFF_TZ = "CAT"
+
 
 # ── Parsing helpers ──────────────────────────────────────────────────────────
 
@@ -60,6 +65,24 @@ def _nt_date(value: str, label: str, tab: str, i: int) -> str:
     if value.strip().lower() in _NO_DATE:
         return ""
     return dataset._date(value, label, tab, i)
+
+
+def _nt_time(value: str, label: str, tab: str, i: int) -> str:
+    """24-hour HH:MM, blank when unknown; "tbd"/"tba" also parses to "".
+
+    Sheets exports a time cell as either "20:00" or "20:00:00" depending on the
+    cell format, so both are accepted and normalised to HH:MM. Anything else
+    fails the build rather than reaching the page as a mystery string.
+    """
+    v = value.strip()
+    if not v or v.lower() in _NO_DATE:
+        return ""
+    for fmt in ("%H:%M", "%H:%M:%S"):
+        try:
+            return datetime.strptime(v, fmt).strftime("%H:%M")
+        except ValueError:
+            pass
+    raise DataError(f"{tab} row {i}: {label} {value!r} is not 24-hour HH:MM")
 
 
 def _flag(value: str, label: str, tab: str, i: int) -> bool:
@@ -107,6 +130,7 @@ class NTMatch:
     extra_time: bool
     penalty_shootout: bool
     extra_time_result: str
+    kickoff: str = ""    # HH:MM in Malawi time, or "" when not announced
 
     @property
     def has_score(self) -> bool:
@@ -126,6 +150,11 @@ class NTMatch:
         parts = [p for p in (self.venue, self.city)
                  if p and p.strip().lower() not in _NO_DATE]
         return ", ".join(parts)
+
+    @property
+    def kickoff_label(self) -> str:
+        """"20:00 CAT", or "" when the sheet has no kickoff for the fixture."""
+        return f"{self.kickoff} {KICKOFF_TZ}" if self.kickoff else ""
 
     @property
     def ground_label(self) -> str:
@@ -378,6 +407,7 @@ def parse_nt_matches(text: str) -> "dict[str, NTMatch]":
             _flag(r.get("extra_time", ""), "extra_time", "nt_matches", i),
             _flag(r.get("penalty_shootout", ""), "penalty_shootout", "nt_matches", i),
             r.get("extra_time_result", ""),
+            _nt_time(r.get("kickoff", ""), "kickoff", "nt_matches", i),
         ), "nt_matches", i)
     return out
 

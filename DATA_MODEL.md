@@ -145,8 +145,8 @@ sees them. Currently one page is built from them: the women's senior team
   `category`. These are **not** `teams.team_id` values.
 - **nt_matches** — one row per match *from our team's perspective*:
   `team_code`, `opponent`, `team_score`/`opponent_score`, `home_away`,
-  `neutral`, `venue`/`city`/`country`, `coach`, and the knockout columns
-  `extra_time`/`penalty_shootout`/`extra_time_result`.
+  `neutral`, `venue`/`city`/`country`, `coach`, the optional `kickoff`, and the
+  knockout columns `extra_time`/`penalty_shootout`/`extra_time_result`.
   `status` is `scheduled | played | awarded` (no postponed/abandoned yet).
 - **nt_goals**, **nt_lineups** — hold **both sides'** rows, distinguished by
   `team_id`: ours is the `team_code`, the opponent's is a code like
@@ -174,6 +174,12 @@ Rules that differ from the league schema, and why:
 - **`nt_matches.date` may be the literal `tbd`** (a fixture with no date yet;
   `tba` also parses). It becomes `""` and renders as "Date TBC". Anything
   else must still be strict `YYYY-MM-DD`.
+- **`nt_matches.kickoff` is optional and always in Malawi time** (CAT, UTC+2 —
+  convert before entering, whatever the venue's clock says). 24-hour `HH:MM`,
+  or `HH:MM:SS` as Sheets sometimes exports it; blank / `tbd` means "not
+  announced". It renders beside the date on the next-match panel and on the
+  landing card — "1 Aug 2026 · 20:00 CAT · Neutral" — and is simply left out
+  when blank, so no row has to be filled in for the pages to build.
 - **National-team `player_id`s are their own namespace** (`MW_W_001`,
   `W_INT_NI_002`) and are absent from the `players` tab, so scorer names come
   from `nt_goals.player_name` — the opposite of the league rule. There are no
