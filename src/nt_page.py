@@ -537,6 +537,7 @@ def build_page(dist, templates_dir, static_dir, team_data, ds, updated,
             .replace("{{LEAGUE_LOGO}}", header_logo)
             .replace("{{LAST_UPDATED}}", escape(updated))
             .replace("{{NAV}}", render._nav(filename, items=NAV_ITEMS))
+            .replace("{{SEARCH}}", render.search_widget("../"))
             .replace("{{CONTENT}}", content)
             .replace("{{CSS_PREFIX}}", "../")
             .replace("{{CSS_VER}}", css_ver)

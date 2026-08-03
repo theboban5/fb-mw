@@ -26,6 +26,7 @@ def _page(base, title, content, updated, css_ver, header_logo=""):
         .replace("{{LEAGUE_LOGO}}", header_logo)
         .replace("{{LAST_UPDATED}}", escape(updated))
         .replace("{{NAV}}", render._nav("", items=(("../", "Home"),)))
+        .replace("{{SEARCH}}", render.search_widget("../"))
         .replace("{{CONTENT}}", content)
         .replace("{{CSS_PREFIX}}", "../")
         .replace("{{CSS_VER}}", css_ver)
@@ -208,19 +209,15 @@ def build_club_hubs(dist, templates_dir, static_dir, ds, leagues, standings_by_s
 
 # ── Player pages ─────────────────────────────────────────────────────────────
 
-def build_player_pages(dist, templates_dir, static_dir, ds, updated):
-    """Write /players/{player_id}.html for every player with a scorer credit.
+def player_goal_credits(ds):
+    """(credits, own_goals) — who gets a player page, and what is on it.
 
-    Goals grouped by season + competition, from the goals tab. Own goals are
-    not scorer credits (shown as a separate note). CAF_MW_UNKNOWN and goals
-    from placeholder matches are skipped.
+    `credits` is player_id -> (season_id, competition_id) -> goals; `own_goals`
+    is player_id -> count. CAF_MW_UNKNOWN and goals from placeholder matches
+    are skipped. Split out of build_player_pages because src/search.py has to
+    index exactly the set of players that gets a page — deriving that twice is
+    how a search result ends up pointing at a 404.
     """
-    base = render._read(os.path.join(templates_dir, "base.html"))
-    css_ver = render.css_version(static_dir)
-    out_dir = os.path.join(dist, "players")
-    os.makedirs(out_dir, exist_ok=True)
-
-    # player -> (season_id, competition_id) -> goals / own goals
     credits = {}
     own_goals = {}
     for g in ds.goals.values():
@@ -235,6 +232,21 @@ def build_player_pages(dist, templates_dir, static_dir, ds, updated):
         else:
             credits.setdefault(g.player_id, {})
             credits[g.player_id][key] = credits[g.player_id].get(key, 0) + 1
+    return credits, own_goals
+
+
+def build_player_pages(dist, templates_dir, static_dir, ds, updated):
+    """Write /players/{player_id}.html for every player with a scorer credit.
+
+    Goals grouped by season + competition, from the goals tab. Own goals are
+    not scorer credits (shown as a separate note).
+    """
+    base = render._read(os.path.join(templates_dir, "base.html"))
+    css_ver = render.css_version(static_dir)
+    out_dir = os.path.join(dist, "players")
+    os.makedirs(out_dir, exist_ok=True)
+
+    credits, own_goals = player_goal_credits(ds)
 
     count = 0
     for player_id in sorted(set(credits) | set(own_goals)):

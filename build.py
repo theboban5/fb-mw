@@ -25,7 +25,7 @@ sys.path.insert(0, ROOT)
 
 import validate  # noqa: E402
 from src import (adapt, dataset, flags, hubs, nt, nt_page, render, scorers,  # noqa: E402
-                 standings)
+                 search, standings)
 
 STATIC = os.path.join(ROOT, "static")
 TEMPLATES = os.path.join(ROOT, "templates")
@@ -477,6 +477,7 @@ def _write_landing(dist, ds, leagues, updated, scorchers_meta=None, scorchers=No
 <body class="landing">
 <main class="landing-main">
   {_brand_header(fl)}
+  {render.search_widget("", variant="hero")}
   {feature}
   <div class="comp-nav">
     <div class="comp-sticky">
@@ -526,7 +527,15 @@ def main(argv):
     if snapshot:
         validate.write_snapshot(texts, nt_texts=nt_texts)
 
-    # 3. Render.
+    # 3. Search asset versions. Both have to be known before the first page is
+    # rendered, because every page embeds the versioned URLs. The index version
+    # hashes the fetched CSVs rather than the finished index, which is what
+    # makes it available this early (see search.index_version).
+    render.SEARCH_INDEX_VERSION = search.index_version(texts, nt_texts)
+    render.SEARCH_JS_VERSION = render.file_version(
+        os.path.join(STATIC, "search.js"))
+
+    # 4. Render.
     if not render.FEEDBACK_URL:
         print("WARNING: render.FEEDBACK_URL is unset; the footer ships without "
               "its 'Send us a message' line (better than a dead link).")
@@ -566,10 +575,18 @@ def main(argv):
         dist, TEMPLATES, STATIC, ds, leagues, standings_by_slug, updated)
     n_players = hubs.build_player_pages(dist, TEMPLATES, STATIC, ds, updated)
 
+    # Site search: the index every page's bar fetches, plus the /search/ page
+    # the bar's form submits to. Built last because the index covers the club
+    # hubs and player pages written just above.
+    n_search = search.write_index(dist, ds, leagues, scorchers=scorchers,
+                                  hidden=HIDDEN_ON_LANDING)
+    search.build_page(dist, TEMPLATES, STATIC, updated)
+
     print(f"Built {dist}/  " + " | ".join(parts)
           + f" | {n_clubs} club hubs | {n_players} player pages"
           + f" | {nt_page.SLUG}: {len(scorchers.results)} results,"
-          + f" {len(scorchers.fixtures)} fixtures")
+          + f" {len(scorchers.fixtures)} fixtures"
+          + f" | search: {n_search} records")
     return 0
 
 

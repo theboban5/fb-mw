@@ -113,6 +113,60 @@ def footer(updated: str) -> str:
     )
 
 
+# ── Site search ──────────────────────────────────────────────────────────────
+# Both are set once by build.main(); the widget is emitted by five different
+# renderers and threading two version strings through all of their signatures
+# would be noise. Same pattern as BUILD_ISO above.
+SEARCH_INDEX_VERSION = ""    # search.index_version(texts) — busts the JSON URL
+SEARCH_JS_VERSION = ""       # file_version(static/search.js) — busts the script
+
+SEARCH_PLACEHOLDER = "Search teams, players, competitions"
+
+
+def search_widget(css_prefix: str, variant: str = "bar") -> str:
+    """The search bar, sized for `variant` ("bar" in page chrome, "hero" big).
+
+    It is a real <form method="get" action="search/">, so the phone keyboard's
+    Go button reaches /search/?q=… with no JavaScript at all — and keeps
+    working in the window before search.js has loaded. search.js only
+    intercepts the submit to answer instantly instead of navigating.
+
+    `css_prefix` is the page's depth prefix ("", "../", "../../"): the index
+    URL, the script and the form target all have to resolve from wherever the
+    page happens to sit.
+    """
+    p = escape(css_prefix)
+    idx = f"{p}search-index.json"
+    if SEARCH_INDEX_VERSION:
+        idx += f"?v={SEARCH_INDEX_VERSION}"
+    js = f"{p}search.js"
+    if SEARCH_JS_VERSION:
+        js += f"?v={SEARCH_JS_VERSION}"
+    cls = "site-search" + (" site-search-hero" if variant == "hero" else "")
+    return (
+        f'<div class="{cls}" data-search data-search-index="{idx}" '
+        f'data-search-prefix="{p}">'
+        f'<form class="ss-form" action="{p}search/" method="get" role="search">'
+        '<span class="ss-icon" aria-hidden="true">&#x1F50D;</span>'
+        '<input class="ss-input" type="search" name="q" '
+        f'placeholder="{escape(SEARCH_PLACEHOLDER)}" '
+        f'aria-label="{escape(SEARCH_PLACEHOLDER)}" '
+        # 16px minimum (see style.css) or iOS zooms the page on focus.
+        'autocomplete="off" autocorrect="off" autocapitalize="off" '
+        'spellcheck="false" inputmode="search" enterkeyhint="search" '
+        'role="combobox" aria-expanded="false" aria-autocomplete="list" '
+        'aria-controls="ss-listbox" aria-haspopup="listbox">'
+        '<button class="ss-clear" type="button" hidden '
+        'aria-label="Clear search">&#x2715;</button>'
+        "</form>"
+        '<div class="ss-panel" id="ss-listbox" role="listbox" '
+        f'aria-label="{escape(SEARCH_PLACEHOLDER)}" hidden></div>'
+        '<p class="ss-status" role="status" aria-live="polite"></p>'
+        f'<script defer src="{js}"></script>'
+        "</div>"
+    )
+
+
 NAV_ITEMS = (
     ("index.html", "Standings"),
     ("results.html", "Matches"),
@@ -201,18 +255,25 @@ def _downscale_png(Image, src, dst, max_px):
         im.save(dst, "PNG", optimize=True)
 
 
-def css_version(static_dir):
-    """Short content hash of style.css, used to cache-bust the <link> on deploy.
+def file_version(path):
+    """Short content hash of a static asset, used to cache-bust its URL.
 
-    GitHub Pages serves CSS with a 10-minute cache, so without a versioned URL a
-    returning visitor sees stale styles after every change. The hash changes only
-    when the file changes, so caching still works between deploys.
+    GitHub Pages serves assets with a 10-minute cache, so without a versioned
+    URL a returning visitor sees a stale file after every change. The hash
+    changes only when the file changes, so caching still works between deploys.
+    A missing file yields "" — the URL then ships unversioned rather than
+    breaking the build.
     """
     try:
-        with open(os.path.join(static_dir, "style.css"), "rb") as fh:
+        with open(path, "rb") as fh:
             return hashlib.md5(fh.read()).hexdigest()[:8]
     except OSError:
         return ""
+
+
+def css_version(static_dir):
+    """Short content hash of style.css (see file_version)."""
+    return file_version(os.path.join(static_dir, "style.css"))
 
 
 def _logo_finder(static_dir, css_prefix, subdir):
@@ -1265,6 +1326,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             .replace("{{LEAGUE_LOGO}}", header_logo)
             .replace("{{LAST_UPDATED}}", escape(updated))
             .replace("{{NAV}}", _nav(filename, nav_items))
+            .replace("{{SEARCH}}", search_widget(css_prefix))
             .replace("{{CONTENT}}", content)
             .replace("{{CSS_PREFIX}}", css_prefix)
             .replace("{{CSS_VER}}", css_ver)
@@ -1317,6 +1379,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             .replace("{{LEAGUE_LOGO}}", club_header_logo)
             .replace("{{LAST_UPDATED}}", escape(updated))
             .replace("{{NAV}}", _nav("", club_nav_items))
+            .replace("{{SEARCH}}", search_widget(club_css_prefix))
             .replace("{{CONTENT}}", content)
             .replace("{{CSS_PREFIX}}", club_css_prefix)
             .replace("{{CSS_VER}}", css_ver)
