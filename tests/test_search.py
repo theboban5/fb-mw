@@ -95,6 +95,18 @@ class TemplateTokenTest(unittest.TestCase):
             render.SEARCH_INDEX_VERSION = ""
             render.SEARCH_JS_VERSION = ""
 
+    def test_ships_the_short_placeholder_and_upgrades_from_it(self):
+        # The HTML must carry the short label: it is what a no-JS visitor sees
+        # and what renders before search.js runs, and it is the only one that
+        # fits a 320px screen without being cut mid-word.
+        html = render.search_widget("")
+        self.assertIn(f'placeholder="{render.SEARCH_PLACEHOLDER_SHORT}"', html)
+        self.assertIn(f'data-ss-placeholder="{render.SEARCH_PLACEHOLDER}"', html)
+        # The full description is always available to screen readers.
+        self.assertIn(f'aria-label="{render.SEARCH_PLACEHOLDER}"', html)
+        self.assertLess(len(render.SEARCH_PLACEHOLDER_SHORT),
+                        len(render.SEARCH_PLACEHOLDER))
+
     def test_hero_variant_is_marked(self):
         self.assertIn("site-search-hero", render.search_widget("", variant="hero"))
         self.assertNotIn("site-search-hero", render.search_widget(""))

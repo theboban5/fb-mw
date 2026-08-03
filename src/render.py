@@ -120,7 +120,19 @@ def footer(updated: str) -> str:
 SEARCH_INDEX_VERSION = ""    # search.index_version(texts) — busts the JSON URL
 SEARCH_JS_VERSION = ""       # file_version(static/search.js) — busts the script
 
+# Two placeholders, because the descriptive one does not fit a phone. Measured
+# at the shipped font: the long form needs ~273px of input width, which a
+# 360px-wide screen does not have (~254px), so it was being cut mid-word to
+# "…competitio". The short form needs ~181px and fits down to 320px.
+# The short one ships in the HTML, so it is what a no-JS visitor sees and what
+# renders before search.js runs; search.js swaps in the long one when the
+# viewport is wide enough. The aria-label always carries the full description —
+# it has no width to run out of.
 SEARCH_PLACEHOLDER = "Search teams, players, competitions"
+SEARCH_PLACEHOLDER_SHORT = "Search teams or players"
+# Conservative: at 430px the long form has ~50px of headroom for font-metric
+# differences across devices. At 390px it would have ~11px, which is not enough.
+SEARCH_PLACEHOLDER_MIN_WIDTH = 430
 
 
 def search_widget(css_prefix: str, variant: str = "bar") -> str:
@@ -149,7 +161,9 @@ def search_widget(css_prefix: str, variant: str = "bar") -> str:
         f'<form class="ss-form" action="{p}search/" method="get" role="search">'
         '<span class="ss-icon" aria-hidden="true">&#x1F50D;</span>'
         '<input class="ss-input" type="search" name="q" '
-        f'placeholder="{escape(SEARCH_PLACEHOLDER)}" '
+        f'placeholder="{escape(SEARCH_PLACEHOLDER_SHORT)}" '
+        f'data-ss-placeholder="{escape(SEARCH_PLACEHOLDER)}" '
+        f'data-ss-placeholder-min="{SEARCH_PLACEHOLDER_MIN_WIDTH}" '
         f'aria-label="{escape(SEARCH_PLACEHOLDER)}" '
         # 16px minimum (see style.css) or iOS zooms the page on focus.
         'autocomplete="off" autocorrect="off" autocapitalize="off" '

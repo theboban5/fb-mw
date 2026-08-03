@@ -109,6 +109,10 @@ body {
   -webkit-appearance: none;
   appearance: none;
   touch-action: manipulation;
+  /* Belt and braces: search.js already picks a placeholder that fits, but a
+     larger system font or a longer future label should trail off cleanly
+     rather than be sliced through a word. */
+  text-overflow: ellipsis;
 }
 .ss-input::-webkit-search-cancel-button { display: none; } /* .ss-clear replaces it */
 .ss-input::placeholder { color: var(--muted); }
@@ -257,6 +261,14 @@ body {
     letter-spacing: 0.04em;
   }
   .ss-opt { gap: 7px; padding: 9px 11px; }
+  /* Narrow enough that ellipsing the caption cuts a word part-way ("· 2…").
+     The name above it already wraps, so wrapping this too is both consistent
+     and the only way nothing gets clipped. */
+  .ss-meta {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
 }
 
 main { max-width: var(--max); margin: 0 auto; padding: 16px; }

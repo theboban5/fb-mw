@@ -344,6 +344,22 @@
     } catch (e) { /* file:// or a browser without pushState — cosmetic only */ }
   }
 
+  /* The descriptive placeholder only goes in once the input is wide enough to
+   * show it whole — on a narrow phone it was being cut mid-word. The short
+   * form is what the HTML ships, so this only ever upgrades. Re-evaluated on
+   * change so rotating the phone doesn't leave a clipped label behind. */
+  (function () {
+    var long = input.getAttribute("data-ss-placeholder");
+    var min = parseInt(input.getAttribute("data-ss-placeholder-min"), 10);
+    if (!long || !min || !window.matchMedia) return;
+    var short = input.getAttribute("placeholder");
+    var mq = window.matchMedia("(min-width: " + min + "px)");
+    function apply() { input.placeholder = mq.matches ? long : short; }
+    apply();
+    if (mq.addEventListener) mq.addEventListener("change", apply);
+    else if (mq.addListener) mq.addListener(apply);   // Safari < 14
+  })();
+
   // Warm the index the moment there is intent, so the first keystroke already
   // has data to work with.
   input.addEventListener("focus", function () { loadIndex(); });
