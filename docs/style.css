@@ -10,6 +10,11 @@
      background, so it is a pair of theme values rather than one alpha. */
   --feature-bg: linear-gradient(135deg, #eef9f2 0%, #e2f3ea 52%, #ffffff 100%);
   --feature-line: #cbe6d7;
+  /* Search dropdown surface. A shadow tuned for white is invisible on the
+     dark background, so it is a theme value rather than one literal. */
+  --panel: #ffffff;
+  --panel-hover: #f5f7f8;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
 }
 
 * { box-sizing: border-box; }
@@ -65,6 +70,206 @@ body {
   margin-bottom: -1px;
 }
 .tabs a.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ─── Site search ────────────────────────────────────────
+   Sits in the page chrome, between the back link and the tabs, so it uses the
+   :root tokens and inherits working dark mode. Keep it out of the V2 content
+   layer below, which hardcodes light colours. */
+.site-search {
+  position: relative;
+  max-width: var(--max);
+  margin: 8px auto 10px;
+  padding: 0 16px;
+}
+.ss-form {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.ss-icon {
+  position: absolute;
+  left: 12px;
+  font-size: 0.9rem;
+  line-height: 1;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.ss-input {
+  width: 100%;
+  min-height: 44px;                /* comfortable thumb target */
+  padding: 10px 38px 10px 36px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: inherit;
+  /* 16px exactly. Anything smaller makes iOS Safari zoom the whole page when
+     the field takes focus, and -webkit-text-size-adjust does not prevent it. */
+  font-size: 1rem;
+  -webkit-appearance: none;
+  appearance: none;
+  touch-action: manipulation;
+  /* Belt and braces: search.js already picks a placeholder that fits, but a
+     larger system font or a longer future label should trail off cleanly
+     rather than be sliced through a word. */
+  text-overflow: ellipsis;
+}
+.ss-input::-webkit-search-cancel-button { display: none; } /* .ss-clear replaces it */
+.ss-input::placeholder { color: var(--muted); }
+.ss-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+.ss-clear {
+  position: absolute;
+  right: 4px;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.ss-clear:hover { color: var(--ink); }
+
+/* The suggestion dropdown. z-index clears the landing page's .comp-sticky
+   (z-index 20), the only other stacked element on the site. */
+.ss-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 16px;
+  right: 16px;
+  z-index: 30;
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;    /* don't drag the page once the list ends */
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.ss-panel[hidden] { display: none; }
+
+.ss-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+  color: inherit;
+}
+.ss-opt:last-child { border-bottom: 0; }
+.ss-opt:hover,
+.ss-opt[aria-selected="true"] { background: var(--panel-hover); }
+.ss-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.ss-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.ss-name mark {
+  background: transparent;
+  color: var(--accent);
+  font-weight: 800;
+}
+.ss-meta {
+  font-size: 0.76rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ss-badge {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ss-none,
+.ss-more {
+  display: block;
+  margin: 0;
+  padding: 14px;
+  font-size: 0.85rem;
+}
+.ss-none { color: var(--muted); }
+.ss-more {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
+  border-top: 1px solid var(--line);
+}
+
+/* Live region for screen readers ("8 results"); never shown visually. */
+.ss-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Hero variant: the landing page and /search/, where search is the point. */
+.site-search-hero { margin: 4px auto 18px; }
+.site-search-hero .ss-input {
+  min-height: 52px;
+  border-radius: 12px;
+  font-size: 1.05rem;
+  padding-left: 40px;
+}
+.site-search-hero .ss-icon { left: 14px; font-size: 1rem; }
+
+/* Grouped results on /search/ — same rows, no dropdown chrome. */
+.ss-group {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.ss-group .ss-opt { background: var(--panel); }
+
+@media (max-width: 540px) {
+  .site-search { margin: 6px auto 8px; }
+  .site-search-hero .ss-input { min-height: 48px; font-size: 1rem; }
+  /* Shrunk, not hidden: a player's caption reads "5 goals · Nyasa Big
+     Bullets", so the badge is the only thing saying which of the two it is. */
+  .ss-badge {
+    padding: 2px 5px;
+    font-size: 0.56rem;
+    letter-spacing: 0.04em;
+  }
+  .ss-opt { gap: 7px; padding: 9px 11px; }
+  /* Narrow enough that ellipsing the caption cuts a word part-way ("· 2…").
+     The name above it already wraps, so wrapping this too is both consistent
+     and the only way nothing gets clipped. */
+  .ss-meta {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+}
 
 main { max-width: var(--max); margin: 0 auto; padding: 16px; }
 
@@ -134,6 +339,9 @@ main { max-width: var(--max); margin: 0 auto; padding: 16px; }
     --row-alt: #1b1e22;
     --feature-bg: linear-gradient(135deg, #14361f 0%, #10261a 52%, #171a1e 100%);
     --feature-line: #2f5c42;
+    --panel: #1b1e22;
+    --panel-hover: #23272d;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
   }
 }
 
@@ -1594,4 +1802,352 @@ table.nt-table {
     gap: 0 20px;
   }
   .nt-squad { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+}
+
+
+/* ─── Landing: today's matches card ──────────────────── */
+/* The date browser's front door, directly under the search bar because it is
+   the most time-sensitive thing on the page. A compact row rather than a
+   second hero card, so it does not compete with the featured card below it.
+   Theme tokens (not the V2 layer's hardcoded light), like the rest of the
+   landing page. */
+.el-today {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 10px;
+  padding: 10px 14px 10px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.el-today:hover { border-color: var(--accent); transform: translateY(-1px); }
+.el-today:hover .el-today-arrow { transform: translateX(3px); }
+.el-today:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-color: var(--accent);
+}
+/* Tear-off calendar leaf: weekday over day number. */
+.el-today-cal {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  padding: 5px 0 6px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  line-height: 1;
+}
+.el-today-dow {
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  opacity: 0.85;
+}
+.el-today-day {
+  margin-top: 3px;
+  font-size: 1.25rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+.el-today-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.el-today-eyebrow {
+  font-size: 0.63rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.el-today-title {
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+/* One line: a day with six competitions on would otherwise push the card to
+   three lines on a phone. */
+.el-today-sub {
+  font-size: 0.78rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.el-today-arrow {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 1.05rem;
+  transition: transform 0.15s;
+}
+
+/* ─── By-date pages (/matches/) ──────────────────────── */
+/* Part of the V2 content layer, so the colours are the same hardcoded light
+   values the results tables use — not the theme tokens. */
+
+/* The previous day, this day, the next day — plus the calendar button. The
+   chips are links, so the day-by-day walk works with JS off; only the picker
+   needs script. Sticky, like the matchday pager it sits in the same place as. */
+.day-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px 0;
+  background: #ffffff;
+  border-bottom: 1px solid #e4e4e4;
+}
+.day-chips {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+.day-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 6px 4px;
+  border: 1px solid #d8d8d8;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #1c1c1c;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.day-chip-label {
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a9099;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.day-chip-date {
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.day-chip.active {
+  background: #0b6b3a;
+  border-color: #0b6b3a;
+  color: #ffffff;
+}
+.day-chip.active .day-chip-label { color: rgba(255, 255, 255, 0.75); }
+/* The placeholder at either end of the calendar: no date to step to. */
+.day-chip.is-off {
+  opacity: 0.35;
+  justify-content: center;
+}
+
+/* ── The date picker ──────────────────────────────────
+   Anchored to the button, so .day-cal is the positioning context and the
+   panel hangs off its right edge — the button sits at the right of the bar,
+   and a left-aligned panel would run off a phone. */
+.day-cal {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+}
+.day-cal-btn {
+  width: 2.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #d8d8d8;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #1c1c1c;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.day-cal-btn[hidden] { display: none; }
+.day-cal-btn[aria-expanded="true"] {
+  background: #0b6b3a;
+  border-color: #0b6b3a;
+  color: #ffffff;
+}
+.day-cal-icon { width: 18px; height: 18px; }
+
+.day-cal-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: 292px;
+  max-width: calc(100vw - 24px);
+  padding: 10px;
+  border: 1px solid #e4e4e4;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #1c1c1c;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+.day-cal-panel[hidden] { display: none; }
+.dc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.dc-title {
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+.dc-nav {
+  width: 1.9rem;
+  height: 1.9rem;
+  border: 1px solid #d8d8d8;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1c1c1c;
+  font: inherit;
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.dc-nav:disabled { opacity: 0.3; cursor: default; }
+.dc-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.dc-dow {
+  padding-bottom: 4px;
+  text-align: center;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #8a9099;
+}
+.dc-day {
+  position: relative;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #1c1c1c;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+/* A day with football carries a dot, so the month reads as a fixture list at
+   a glance rather than a wall of numbers. */
+.dc-day.has-matches::after {
+  content: "";
+  position: absolute;
+  bottom: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #0b6b3a;
+}
+.dc-day.is-today { box-shadow: inset 0 0 0 1px #0b6b3a; }
+.dc-day.is-sel {
+  background: #0b6b3a;
+  color: #ffffff;
+  font-weight: 800;
+}
+.dc-day.is-sel.has-matches::after { background: #ffffff; }
+/* No page for that date: it is a number, not a destination. */
+.dc-day.is-off { color: #c8ccd1; }
+.dc-day.is-off.has-matches::after { background: #c8ccd1; }
+.dc-pad { min-height: 34px; }
+.dc-today {
+  display: block;
+  margin-top: 10px;
+  padding: 9px;
+  border-radius: 999px;
+  background: #0b6b3a;
+  color: #ffffff;
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.day-summary {
+  margin: 10px 0 8px;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8a9099;
+}
+.day-jump {
+  margin: 10px 0 0;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.day-jump .club-link { margin: 0 8px; }
+
+/* Competition header inside the dark group bar: name (linked to that
+   competition's results) on the left, the round on the right. */
+.day-comp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.day-comp-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #ffffff;
+  text-decoration: none;
+}
+.day-comp-link:hover { text-decoration: underline; }
+.day-comp-logo {
+  height: 15px;
+  width: auto;
+  flex: 0 0 auto;
+}
+.day-comp-round {
+  flex: 0 0 auto;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.6);
+}
+/* A kickoff time stands where a score would: the day view's whole point is
+   "what is on and when", so it reads as data, not as a muted placeholder. */
+.day-res-time {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #0b6b3a;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 360px) {
+  .day-chip-label { font-size: 0.54rem; letter-spacing: 0.04em; }
+  .day-chip-date { font-size: 0.74rem; }
+  .day-cal-btn { width: 2.1rem; }
 }

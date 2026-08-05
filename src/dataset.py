@@ -20,6 +20,7 @@ Schema conventions (as built — do not "fix"):
 
 from dataclasses import dataclass, field
 from datetime import datetime
+import concurrent.futures
 import csv
 import io
 import os
@@ -87,6 +88,24 @@ def tab_url(tab: str) -> str:
     return f"{base}?gid={_ALL_GIDS[tab]}&single=true&output=csv"
 
 
+# Google's published-CSV endpoint answers a healthy request in about a second
+# — the largest tab measured 85KB in 1.0s — but stalls outright on roughly a
+# third of them: the connection opens, the request goes out, and no response
+# line ever comes back. The stalls are random draws rather than rate-limiting,
+# so pacing the requests does not reduce them and a retry is as likely to work
+# as the attempt before it.
+#
+# The timeout is therefore a stall detector, not a patience setting: anything
+# past a few seconds is never going to answer. Keeping it tight is what makes
+# a stall cheap, and the attempt count is what keeps a run of them from losing
+# the build (at a ~34% stall rate, eight attempts is ~1 failed tab in 5000).
+# The old 60s x 3 was the opposite trade — every stall cost a full minute and
+# three in a row still failed.
+FETCH_TIMEOUT = 8           # seconds per attempt
+FETCH_ATTEMPTS = 8
+FETCH_RETRY_PAUSE = 0.5     # seconds
+
+
 def fetch_tab(tab: str) -> str:
     """Return the raw CSV text of one tab (network, or DATASET_LOCAL_DIR)."""
     if tab not in _ALL_GIDS:
@@ -96,27 +115,43 @@ def fetch_tab(tab: str) -> str:
         with open(os.path.join(local, f"{tab}.csv"), encoding="utf-8") as fh:
             return fh.read()
     req = urllib.request.Request(tab_url(tab), headers={"User-Agent": "fb-mw-build"})
-    attempts = 3
-    for attempt in range(1, attempts + 1):
+    for attempt in range(1, FETCH_ATTEMPTS + 1):
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
+            with urllib.request.urlopen(req, timeout=FETCH_TIMEOUT) as resp:
                 return resp.read().decode("utf-8")
         except (socket.timeout, urllib.error.URLError) as err:
             timed_out = isinstance(err, socket.timeout) or isinstance(
                 getattr(err, "reason", None), socket.timeout)
-            if not timed_out or attempt == attempts:
+            if not timed_out or attempt == FETCH_ATTEMPTS:
                 raise
-            time.sleep(2 ** attempt)
+            # A stall is random, not congestion: the endpoint either answers in
+            # a second or never answers at all. Backing off would just add dead
+            # time to a retry that is about as likely to work immediately.
+            time.sleep(FETCH_RETRY_PAUSE)
+
+
+# Tabs are fetched concurrently, which is what actually pays for the stalls
+# above: they are independent draws, so overlapping them turns a queue of
+# them into one wait. Measured over the 19 tabs, sequential 120s -> 21s.
+# Small on purpose — the point is to overlap the dead time, not to hammer
+# Google, and nothing here gets faster with a bigger pool.
+FETCH_WORKERS = 6
+
+
+def _fetch_many(tabs: "tuple[str, ...]") -> "dict[str, str]":
+    """Fetch tabs concurrently, in the order given. First failure propagates."""
+    with concurrent.futures.ThreadPoolExecutor(FETCH_WORKERS) as pool:
+        return dict(zip(tabs, pool.map(fetch_tab, tabs)))
 
 
 def fetch_all() -> "dict[str, str]":
     """Fetch every tab; returns {tab_name: csv_text}."""
-    return {tab: fetch_tab(tab) for tab in TABS}
+    return _fetch_many(TABS)
 
 
 def fetch_nt_all() -> "dict[str, str]":
     """Fetch the six national-team tabs; returns {tab_name: csv_text}."""
-    return {tab: fetch_tab(tab) for tab in NT_TABS}
+    return _fetch_many(NT_TABS)
 
 
 # ── Enums (as built) ─────────────────────────────────────────────────────────

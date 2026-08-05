@@ -19,6 +19,7 @@ src/standings.py     ← standings computation
 src/scorers.py       ← goalscorer aggregation
 src/render.py        ← data → HTML
 src/hubs.py          ← club hub + player pages (cross-competition views)
+src/matches_page.py  ← /matches/ — every match on one date, any date
 src/nt.py            ← national-team tabs (nt_*), filtered to one team
 src/nt_page.py       ← the national-team pages (/scorchers/)
 src/flags.py         ← country name → static/flags/<code>.png
@@ -33,6 +34,20 @@ DATA_MODEL.md        ← the schema, ID conventions, enums, and build rules
 See `DATA_MODEL.md` for the spreadsheet schema and the rules the build
 enforces (placeholder exclusion, own-goal handling, season resolution, the
 separate `nt_*` national-team schema, …).
+
+### The by-date view
+
+`/matches/` is today's football across every competition, and
+`/matches/YYYY-MM-DD.html` is any other date — written for every date that has
+a match, plus a contiguous window around today (`matches_page.WINDOW_BACK` /
+`WINDOW_FORWARD`) so the day-by-day arrows never dead-end. It is the only page
+built from `matches.kickoff`, and the only one that shows a season a
+competition is no longer building.
+
+A date only has fixtures on it if the sheet's `date` column is filled in
+ahead of time: an undated match belongs to no day and appears nowhere in this
+view. Entering dates further out is what makes the forward half of the
+calendar useful.
 
 ## Local development
 

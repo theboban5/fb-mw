@@ -24,8 +24,8 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
 import validate  # noqa: E402
-from src import (adapt, dataset, flags, hubs, nt, nt_page, render, scorers,  # noqa: E402
-                 search, standings)
+from src import (adapt, dataset, flags, hubs, matches_page, nt, nt_page,  # noqa: E402
+                 render, scorers, search, standings)
 
 STATIC = os.path.join(ROOT, "static")
 TEMPLATES = os.path.join(ROOT, "templates")
@@ -430,7 +430,8 @@ def _scorchers_feature(fl, team_data):
   </a>"""
 
 
-def _write_landing(dist, ds, leagues, updated, scorchers_meta=None, scorchers=None):
+def _write_landing(dist, ds, leagues, updated, scorchers_meta=None, scorchers=None,
+                   today_card=""):
     css_ver = render.css_version(STATIC)
     categories = _landing_categories(ds, leagues, scorchers_meta)
     fl = flags.Flags(STATIC)
@@ -478,6 +479,7 @@ def _write_landing(dist, ds, leagues, updated, scorchers_meta=None, scorchers=No
 <main class="landing-main">
   {_brand_header(fl)}
   {render.search_widget("", variant="hero")}
+  {today_card}
   {feature}
   <div class="comp-nav">
     <div class="comp-sticky">
@@ -505,6 +507,9 @@ def main(argv):
     tz = timezone(timedelta(hours=TZ_OFFSET_HOURS), TZ_LABEL)
     now = datetime.now(tz)
     updated = f"{now.day} {now.strftime('%B %Y, %H:%M')} {TZ_LABEL}"
+    # "Today" for the by-date pages. The Malawi calendar day, not the runner's:
+    # the site's whole clock is CAT (see TZ_OFFSET_HOURS).
+    today = now.date().isoformat()
 
     # 1. Fetch + validate. Any error aborts before a single page is written,
     # so a broken sheet can never produce a partial or wrong site.
@@ -557,7 +562,10 @@ def main(argv):
 
     # The national team (nt_* tabs): its own schema, its own page. Built before
     # the landing page, which needs its current competition for the card meta.
-    scorchers = nt.load_team(nt_texts)
+    # Parsed once here because the daily match pages need every nt team's
+    # matches, not just the one team nt_page renders.
+    nt_data = nt.parse_all(nt_texts)
+    scorchers = nt.team_data(nt_data)
     # Club hubs exist for every club with a team in a built league — the same
     # set hubs.build_club_hubs writes — so squad club links only point at one
     # of those.
@@ -566,14 +574,25 @@ def main(argv):
     nt_page.build_page(dist, TEMPLATES, STATIC, scorchers, ds, updated,
                        club_hub_ids=club_hub_ids)
 
+    # The by-date view (/matches/). Collected before the landing page, which
+    # shows a card for the day it links at, and reused when the pages
+    # themselves are written below.
+    days = matches_page.collect(ds, nt_data)
+
     _write_landing(dist, ds, leagues, updated,
                    scorchers_meta=nt_page.landing_meta(scorchers),
-                   scorchers=scorchers)
+                   scorchers=scorchers,
+                   today_card=matches_page.landing_card(days, today))
 
     # Cross-competition pages: club hubs and player pages.
     n_clubs = hubs.build_club_hubs(
         dist, TEMPLATES, STATIC, ds, leagues, standings_by_slug, updated)
     n_players = hubs.build_player_pages(dist, TEMPLATES, STATIC, ds, updated)
+
+    # The by-date pages, written after the club hubs they link into.
+    n_day_pages, n_match_dates = matches_page.build_pages(
+        dist, TEMPLATES, STATIC, ds, updated, today, nt_data=nt_data,
+        club_hub_ids=club_hub_ids, tz_offset_hours=TZ_OFFSET_HOURS, days=days)
 
     # Site search: the index every page's bar fetches, plus the /search/ page
     # the bar's form submits to. Built last because the index covers the club
@@ -586,6 +605,8 @@ def main(argv):
           + f" | {n_clubs} club hubs | {n_players} player pages"
           + f" | {nt_page.SLUG}: {len(scorchers.results)} results,"
           + f" {len(scorchers.fixtures)} fixtures"
+          + f" | {matches_page.SLUG}: {n_day_pages} pages,"
+          + f" {n_match_dates} match dates"
           + f" | search: {n_search} records")
     return 0
 
