@@ -6,6 +6,7 @@ exercises every rule at once.
 """
 
 import os
+import re
 import sys
 import unittest
 
@@ -122,11 +123,23 @@ M36_COMPS = COMP_HEADER + (
 )
 
 
+KO_HEADER = (
+    "tie_id,competition_name,stage,slot,home_name,away_name,home_score,"
+    "away_score,home_pens,away_pens,extra_time,date,kickoff,venue,city,"
+    "status,nt_match_id\n"
+)
+
+# The competition M36_COMPS names — a bracket only reaches a page by matching it.
+WAFCON = "2026 Women's Africa Cup of Nations"
+
+
 def texts(teams=TEAMS, matches=M36_MATCHES, goals=M36_GOALS,
-          squads=M36_SQUADS, comps=M36_COMPS, lineups=M36_LINEUPS):
+          squads=M36_SQUADS, comps=M36_COMPS, lineups=M36_LINEUPS,
+          knockout=KO_HEADER):
     return {
         "nt_teams": teams, "nt_matches": matches, "nt_goals": goals,
         "nt_squads": squads, "nt_competitions": comps, "nt_lineups": lineups,
+        "nt_knockout": knockout,
     }
 
 
@@ -796,6 +809,335 @@ class FlagsTest(unittest.TestCase):
     def test_a_missing_flags_directory_degrades_to_no_flags(self):
         fl = flags.Flags(os.path.join(STATIC, "does-not-exist"))
         self.assertEqual(fl.img_for("Nigeria"), "")
+
+
+# ── Knockout bracket ─────────────────────────────────────────────────────────
+
+def ko(*rows):
+    return KO_HEADER + "".join(rows)
+
+
+def parse_tie(row):
+    return nt.parse_nt_knockout(ko(row))[0]
+
+
+# The seeded shape a bracket starts as: every slot present, no names yet.
+SEEDED = ko(
+    f"QF1,{WAFCON},qf,1,,,,,,,,,,,,,\n",
+    f"QF2,{WAFCON},qf,2,,,,,,,,,,,,,\n",
+    f"SF1,{WAFCON},sf,1,,,,,,,,,,,,,\n",
+    f"F,{WAFCON},final,1,,,,,,,,,,,,,\n",
+    f"TP,{WAFCON},3p,1,,,,,,,,,,,,,\n",
+)
+
+
+class KnockoutParsingTest(unittest.TestCase):
+    def test_a_seeded_row_needs_only_its_place_in_the_tree(self):
+        tie = parse_tie(f"QF1,{WAFCON},qf,1,,,,,,,,,,,,,\n")
+        self.assertEqual((tie.tie_id, tie.stage, tie.slot), ("QF1", "qf", 1))
+        self.assertEqual((tie.home_name, tie.away_name), ("", ""))
+        self.assertTrue(tie.scheduled)
+        self.assertFalse(tie.has_score)
+
+    def test_stage_is_case_insensitive_and_normalises_down(self):
+        self.assertEqual(parse_tie(f"QF1,{WAFCON},QF,1,,,,,,,,,,,,,\n").stage, "qf")
+
+    def test_stage_outside_the_cup_vocabulary_is_rejected(self):
+        with self.assertRaises(DataError):
+            parse_tie(f"QF1,{WAFCON},qtr,1,,,,,,,,,,,,,\n")
+
+    def test_unknown_status_rejected(self):
+        with self.assertRaises(DataError):
+            parse_tie(f"QF1,{WAFCON},qf,1,Malawi,Ghana,,,,,,,,,,postponed,\n")
+
+    def test_duplicate_tie_id_is_a_duplicate_primary_key(self):
+        with self.assertRaises(DataError):
+            nt.parse_nt_knockout(ko(f"QF1,{WAFCON},qf,1,,,,,,,,,,,,,\n",
+                                    f"QF1,{WAFCON},qf,2,,,,,,,,,,,,,\n"))
+
+
+class KnockoutWinnerTest(unittest.TestCase):
+    def tie(self, tail):
+        return parse_tie(f"QF1,{WAFCON},qf,1,Malawi,Ghana,{tail}\n")
+
+    def test_home_win(self):
+        self.assertEqual(self.tie("2,1,,,,,,,,played,").winner_name, "Malawi")
+
+    def test_away_win(self):
+        self.assertEqual(self.tie("0,3,,,,,,,,played,").winner_name, "Ghana")
+
+    def test_a_level_score_with_no_shootout_has_no_winner(self):
+        self.assertEqual(self.tie("1,1,,,,,,,,played,").winner_name, "")
+
+    def test_shootout_decides_a_level_tie(self):
+        t = self.tie("1,1,4,3,,,,,,played,")
+        self.assertEqual(t.winner_name, "Malawi")
+        self.assertEqual(t.score_note, "(4–3 pens)")
+
+    def test_an_unplayed_tie_has_no_winner(self):
+        self.assertEqual(self.tie(",,,,,,,,,scheduled,").winner_name, "")
+
+    def test_extra_time_notes_without_a_shootout(self):
+        self.assertEqual(self.tie("2,1,,,TRUE,,,,,played,").score_note, "(AET)")
+
+
+class KnockoutLinkTest(unittest.TestCase):
+    """`nt_match_id`: our own tie is in both tabs, and nt_matches wins."""
+
+    def bracket(self, knockout):
+        return load(knockout=knockout).brackets[0]
+
+    def test_the_match_row_supplies_the_result(self):
+        # Match 36 is Malawi 3-2 Nigeria, away, at Al Medina Stadium.
+        tie = self.bracket(ko(f"QF1,{WAFCON},qf,1,Malawi,Nigeria,,,,,,,,,,,36\n")).ties[0]
+        self.assertEqual((tie.home_score, tie.away_score), (3, 2))
+        self.assertEqual(tie.date, "2026-07-28")
+        self.assertEqual(tie.winner_name, "Malawi")
+        self.assertTrue(tie.is_ours)
+
+    def test_the_sides_may_read_either_way_round(self):
+        """Our side is found via NTMatch.opponent, so order is free."""
+        tie = self.bracket(ko(f"QF1,{WAFCON},qf,1,Nigeria,Malawi,,,,,,,,,,,36\n")).ties[0]
+        self.assertEqual((tie.home_score, tie.away_score), (2, 3))
+        self.assertEqual(tie.winner_name, "Malawi")
+
+    def test_a_dangling_match_id_leaves_the_tie_alone_rather_than_crashing(self):
+        tie = self.bracket(ko(f"QF1,{WAFCON},qf,1,Malawi,Ghana,,,,,,,,,,,999\n")).ties[0]
+        self.assertFalse(tie.has_score)
+        self.assertFalse(tie.is_ours)
+
+    def test_a_tie_with_no_match_id_keeps_its_own_columns(self):
+        tie = self.bracket(
+            ko(f"QF2,{WAFCON},qf,2,Zambia,Egypt,2,0,,,,2026-08-09,,,,played,\n")
+        ).ties[0]
+        self.assertEqual((tie.home_score, tie.away_score), (2, 0))
+        self.assertEqual(tie.winner_name, "Zambia")
+
+
+class KnockoutBracketTest(unittest.TestCase):
+    def test_ties_are_ordered_by_slot_within_a_round(self):
+        """Round order is presentation; the data layer only promises slots."""
+        b = load(knockout=ko(
+            f"QF2,{WAFCON},qf,2,,,,,,,,,,,,,\n",
+            f"QF1,{WAFCON},qf,1,,,,,,,,,,,,,\n",
+            f"QF3,{WAFCON},qf,3,,,,,,,,,,,,,\n",
+        )).brackets[0]
+        self.assertEqual([t.tie_id for t in b.ties if t.stage == "qf"],
+                         ["QF1", "QF2", "QF3"])
+
+    def test_a_bracket_matching_no_group_table_is_dropped(self):
+        b = load(knockout=ko("X,2030 Some Other Cup,qf,1,,,,,,,,,,,,,\n")).brackets
+        self.assertEqual(b, [])
+
+    def test_no_knockout_rows_means_no_bracket(self):
+        self.assertEqual(load().brackets, [])
+
+
+class KnockoutPageTest(unittest.TestCase):
+    def home(self, knockout):
+        return pages(knockout=knockout)["index.html"]
+
+    def test_rounds_read_earliest_first_and_3p_sits_outside_the_tree(self):
+        html = self.home(SEEDED)
+        tree = html[html.index("Knockout Stage"):html.index("Third-place")]
+        # Match the whole title, since "FINAL" is a substring of the other two.
+        titles = re.findall(r'<h3 class="v2-br-title">([^<]+)</h3>', tree)
+        self.assertEqual(titles, ["QUARTER-FINALS", "SEMI-FINALS", "FINAL"])
+        # The play-off is a card under the tree, never a fourth column.
+        self.assertNotIn("THIRD-PLACE", tree.upper())
+
+    def test_an_empty_slot_renders_as_a_dashed_tbd_card(self):
+        html = self.home(SEEDED)
+        self.assertIn("v2-br-tie v2-br-tie-tbd", html)
+        self.assertIn('<span class="v2-br-team">&mdash;</span>', html)
+
+    def test_a_named_side_gets_its_flag_and_the_winner_is_marked(self):
+        html = self.home(
+            ko(f"QF1,{WAFCON},qf,1,Zambia,Egypt,2,0,,,,2026-08-09,,,,played,\n"))
+        self.assertIn("flags/zm.png", html)
+        self.assertIn('<div class="v2-br-side v2-br-win"><span class="v2-br-team">'
+                      '<img class="nt-flag nt-flag-pre" src="../flags/zm.png"', html)
+
+    def test_an_unmapped_country_renders_no_flag_but_still_its_name(self):
+        html = self.home(ko(f"QF1,{WAFCON},qf,1,Wakanda,Ghana,,,,,,,,,,,\n"))
+        self.assertIn("Wakanda", html)
+
+    def test_no_bracket_section_when_the_sheet_has_no_ties(self):
+        self.assertNotIn("Knockout Stage", self.home(KO_HEADER))
+
+
+# The feed columns are optional, so they get their own header — the rows above
+# exercise a sheet that predates them and must keep parsing.
+KO_FEED_HEADER = (
+    "tie_id,competition_name,stage,slot,home_name,away_name,home_from,"
+    "away_from,home_score,away_score,home_pens,away_pens,extra_time,date,"
+    "kickoff,venue,city,status,nt_match_id\n"
+)
+
+
+def kof(*rows):
+    return KO_FEED_HEADER + "".join(rows)
+
+
+# Two quarter-finals feeding a semi, which feeds a final; the play-off takes
+# the semi's loser. The shape of a real bracket, small enough to reason about.
+TREE = kof(
+    f"Q1,{WAFCON},qf,1,Morocco,South Africa,,,2,0,,,,2026-08-08,,,,played,\n",
+    f"Q2,{WAFCON},qf,2,Ghana,Mali,,,,,,,,2026-08-08,,,,scheduled,\n",
+    f"S1,{WAFCON},sf,1,,,winner:Q1,winner:Q2,,,,,,2026-08-12,,,,scheduled,\n",
+    f"TP,{WAFCON},3p,1,,,loser:S1,loser:S1,,,,,,2026-08-15,,,,scheduled,\n",
+    f"FI,{WAFCON},final,1,,,winner:S1,winner:S1,,,,,,2026-08-16,,,,scheduled,\n",
+)
+
+
+class KnockoutFeedTest(unittest.TestCase):
+    def ties(self, knockout):
+        return {t.tie_id: t for t in load(knockout=knockout).brackets[0].ties}
+
+    def test_feed_syntax_parses(self):
+        self.assertEqual(nt.parse_feed("winner:Q1"), ("winner", "Q1"))
+        self.assertEqual(nt.parse_feed("Loser: Q1 "), ("loser", "Q1"))
+        self.assertIsNone(nt.parse_feed(""))
+
+    def test_a_malformed_feed_fails_the_build(self):
+        for bad in ("Q1", "winner:", "runnerup:Q1"):
+            with self.assertRaises(DataError, msg=bad):
+                nt.parse_nt_knockout(
+                    kof(f"S1,{WAFCON},sf,1,,,{bad},,,,,,,,,,,,\n"))
+
+    def test_a_decided_tie_promotes_its_winner(self):
+        self.assertEqual(self.ties(TREE)["S1"].home_name, "Morocco")
+
+    def test_an_undecided_tie_leaves_the_slot_blank(self):
+        self.assertEqual(self.ties(TREE)["S1"].away_name, "")
+
+    def test_promotion_follows_a_chain_of_rounds(self):
+        """Winning the semi must reach the final in the same pass."""
+        tree = TREE.replace(
+            f"S1,{WAFCON},sf,1,,,winner:Q1,winner:Q2,,,,,,2026-08-12,,,,scheduled,\n",
+            f"S1,{WAFCON},sf,1,Morocco,Ghana,winner:Q1,winner:Q2,3,1,,,,"
+            f"2026-08-12,,,,played,\n")
+        self.assertEqual(self.ties(tree)["FI"].home_name, "Morocco")
+
+    def test_the_play_off_is_fed_by_the_loser(self):
+        tree = TREE.replace(
+            f"S1,{WAFCON},sf,1,,,winner:Q1,winner:Q2,,,,,,2026-08-12,,,,scheduled,\n",
+            f"S1,{WAFCON},sf,1,Morocco,Ghana,winner:Q1,winner:Q2,3,1,,,,"
+            f"2026-08-12,,,,played,\n")
+        self.assertEqual(self.ties(tree)["TP"].home_name, "Ghana")
+
+    def test_a_name_already_in_the_sheet_is_never_overwritten(self):
+        tree = TREE.replace(f"S1,{WAFCON},sf,1,,,winner:Q1",
+                            f"S1,{WAFCON},sf,1,Egypt,,winner:Q1")
+        self.assertEqual(self.ties(tree)["S1"].home_name, "Egypt")
+
+    def test_the_loser_of_a_shootout_is_the_side_that_lost_it(self):
+        t = nt.parse_nt_knockout(
+            kof(f"Q1,{WAFCON},qf,1,Ghana,Mali,,,1,1,3,5,,2026-08-08,,,,played,\n")
+        )[0]
+        self.assertEqual((t.winner_name, t.loser_name), ("Mali", "Ghana"))
+
+
+class KnockoutFeedPageTest(unittest.TestCase):
+    def test_an_unfilled_slot_names_the_tie_it_waits_on(self):
+        html = pages(knockout=TREE)["index.html"]
+        self.assertIn("Winner QF2", html)
+        self.assertIn("Winner SF1", html)
+        self.assertIn("Loser SF1", html)
+
+    def test_a_promoted_name_replaces_the_label(self):
+        html = pages(knockout=TREE)["index.html"]
+        self.assertNotIn("Winner QF1", html)   # Morocco won it
+        self.assertIn("flags/ma.png", html)
+
+    def test_a_slot_with_no_feed_still_falls_back_to_a_dash(self):
+        self.assertIn('<span class="v2-br-team">&mdash;</span>',
+                      pages(knockout=SEEDED)["index.html"])
+
+
+class KnockoutValidatorTest(unittest.TestCase):
+    def errors(self, knockout):
+        return validate.check_nt(nt.parse_all(texts(knockout=knockout)))
+
+    def assertError(self, knockout, fragment):
+        errs = self.errors(knockout)
+        self.assertTrue(any(fragment in e for e in errs), errs)
+
+    def test_the_seeded_bracket_passes(self):
+        self.assertEqual(self.errors(SEEDED), [])
+
+    def test_a_bracket_for_an_unknown_competition_is_orphaned(self):
+        self.assertError(ko("X,2030 Some Other Cup,qf,1,,,,,,,,,,,,,\n"),
+                         "belongs to no page")
+
+    def test_two_ties_in_one_slot_would_overlay(self):
+        self.assertError(ko(f"A,{WAFCON},qf,1,,,,,,,,,,,,,\n",
+                            f"B,{WAFCON},qf,1,,,,,,,,,,,,,\n"),
+                         "overlay in the bracket")
+
+    def test_a_one_sided_score_is_rejected(self):
+        self.assertError(ko(f"A,{WAFCON},qf,1,Zambia,Egypt,2,,,,,,,,,played,\n"),
+                         "only one of home_score/away_score")
+
+    def test_played_without_a_score(self):
+        self.assertError(ko(f"A,{WAFCON},qf,1,Zambia,Egypt,,,,,,,,,,played,\n"),
+                         "the score is blank")
+
+    def test_scheduled_with_a_score(self):
+        self.assertError(
+            ko(f"A,{WAFCON},qf,1,Zambia,Egypt,2,0,,,,,,,,scheduled,\n"),
+            "status=scheduled but a score is present")
+
+    def test_a_shootout_cannot_end_level(self):
+        self.assertError(
+            ko(f"A,{WAFCON},qf,1,Zambia,Egypt,1,1,3,3,,,,,,played,\n"),
+            "cannot end level")
+
+    def test_pens_on_a_tie_that_was_not_level(self):
+        self.assertError(
+            ko(f"A,{WAFCON},qf,1,Zambia,Egypt,2,0,4,3,,,,,,played,\n"),
+            "is not level")
+
+    def test_a_dangling_nt_match_id(self):
+        self.assertError(ko(f"A,{WAFCON},qf,1,Malawi,Ghana,,,,,,,,,,,999\n"),
+                         "does not resolve")
+
+    def test_neither_side_names_the_linked_match_opponent(self):
+        self.assertError(ko(f"A,{WAFCON},qf,1,Malawi,Ghana,,,,,,,,,,,36\n"),
+                         "cannot be matched up to it")
+
+    def test_a_linked_tie_may_not_carry_its_own_result(self):
+        self.assertError(ko(f"A,{WAFCON},qf,1,Malawi,Nigeria,3,2,,,,,,,,,36\n"),
+                         "owns the result")
+
+    def test_a_linked_tie_may_repeat_fixture_details_that_agree(self):
+        """Writing the venue in the bracket too is natural; only clashes fail."""
+        self.assertEqual(
+            self.errors(ko(f"A,{WAFCON},qf,1,Malawi,Nigeria,,,,,,2026-07-28,,"
+                           f"Al Medina Stadium,Rabat,,36\n")),
+            [])
+
+    def test_a_linked_tie_may_not_contradict_the_match_row(self):
+        self.assertError(
+            ko(f"A,{WAFCON},qf,1,Malawi,Nigeria,,,,,,2026-07-29,,,,,36\n"),
+            "contradicts nt_matches 36")
+
+    def test_a_feed_naming_a_tie_that_does_not_exist(self):
+        self.assertError(kof(f"S1,{WAFCON},sf,1,,,winner:NOPE,,,,,,,,,,,,\n"),
+                         "does not exist")
+
+    def test_a_tie_may_not_feed_itself(self):
+        self.assertError(kof(f"S1,{WAFCON},sf,1,,,winner:S1,,,,,,,,,,,,\n"),
+                         "feeds the tie from itself")
+
+    def test_a_feed_may_not_cross_competitions(self):
+        comps = M36_COMPS + (
+            "MW_W,2027 Other Cup,Group A,1,1,1,0,0,3,2027-01-01,,,1,0\n")
+        errs = validate.check_nt(nt.parse_all(texts(
+            comps=comps,
+            knockout=kof(f"Q1,2027 Other Cup,qf,1,Ghana,Mali,,,,,,,,,,,,,\n",
+                         f"S1,{WAFCON},sf,1,,,winner:Q1,,,,,,,,,,,,\n"))))
+        self.assertTrue(any("different competition" in e for e in errs), errs)
 
 
 if __name__ == "__main__":

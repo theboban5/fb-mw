@@ -35,7 +35,7 @@ single team needs no matchday pager.
 from html import escape
 import os
 
-from . import flags, render
+from . import adapt, flags, render
 
 # Editorial name, matching the landing-page card this page replaces. The data's
 # own `nt_teams.team_name` ("Malawi (Women's)") shows above it as the eyebrow.
@@ -65,6 +65,9 @@ NAV_ITEMS = (
 HOME_FALLBACK_LIMIT = 5
 
 _DASH = "&ndash;"
+# The bracket's "no team here yet", distinct from the en dash a group table
+# uses for a blank cell.
+_MDASH = "&mdash;"
 
 
 # ── Small shared pieces ──────────────────────────────────────────────────────
@@ -257,6 +260,128 @@ def _group_table(group, fl) -> str:
         + (f'<p class="v2-res-legend">{" &middot; ".join(legend)}</p>'
            if legend else "")
     )
+
+
+# ── 3b. Knockout bracket ─────────────────────────────────────────────────────
+#
+# The other half of a tournament, rendered in the cup pages' own `v2-br-*`
+# classes so /scorchers/ and /top8/ show the same bracket. Written here rather
+# than calling render.render_bracket because that one is a whole-page renderer
+# wired to league teams and crests; only the markup is shared, as with every
+# other v2- class this module reuses.
+#
+# Two differences, both of them things this page already does elsewhere: flags
+# stand in for crests, and a side with no name yet is a TBD slot rather than a
+# missing row. The third-place play-off renders under the tree, not as a fourth
+# column — four columns inside the site's 660px column leaves ~160px each,
+# too narrow for country names, and it is not part of the tree anyway.
+
+# The rounds that make up the tree itself, earliest first. "3p" is deliberately
+# absent: adapt.STAGE_ORDER puts it between the semis and the final, which is
+# when it is played but not where it belongs in a bracket.
+_TREE_STAGES = tuple(s for s in sorted(adapt.STAGE_ORDER, key=adapt.STAGE_ORDER.get)
+                     if s != "3p")
+
+
+def _feed_label(tie, side, by_id) -> str:
+    """"Winner QF1" — where an unfilled slot will come from.
+
+    Deliberately the short chip form rather than "Winner Quarter-final 1":
+    three columns inside the site's 660px column leaves ~200px each, and the
+    long form wraps to two lines on every placeholder, which makes the empty
+    rounds taller than the played ones. `adapt.STAGE_CHIPS` is the same
+    abbreviation the cup results pager already uses.
+    """
+    feed = tie.feed(side)
+    source = by_id.get(feed[1]) if feed else None
+    if source is None:
+        return ""
+    stage = adapt.STAGE_CHIPS.get(source.stage, source.stage.upper())
+    return f"{feed[0].capitalize()} {stage}{source.slot}"
+
+
+def _br_side(name, score, is_winner, fl, placeholder="") -> str:
+    """One side of a tie, or the slot's source while the draw is pending."""
+    if not name:
+        label = escape(placeholder) if placeholder else _MDASH
+        return ('<div class="v2-br-side v2-br-tbd">'
+                f'<span class="v2-br-team">{label}</span></div>')
+    cls = "v2-br-side v2-br-win" if is_winner else "v2-br-side"
+    score_html = (f'<span class="v2-br-score">{score}</span>'
+                  if score is not None else "")
+    return (f'<div class="{cls}"><span class="v2-br-team">'
+            f'{fl.img_for(name, "nt-flag nt-flag-pre")}{escape(name)}</span>'
+            f"{score_html}</div>")
+
+
+def _br_tie(tie, fl, by_id) -> str:
+    """One tie card: caption, both sides, and any pens/AET note beneath."""
+    parts = []
+    meta = [p for p in (_date_label(tie) if tie.date else "",
+                        tie.kickoff_label, tie.venue_label) if p]
+    if meta:
+        parts.append('<p class="v2-br-meta">'
+                     + " &middot; ".join(escape(p) for p in meta) + "</p>")
+
+    if tie.played:
+        winner = tie.winner_name
+        parts.append(_br_side(tie.home_name, tie.home_score,
+                              bool(winner) and winner == tie.home_name, fl))
+        parts.append(_br_side(tie.away_name, tie.away_score,
+                              bool(winner) and winner == tie.away_name, fl))
+        if tie.score_note:
+            parts.append(f'<p class="v2-br-note">{escape(tie.score_note)}</p>')
+    else:
+        parts.append(_br_side(tie.home_name, None, False, fl,
+                              _feed_label(tie, "home", by_id)))
+        parts.append('<p class="v2-br-vs">vs</p>')
+        parts.append(_br_side(tie.away_name, None, False, fl,
+                              _feed_label(tie, "away", by_id)))
+
+    # An empty tie is still a real slot in the tree, so it gets the dashed
+    # border the cup bracket uses for a round it has not reached.
+    empty = " v2-br-tie-tbd" if not (tie.home_name or tie.away_name) else ""
+    return f'<div class="v2-br-tie{empty}">{"".join(parts)}</div>'
+
+
+def _bracket(bracket, fl) -> str:
+    """The knockout tree, or "" when the sheet holds no ties for it yet.
+
+    Only the rounds actually present render, so a bracket seeded as far as the
+    quarter-finals is three columns and one seeded as a round of 16 is four —
+    nothing here knows any particular tournament's shape.
+    """
+    by_stage = {}
+    for tie in bracket.ties:
+        by_stage.setdefault(tie.stage, []).append(tie)
+    if not by_stage:
+        return ""
+    by_id = {t.tie_id: t for t in bracket.ties}
+
+    cols = []
+    for stage in _TREE_STAGES:
+        ties = by_stage.get(stage)
+        if not ties:
+            continue
+        title = escape(adapt.STAGE_LABELS.get(stage, stage).upper())
+        cards = "".join(_br_tie(t, fl, by_id) for t in ties)
+        cols.append(f'<section class="v2-br-round">'
+                    f'<h3 class="v2-br-title">{title}</h3>'
+                    f'<div class="v2-br-ties">{cards}</div></section>')
+
+    out = [f'<h3 class="v2-sec-title">Knockout Stage</h3>']
+    if cols:
+        out.append(f'<div class="v2-br-outer"><div class="v2-bracket">'
+                   f'{"".join(cols)}</div></div>')
+    for tie in by_stage.get("3p", []):
+        out.append(f'<h3 class="v2-sec-title">'
+                   f'{escape(adapt.STAGE_LABELS["3p"])}</h3>'
+                   f'<div class="v2-br-outer">'
+                   f'<div class="v2-bracket v2-br-solo">'
+                   f'<section class="v2-br-round">'
+                   f'<div class="v2-br-ties">{_br_tie(tie, fl, by_id)}</div>'
+                   f"</section></div></div>")
+    return "".join(out)
 
 
 # ── 4. Results ───────────────────────────────────────────────────────────────
@@ -476,6 +601,7 @@ def render_home(team_data, fl, flag_url="") -> str:
         _header(team_data, flag_url),
         _next_match(team_data.next_match, fl),
         *[_group_table(g, fl) for g in team_data.groups],
+        *[_bracket(b, fl) for b in team_data.brackets],
         result_block,
         fixture_block,
     ])

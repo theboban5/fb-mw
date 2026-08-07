@@ -74,6 +74,7 @@ NT_TAB_GIDS = {
     "nt_squads": 591651148,
     "nt_competitions": 966765466,
     "nt_lineups": 1873964167,
+    "nt_knockout": 319721285,
 }
 
 NT_TABS = tuple(NT_TAB_GIDS)

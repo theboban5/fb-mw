@@ -22,7 +22,7 @@ rivals: `NTGroup` carries their rows too, and they are exactly the rows with no
 `nt_teams` code of their own.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 from . import dataset
@@ -45,6 +45,10 @@ POSITION_LABELS = {
 _POSITION_SET = frozenset(p.lower() for p in POSITIONS)
 
 NT_MATCH_STATUSES = frozenset({"scheduled", "played", "awarded"})
+# What a knockout slot can be filled by: the winner or the loser of another
+# tie ("winner:WAFCON26_QF1"). Losers feed exactly one thing, the third-place
+# play-off, but they feed it the same way.
+FEED_KINDS = frozenset({"winner", "loser"})
 NT_ROLES = frozenset({"starting", "sub_on", "unused_sub"})
 # Already the display vocabulary in this tab ("own goal", not "own_goal" as in
 # the league goals tab); the underscore form is accepted so either spelling works.
@@ -92,6 +96,22 @@ def _flag(value: str, label: str, tab: str, i: int) -> bool:
         raise DataError(
             f"{tab} row {i}: {label} {value!r} must be blank, 0/1 or TRUE/FALSE")
     return v in ("1", "true")
+
+
+def parse_feed(value: str) -> "tuple[str, str] | None":
+    """"winner:WAFCON26_QF1" -> ("winner", "WAFCON26_QF1"); blank -> None."""
+    kind, _, tie_id = value.partition(":")
+    kind, tie_id = kind.strip().lower(), tie_id.strip()
+    return (kind, tie_id) if kind in FEED_KINDS and tie_id else None
+
+
+def _feed(value: str, label: str, tab: str, i: int) -> str:
+    """A slot's source, validated at parse time so a typo never renders."""
+    if value.strip() and parse_feed(value) is None:
+        raise DataError(
+            f"{tab} row {i}: {label} {value!r} must be "
+            f"'winner:<tie_id>' or 'loser:<tie_id>'")
+    return value.strip()
 
 
 def _id_sort(value: str) -> "tuple[int, int, str]":
@@ -367,6 +387,140 @@ class NTGroupRow:
         return (1, 0, -num(self.points), -num(self.goal_difference), self.team_code)
 
 
+@dataclass(frozen=True)
+class NTKnockoutTie:
+    """One tie in a hand-maintained knockout bracket — never computed.
+
+    The counterpart to `NTGroupRow` for the other half of a tournament, and it
+    exists for the same reason: `nt_matches` holds one row per *our* match with
+    `opponent` as a name, so there is nowhere to record Morocco vs Senegal. A
+    bracket needs every tie, not just ours, so the whole tree is recorded here.
+
+    Unlike a match row this is written from no one's perspective — `home_name`
+    and `away_name` are plain country names, in the order the tie should read.
+    **A blank side is a slot not yet filled** (the semi-final while the
+    quarters are still being played), which is why every column but the
+    structural ones is optional: a bracket is seeded with its full shape and
+    fills in as the draw resolves.
+
+    An unfilled slot says where it will come from: `home_from` /`away_from`
+    hold `winner:<tie_id>` or `loser:<tie_id>`, which is what makes a bracket
+    a tree rather than three lists. `_resolve_feeds` substitutes the real
+    country the moment the feeding tie is decided, so the semi-finals fill
+    themselves in and only the quarter-finals are ever typed twice.
+
+    Our own ties appear in both tabs. `nt_match_id` names the `nt_matches` row
+    this tie already is, and `_link_match` folds that row's result in — so the
+    score is entered once, where every other result is entered.
+    """
+    tie_id: str
+    competition_name: str
+    stage: str                    # a dataset.KNOCKOUT_STAGES value
+    slot: int                     # orders the ties within one round
+    home_name: str = ""           # "" until the slot is filled
+    away_name: str = ""
+    home_from: str = ""           # "winner:<tie_id>" / "loser:<tie_id>"
+    away_from: str = ""
+    home_score: "int | None" = None
+    away_score: "int | None" = None
+    home_pens: "int | None" = None
+    away_pens: "int | None" = None
+    extra_time: bool = False
+    date: str = ""
+    kickoff: str = ""
+    venue: str = ""
+    city: str = ""
+    status: str = "scheduled"
+    nt_match_id: str = ""
+    # Filled by _link_match, not by the sheet: the nt_matches row this tie is,
+    # and which side of the tie we are ("home" | "away" | "").
+    match: "NTMatch | None" = None
+    ours_side: str = ""
+
+    @property
+    def has_score(self) -> bool:
+        return self.home_score is not None and self.away_score is not None
+
+    @property
+    def played(self) -> bool:
+        return self.status in ("played", "awarded") and self.has_score
+
+    @property
+    def scheduled(self) -> bool:
+        return self.status == "scheduled"
+
+    @property
+    def is_ours(self) -> bool:
+        return self.match is not None
+
+    @property
+    def winner_name(self) -> str:
+        """The advancing side, or "" while the tie is undecided.
+
+        Ninety minutes, then the shootout. A linked match row records a
+        shootout as won/lost by us rather than as a score (`nt_matches` has no
+        pens columns), so that is read from `extra_time_result` instead.
+        """
+        if not self.played:
+            return ""
+        if self.home_score > self.away_score:
+            return self.home_name
+        if self.away_score > self.home_score:
+            return self.away_name
+        if self.home_pens is not None and self.away_pens is not None:
+            if self.home_pens > self.away_pens:
+                return self.home_name
+            if self.away_pens > self.home_pens:
+                return self.away_name
+        if self.match is not None and self.match.penalty_shootout and self.ours_side:
+            ours, theirs = ((self.home_name, self.away_name)
+                            if self.ours_side == "home"
+                            else (self.away_name, self.home_name))
+            return {"win": ours, "loss": theirs}.get(
+                self.match.extra_time_result.strip().lower(), "")
+        return ""
+
+    @property
+    def loser_name(self) -> str:
+        """The eliminated side — what a third-place play-off is fed by."""
+        winner = self.winner_name
+        if not winner:
+            return ""
+        return self.away_name if winner == self.home_name else self.home_name
+
+    def feed(self, side: str) -> "tuple[str, str] | None":
+        """("winner", tie_id) for `side` ("home"/"away"), or None."""
+        return parse_feed(getattr(self, f"{side}_from"))
+
+    @property
+    def score_note(self) -> str:
+        """"(4–3 pens)" / "(AET)", or the linked match row's own note."""
+        if self.match is not None:
+            return self.match.score_note
+        parts = []
+        if self.home_pens is not None and self.away_pens is not None:
+            hi, lo = sorted((self.home_pens, self.away_pens), reverse=True)
+            parts.append(f"{hi}–{lo} pens")
+        if self.extra_time:
+            parts.append("AET")
+        return f"({', '.join(parts)})" if parts else ""
+
+    @property
+    def venue_label(self) -> str:
+        parts = [p for p in (self.venue, self.city)
+                 if p and p.strip().lower() not in _NO_DATE]
+        return ", ".join(parts)
+
+    @property
+    def kickoff_label(self) -> str:
+        return f"{self.kickoff} {KICKOFF_TZ}" if self.kickoff else ""
+
+    @property
+    def sort_key(self):
+        """Order *within* a round. Round order is presentation (see nt_page)."""
+        return (self.slot, _id_sort(self.tie_id))
+
+
 # ── Tab parsers ──────────────────────────────────────────────────────────────
 
 def parse_nt_teams(text: str) -> "dict[str, NTTeam]":
@@ -498,6 +652,54 @@ def parse_nt_competitions(text: str) -> "list[NTGroupRow]":
     return out
 
 
+def parse_nt_knockout(text: str) -> "list[NTKnockoutTie]":
+    """Every knockout tie, in sheet order — grouping into rounds is presentation.
+
+    Only the structural columns are required: a seeded row naming nothing but
+    its round and slot is the point, since that is how a bracket gets its shape
+    before the draw is known.
+    """
+    out: "list[NTKnockoutTie]" = []
+    seen: "dict[str, str]" = {}
+    required = {"tie_id", "competition_name", "stage"}
+    for i, r in _rows(text, "nt_knockout", required):
+        tid = _require(r, "tie_id", "nt_knockout", i)
+        _put(seen, tid, tid, "nt_knockout", i)
+        out.append(NTKnockoutTie(
+            tie_id=tid,
+            competition_name=_require(r, "competition_name", "nt_knockout", i),
+            # The league cup vocabulary, not a second one of our own.
+            stage=_enum(r.get("stage", ""), dataset.KNOCKOUT_STAGES,
+                        "stage", "nt_knockout", i),
+            slot=_opt_int(r.get("slot", ""), "slot", "nt_knockout", i) or 0,
+            home_name=r.get("home_name", ""),
+            away_name=r.get("away_name", ""),
+            home_from=_feed(r.get("home_from", ""), "home_from",
+                            "nt_knockout", i),
+            away_from=_feed(r.get("away_from", ""), "away_from",
+                            "nt_knockout", i),
+            home_score=_opt_int(r.get("home_score", ""), "home_score",
+                                "nt_knockout", i),
+            away_score=_opt_int(r.get("away_score", ""), "away_score",
+                                "nt_knockout", i),
+            home_pens=_opt_int(r.get("home_pens", ""), "home_pens",
+                               "nt_knockout", i),
+            away_pens=_opt_int(r.get("away_pens", ""), "away_pens",
+                               "nt_knockout", i),
+            extra_time=_flag(r.get("extra_time", ""), "extra_time",
+                             "nt_knockout", i),
+            date=_nt_date(r.get("date", ""), "date", "nt_knockout", i),
+            kickoff=_nt_time(r.get("kickoff", ""), "kickoff", "nt_knockout", i),
+            venue=r.get("venue", ""),
+            city=r.get("city", ""),
+            # A seeded row leaves this blank, and an unplayed tie is scheduled.
+            status=_enum(r.get("status", "") or "scheduled", NT_MATCH_STATUSES,
+                         "status", "nt_knockout", i),
+            nt_match_id=r.get("nt_match_id", ""),
+        ))
+    return out
+
+
 _NT_PARSERS = {
     "nt_teams": parse_nt_teams,
     "nt_matches": parse_nt_matches,
@@ -505,6 +707,7 @@ _NT_PARSERS = {
     "nt_squads": parse_nt_squads,
     "nt_competitions": parse_nt_competitions,
     "nt_lineups": parse_nt_lineups,
+    "nt_knockout": parse_nt_knockout,
 }
 
 
@@ -517,6 +720,7 @@ class NTData:
     nt_squads: "list[NTSquadPlayer]" = field(default_factory=list)
     nt_competitions: "list[NTGroupRow]" = field(default_factory=list)
     nt_lineups: "list[NTLineupRow]" = field(default_factory=list)
+    nt_knockout: "list[NTKnockoutTie]" = field(default_factory=list)
 
 
 def parse_all(texts: "dict[str, str]") -> NTData:
@@ -617,6 +821,18 @@ class NTGroup:
         return row.team_code == self.our_code
 
 
+@dataclass(frozen=True)
+class NTBracket:
+    """One competition's knockout ties, ours folded in, ordered within a round.
+
+    Not grouped into rounds here: which rounds exist, what they are called and
+    what order they read in is presentation, and lives with the league cup
+    bracket's vocabulary in `adapt` (see `nt_page._bracket`).
+    """
+    competition_name: str
+    ties: "list[NTKnockoutTie]"
+
+
 @dataclass
 class NTTeamData:
     """One national team's whole page-worth of data. Contains no other team."""
@@ -626,6 +842,7 @@ class NTTeamData:
     fixtures: "list[NTMatch]"       # scheduled, chronological
     results: "list[NTResult]"       # played, reverse chronological
     groups: "list[NTGroup]"
+    brackets: "list[NTBracket]"
     squad: "NTSquad | None"
 
     @property
@@ -770,13 +987,18 @@ def team_data(nt: NTData, team_code: str = SCORCHERS) -> NTTeamData:
     if not coach and squad:
         coach = squad.coach
 
+    # A bracket hangs off the competitions this team has a group table in, so
+    # the groups have to exist before it can be looked up.
+    groups = _groups_for(nt, team_code)
+
     return NTTeamData(
         team=team,
         coach=coach,
         next_match=next_match,
         fixtures=fixtures,
         results=results,
-        groups=_groups_for(nt, team_code),
+        groups=groups,
+        brackets=_brackets_for(nt, groups),
         squad=squad,
     )
 
@@ -805,4 +1027,99 @@ def _groups_for(nt: NTData, team_code: str) -> "list[NTGroup]":
         rows.sort(key=lambda r: r.sort_key)
         out.append(NTGroup(competition_name=key[0], group_name=key[1],
                            our_code=team_code, rows=rows))
+    return out
+
+
+def _norm(name: str) -> str:
+    return name.strip().casefold()
+
+
+def _link_match(tie: NTKnockoutTie, nt: NTData) -> NTKnockoutTie:
+    """Fold the `nt_matches` row a tie names into it, or return it unchanged.
+
+    Our own knockout ties exist in both tabs — here for the bracket's shape,
+    and in `nt_matches` for the scorers, line-up and everything else a result
+    carries. Rather than ask for the score twice and let the two drift, the
+    match row is the authority for what happened and the knockout row keeps
+    only what a Malawi-perspective row cannot express: which round, which slot,
+    and which way round the two names read.
+
+    Which side is ours is read off `NTMatch.opponent`, which names the other
+    one — so nothing here needs to know our own country's name.
+    """
+    if not tie.nt_match_id:
+        return tie
+    m = nt.nt_matches.get(tie.nt_match_id)
+    if m is None:
+        # validate.check_nt reports the dangling id; a build never crashes here.
+        return tie
+    ours_home = _norm(tie.away_name) == _norm(m.opponent)
+    home_score, away_score = ((m.team_score, m.opponent_score) if ours_home
+                              else (m.opponent_score, m.team_score))
+    return replace(
+        tie,
+        home_score=home_score, away_score=away_score,
+        extra_time=m.extra_time,
+        date=m.date, kickoff=m.kickoff, venue=m.venue, city=m.city,
+        status=m.status,
+        match=m, ours_side="home" if ours_home else "away",
+    )
+
+
+def _resolve_feeds(ties: "list[NTKnockoutTie]") -> "list[NTKnockoutTie]":
+    """Fill each slot whose feeding tie has been decided, following chains.
+
+    A quarter-final result promotes a name into the semi-final, which may then
+    decide it and promote a name into the final, so this repeats until nothing
+    more can be filled rather than assuming any round order. An already-named
+    side is never overwritten: the sheet stays the authority, and a bracket
+    where someone typed the semi-finalists by hand still works.
+    """
+    out = {t.tie_id: t for t in ties}
+    # Each pass fills at least one slot or stops, so the tree depth bounds it.
+    for _ in range(len(out) + 1):
+        changed = False
+        for tie_id, tie in list(out.items()):
+            updates = {}
+            for side in ("home", "away"):
+                if getattr(tie, f"{side}_name"):
+                    continue
+                feed = tie.feed(side)
+                source = out.get(feed[1]) if feed else None
+                if source is None or source.tie_id == tie_id:
+                    continue
+                name = (source.winner_name if feed[0] == "winner"
+                        else source.loser_name)
+                if name:
+                    updates[f"{side}_name"] = name
+            if updates:
+                out[tie_id] = replace(tie, **updates)
+                changed = True
+        if not changed:
+            break
+    return [out[t.tie_id] for t in ties]
+
+
+def _brackets_for(nt: NTData, groups: "list[NTGroup]") -> "list[NTBracket]":
+    """The knockout bracket for each competition this team has a group in.
+
+    That join — `nt_knockout.competition_name` against
+    `nt_competitions.competition_name` — is what attaches a bracket to a page,
+    and `validate.check_nt` rejects a bracket that matches no group table, so a
+    typo shows up as a build error rather than as a section that never renders.
+    """
+    names = []
+    for g in groups:
+        if g.competition_name not in names:
+            names.append(g.competition_name)
+
+    out = []
+    for name in names:
+        ties = [_link_match(t, nt) for t in nt.nt_knockout
+                if t.competition_name == name]
+        if ties:
+            # Results first, then promote winners into the rounds they feed.
+            ties = _resolve_feeds(ties)
+            ties.sort(key=lambda t: t.sort_key)
+            out.append(NTBracket(competition_name=name, ties=ties))
     return out

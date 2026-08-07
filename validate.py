@@ -57,6 +57,9 @@ NT_PRIMARY_KEYS = {
     "nt_squads": ("squad_id", "player_name"),
     "nt_competitions": ("team_code", "competition_name"),
     "nt_lineups": ("match_id", "player_name"),
+    # One row per tie, so the tie's own id is the key; (stage, slot) uniqueness
+    # within a competition is a separate check in check_nt.
+    "nt_knockout": ("tie_id",),
 }
 
 # The identifier columns whose disappearance between fetches means someone
@@ -67,6 +70,7 @@ DRIFT_IDS = {
     "clubs": "club_id",
     "players": "player_id",
     "nt_matches": "match_id",
+    "nt_knockout": "tie_id",
 }
 
 
@@ -384,6 +388,105 @@ def check_nt(ntd):
             errors.append(
                 f"nt_competitions {where}: no row for a team in nt_teams, so "
                 f"this group table belongs to no page")
+
+    # A knockout bracket hangs off the competition its group table names, so a
+    # competition_name that matches none is orphaned exactly as a group with no
+    # team of ours is — it would render nowhere, silently.
+    comp_names = {c.competition_name for c in ntd.nt_competitions}
+    ko_by_id = {t.tie_id: t for t in ntd.nt_knockout}
+    slots = {}
+    for t in ntd.nt_knockout:
+        lbl = f"nt_knockout {t.tie_id}"
+        if t.competition_name not in comp_names:
+            errors.append(
+                f"{lbl}: competition_name {t.competition_name!r} matches no "
+                f"nt_competitions row, so this bracket belongs to no page")
+        slots.setdefault((t.competition_name, t.stage, t.slot), []).append(t.tie_id)
+
+        # A slot fed by a tie that does not exist would render a blank forever,
+        # and one fed by itself would never resolve.
+        for side in ("home", "away"):
+            feed = t.feed(side)
+            if feed is None:
+                continue
+            source = ko_by_id.get(feed[1])
+            if source is None:
+                errors.append(f"{lbl}: {side}_from names tie {feed[1]!r}, "
+                              f"which does not exist")
+            elif source.tie_id == t.tie_id:
+                errors.append(f"{lbl}: {side}_from feeds the tie from itself")
+            elif source.competition_name != t.competition_name:
+                errors.append(
+                    f"{lbl}: {side}_from names tie {feed[1]!r} in a different "
+                    f"competition ({source.competition_name!r})")
+
+        if (t.home_score is None) != (t.away_score is None):
+            errors.append(f"{lbl}: only one of home_score/away_score present")
+        elif t.status in ("played", "awarded") and not (t.has_score or t.nt_match_id):
+            errors.append(f"{lbl}: status={t.status} but the score is blank")
+        elif t.status == "scheduled" and t.has_score:
+            errors.append(f"{lbl}: status=scheduled but a score is present")
+
+        # Shootouts, on the same terms cups get (see check_cup_rules): in
+        # pairs, never level, and only when 90/120 minutes could not separate.
+        if (t.home_pens is None) != (t.away_pens is None):
+            errors.append(f"{lbl}: only one of home_pens/away_pens present")
+        elif t.home_pens is not None:
+            if t.home_pens == t.away_pens:
+                errors.append(f"{lbl}: a shootout cannot end level "
+                              f"({t.home_pens}-{t.away_pens})")
+            if t.has_score and t.home_score != t.away_score:
+                errors.append(
+                    f"{lbl}: pens recorded but the score {t.home_score}-"
+                    f"{t.away_score} is not level")
+
+        # Our own ties live in both tabs. nt_matches is the authority on what
+        # happened, so the copies here must stay empty or the two can disagree
+        # with nothing to say which is right.
+        if t.nt_match_id:
+            m = ntd.nt_matches.get(t.nt_match_id)
+            if m is None:
+                errors.append(f"{lbl}: nt_match_id {t.nt_match_id!r} does not "
+                              f"resolve")
+            elif nt._norm(m.opponent) not in (nt._norm(t.home_name),
+                                              nt._norm(t.away_name)):
+                errors.append(
+                    f"{lbl}: neither side names the opponent of nt_matches "
+                    f"{t.nt_match_id} ({m.opponent!r}), so the tie cannot be "
+                    f"matched up to it")
+            # The result itself must be entered once, in nt_matches: a score
+            # here would show in the bracket and nowhere else.
+            owned = [c for c, v in (("home_score", t.home_score),
+                                    ("away_score", t.away_score),
+                                    ("home_pens", t.home_pens),
+                                    ("away_pens", t.away_pens))
+                     if v is not None]
+            if owned:
+                errors.append(
+                    f"{lbl}: nt_match_id is set, so nt_matches {t.nt_match_id} "
+                    f"owns the result — leave {', '.join(owned)} blank here")
+
+            # Fixture details are fine to repeat — a bracket is a natural place
+            # to write the venue down — as long as they agree. Only a
+            # contradiction is an error, because then nothing says which is
+            # right (nt_matches wins, so the sheet would be lying to itself).
+            if m is not None:
+                for col, here, there in (("date", t.date, m.date),
+                                         ("kickoff", t.kickoff, m.kickoff),
+                                         ("venue", t.venue, m.venue),
+                                         ("city", t.city, m.city)):
+                    if here and there and here != there:
+                        errors.append(
+                            f"{lbl}: {col} {here!r} contradicts nt_matches "
+                            f"{t.nt_match_id} ({there!r}), which wins")
+    for key, ids in sorted(slots.items()):
+        if len(ids) > 1:
+            competition_name, stage, slot = key
+            errors.append(
+                f"nt_knockout {', '.join(sorted(ids))}: {competition_name!r} "
+                f"has {len(ids)} ties in {stage} slot {slot} — they would "
+                f"overlay in the bracket")
+
     for s in ntd.nt_squads:
         if s.team_id not in ntd.nt_teams:
             errors.append(
