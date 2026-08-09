@@ -420,9 +420,9 @@ def _scorchers_feature(fl, team_data):
     return f"""<a class="el-feature{split}" href="{nt_page.SLUG}/">
     <div class="el-feature-body">
       <span class="el-feature-eyebrow">{flag}Scorchers at WAFCON</span>
-      <span class="el-feature-title">Into the quarter-finals</span>
-      <span class="el-feature-copy">Top of Group C in their first Women&#x2019;s
-        Africa Cup of Nations. Follow the Scorchers through the knockout
+      <span class="el-feature-title">Semi-finals!</span>
+      <span class="el-feature-copy">Malawi beat Ghana 2-1 and qualify for the 2027 FIFA World Cup! The journey at
+        the Women&#x2019;s Africa Cup of Nations continues on Wednesday against Algeria. Follow the Scorchers through the knockout
         rounds.</span>
       <span class="el-feature-cta">Fixtures, results and squad
         <span class="el-feature-arrow">&#x2192;</span></span>
