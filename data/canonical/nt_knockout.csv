@@ -1,9 +1,9 @@
 tie_id,competition_name,stage,slot,home_name,away_name,home_score,away_score,home_pens,away_pens,extra_time,date,kickoff,venue,city,status,nt_match_id
 1,2026 Women's Africa Cup of Nations,qf,1,Morocco,South Africa,2,1,,,,2026-08-08,22:00,Moulay Rachid Stadium,Casablanca,played,
-2,2026 Women's Africa Cup of Nations,qf,2,Cameroon,Nigeria,,,,,,2026-08-08,19:00,Moulay El Hassan Stadium,Rabat,scheduled,
-3,2026 Women's Africa Cup of Nations,qf,3,Ivory Coast,Algeria,1,2,,,,2026-08-09,19:00,Larbi Zaouli Stadium,Casablanca,played,
-4,2026 Women's Africa Cup of Nations,qf,4,Malawi,Ghana,,,,,,2026-08-09,22:00,Al Medina Stadium,Rabat,scheduled,39
-5,2026 Women's Africa Cup of Nations,sf,1,Morocco,,,,,,,,,,,scheduled,
-6,2026 Women's Africa Cup of Nations,sf,2,Algeria,,,,,,,,,,,scheduled,
+2,2026 Women's Africa Cup of Nations,qf,2,Cameroon,Nigeria,1,0,,,,2026-08-09,19:00,Moulay El Hassan Stadium,Rabat,played,
+3,2026 Women's Africa Cup of Nations,qf,3,Ivory Coast,Algeria,1,2,,,,2026-08-08,19:00,Larbi Zaouli Stadium,Casablanca,played,
+4,2026 Women's Africa Cup of Nations,qf,4,Malawi,Ghana,,,,,,2026-08-09,22:00,Al Medina Stadium,Rabat,played,39
+5,2026 Women's Africa Cup of Nations,sf,1,Morocco,Cameroon,,,,,,2026-08-12,19:00,Moulay El Hassan Stadium,Rabat,scheduled,
+6,2026 Women's Africa Cup of Nations,sf,2,Algeria,Malawi,,,,,,2026-08-12,22:00,Rabat Olympic Stadium,Rabat,scheduled,40
 7,2026 Women's Africa Cup of Nations,3p,2,,,,,,,,,,,,,
 8,2026 Women's Africa Cup of Nations,final,1,,,,,,,,,,,,,
