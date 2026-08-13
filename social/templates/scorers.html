@@ -1,0 +1,92 @@
+{% extends "_base.html" %}
+{% from "_macros.html" import crest %}
+
+{% block style %}
+.scorer-rows {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  --crest: 84px; --player: 40px; --club: 24px; --tally: 62px; --pos: 40px;
+}
+/* Keeping a tie whole can push the list past eight rows. The tie stays; the
+   type steps down instead. */
+.scorer-rows.many {
+  --crest: 62px; --player: 32px; --club: 20px; --tally: 48px; --pos: 32px;
+}
+
+.scorer {
+  flex: 1 1 0;
+  display: grid;
+  grid-template-columns: 78px var(--crest) 1fr auto;
+  align-items: center;
+  column-gap: 22px;
+  border-bottom: 1px solid var(--line);
+  min-height: 0;
+}
+.scorer:last-child { border-bottom: 0; }
+
+/* Position, not a decorative index: '=2' where a tally is shared, because a
+   joint tally shown as a rank is a claim the data does not make. */
+.pos {
+  font-size: var(--pos);
+  font-weight: 900;
+  color: var(--accent);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.pos.joint { font-size: calc(var(--pos) * 0.85); }
+
+.scorer .crest { width: var(--crest); height: var(--crest); }
+.scorer .crest span { font-size: calc(var(--crest) * 0.36); }
+
+.who { min-width: 0; }
+.player {
+  font-size: var(--player);
+  font-weight: 600;
+  line-height: 1.06;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+.player.long { font-size: calc(var(--player) * 0.85); }
+.club {
+  font-size: var(--club);
+  font-weight: 400;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* The tally is the number that has to read at thumbnail size. */
+.goals {
+  font-size: var(--tally);
+  font-weight: 900;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+{% endblock %}
+
+{% block watermark_note %}
+  <div class="watermark-note">{{ season_label }}</div>
+{% endblock %}
+
+{% block body %}
+<div class="scorer-rows{% if rows|length > 8 %} many{% endif %}">
+{% for r in rows %}
+  <div class="scorer">
+    <div class="pos{% if r.joint %} joint{% endif %}">{% if r.joint %}={% endif %}{{ r.position }}</div>
+{% if r.team %}
+    {{ crest(r.team) }}
+{% else %}
+    <div></div>
+{% endif %}
+    <div class="who">
+      <div class="player{% if r.name|length > 18 %} long{% endif %}">{{ r.name }}</div>
+{% if r.team %}
+      <div class="club">{{ r.team.name }}</div>
+{% endif %}
+    </div>
+    <div class="goals">{{ r.goals }}</div>
+  </div>
+{% endfor %}
+</div>
+{% endblock %}

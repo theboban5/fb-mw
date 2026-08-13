@@ -19,7 +19,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOCIAL = os.path.join(ROOT, "social")
 TEMPLATES = os.path.join(SOCIAL, "templates")
 FONTS = os.path.join(SOCIAL, "assets", "fonts")
-LOGO_DIR = os.path.join(SOCIAL, "assets", "logo")
 FLEX_DIR = os.path.join(SOCIAL, "flex")
 # Crests are the site's own club logos — not a second copy. Keyed by club_id
 # with a legacy_code fallback, exactly as src/render.py resolves them.
@@ -62,6 +61,9 @@ TOKENS = {
     # missing crest gets brand neutrals rather than an invented club colour.
     "monogram_bg": "#23272d",
     "monogram_ink": "#9aa1ab",
+    # Used only by the post pack, which is a tool page rather than a brand
+    # surface: a warning there has to look like a warning.
+    "warn": "#e2a33c",
 }
 
 FONT_STACK = "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"

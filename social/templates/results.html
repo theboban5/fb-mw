@@ -2,119 +2,9 @@
 {% from "_macros.html" import crest, team_name %}
 
 {% block style %}
-/* Density is set by the post type from the match count, so one match reads as
-   a hero board and six read as a results list — same components either way. */
-.matches {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  --crest: 76px;
-  --name: 36px;
-  --score: 88px;
-  --scorew: 200px;   /* the centre column: fixed, so every score shares an axis */
-  --scorer: 23px;
-  --gap: 16px;
-  /* crest | name | score | name | crest */
-  --cols: var(--crest) 1fr var(--scorew) 1fr var(--crest);
-  --home-col: 2;
-  --away-col: 4;
-}
-.matches.d-roomy { --crest: 108px; --name: 45px; --score: 124px; --scorew: 260px; --scorer: 26px; --gap: 20px; }
-.matches.d-hero {
-  --crest: 250px; --name: 50px; --score: 200px; --scorer: 30px; --gap: 26px;
-  /* Fixed, not auto: .fixture and .scorers are separate grids, and an
-     auto centre column sizes to its content in one and to nothing in the
-     other — which silently unaligns every scorer from its team. */
-  --scorew: 380px;
-  --cols: 1fr var(--scorew) 1fr;
-  --home-col: 1;
-  --away-col: 3;
-}
-
-.match {
-  flex: 1 1 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 8px;
-  padding: 18px 0;
-  border-bottom: 1px solid var(--line);
-  min-height: 0;
-}
-.match:last-child { border-bottom: 0; }
-
-/* Crests frame the row from the outer edges rather than sitting beside the
-   number — it keeps the scoreline on the board's centre axis and gives long
-   names the whole middle to work with. .fixture and .scorers share the grid,
-   so a scorer always sits under the team that scored. */
-.fixture, .scorers {
-  display: grid;
-  grid-template-columns: var(--cols);
-  column-gap: var(--gap);
-}
-.fixture { align-items: center; }
-.side { min-width: 0; }
-.side.home { text-align: right; }
-.side.away { text-align: left; }
-
-/* Hero re-flows the same five elements: crests over names, either side of a
-   score that spans both rows. A row layout cannot work here — a fixed centre
-   column wide enough for a 200px scoreline leaves the names ~90px, and a long
-   one then breaks a letter per line. */
-.d-hero .fixture {
-  grid-template-areas: "ch sc ca" "nh sc na";
-  row-gap: 24px;
-  justify-items: center;
-}
-.d-hero .fixture > :nth-child(1) { grid-area: ch; }
-.d-hero .fixture > :nth-child(2) { grid-area: nh; }
-.d-hero .fixture > :nth-child(3) { grid-area: sc; }
-.d-hero .fixture > :nth-child(4) { grid-area: na; }
-.d-hero .fixture > :nth-child(5) { grid-area: ca; }
-.d-hero .side, .d-hero .scorers > * { text-align: center; }
-/* Both names start at the same y whether one line or three. */
-.d-hero .side { align-self: start; }
-
-.name {
-  font-size: var(--name);
-  font-weight: 600;
-  line-height: 1.04;
-  letter-spacing: -0.015em;
-  color: var(--ink);
-  min-width: 0;
-  overflow-wrap: break-word;
-}
-.name.long   { font-size: calc(var(--name) * 0.84); }
-.name.longer { font-size: calc(var(--name) * 0.70); }
-
-/* The number is the hero: heaviest weight on the board, tabular so every
-   scoreline in the column sits on the same axis. */
-.score {
-  font-size: var(--score);
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: -0.03em;
-  color: var(--ink);
-  white-space: nowrap;
-  text-align: center;
-}
-.score .dash { color: var(--accent); padding: 0 0.1em; }
-
-.scorers {
-  font-size: var(--scorer);
-  font-weight: 400;
-  line-height: 1.35;
-  color: var(--muted);
-}
-.scorers .home { grid-column: var(--home-col); text-align: right; }
-.scorers .away { grid-column: var(--away-col); text-align: left; }
-/* An unnamed scorer is stated, never absorbed: a partial list that looks
-   complete is the one failure mode this whole module exists to avoid. */
-.unrecorded { color: var(--muted); opacity: 0.75; }
-
-/* Sized from --crest so density has one number, not two that drift. */
-.crest { width: var(--crest); height: var(--crest); }
-.crest span { font-size: calc(var(--crest) * 0.36); }
+/* The row system lives in _base.html. Results adds only what is specific to
+   a played match: the scorer lines and the venue on a hero board. */
+.unrecorded { opacity: 0.75; }
 
 /* Hero only: a single-match board has the room, and where it was played is
    real information rather than filler. */
@@ -127,15 +17,6 @@
   text-transform: uppercase;
   color: var(--muted);
 }
-
-.note {
-  font-size: calc(var(--scorer) * 0.95);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--accent);
-  text-align: center;
-}
 {% endblock %}
 
 {% block watermark_note %}
@@ -143,22 +24,25 @@
 {% endblock %}
 
 {% block body %}
-<div class="matches d-{{ density }}">
+<div class="rows d-{{ density }}">
 {% for m in matches %}
-  <div class="match">
+  <div class="row">
     <div class="fixture">
       {{ crest(m.home.team) }}
       <div class="side home">{{ team_name(m.home.team.name) }}</div>
-      <div class="score tnum">{{ m.home.goals }}<span class="dash">–</span>{{ m.away.goals }}</div>
+      <div class="figure">{{ m.home.goals }}<span class="sep">–</span>{{ m.away.goals }}</div>
       <div class="side away">{{ team_name(m.away.team.name) }}</div>
       {{ crest(m.away.team) }}
     </div>
 {% if m.has_any_scorer %}
-    <div class="scorers">
+    <div class="rowmeta">
       <div class="home">
 {% for s in m.home.scorers %}
         <div>{{ s.label }}</div>
 {% endfor %}
+{# An unnamed scorer is stated, never absorbed: a partial list that looks
+   complete is the failure mode this whole module exists to avoid. Where no
+   scorer at all is known, nothing is shown — silence implies nothing. #}
 {% if m.home.scorers and m.home.unrecorded %}
         <div class="unrecorded">+{{ m.home.unrecorded }} not recorded</div>
 {% endif %}
@@ -177,7 +61,7 @@
     <div class="venue">{{ m.venue }}</div>
 {% endif %}
 {% if m.shootout or m.extra_time or m.awarded_note %}
-    <div class="note">
+    <div class="rownote">
       {{ m.shootout or (m.awarded_note if m.awarded_note else "after extra time") }}
     </div>
 {% endif %}

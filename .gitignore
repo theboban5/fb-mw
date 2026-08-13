@@ -7,3 +7,7 @@ __pycache__/
 data/scratch/
 staging/
 staging-*/
+
+# Generated post packs. Every run can be rebuilt from the sheet, and the PNGs
+# are large — nothing here belongs in git.
+out/

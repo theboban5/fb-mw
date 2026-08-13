@@ -122,6 +122,128 @@ html, body {
 
 .tnum { font-variant-numeric: tabular-nums; }
 
+/* ── The match-row system ──────────────────────────────────────────────
+   Shared by every template that lists matches (results, fixtures, roundup)
+   so a fixture card and a results card are visibly the same object with a
+   different number in the middle. Templates add the centre element's type
+   and any extra lines; they do not restate the grid.
+
+   Density is set by the post type from the row count. `--cols` is a single
+   token so hero can re-flow to three columns without every rule changing. */
+.rows {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  --crest: 76px;
+  --name: 36px;
+  --figure: 88px;    /* the centre element: scoreline, or kickoff time */
+  --figurew: 200px;  /* fixed width, so every row shares one centre axis */
+  --meta: 23px;
+  --gap: 16px;
+  /* crest | name | figure | name | crest */
+  --cols: var(--crest) 1fr var(--figurew) 1fr var(--crest);
+  --home-col: 2;
+  --away-col: 4;
+}
+.rows.d-roomy { --crest: 108px; --name: 45px; --figure: 124px; --figurew: 260px; --meta: 26px; --gap: 20px; }
+.rows.d-hero {
+  --crest: 250px; --name: 50px; --figure: 200px; --meta: 30px; --gap: 26px;
+  /* Fixed, not auto: .fixture and .rowmeta are separate grids, and an auto
+     centre column sizes to its content in one and to nothing in the other —
+     which silently unaligns every second line from the team above it. */
+  --figurew: 380px;
+  --cols: 1fr var(--figurew) 1fr;
+  --home-col: 1;
+  --away-col: 3;
+}
+
+.row {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+  min-height: 0;
+}
+.row:last-child { border-bottom: 0; }
+
+/* Crests frame the row from the outer edges rather than sitting beside the
+   number — it keeps the figure on the board's centre axis and gives long
+   names the whole middle to work with. .fixture and .rowmeta share the grid,
+   so a second line always sits under the team it belongs to. */
+.fixture, .rowmeta {
+  display: grid;
+  grid-template-columns: var(--cols);
+  column-gap: var(--gap);
+}
+.fixture { align-items: center; }
+.side { min-width: 0; }
+.side.home { text-align: right; }
+.side.away { text-align: left; }
+.rowmeta { font-size: var(--meta); line-height: 1.35; color: var(--muted); }
+.rowmeta .home { grid-column: var(--home-col); text-align: right; }
+.rowmeta .away { grid-column: var(--away-col); text-align: left; }
+
+/* Hero re-flows the same five elements: crests over names, either side of a
+   figure that spans both rows. A row layout cannot work at this scale — a
+   centre column wide enough for a 200px scoreline leaves the names ~90px,
+   and a long one then breaks a letter per line. */
+.d-hero .fixture {
+  grid-template-areas: "ch fig ca" "nh fig na";
+  row-gap: 24px;
+  justify-items: center;
+}
+.d-hero .fixture > :nth-child(1) { grid-area: ch; }
+.d-hero .fixture > :nth-child(2) { grid-area: nh; }
+.d-hero .fixture > :nth-child(3) { grid-area: fig; }
+.d-hero .fixture > :nth-child(4) { grid-area: na; }
+.d-hero .fixture > :nth-child(5) { grid-area: ca; }
+.d-hero .side, .d-hero .rowmeta > * { text-align: center; }
+/* Both names start at the same y whether one line or three. */
+.d-hero .side { align-self: start; }
+
+.name {
+  font-size: var(--name);
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.name.long   { font-size: calc(var(--name) * 0.84); }
+.name.longer { font-size: calc(var(--name) * 0.70); }
+
+/* Sized from --crest so density has one number, not two that drift. */
+.rows .crest { width: var(--crest); height: var(--crest); }
+.rows .crest span { font-size: calc(var(--crest) * 0.36); }
+
+/* The centre element. Heaviest weight on the board, tabular so every row
+   sits on the same axis. */
+.figure {
+  font-size: var(--figure);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+  white-space: nowrap;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.figure .sep { color: var(--accent); padding: 0 0.1em; }
+
+/* A centred qualifier under a row: shootout, extra time, venue. */
+.rownote {
+  font-size: calc(var(--meta) * 0.95);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  text-align: center;
+}
+
 /* ── Watermark ─────────────────────────────────────────────────────────
    Assume the graphic is re-shared with no caption: this is the only thing
    saying where it came from. Solid ground behind it, full-strength ink, and
@@ -131,7 +253,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 0 44px 34px;
+  padding: 18px 44px 34px;
   background: var(--ground);
 }
 .watermark-mark { width: 20px; height: 20px; background: var(--accent); }

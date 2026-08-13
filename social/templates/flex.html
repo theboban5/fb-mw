@@ -1,0 +1,79 @@
+{% extends "_base.html" %}
+
+{% block style %}
+/* Hand-written content, same furniture. The headline does the work here, so
+   it gets the display weight the scoreline gets everywhere else. */
+.flex-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 34px;
+  padding: 20px 0;
+}
+
+.flex-headline {
+  font-size: 78px;
+  font-weight: 900;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+.flex-headline.long   { font-size: 62px; }
+.flex-headline.longer { font-size: 50px; }
+
+.flex-text {
+  font-size: 34px;
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--muted);
+  white-space: pre-line;
+}
+
+/* Optional big figure. Same treatment as a scoreline so a stat card and a
+   results card are recognisably the same product. */
+.flex-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  border-top: 2px solid var(--accent);
+  padding-top: 26px;
+}
+.flex-stat-value {
+  font-size: 132px;
+  font-weight: 900;
+  line-height: 0.9;
+  letter-spacing: -0.04em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.flex-stat-label {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--muted);
+}
+{% endblock %}
+
+{% block watermark_note %}
+{% if season_label %}
+  <div class="watermark-note">{{ season_label }}</div>
+{% endif %}
+{% endblock %}
+
+{% block body %}
+<div class="flex-body">
+  <div class="flex-headline{% if headline|length > 58 %} longer{% elif headline|length > 34 %} long{% endif %}">{{ headline }}</div>
+{% if body %}
+  <div class="flex-text">{{ body }}</div>
+{% endif %}
+{% if stat %}
+  <div class="flex-stat">
+    <div class="flex-stat-value">{{ stat }}</div>
+{% if stat_label %}
+    <div class="flex-stat-label">{{ stat_label }}</div>
+{% endif %}
+  </div>
+{% endif %}
+</div>
+{% endblock %}

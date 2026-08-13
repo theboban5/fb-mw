@@ -1,0 +1,51 @@
+{% extends "_base.html" %}
+{% from "_macros.html" import crest, team_name %}
+
+{% block style %}
+/* Same row system as results — the centre element is a kickoff time instead
+   of a scoreline, which is the only difference between the two boards. Five
+   characters need proportionally less size than two do. */
+.figure.time { font-size: calc(var(--figure) * 0.62); }
+.figure.tbc {
+  font-size: calc(var(--figure) * 0.42);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.when {
+  text-align: center;
+  font-size: var(--meta);
+  font-weight: 400;
+  color: var(--muted);
+}
+{% endblock %}
+
+{% block watermark_note %}
+  <div class="watermark-note">{{ season_label }}</div>
+{% endblock %}
+
+{% block body %}
+<div class="rows d-{{ density }}">
+{% for m in matches %}
+  <div class="row">
+    <div class="fixture">
+      {{ crest(m.home.team) }}
+      <div class="side home">{{ team_name(m.home.team.name) }}</div>
+{% if m.kickoff %}
+      <div class="figure time">{{ m.kickoff }}</div>
+{% else %}
+      <div class="figure tbc">TBC</div>
+{% endif %}
+      <div class="side away">{{ team_name(m.away.team.name) }}</div>
+      {{ crest(m.away.team) }}
+    </div>
+{% if m.venue or matches|length > 1 %}
+    <div class="when">
+      {{ m.date_label }}{% if m.venue %} · {{ m.venue }}{% endif %}
+    </div>
+{% endif %}
+  </div>
+{% endfor %}
+</div>
+{% endblock %}

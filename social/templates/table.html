@@ -1,0 +1,88 @@
+{% extends "_base.html" %}
+
+{% block style %}
+/* A full 16-team table on a 1080 square: every column tabular, rows on
+   hairlines, no zebra fill. The points column is the one that has to read at
+   thumbnail size, so it keeps the display weight while the rest recede. */
+.table { flex: 1 1 auto; display: flex; flex-direction: column; padding-top: 10px; }
+
+.trow {
+  flex: 1 1 0;
+  display: grid;
+  grid-template-columns: 46px 1fr 46px 46px 46px 46px 62px 74px;
+  align-items: center;
+  column-gap: 10px;
+  border-bottom: 1px solid var(--line);
+  min-height: 0;
+  font-variant-numeric: tabular-nums;
+}
+.trow:last-child { border-bottom: 0; }
+
+.thead {
+  flex: 0 0 auto;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 8px;
+}
+.thead > * { text-align: right; }
+.thead .tname { text-align: left; }
+
+.tpos { text-align: right; font-size: 27px; font-weight: 700; color: var(--muted); }
+.tname {
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.06;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.tname.long   { font-size: 26px; }
+.tname.longer { font-size: 22px; }
+.tnum-cell { text-align: right; font-size: 27px; font-weight: 400; color: var(--muted); }
+.tgd { text-align: right; font-size: 27px; font-weight: 600; color: var(--muted); }
+.tpts { text-align: right; font-size: 36px; font-weight: 900; color: var(--ink); }
+
+/* The single derived line. Stated as a fact, set apart from the table. */
+.stat {
+  flex: 0 0 auto;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 2px solid var(--accent);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--muted);
+}
+{% endblock %}
+
+{% block watermark_note %}
+  <div class="watermark-note">{{ season_label }}</div>
+{% endblock %}
+
+{% block body %}
+<div class="table">
+  <div class="trow thead">
+    <div>#</div>
+    <div class="tname">Team</div>
+    <div>P</div><div>W</div><div>D</div><div>L</div><div>GD</div><div>PTS</div>
+  </div>
+{% for r in rows %}
+  <div class="trow">
+    <div class="tpos">{{ r.position }}</div>
+    <div class="tname{% if r.team.name|length > 21 %} longer{% elif r.team.name|length > 16 %} long{% endif %}">{{ r.team.name }}</div>
+    <div class="tnum-cell">{{ r.played }}</div>
+    <div class="tnum-cell">{{ r.won }}</div>
+    <div class="tnum-cell">{{ r.drawn }}</div>
+    <div class="tnum-cell">{{ r.lost }}</div>
+    <div class="tgd">{% if r.goal_difference > 0 %}+{% endif %}{{ r.goal_difference }}</div>
+    <div class="tpts">{{ r.points }}</div>
+  </div>
+{% endfor %}
+</div>
+{% if stat %}
+<div class="stat">{{ stat }}</div>
+{% endif %}
+{% endblock %}

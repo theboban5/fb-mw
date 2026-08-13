@@ -128,6 +128,11 @@ class MatchView:
         return self.status in ("played", "awarded")
 
     @property
+    def date_label(self) -> str:
+        """'Sat 15 Aug' — absolute, because a board gets re-shared."""
+        return format_short(self.date)
+
+    @property
     def scoreline(self) -> str:
         if self.home.goals is None or self.away.goals is None:
             return ""
@@ -180,6 +185,9 @@ class Ctx:
     date: datetime.date
     season: "dataset.Season"
     warnings: "list[str]" = field(default_factory=list)
+    # CLI flags a post type may read: match_id, competition, top_n, days.
+    # Kept as a plain dict so adding a flag never changes this signature.
+    options: "dict" = field(default_factory=dict)
 
     # ── lookups ──────────────────────────────────────────────────────────
 
@@ -467,6 +475,16 @@ def format_date(value: "str | datetime.date") -> str:
             return ""
         value = datetime.date.fromisoformat(value)
     return f"{value.day} {value.strftime('%b %Y')}"
+
+
+def format_short(value: "str | datetime.date") -> str:
+    """'2026-08-15' -> 'Sat 15 Aug'. For caption lines, where the full form
+    would crowd out the fixture itself."""
+    if isinstance(value, str):
+        if not value:
+            return ""
+        value = datetime.date.fromisoformat(value)
+    return f"{value.strftime('%a')} {value.day} {value.strftime('%b')}"
 
 
 def format_day(value: "str | datetime.date") -> str:

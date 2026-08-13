@@ -1,0 +1,96 @@
+{% extends "_base.html" %}
+
+{% block style %}
+/* The mixed board: many results, no crests, no scorers. Rows are text on a
+   shared axis — the printed results column, not a set of cards. */
+.groups { flex: 1 1 auto; display: flex; flex-direction: column; gap: 22px; padding-top: 8px; }
+.group { display: flex; flex-direction: column; }
+
+/* The competition label carries the same eyebrow treatment in miniature, so
+   the grouping reads as part of the family rather than a heading style. */
+.group-name {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 23px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.group-name::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 2px;
+  background: var(--line);
+}
+
+.result {
+  display: grid;
+  grid-template-columns: 1fr 132px 1fr;
+  align-items: baseline;
+  column-gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.result:last-child { border-bottom: 0; }
+.result .home { text-align: right; }
+.result .away { text-align: left; }
+.result .team {
+  font-size: 31px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--ink);
+}
+.result .team.long   { font-size: 27px; }
+.result .team.longer { font-size: 23px; }
+.result .score {
+  text-align: center;
+  font-size: 34px;
+  font-weight: 900;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.result .score .sep { color: var(--accent); padding: 0 0.08em; }
+
+/* One factual line of standings context, set apart above the watermark. */
+.table-line {
+  flex: 0 0 auto;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 2px solid var(--accent);
+  font-size: 25px;
+  font-weight: 600;
+  color: var(--muted);
+}
+{% endblock %}
+
+{% block watermark_note %}
+  <div class="watermark-note">{{ season_label }}</div>
+{% endblock %}
+
+{% block body %}
+<div class="groups">
+{% for g in groups %}
+  <div class="group">
+    <div class="group-name">{{ g.competition }}</div>
+{% for m in g.matches %}
+    <div class="result">
+      <div class="home">
+        <span class="team{% if m.home.team.name|length > 20 %} longer{% elif m.home.team.name|length > 15 %} long{% endif %}">{{ m.home.team.name }}</span>
+      </div>
+      <div class="score">{{ m.home.goals }}<span class="sep">–</span>{{ m.away.goals }}</div>
+      <div class="away">
+        <span class="team{% if m.away.team.name|length > 20 %} longer{% elif m.away.team.name|length > 15 %} long{% endif %}">{{ m.away.team.name }}</span>
+      </div>
+    </div>
+{% endfor %}
+  </div>
+{% endfor %}
+</div>
+{% if table_line %}
+<div class="table-line">{{ table_line }}</div>
+{% endif %}
+{% endblock %}

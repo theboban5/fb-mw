@@ -1,0 +1,9 @@
+# The social module's dependencies, deliberately separate from the root
+# requirements.txt: the site's deploy workflow installs that file and then
+# runs build.py, and it has no use for a browser engine. Installing these is
+# only needed to generate post packs.
+#
+#   pip install -r social/requirements.txt
+#   playwright install chromium
+jinja2>=3.1
+playwright>=1.40
