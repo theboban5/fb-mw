@@ -109,7 +109,6 @@ match_id,team_id,player_name,player_id,shirt_number,position,role,captain,minute
 40,MW_W,Tabitha Chawinga,MW_W_001,11,FW,starting,TRUE,,,,FALSE,FALSE,FALSE
 40,MW_W,Temwa Chawinga,MW_W_013,10,FW,starting,FALSE,,90,,FALSE,FALSE,FALSE
 40,MW_W,Leticia Chinyamula,MW_W_019,15,MF,sub_on,FALSE,63,,Chikondi Gondwe,FALSE,FALSE,FALSE
-40,MW_W,Vanessa Chikupila,MW_W_010,13,FW,sub_on,FALSE,63,,Asimenye Simwaka,FALSE,FALSE,FALSE
 40,MW_W,Madyina Nguluwe,MW_W_018,12,MF,sub_on,FALSE,85,,Faith Chinzimu,FALSE,FALSE,FALSE
 40,MW_W,Vitumbiko Mkandawire,MW_W_011,26,FW,sub_on,FALSE,90,,Temwa Chawinga,FALSE,FALSE,FALSE
 40,MW_W,Yamikani Kawonga,MW_W_020,16,GK,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
@@ -118,7 +117,6 @@ match_id,team_id,player_name,player_id,shirt_number,position,role,captain,minute
 40,MW_W,Olivia Phikani,MW_W_012,2,DF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
 40,MW_W,Sarah Mulimbika,MW_W_023,20,MF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
 40,MW_W,Lyna James,MW_W_024,25,MF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
+40,MW_W,Vanessa Chikupila,MW_W_010,13,FW,unused_sub,FALSE,63,,Asimenye Simwaka,FALSE,FALSE,FALSE
 40,MW_W,Tendai Sani,MW_W_004,8,MF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
 40,MW_W,Deborah Henry,MW_W_009,3,FW,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
-40,MW_W,Chisomo Banda,MW_W_025,19,DF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE
-40,MW_W,Tionge Phiri,MW_W_026,5,DF,unused_sub,FALSE,,,,FALSE,FALSE,FALSE

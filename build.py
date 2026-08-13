@@ -50,6 +50,7 @@ TIER_LABELS = {
     "MW_WP": "Women&#x2019;s First Division",
     "MW_KU19": "Under-19",
     "MW_U16": "Development",
+    "MW_BDU16": "Under-16",
 }
 
 _TIER_WORDS = {1: "Top Tier", 2: "Second Division", 3: "Third Division",

@@ -35,6 +35,7 @@ COMPETITION_SLUGS = {
     "MW_WP": "wp",
     "MW_KU19": "ku19",
     "MW_U16": "u16",
+    "MW_BDU16": "bdu16",
     # Derivation would give the same slug, but this dict doubles as the
     # landing-page order (build._LANDING_ORDER), so listing it pins the row's
     # place in the men's cup group as well as the URL.
