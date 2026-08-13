@@ -504,6 +504,9 @@ def main(argv):
         dist = os.path.abspath(argv[argv.index("--dist") + 1])
     snapshot = "--no-snapshot" not in argv
     allow_deletions = "--allow-deletions" in argv
+    # Lets every page state its own og:url; a staging build resolves the same
+    # URLs as production, which is what makes a parity diff meaningful.
+    render.DIST_ROOT = dist
 
     tz = timezone(timedelta(hours=TZ_OFFSET_HOURS), TZ_LABEL)
     now = datetime.now(tz)

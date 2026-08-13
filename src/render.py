@@ -18,12 +18,23 @@ SITE_DESCRIPTION = (
 # relative og:image. Regenerate with scripts/make_og_image.py.
 OG_IMAGE = f"{SITE_URL}/og-image.png"
 
+# Where the build is writing, so a page can name its own absolute og:url — the
+# renderers only ever see a relative "../" prefix. build.py sets this once, and
+# _write resolves the placeholder below against it; if it is never set the
+# og:url tag is simply dropped rather than shipped half-formed.
+DIST_ROOT = ""
+_OG_URL_TOKEN = "{{OG_URL}}"
+
 
 def social_meta(title: str, url: str = "") -> str:
     """Open Graph + Twitter tags, so a shared link previews as a card.
 
     Without these a chat client has nothing to show but the bare domain — it
     does not fall back to <title>. `title` is the raw (unescaped) page title.
+
+    `url` is the page's own absolute URL. Callers that know it pass it; the
+    rest leave it and _write fills it in from the path it writes to, because
+    that is the only place the output path is known.
     """
     t, d = escape(title), escape(SITE_DESCRIPTION)
     tags = [
@@ -42,8 +53,7 @@ def social_meta(title: str, url: str = "") -> str:
         f'<meta name="twitter:description" content="{d}">',
         f'<meta name="twitter:image" content="{OG_IMAGE}">',
     ]
-    if url:
-        tags.insert(3, f'<meta property="og:url" content="{escape(url)}">')
+    tags.insert(3, f'<meta property="og:url" content="{escape(url) or _OG_URL_TOKEN}">')
     return "\n".join(tags)
 
 
@@ -321,7 +331,32 @@ def _read(path):
         return fh.read()
 
 
+def canonical_url(path):
+    """The public URL of an output file, or "" if it isn't under DIST_ROOT.
+
+    Directory indexes lose the "index.html" so the URL matches the one people
+    actually share (…/bdu16/, not …/bdu16/index.html); a scraper that sees a
+    different og:url than the link it followed can decide the tags aren't for
+    that page.
+    """
+    if not DIST_ROOT:
+        return ""
+    rel = os.path.relpath(path, DIST_ROOT).replace(os.sep, "/")
+    if rel.startswith(".."):
+        return ""
+    if rel == "index.html":
+        rel = ""
+    elif rel.endswith("/index.html"):
+        rel = rel[: -len("index.html")]
+    return f"{SITE_URL}/{rel}"
+
+
 def _write(path, text):
+    if _OG_URL_TOKEN in text:
+        url = canonical_url(path)
+        text = (text.replace(_OG_URL_TOKEN, escape(url)) if url else
+                text.replace(
+                    f'<meta property="og:url" content="{_OG_URL_TOKEN}">\n', ""))
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(text)
 
