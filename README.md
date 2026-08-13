@@ -41,8 +41,10 @@ separate `nt_*` national-team schema, …).
 `/matches/YYYY-MM-DD.html` is any other date — written for every date that has
 a match, plus a contiguous window around today (`matches_page.WINDOW_BACK` /
 `WINDOW_FORWARD`) so the day-by-day arrows never dead-end. It is the only page
-built from `matches.kickoff`, and the only one that shows a season a
-competition is no longer building.
+that shows a kickoff *in place of* the score (a fixture's time is the answer
+to "what's on today"), and the only one that shows a season a competition is
+no longer building. Elsewhere — competition matches tabs, club pages, cup
+brackets — the kickoff sits beside the date in the caption line.
 
 A date only has fixtures on it if the sheet's `date` column is filled in
 ahead of time: an undated match belongs to no day and appears nowhere in this

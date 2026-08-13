@@ -721,6 +721,15 @@ table.v2-results-table {
   font-size: 0.82rem;
   min-width: 7rem;
 }
+/* The kickoff sits on its own line under the date so the column keeps its
+   width (the row's white-space:nowrap would otherwise push the table wide).
+   Absent entirely when the sheet has no time — never an empty line. */
+.v2-res-time {
+  display: block;
+  font-size: 0.74rem;
+  color: #888;
+  font-variant-numeric: tabular-nums;
+}
 .v2-res-home {
   text-align: right;
   font-weight: 700;

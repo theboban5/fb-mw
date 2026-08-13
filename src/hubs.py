@@ -44,7 +44,10 @@ def _club_result_row(m, league):
     away = escape(league.teams[m.away_code].name if m.away_code in league.teams else m.away_code)
     score_cell, fix_cls = render._score_cell(m)
     date = escape(render._format_date(m.date))
-    meta = f"{date} &middot; {escape(league.league_name)}" if date else escape(league.league_name)
+    # Same order as every other match caption on the site: date, kickoff, then
+    # the competition in place of the results table's venue.
+    bits = [b for b in (date, escape(m.kickoff_label), escape(league.league_name)) if b]
+    meta = " &middot; ".join(bits)
     return (
         f'<tr class="v2-res-meta-row"><td colspan="3">'
         f'<span class="v2-res-meta">{meta}</span></td></tr>'

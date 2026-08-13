@@ -653,8 +653,17 @@ def _score_cell(m):
 
 
 def _match_meta(m, date):
-    """The caption line above a compact result: date · venue · awarded note."""
+    """The caption line above a compact result: date · kickoff · venue · note.
+
+    The kickoff sits next to the date because that is the pair a reader asks
+    for together ("when is it on"). It is simply absent when the sheet has no
+    kickoff for the match — an unannounced time shows nothing, never a
+    placeholder. getattr keeps old-schema Match objects rendering unchanged.
+    """
     meta = date
+    kickoff = getattr(m, "kickoff_label", "")
+    if kickoff:
+        meta = f"{meta} &middot; {escape(kickoff)}" if meta else escape(kickoff)
     if m.stadium:
         meta = f"{meta} &middot; {escape(m.stadium)}" if meta else escape(m.stadium)
     note = getattr(m, "awarded_note", "")
@@ -772,6 +781,12 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                 # postponed/cancelled/abandoned show a badge instead.
                 score_cell, fix_cls = _score_cell(m)
                 date = escape(_format_date(m.date))
+                # The wide table has a DATE column, so the kickoff goes under
+                # the date rather than into a caption row: same information,
+                # one column, no extra row per match.
+                kickoff = escape(getattr(m, "kickoff_label", ""))
+                date_cell = date + (f'<span class="v2-res-time">{kickoff}</span>'
+                                    if kickoff else "")
                 if compact:
                     meta = _match_meta(m, date)
                     # No date and no venue (e.g. matchday-only leagues): skip the
@@ -790,7 +805,7 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                 else:
                     row = (
                         f'<tr class="v2-res-row{fix_cls}{alt_cls}">'
-                        f'<td class="v2-res-date">{date}</td>'
+                        f'<td class="v2-res-date">{date_cell}</td>'
                         f'<td class="v2-res-home">{home_cell}</td>'
                         f'{score_cell}'
                         f'<td class="v2-res-away">{away_cell}</td>'

@@ -118,14 +118,11 @@ def offset_label(iso: str, today: str) -> str:
 def _clock(raw: str) -> str:
     """"14:30" from the sheet's "14:30" or Sheets' "14:30:00"; "" when blank.
 
-    The kickoff column has been in the matches tab all along but nothing
-    rendered it, so nothing normalised it either — both forms are in the data.
+    One normaliser for the whole site (adapt.clock): the day view reads raw
+    dataset.Match rows, the competition pages read adapted MatchViews, and a
+    kickoff must not read differently depending on which page you land on.
     """
-    raw = (raw or "").strip()
-    if not raw or raw.lower() in ("tbd", "tba"):
-        return ""
-    parts = raw.split(":")
-    return f"{parts[0]:0>2}:{parts[1]}" if len(parts) >= 2 else raw
+    return adapt.clock(raw)
 
 
 # ── Collecting a day's football ──────────────────────────────────────────────

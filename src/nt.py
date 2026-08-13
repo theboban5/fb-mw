@@ -58,8 +58,9 @@ NT_GOAL_TYPES = frozenset({"", "penalty", "own goal", "own_goal"})
 _NO_DATE = ("tbd", "tba")
 
 # Kickoff times are entered — and shown — in Malawi's clock, so a reader here
-# never has to convert one. Malawi keeps CAT (UTC+2) year round, no DST.
-KICKOFF_TZ = "CAT"
+# never has to convert one. Defined in dataset.py because the league tabs
+# label their kickoffs the same way (see adapt.MatchView.kickoff_label).
+KICKOFF_TZ = dataset.KICKOFF_TZ
 
 
 # ── Parsing helpers ──────────────────────────────────────────────────────────

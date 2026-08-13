@@ -93,6 +93,12 @@ goals (match_id, team_id, player_id, assist_player_id) >── players
   with their recorded score (and show `awarded_note`).
 - Dates are strict `YYYY-MM-DD`; a blank match date is allowed (fixture not
   yet scheduled to a day), anything else fails the build.
+- **`matches.kickoff` is optional and always in Malawi time** (CAT, UTC+2, no
+  DST — same rule as `nt_matches.kickoff`). `HH:MM` or Sheets' `HH:MM:SS`;
+  `adapt.clock` normalizes both. Blank, `TBD`/`TBA` or anything unreadable
+  means "not announced" and renders *nothing* — never a placeholder time,
+  and never a build failure. Where a kickoff is known it shows beside the
+  date on fixtures and results alike, labelled `14:30 CAT`.
 - League display name = `competition_seasons.sponsor_name` if non-empty,
   else `competitions.name`. Team display = `teams.display_name`. Club
   display = `clubs.name`.

@@ -83,6 +83,11 @@ _ALL_GIDS = {**TAB_GIDS, **NT_TAB_GIDS}
 
 UNKNOWN_PLAYER_ID = "CAF_MW_UNKNOWN"
 
+# Every kickoff in the sheet — league tabs and nt_* alike — is entered in
+# Malawi's clock, so a reader here never has to convert one. Malawi keeps CAT
+# (UTC+2) year round, no DST. Both schemas label a kickoff with this.
+KICKOFF_TZ = "CAT"
+
 
 def tab_url(tab: str) -> str:
     base = os.environ.get("DATASET_BASE_URL", BASE_URL)

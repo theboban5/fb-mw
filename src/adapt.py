@@ -64,6 +64,9 @@ STAGE_ORDER = {"r64": 0, "r32": 1, "r16": 2, "qf": 3, "sf": 4, "3p": 5, "final":
 STAGE_CHIPS = {"r64": "R64", "r32": "R32", "r16": "R16", "qf": "QF",
                "sf": "SF", "3p": "3P", "final": "F"}
 
+# Kickoffs are entered in Malawi's clock and shown with the zone named.
+KICKOFF_TZ = dataset.KICKOFF_TZ
+
 
 def competition_slug(competition_id: str, country: str = "mw") -> str:
     if competition_id in COMPETITION_SLUGS:
@@ -79,6 +82,24 @@ def short_season_label(label: str) -> str:
     if sep and len(a) == 4 and a.isdigit():
         return f"{a[2:]}/{b}"
     return label
+
+
+def clock(raw: str) -> str:
+    """"14:30" from the sheet's "14:30" or Sheets' "14:30:00"; "" when blank.
+
+    Both export forms are in the matches tab — for years nothing rendered the
+    kickoff column, so nothing normalised it either. A value that is neither
+    (a stray note, "TBD") normalises to "", which reads as "kickoff not known
+    yet" everywhere: an unannounced kickoff must never hold up a build.
+    """
+    raw = (raw or "").strip()
+    if not raw or raw.lower() in ("tbd", "tba"):
+        return ""
+    h, sep, rest = raw.partition(":")
+    m = rest.partition(":")[0]
+    if not (sep and h.isdigit() and len(m) == 2 and m.isdigit()):
+        return ""
+    return f"{int(h):02d}:{m}" if 0 <= int(h) <= 23 and int(m) <= 59 else ""
 
 
 @dataclass(frozen=True)
@@ -106,6 +127,7 @@ class MatchView:
     away_code: str
     home_goals: "int | None"
     away_goals: "int | None"
+    kickoff: str = ""    # "HH:MM" in Malawi time, "" when not announced
     stadium: str = ""
     match_id: "str | None" = None
     status: str = "played"
@@ -120,6 +142,15 @@ class MatchView:
     def played(self) -> bool:
         return (self.status in ("played", "awarded")
                 and self.home_goals is not None and self.away_goals is not None)
+
+    @property
+    def kickoff_label(self) -> str:
+        """"14:30 CAT", or "" when the sheet has no kickoff for this match.
+
+        The zone is spelled out because the site is read from outside Malawi
+        too, and it matches how the national-team pages label a kickoff.
+        """
+        return f"{self.kickoff} {KICKOFF_TZ}" if self.kickoff else ""
 
     @property
     def status_badge(self) -> str:
@@ -309,6 +340,7 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
             away_code=code_of.get(m.away_team_id, m.away_team_id),
             home_goals=m.home_goals if m.counts_for_table else None,
             away_goals=m.away_goals if m.counts_for_table else None,
+            kickoff=clock(m.kickoff),
             stadium=venue.name if venue else "",
             match_id=m.match_id,
             status=m.status,
