@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+/* Tokens come from social/config.py — never write a colour literal below. */
+:root {
+{% for key, value in tokens.items() %}
+  --{{ key|replace('_', '-') }}: {{ value }};
+{% endfor %}
+}
+
+/* Vendored so a render never depends on the network. Inter ships as one
+   variable font per subset, hence the weight range on a single src. */
+{% for file, unicode_range in font_files %}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: block;
+  src: url('assets/fonts/{{ file }}') format('woff2');
+  unicode-range: {{ unicode_range }};
+}
+{% endfor %}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--ground);
+  {# |safe: the stack quotes 'Inter', and escaping them breaks the CSS
+     silently — the board renders in Chromium's serif and the font check
+     still passes, because the face did load. #}
+  font-family: {{ font_stack|safe }};
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The board. Exactly one per template — render.py screenshots this element,
+   so nothing outside it is ever captured. */
+#board {
+  width: {{ size }}px;
+  height: {{ size }}px;
+  background: var(--ground);
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── The signature device ──────────────────────────────────────────────
+   A full-bleed eyebrow bar closed by an accent rule, identical on every
+   template. It is what makes six different layouts read as one family, and
+   it survives being cropped to a thumbnail. */
+.eyebrow {
+  flex: 0 0 auto;
+  height: 96px;
+  background: var(--accent-deep);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 44px;
+  gap: 24px;
+}
+/* Sponsor names run long ('GoJet Investments CRFA Division One League'), and
+   an ellipsis in the one element that says which competition this is would be
+   the worst possible place to lose words. Step the size down instead. */
+.eyebrow-title {
+  font-size: 31px;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: #ffffff;
+  line-height: 1.06;
+}
+.eyebrow-title.long   { font-size: 25px; letter-spacing: 0.10em; }
+.eyebrow-title.longer { font-size: 21px; letter-spacing: 0.06em; }
+.eyebrow-kind {
+  flex: 0 0 auto;
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+}
+.eyebrow-rule { flex: 0 0 auto; height: 6px; background: var(--accent); }
+
+/* ── Standing head: the line under the rule (date, stage, season) ────── */
+.standfirst {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 26px 44px 0;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.body { flex: 1 1 auto; padding: 0 44px; display: flex; flex-direction: column; min-height: 0; }
+
+/* ── Crest tile ────────────────────────────────────────────────────────
+   Square, hairline-bordered, same on every template. A missing crest gets a
+   monogram in brand neutrals — the teams tab has no club colours to use. */
+.crest {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--monogram-bg);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.crest img { width: 100%; height: 100%; object-fit: contain; }
+.crest span {
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: var(--monogram-ink);
+}
+
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* ── Watermark ─────────────────────────────────────────────────────────
+   Assume the graphic is re-shared with no caption: this is the only thing
+   saying where it came from. Solid ground behind it, full-strength ink, and
+   heavy enough to survive Instagram's compression. */
+.watermark {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 44px 34px;
+  background: var(--ground);
+}
+.watermark-mark { width: 20px; height: 20px; background: var(--accent); }
+.watermark-text {
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+.watermark-note {
+  margin-left: auto;
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+{% block style %}{% endblock %}
+</style>
+</head>
+<body>
+<div id="board">
+  <div class="eyebrow">
+    <div class="eyebrow-title{% if eyebrow|length > 34 %} longer{% elif eyebrow|length > 26 %} long{% endif %}">{{ eyebrow }}</div>
+    <div class="eyebrow-kind">{{ kind }}</div>
+  </div>
+  <div class="eyebrow-rule"></div>
+{% block standfirst %}
+  <div class="standfirst">
+    <span>{{ standfirst_left }}</span>
+    <span>{{ standfirst_right }}</span>
+  </div>
+{% endblock %}
+  <div class="body">
+{% block body %}{% endblock %}
+  </div>
+  <div class="watermark">
+    <div class="watermark-mark"></div>
+    <div class="watermark-text">{{ watermark }}</div>
+{% block watermark_note %}{% endblock %}
+  </div>
+</div>
+</body>
+</html>

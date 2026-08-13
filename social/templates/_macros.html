@@ -1,0 +1,23 @@
+{# Shared fragments. Every template draws crests through this macro so the
+   tile treatment — square, hairline border, monogram fallback — stays
+   identical across the family.
+
+   Pass px to size the tile inline; pass 0 to let the template's CSS own the
+   size (the results board sizes it from --crest, so there is one number to
+   change per density rather than two that can drift apart). #}
+{% macro crest(team, px=0) %}
+<div class="crest"{% if px %} style="width: {{ px }}px; height: {{ px }}px;"{% endif %}>
+{% if team.crest %}
+  <img src="{{ team.crest|file_url }}" alt="">
+{% else %}
+  <span{% if px %} style="font-size: {{ (px * 0.36)|round|int }}px;"{% endif %}>{{ team.monogram }}</span>
+{% endif %}
+</div>
+{% endmacro %}
+
+{# A team name that has to survive 'Goshen City Dedza Dynamos' without
+   pushing the scoreline off its axis: step the size down by length, then
+   allow a second line. #}
+{% macro team_name(name) %}
+<div class="name{% if name|length > 21 %} longer{% elif name|length > 14 %} long{% endif %}">{{ name }}</div>
+{% endmacro %}
