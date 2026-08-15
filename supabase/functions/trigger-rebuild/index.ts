@@ -8,7 +8,8 @@
 //
 // Flow:
 //   reporter publishes -> submit_match_report succeeds -> app invokes this
-//   -> caller is confirmed to be an active reporter
+//   -> GoTrue resolves the caller's token to a user
+//   -> that user is confirmed to be an active reporter
 //   -> claim_rebuild() debounces
 //   -> workflow_dispatch on the existing deploy.yml
 //
@@ -63,22 +64,52 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // an active reporters row behind the token — for the publishable key,
   // auth.uid() is null and so is the answer. Deploys cost build minutes; this
   // must not be an open endpoint.
+  // This runs in TWO steps rather than one call to current_reporter_id(),
+  // because that RPC has to be invoked AS the caller, and calling PostgREST as
+  // the caller needs a publishable key in the `apikey` header — which this
+  // function cannot get. The platform injects SUPABASE_ANON_KEY, but on a
+  // project using the new API keys that slot holds a 64-char digest, not a
+  // usable key: PostgREST answers "Invalid API key", the lookup returns null,
+  // and every reporter is silently told they are "not an active reporter".
+  // That is exactly the bug this replaces — no rebuild was ever dispatched.
+  //
+  // So: ask GoTrue who the token belongs to (it authenticates with the secret
+  // key, which this function does have), then resolve the reporter with the
+  // secret key. The trust boundary is unchanged — the caller's own token still
+  // decides the identity, and the reporters row still decides the answer.
   const authHeader = req.headers.get("Authorization") ?? "";
   if (!authHeader) return json({ error: "not authenticated" }, 401);
 
   let reporterId: string | null = null;
   try {
-    const who = await fetch(`${supabaseUrl}/rest/v1/rpc/current_reporter_id`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // The caller's own token, deliberately: this asks who THEY are.
-        Authorization: authHeader,
-        apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      },
-      body: "{}",
+    // GoTrue resolves a *user* token only. The publishable key satisfies
+    // verify_jwt but is not a user token, so it stops here with a 401 — which
+    // is the check that keeps this from being an open endpoint.
+    const who = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: { Authorization: authHeader, apikey: serviceKey },
     });
-    if (who.ok) reporterId = await who.json();
+    if (who.ok) {
+      const user = await who.json();
+      if (user?.id) {
+        // Reading `reporters` with the secret key deliberately bypasses RLS:
+        // the row is selected by the user id GoTrue just verified, and only
+        // an active reporter matches. `select=reporter_id` returns nothing
+        // else about them.
+        const rows = await fetch(
+          `${supabaseUrl}/rest/v1/reporters` +
+            `?select=reporter_id&auth_user_id=eq.${encodeURIComponent(user.id)}` +
+            `&active=is.true&limit=1`,
+          {
+            headers: {
+              Authorization: `Bearer ${serviceKey}`,
+              apikey: serviceKey,
+            },
+          },
+        );
+        if (rows.ok) reporterId = (await rows.json())?.[0]?.reporter_id ?? null;
+        else console.error("reporter lookup failed", rows.status);
+      }
+    }
   } catch (err) {
     console.error("identity check failed", err);
     return json({ error: "could not verify identity" }, 503);

@@ -343,3 +343,51 @@ a { color: var(--accent); }
   font-size: 1.1rem; line-height: 1; cursor: pointer;
 }
 .rp-x:active { background: var(--danger-wash); color: var(--danger); border-color: var(--danger); }
+
+/* ─── Home actions and filters ───────────────────────────────────────────── */
+
+/* Add fixture / New league / Refresh. Laid out as a row that wraps rather
+   than three full-width buttons, so they cost one line on a phone instead of
+   pushing the fixture list below the fold. */
+.rp-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+.rp-actions .rp-btn {
+  flex: 1 1 auto; width: auto; margin-top: 0;
+  min-height: 42px; padding: 8px 14px; font-size: 0.88rem;
+}
+
+.rp-filters {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  padding: 12px; margin: 12px 0 4px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--row-alt);
+}
+/* Competition names are long, so that filter takes a whole row and the two
+   short ones share the next. */
+.rp-filter { flex: 1 1 140px; min-width: 0; }
+.rp-filter:first-child { flex-basis: 100%; }
+.rp-filter-label {
+  display: block; margin-bottom: 5px;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--muted);
+}
+.rp-filter-clear { flex-basis: 100%; margin-top: 2px; min-height: 40px; }
+
+.rp-select {
+  width: 100%; min-height: var(--tap); padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  /* 16px for the same reason as .rp-input: anything smaller makes iOS Safari
+     zoom the viewport on focus. */
+  font-size: 16px; font-family: inherit; color: var(--ink);
+  background: var(--bg);
+}
+.rp-select:focus {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+  border-color: var(--accent);
+}
+/* A date input is taller than its box on iOS unless the height is pinned. */
+.rp-date { min-height: var(--tap); }
+
+.rp-textarea {
+  min-height: 200px; padding: 12px 14px;
+  line-height: 1.5; resize: vertical;
+}

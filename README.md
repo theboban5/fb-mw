@@ -175,6 +175,12 @@ Badges are files, not data. `logos` prints the exact path for each — the
 renderer tries `logos/clubs/<legacy_code>` first and then `logos/clubs/<club_id>`,
 so it names whichever key that team actually carries. A missing badge is fine.
 
+An administrator can also create a competition from the phone, at
+`/report/#/league/new` — name, short code and a pasted list of team names, in
+one call. That is the fast path; `season.py` is the thorough one, and the only
+one that does venues, badges and a whole fixture list from a reviewed file.
+See "Entering fixtures and competitions from the portal".
+
 The old `static/admin/` entry UI and `tools/entry/` Apps Script wrote to the
 Google Sheet and are **dead** — the sheet is no longer read. Use this instead.
 
@@ -252,8 +258,22 @@ the ordinary static tree copy. No framework, no bundler, no build step.
 /report/#/              today · awaiting result · upcoming · recently reported
 /report/#/login         email + password (no public signup)
 /report/#/m/<public-id> the reporting screen — this is the WhatsApp link
+/report/#/add           add a fixture to a competition you cover
+/report/#/league/new    create a competition and its teams (admin only)
 /report/#/account       change password, sign out
 ```
+
+**Filtering the fixture list.** The home screen takes three filters —
+competition, bucket (today / awaiting result / upcoming / recently reported)
+and a single date — and they live in the URL (`#/?comp=MW_SRFA2&show=awaiting`)
+rather than in a variable. The back button therefore works, a reload keeps the
+view, and "my league, awaiting result" is a link a reporter can keep.
+
+`show` and `date` are applied on the phone, to a list it already holds.
+**Competition is not**: played results are capped at 60 per load, and a cap
+applied before filtering would hide an older league's results behind sixty
+newer ones from elsewhere, so narrowing to a competition re-reads the database
+scoped to it.
 
 Routing is by **hash** rather than real paths for two reasons: GitHub Pages
 cannot rewrite `/report/m/<id>` onto a file, and one cached page means moving
@@ -284,19 +304,86 @@ are unset the build warns and `/report` ships unconfigured — a missing reporte
 key must never be able to stop a results deploy. `build.py` refuses to build if
 the publishable slot holds something that looks like a secret key.
 
+### Entering fixtures and competitions from the portal
+
+Reporting a result needs a fixture to report it against, and a fixture needs a
+competition with teams entered in it. Both of those used to be CLI-only
+(`scripts/season.py`), which meant a reporter covering a league nobody had
+entered a fixture list for could do nothing at all. Two RPCs added in `0008`
+close that, at two different levels of privilege:
+
+| | who | what it does |
+|---|---|---|
+| `create_fixture` | any reporter, for a competition they are assigned to | one scheduled fixture |
+| `create_league` | **admin only** | a competition, its season row, and a club + team + entry per pasted name |
+
+**Why creating a league is admin-only and adding a fixture is not.** It is not
+caution about typos. `create_league` is the one call that *mints ids* — a
+`club_id` and `team_id`, once written, are referenced by every match, entry and
+goal that follows and are never regenerated (DATA_MODEL.md). That makes it a
+structural act rather than data entry. A fixture, by contrast, references ids
+that already exist and can simply be deleted if wrong.
+
+**Everything validate.py checks, these check first.** The validator runs as the
+first step of every build and a single bad row fails the job — which means *no
+deploy at all*, including everyone else's results. A typo entered on a phone
+must not be able to take the site down, so each rule is enforced again at
+insert time where it can still be shown to the person who caused it:
+
+| validate.py | enforced in |
+|---|---|
+| check 2 — foreign keys | every reference resolved before insert |
+| check 3 — both teams entered in the competition+season | `create_fixture` step 6 (and the composite FK behind it) |
+| check 4 — no self-play, no score on a scheduled match | `create_fixture` steps 4 and the insert itself |
+| check 7 — cup stage vocabulary | `create_fixture` step 7, which reads `competitions.type` |
+
+The fixture form goes further and simply *does not offer* a team that is not
+entered in the chosen competition, so the commonest way to break check 3 is
+unreachable. The RPC checks it anyway; the client is not the boundary.
+
+`create_league` takes the team list as pasted text, one name per line. Names
+are de-duplicated case-insensitively, **a club already in the database is
+reused rather than duplicated** (a second `club_id` for the same club would
+split its identity across the site permanently), and ids are minted to the
+documented conventions — `MW_<initials>` for a club, `<club_id>_<gender><squad>`
+for a team. Fewer than two distinct teams rolls the whole thing back: a
+competition that cannot hold a fixture is not a thing to have created.
+
+`scripts/season.py` remains the better tool for a whole division with venues,
+badges and a full fixture list from one reviewed file. The portal is for the
+phone — a league someone needs to start reporting today.
+
 ### Publishing a result
 
-`submit_match_report(match_id, home_score, away_score, status)` is the **only**
-write path a reporter has. There is no UPDATE policy on `matches` at all,
+`submit_match_report(match_id, home_score, away_score, status, source_ref)` is
+the **only** write path a reporter has. There is no UPDATE policy on `matches` at all,
 because being authorized to report a result is not permission to edit the row —
 a generic UPDATE would let anyone who can report a score also swap the teams or
-move the fixture into another season. The RPC writes four columns and derives
+move the fixture into another season. The RPC writes five columns and derives
 the rest:
 
 ```
-score + status  →  source_type='reporter', reported_by, reported_at,
-                   confidence, updated_at, and a match_change_log entry
+score + status + source_ref  →  source_type='reporter', reported_by,
+                                reported_at, confidence, updated_at, and a
+                                match_change_log entry
 ```
+
+**`source_ref` is where a result came from** — the Facebook post the reporter
+saw it in, or free text like "told to me by the referee". The column is not
+new and neither is the practice: 257 matches already carry a link there from
+the spreadsheet era. It is never rendered publicly; it exists so a result can
+be checked later.
+
+**`source_type` deliberately stays `'reporter'`** even when the source is a
+Facebook link. It answers "how did this row get here?", and the answer is still
+that a reporter typed it — which is what `confidence` and the unconfirmed
+asterisk on the public site key off. Repointing it at `'facebook'` would
+quietly change how the result renders.
+
+Sending a blank `source_ref` **keeps whatever was already recorded**: a
+correction to the score, submitted without re-typing the link, must not erase
+the link. The value is trimmed and capped at 500 characters, and it takes part
+in the audit log alongside the score.
 
 It refuses anything else: an unknown status (`full_time` included — the UI says
 "Full time", the database says `played`), a played result missing a score, a
@@ -321,13 +408,22 @@ when. Anon cannot read it; a reporter sees only matches they can report; admins
 see everything. An unchanged re-publish adds no row.
 
 ```bash
-RLS_LIVE=1 python3 -m unittest tests.test_reporting_live
+RLS_LIVE=1 python3 -m unittest tests.test_reporting_live tests.test_entry_live
 ```
 
 24 tests covering authorization, validation, the narrow-update guarantee (that
 publishing cannot alter teams, competition, season, date, kickoff, venue or
-`public_id`) and the audit trail. They build their own throwaway fixtures in a
-real competition — no test ever rewrites a genuine scoreline.
+`public_id`) and the audit trail, plus 33 in `test_entry_live` covering
+`create_fixture`, `create_league` and `source_ref`. They build their own
+throwaway fixtures in a real competition — no test ever rewrites a genuine
+scoreline.
+
+`test_entry_live` is the one suite that creates whole competitions, and unlike
+a match there is no `source_type='placeholder'` that would make a leaked one
+render nowhere. So every id it mints is namespaced `MW_ZZTEST*`, every club it
+invents is named `ZZ *`, and `TeardownAuditTest` — named to sort last — fails
+loudly if any of it survived. A failed teardown would otherwise put a fake
+league on everyleague.co at the next build with nothing to complain about it.
 
 ### Automatic rebuild after a publish
 
@@ -336,7 +432,8 @@ not live until the site is rebuilt. The reporter app asks for that:
 
 ```
 publish succeeds → app invokes trigger-rebuild (Edge Function)
-                 → caller confirmed to be an active reporter
+                 → GoTrue resolves the caller's token to a user
+                 → that user confirmed to be an active reporter
                  → claim_rebuild() debounces
                  → workflow_dispatch on the existing deploy.yml
                  → build → validate → Pages deploy
@@ -344,6 +441,27 @@ publish succeeds → app invokes trigger-rebuild (Edge Function)
 
 **The GitHub credential lives only in the Edge Function**, as a secret. It is
 never in `static/`, never in `config.js`, and never reachable from a browser.
+
+**How the caller is identified, and why it is not the obvious way.** The
+natural implementation asks `current_reporter_id()` as the caller — but calling
+PostgREST as the caller needs a publishable key in the `apikey` header, and the
+function cannot get one. The platform injects `SUPABASE_ANON_KEY`, but on a
+project using the new API keys that slot holds a 64-character digest rather
+than a usable key: PostgREST answers `Invalid API key`, the lookup returns
+null, and **every reporter is silently told they are "not an active
+reporter"**. That was live from the portal's first day until 2026-08-16 —
+`rebuild_state.dispatch_count` sat at 0 while results published normally, and
+nothing surfaced it because the trigger is deliberately best-effort and never
+shown to the reporter.
+
+So identification runs in two steps, neither of which needs a publishable key:
+GoTrue (`/auth/v1/user`) resolves the caller's own token to a user, and the
+reporter row is then read with the secret key. The trust boundary is unchanged
+— the caller's token still decides who they are, and the `reporters` row still
+decides the answer. The publishable key is not a user token, so it stops at
+GoTrue with a 401, which is what keeps this from being an open endpoint.
+
+If `dispatch_count` is not climbing, that is the first thing to check.
 
 **Debounce.** `claim_rebuild()` returns true at most once per cooldown window
 (60s default) and is a *single atomic UPDATE* — the decision is the `WHERE`

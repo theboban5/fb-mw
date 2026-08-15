@@ -229,15 +229,20 @@ class SubmitMatchReportTest(unittest.TestCase):
         entries = self.log(self.match_a)
         self.assertEqual(len(entries), 2)
 
+        # source_ref joined old_values/new_values in 0008 — where a result came
+        # from is part of what changed, and is audited with the score.
         first, second = entries
         self.assertEqual(first["old_values"]["status"], "scheduled")
         self.assertIsNone(first["old_values"]["home_goals"])
         self.assertEqual(first["new_values"],
-                         {"home_goals": 2, "away_goals": 1, "status": "played"})
+                         {"home_goals": 2, "away_goals": 1, "status": "played",
+                          "source_ref": ""})
         self.assertEqual(second["old_values"],
-                         {"home_goals": 2, "away_goals": 1, "status": "played"})
+                         {"home_goals": 2, "away_goals": 1, "status": "played",
+                          "source_ref": ""})
         self.assertEqual(second["new_values"],
-                         {"home_goals": 2, "away_goals": 2, "status": "played"})
+                         {"home_goals": 2, "away_goals": 2, "status": "played",
+                          "source_ref": ""})
 
     def test_every_change_is_attributed(self):
         self.submit("a", self.match_a, 1, 0, "played")
@@ -283,7 +288,8 @@ class SubmitMatchReportTest(unittest.TestCase):
             self.assertIn(status, (401, 403, 404, 405), method)
         # Still exactly as written.
         self.assertEqual(self.log(self.match_a)[0]["new_values"],
-                         {"home_goals": 2, "away_goals": 1, "status": "played"})
+                         {"home_goals": 2, "away_goals": 1, "status": "played",
+                          "source_ref": ""})
 
 
 if __name__ == "__main__":

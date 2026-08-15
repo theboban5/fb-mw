@@ -77,7 +77,15 @@ goals (match_id, team_id, player_id, assist_player_id) >── players
   (`3p` = third-place play-off). Two-legged ties are future work — a `leg`
   column would sit beside `stage`; every tie is single-leg until then.
 - `source_type`: reporter | rfa | fa | club | facebook | newspaper | whatsapp |
-  backfill | placeholder | unknown (blank cells normalize to `unknown`)
+  backfill | placeholder | unknown (blank cells normalize to `unknown`).
+  It records *how the row got here*, not where the fact came from — anything
+  entered through `/report` is `reporter` even when the reporter saw it on
+  Facebook, because `confidence` and the unconfirmed asterisk key off it.
+- `matches.source_ref` is free text: **where** the result came from — usually a
+  Facebook post URL, sometimes a sentence. Never rendered publicly; it exists
+  so a result can be checked later. Written by `submit_match_report`, which
+  leaves it untouched when the caller sends a blank (a score correction must
+  not erase the link).
 - `confidence`: unconfirmed | confirmed | official
 - `goals.goal_type`: (blank) | open_play | penalty | free_kick | header | own_goal
 - `teams.gender`: m | w ; `teams.age_group`: senior | u20 | u19 | u17 | u16 | u15

@@ -6,9 +6,11 @@
  * seconds without losing it if the network drops.
  *
  * Routes
- *   #/            the reporter's fixtures, bucketed
+ *   #/            the reporter's fixtures, bucketed and filterable
  *   #/login       email + password (no signup — accounts are made by CLI)
  *   #/m/<uuid>    one match, the reporting screen. This is the WhatsApp link.
+ *   #/add         add a fixture to a competition you cover
+ *   #/league/new  create a competition and its teams (administrators only)
  *   #/account     who am I, change password, sign out
  *
  * Three rules the code keeps:
@@ -122,14 +124,35 @@ function humanError(error) {
     return "That match no longer exists. Go back and pick it again.";
   }
   if (message.includes("only an administrator")) {
-    return "Only an administrator can record an awarded result.";
+    return error.message.charAt(0).toUpperCase() + error.message.slice(1) + ".";
+  }
+  // create_fixture and create_league phrase every rejection for a person to
+  // read — they are the same rules validate.py enforces at build time, said
+  // once here where the reporter can still do something about them. Passing
+  // them straight through is the point; rewriting them would lose the detail
+  // that makes them actionable.
+  if (message.includes("cannot play itself")
+      || message.includes("not entered")
+      || message.includes("already in the list")
+      || message.includes("kickoff must look like")
+      || message.includes("at least two")
+      || message.includes("already exists")
+      || message.includes("short code")
+      || message.includes("age group")
+      || message.includes("round")
+      || message.includes("no active season")
+      || message.includes("both teams are required")
+      || message.includes("gender must be")
+      || message.includes("type must be")
+      || message.includes("needs a name")) {
+    return error.message.charAt(0).toUpperCase() + error.message.slice(1);
   }
   // The RPC's own validation, which is phrased for a person to read.
   if (message.includes("invalid score") || message.includes("invalid status")) {
     return error.message;
   }
   if (code === "23514" || code === "23503" || code === "23505") {
-    return "That result could not be saved — please check the score and status.";
+    return "That could not be saved — please check what you entered.";
   }
   return "Something went wrong. Your entry is still here — please try again.";
 }
@@ -156,23 +179,44 @@ async function loadContext() {
   };
 }
 
+// Competition names and the active season change about once a year, and every
+// screen needs them. Fetching them per render would put three extra round
+// trips in front of a list the phone could already draw.
+let referenceCache = {};
+
+const invalidateReference = () => { referenceCache = {}; };
+
+function once(key, load) {
+  if (!referenceCache[key]) {
+    // The PROMISE is cached, not the value: two screens rendering together ask
+    // once between them rather than racing.
+    referenceCache[key] = load().catch((error) => {
+      delete referenceCache[key];       // a failure must not be cached
+      throw error;
+    });
+  }
+  return referenceCache[key];
+}
+
 /** competition_id -> display name (sponsor_name wins, exactly as the site). */
-async function competitionNames() {
-  const [{ data: comps }, { data: seasons }] = await Promise.all([
-    supabase.from("competitions").select("competition_id,name"),
-    supabase.from("competition_seasons").select("competition_id,sponsor_name,status"),
-  ]);
-  const names = {};
-  (comps || []).forEach((c) => { names[c.competition_id] = c.name; });
-  (seasons || []).forEach((cs) => {
-    if (cs.sponsor_name) names[cs.competition_id] = cs.sponsor_name;
+function competitionNames() {
+  return once("names", async () => {
+    const [{ data: comps }, { data: seasons }] = await Promise.all([
+      supabase.from("competitions").select("competition_id,name"),
+      supabase.from("competition_seasons").select("competition_id,sponsor_name,status"),
+    ]);
+    const names = {};
+    (comps || []).forEach((c) => { names[c.competition_id] = c.name; });
+    (seasons || []).forEach((cs) => {
+      if (cs.sponsor_name) names[cs.competition_id] = cs.sponsor_name;
+    });
+    return names;
   });
-  return names;
 }
 
 const MATCH_FIELDS =
   "match_id,public_id,competition_id,season_id,date,kickoff,status," +
-  "home_goals,away_goals,home_team_id,away_team_id," +
+  "home_goals,away_goals,home_team_id,away_team_id,source_ref," +
   "home:teams!matches_home_team_id_fkey(display_name)," +
   "away:teams!matches_away_team_id_fkey(display_name)," +
   "venue:venues(name)";
@@ -264,8 +308,142 @@ function group(title, matches, names, options = {}) {
     + matches.map((m) => matchCard(m, names, options)).join("");
 }
 
-async function renderHome() {
-  h('<div class="rp-loading"><span class="rp-spinner"></span><p>Loading your matches…</p></div>');
+// ── Home filters ─────────────────────────────────────────────────────────────
+// The unfiltered list is one long scroll in no order a reporter cares about,
+// because it is ordered by date across every competition at once. These three
+// filters are the questions actually asked of it: which league, which bucket,
+// which day.
+
+const SHOW_OPTIONS = [
+  { value: "all", label: "Everything" },
+  { value: "today", label: "Today" },
+  { value: "awaiting", label: "Awaiting result" },
+  { value: "upcoming", label: "Upcoming" },
+  { value: "reported", label: "Recently reported" },
+];
+
+/** Filters live in the URL (#/?comp=…&show=…&date=…), not in a variable.
+ *  The back button then works, a reload keeps the view, and "my league,
+ *  awaiting result" is a link a reporter can keep. Both values are validated
+ *  on the way in — the hash is user input. */
+function readFilters(params) {
+  const show = params.get("show");
+  const date = params.get("date") || "";
+  return {
+    comp: params.get("comp") || "",
+    show: SHOW_OPTIONS.some((o) => o.value === show) ? show : "all",
+    date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "",
+  };
+}
+
+function filterHash(filters) {
+  const query = new URLSearchParams();
+  if (filters.comp) query.set("comp", filters.comp);
+  if (filters.show !== "all") query.set("show", filters.show);
+  if (filters.date) query.set("date", filters.date);
+  const encoded = query.toString();
+  return encoded ? `#/?${encoded}` : "#/";
+}
+
+// The fixture list is re-read from the network only when it might have
+// changed. The `show` and `date` filters are then applied locally: on the
+// connection this app is written for, re-fetching a list the phone already
+// holds just to hide half of it would be the slowest thing on the screen.
+//
+// The COMPETITION filter is different, and is part of the cache key. Played
+// results are capped — there are hundreds and a phone should not download them
+// all — and a cap applied before filtering would silently hide an older
+// league's results behind sixty newer ones from everywhere else. So narrowing
+// to a competition asks the database again, scoped to it.
+let homeCache = null;   // { key, matches, names }
+
+const invalidateHome = () => { homeCache = null; };
+
+const RESULT_LIMIT = 60;
+
+async function loadHome(comp) {
+  const key = comp || "*";
+  if (homeCache && homeCache.key === key) return homeCache;
+
+  let pending = supabase.from("matches").select(MATCH_FIELDS)
+    .eq("status", "scheduled").order("date", { ascending: true });
+  // Not played, but decided: these belong in the list too, or a postponed
+  // match vanishes and looks like a fixture nobody ever entered.
+  let other = supabase.from("matches").select(MATCH_FIELDS)
+    .in("status", ["played", "awarded", "postponed", "abandoned", "cancelled"])
+    .order("date", { ascending: false }).limit(RESULT_LIMIT);
+
+  if (comp) {
+    pending = pending.eq("competition_id", comp);
+    other = other.eq("competition_id", comp);
+  } else if (!context.isAdmin) {
+    // An admin reports everywhere and has no assignments to narrow by.
+    pending = pending.in("competition_id", context.competitions);
+    other = other.in("competition_id", context.competitions);
+  }
+
+  const [pendingRes, otherRes, names] = await Promise.all([
+    pending, other, competitionNames(),
+  ]);
+  if (pendingRes.error || otherRes.error) {
+    throw pendingRes.error || otherRes.error;
+  }
+  homeCache = {
+    key,
+    matches: [...(pendingRes.data || []), ...(otherRes.data || [])],
+    names,
+  };
+  return homeCache;
+}
+
+/** Which bucket a match falls in. One function so the filter dropdown and the
+ *  section headings can never disagree about what "awaiting" means. */
+function bucketOf(match, today) {
+  if (match.status !== "scheduled") return "reported";
+  if (match.date === today) return "today";
+  if (match.date && match.date < today) return "awaiting";
+  return "upcoming";
+}
+
+function filterBar(filters, names, competitions) {
+  // A competition in the hash that is not in the list — a hand-edited URL, or
+  // an assignment removed since the link was saved — is still shown as the
+  // chosen one. Dropping it silently would leave the menu reading "All
+  // competitions" over a list that is anything but.
+  const ids = filters.comp && !competitions.includes(filters.comp)
+    ? [filters.comp, ...competitions] : competitions;
+  const compOptions = ['<option value="">All competitions</option>']
+    .concat(ids.map((id) => `
+      <option value="${esc(id)}"${id === filters.comp ? " selected" : ""}>
+        ${esc(names[id] || id)}</option>`))
+    .join("");
+  const showOptions = SHOW_OPTIONS.map((o) => `
+    <option value="${o.value}"${o.value === filters.show ? " selected" : ""}>
+      ${esc(o.label)}</option>`).join("");
+
+  return `
+    <div class="rp-filters" data-filters>
+      <label class="rp-filter">
+        <span class="rp-filter-label">Competition</span>
+        <select class="rp-select" data-filter="comp">${compOptions}</select>
+      </label>
+      <label class="rp-filter">
+        <span class="rp-filter-label">Show</span>
+        <select class="rp-select" data-filter="show">${showOptions}</select>
+      </label>
+      <label class="rp-filter">
+        <span class="rp-filter-label">Date</span>
+        <input class="rp-input rp-date" type="date" data-filter="date"
+               value="${esc(filters.date)}">
+      </label>
+      ${(filters.comp || filters.show !== "all" || filters.date)
+        ? '<button class="rp-btn is-quiet rp-filter-clear" type="button" data-clear>Clear filters</button>'
+        : ""}
+    </div>`;
+}
+
+async function renderHome(params) {
+  const filters = readFilters(params || new URLSearchParams());
 
   if (!context.reporter) {
     // A signed-in auth user with no reporters row: the account exists but has
@@ -278,61 +456,475 @@ async function renderHome() {
     return;
   }
 
-  const today = catToday();
-  const names = await competitionNames();
-
-  // Two narrow queries rather than one broad one: an unplayed fixture list is
-  // small, and results are capped, so the payload stays modest on a phone.
-  let pending = supabase.from("matches").select(MATCH_FIELDS)
-    .eq("status", "scheduled").order("date", { ascending: true });
-  let done = supabase.from("matches").select(MATCH_FIELDS)
-    .in("status", ["played", "awarded"])
-    .order("date", { ascending: false }).limit(8);
-
-  // An admin reports everywhere and has no assignments to filter by.
-  if (!context.isAdmin) {
-    if (!context.competitions.length) {
-      h(`<h1 class="rp-greeting">Hi ${esc(firstName())}</h1>
-         <p class="rp-sub">You have no competitions assigned yet. An
-           administrator needs to assign you one before you can report.</p>`);
-      return;
-    }
-    pending = pending.in("competition_id", context.competitions);
-    done = done.in("competition_id", context.competitions);
-  }
-
-  const [pendingRes, doneRes] = await Promise.all([pending, done]);
-  if (pendingRes.error || doneRes.error) {
-    h(`<p class="rp-empty">Could not load your matches.</p>
-       <button class="rp-btn" data-retry>Try again</button>`);
-    view.querySelector("[data-retry]").onclick = renderHome;
-    flash(humanError(pendingRes.error || doneRes.error), "error");
+  if (!context.isAdmin && !context.competitions.length) {
+    h(`<h1 class="rp-greeting">Hi ${esc(firstName())}</h1>
+       <p class="rp-sub">You have no competitions assigned yet. An
+         administrator needs to assign you one before you can report.</p>`);
     return;
   }
 
-  const all = pendingRes.data || [];
-  const todays = all.filter((m) => m.date === today);
-  // The operationally important bucket: kicked off before today and still
-  // carrying no result. These are what a reporter is chasing.
-  const awaiting = all.filter((m) => m.date && m.date < today);
-  const upcoming = all.filter((m) => !m.date || m.date > today);
+  if (!homeCache || homeCache.key !== (filters.comp || "*")) {
+    h('<div class="rp-loading"><span class="rp-spinner"></span><p>Loading your matches…</p></div>');
+  }
 
-  const body = [
-    group("Today", todays, names, { showScore: true }),
-    group("Awaiting result", awaiting, names, { showScore: true }),
-    group("Upcoming", upcoming.slice(0, 20), names, {}),
-    group("Recently reported", doneRes.data || [], names, {}),
-  ].join("");
+  let data, choices;
+  try {
+    // The dropdown's options come from what this account may report, NOT from
+    // the matches on screen: deriving them from a list that is itself filtered
+    // would leave the menu holding only the league already chosen, with no way
+    // back to any other.
+    [data, choices] = await Promise.all([
+      loadHome(filters.comp), entryCompetitions(),
+    ]);
+  } catch (error) {
+    h(`<p class="rp-empty">Could not load your matches.</p>
+       <button class="rp-btn" data-retry>Try again</button>`);
+    view.querySelector("[data-retry]").onclick = () => renderHome(params);
+    flash(humanError(error), "error");
+    return;
+  }
+
+  const today = catToday();
+  const { names } = data;
+  const competitions = choices.map((c) => c.competition_id);
+
+  const shown = data.matches.filter((m) => {
+    if (filters.comp && m.competition_id !== filters.comp) return false;
+    if (filters.date && m.date !== filters.date) return false;
+    if (filters.show !== "all" && bucketOf(m, today) !== filters.show) return false;
+    return true;
+  });
+
+  // Filtered to one thing: a flat list, because the headings would each hold
+  // the whole list and say nothing. Unfiltered: the buckets, which are the
+  // reason the home screen is useful at all.
+  let body;
+  if (filters.show === "all" && !filters.date) {
+    body = [
+      group("Today", shown.filter((m) => bucketOf(m, today) === "today"),
+            names, { showScore: true }),
+      group("Awaiting result", shown.filter((m) => bucketOf(m, today) === "awaiting"),
+            names, { showScore: true }),
+      group("Upcoming", shown.filter((m) => bucketOf(m, today) === "upcoming"),
+            names, {}),
+      group("Recently reported", shown.filter((m) => bucketOf(m, today) === "reported")
+            .slice(0, 12), names, {}),
+    ].join("");
+  } else {
+    const heading = filters.date
+      ? formatDate(filters.date)
+      : SHOW_OPTIONS.find((o) => o.value === filters.show).label;
+    body = group(heading, shown, names,
+                 { showScore: filters.show !== "upcoming" });
+  }
+
+  const canAdd = context.isAdmin || context.competitions.length > 0;
+  const actions = `
+    <div class="rp-actions">
+      ${canAdd ? '<a class="rp-btn is-ghost" href="#/add">＋ Add fixture</a>' : ""}
+      ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/league/new">＋ New league</a>' : ""}
+      <button class="rp-btn is-quiet" type="button" data-refresh>Refresh</button>
+    </div>`;
 
   h(`<h1 class="rp-greeting">Hi ${esc(firstName())}</h1>
      <p class="rp-sub">${esc(formatDate(today))}${
         context.isAdmin ? " · administrator" : ""}</p>
-     ${body || '<p class="rp-empty">Nothing to report right now.</p>'}`);
+     ${actions}
+     ${filterBar(filters, names, competitions)}
+     ${body || `<p class="rp-empty">Nothing matches these filters.${
+        (filters.comp || filters.show !== "all" || filters.date)
+          ? " Try clearing them." : ""}</p>`}`);
+
+  view.querySelector("[data-filters]").addEventListener("change", (event) => {
+    const key = event.target.dataset.filter;
+    if (!key) return;
+    location.hash = filterHash({ ...filters, [key]: event.target.value });
+  });
+  const clear = view.querySelector("[data-clear]");
+  if (clear) clear.onclick = () => { location.hash = "#/"; };
+  // Refresh means "forget everything you think you know" — including the
+  // competition menu, which is stale after someone else creates a league.
+  view.querySelector("[data-refresh]").onclick = () => {
+    invalidateHome();
+    invalidateReference();
+    renderHome(params);
+  };
 }
 
 function firstName() {
   const name = context.reporter?.name || "";
   return name.split(" ")[0] || "there";
+}
+
+// ── Adding a fixture ─────────────────────────────────────────────────────────
+// A result can only be reported against a fixture that exists, so a reporter
+// who covers a league nobody has entered a fixture list for cannot do anything
+// at all. This is that missing step.
+//
+// The form deliberately offers ONLY teams entered in the chosen competition
+// this season. That is validate.py check 3, which fails the whole build if it
+// is broken — so rather than let it be typed wrong and rejected, the wrong
+// answer is not offered. create_fixture checks it again anyway; the client is
+// not the boundary.
+
+const CUP_ROUNDS = [
+  { value: "r64", label: "Round of 64" },
+  { value: "r32", label: "Round of 32" },
+  { value: "r16", label: "Round of 16" },
+  { value: "qf", label: "Quarter-final" },
+  { value: "sf", label: "Semi-final" },
+  { value: "final", label: "Final" },
+  { value: "3p", label: "Third-place play-off" },
+];
+
+/** The competitions this account may enter data for. An admin may use any;
+ *  everyone else gets exactly their assignments. */
+function entryCompetitions() {
+  return once("entryComps", async () => {
+    const [{ data: comps, error }, names] = await Promise.all([
+      supabase.from("competitions").select("competition_id,name,type"),
+      competitionNames(),
+    ]);
+    if (error) throw error;
+    const allowed = (comps || []).filter((c) =>
+      context.isAdmin || context.competitions.includes(c.competition_id));
+    allowed.forEach((c) => { c.label = names[c.competition_id] || c.name; });
+    allowed.sort((a, b) => a.label.localeCompare(b.label));
+    return allowed;
+  });
+}
+
+function activeSeason() {
+  return once("season", async () => {
+    const { data } = await supabase.from("seasons")
+      .select("season_id,label").eq("status", "active").limit(1);
+    return (data || [])[0] || null;
+  });
+}
+
+async function renderAddFixture(params) {
+  h('<div class="rp-loading"><span class="rp-spinner"></span><p>Loading…</p></div>');
+
+  let competitions, season;
+  try {
+    [competitions, season] = await Promise.all([entryCompetitions(), activeSeason()]);
+  } catch (error) {
+    h('<p class="rp-empty">Could not load your competitions.</p>'
+      + '<a class="rp-btn is-ghost" href="#/">Back to my matches</a>');
+    flash(humanError(error), "error");
+    return;
+  }
+
+  if (!competitions.length) {
+    h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+       <p class="rp-empty">You have no competitions to add fixtures to.
+         ${context.isAdmin ? "Create a league first."
+                           : "Ask an administrator to assign you one."}</p>
+       ${context.isAdmin ? '<a class="rp-btn" href="#/league/new">＋ New league</a>' : ""}`);
+    return;
+  }
+  if (!season) {
+    h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+       <p class="rp-empty">No season is marked active, so there is nothing to
+         add a fixture to. An administrator needs to set one.</p>`);
+    return;
+  }
+
+  const wanted = params?.get("comp");
+  const state = {
+    competition: competitions.find((c) => c.competition_id === wanted)
+                 || competitions[0],
+    teams: null,
+    busy: false,
+    added: [],
+  };
+
+  async function loadTeams() {
+    state.teams = null;
+    drawAddFixture();
+    const { data, error } = await supabase.from("entries")
+      .select("team_id,team:teams(display_name)")
+      .eq("competition_id", state.competition.competition_id)
+      .eq("season_id", season.season_id);
+    if (error) {
+      state.teams = [];
+      flash(humanError(error), "error");
+    } else {
+      state.teams = (data || [])
+        .map((e) => ({ id: e.team_id, name: e.team?.display_name || e.team_id }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
+    drawAddFixture();
+  }
+
+  function drawAddFixture() {
+    const compOptions = competitions.map((c) => `
+      <option value="${esc(c.competition_id)}"${
+        c.competition_id === state.competition.competition_id ? " selected" : ""}>
+        ${esc(c.label)}</option>`).join("");
+
+    const teamOptions = () => (state.teams || []).map((t) => `
+      <option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
+
+    const isCup = state.competition.type === "cup";
+
+    const body = state.teams === null
+      ? '<div class="rp-loading"><span class="rp-spinner"></span><p>Loading teams…</p></div>'
+      : state.teams.length < 2
+        ? `<p class="rp-empty">${esc(state.competition.label)} has fewer than
+             two teams entered for ${esc(season.label)}, so it cannot hold a
+             fixture yet.</p>`
+        : `
+      <label class="rp-label" for="home-team">Home team</label>
+      <select class="rp-select" id="home-team" name="home" required>
+        <option value="">Choose…</option>${teamOptions()}</select>
+
+      <label class="rp-label" for="away-team">Away team</label>
+      <select class="rp-select" id="away-team" name="away" required>
+        <option value="">Choose…</option>${teamOptions()}</select>
+
+      <label class="rp-label" for="fx-date">Date</label>
+      <input class="rp-input" id="fx-date" name="date" type="date">
+      <p class="rp-hint">Leave blank if the day is not fixed yet.</p>
+
+      <label class="rp-label" for="fx-kickoff">Kick-off</label>
+      <input class="rp-input" id="fx-kickoff" name="kickoff" type="time"
+             placeholder="15:00">
+      <p class="rp-hint">Malawi time. Leave blank if not announced.</p>
+
+      ${isCup ? `
+        <label class="rp-label" for="fx-stage">Round</label>
+        <select class="rp-select" id="fx-stage" name="stage" required>
+          <option value="">Choose…</option>
+          ${CUP_ROUNDS.map((r) => `<option value="${r.value}">${esc(r.label)}</option>`).join("")}
+        </select>`
+      : `
+        <label class="rp-label" for="fx-matchday">Matchday</label>
+        <input class="rp-input" id="fx-matchday" name="matchday" type="number"
+               min="1" step="1" inputmode="numeric">
+        <p class="rp-hint">Optional.</p>`}
+
+      <button class="rp-btn" type="submit" data-submit>Add fixture</button>`;
+
+    const addedList = state.added.length ? `
+      <h2 class="rp-field-head">Added just now</h2>
+      ${state.added.map((m) => `
+        <article class="rp-card">
+          <div class="rp-teams">
+            <span class="rp-team">${esc(m.homeName)}</span><span></span>
+            <span class="rp-team">${esc(m.awayName)}</span><span></span>
+          </div>
+          <p class="rp-card-meta">${esc(formatDate(m.date))}</p>
+          <a class="rp-btn is-ghost" href="#/m/${esc(m.public_id)}">Report this match</a>
+        </article>`).join("")}` : "";
+
+    h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+       <h1 class="rp-login-head">Add a fixture</h1>
+       <p class="rp-login-sub">${esc(season.label)} season.</p>
+       <form class="rp-form" data-fixture>
+         <label class="rp-label" for="fx-comp">Competition</label>
+         <select class="rp-select" id="fx-comp" name="competition">${compOptions}</select>
+         ${body}
+       </form>
+       ${addedList}`);
+
+    view.querySelector("#fx-comp").addEventListener("change", (event) => {
+      state.competition = competitions.find(
+        (c) => c.competition_id === event.target.value) || competitions[0];
+      loadTeams();
+    });
+
+    const form = view.querySelector("[data-fixture]");
+    const button = form.querySelector("[data-submit]");
+    if (!button) return;
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (state.busy) return;                  // rule 2: never submit twice
+      clearFlash();
+
+      if (form.home.value && form.home.value === form.away.value) {
+        flash("A team cannot play itself — pick two different teams.", "error");
+        return;
+      }
+
+      state.busy = true;
+      button.disabled = true;
+      button.textContent = "Adding…";
+
+      const payload = {
+        p_competition_id: state.competition.competition_id,
+        p_home_team_id: form.home.value,
+        p_away_team_id: form.away.value,
+        p_date: form.date.value || null,
+        // <input type="time"> yields HH:MM, which is what the column's own
+        // constraint accepts.
+        p_kickoff: form.kickoff.value || "",
+      };
+      if (isCup) payload.p_stage = form.stage.value;
+      else if (form.matchday.value) payload.p_matchday = Number(form.matchday.value);
+
+      const { data, error } = await supabase.rpc("create_fixture", payload);
+
+      state.busy = false;
+      button.disabled = false;
+      button.textContent = "Add fixture";
+
+      if (error) {
+        // Rule 1: the form is untouched, so nothing typed is lost.
+        flash(humanError(error), "error");
+        return;
+      }
+
+      const row = (data || [])[0];
+      const teamName = (id) => state.teams.find((t) => t.id === id)?.name || id;
+      state.added.unshift({
+        public_id: row?.public_id,
+        homeName: teamName(payload.p_home_team_id),
+        awayName: teamName(payload.p_away_team_id),
+        date: payload.p_date,
+      });
+      // The home screen is now out of date in a way the reporter can see.
+      invalidateHome();
+      flash("Fixture added.", "ok");
+      // A fixture list is entered a matchday at a time, so the form comes back
+      // empty and ready rather than navigating away after one.
+      drawAddFixture();
+    });
+  }
+
+  loadTeams();
+}
+
+// ── Creating a league ────────────────────────────────────────────────────────
+// Admin only. One screen, because a competition with no teams cannot hold a
+// fixture and is not a useful thing to have made — so the teams are part of
+// creating it, not a second step.
+
+const AGE_GROUPS = ["senior", "u20", "u19", "u17", "u16", "u15"];
+
+async function renderNewLeague() {
+  if (!context.isAdmin) {
+    h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+       <p class="rp-empty">Only an administrator can create a competition.</p>`);
+    return;
+  }
+
+  const season = await activeSeason();
+  if (!season) {
+    h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+       <p class="rp-empty">No season is marked active. An administrator needs
+         to set one before a competition can be created.</p>`);
+    return;
+  }
+
+  h(`
+    <a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+    <h1 class="rp-login-head">New league</h1>
+    <p class="rp-login-sub">Creates the competition, its teams and their
+      entries for ${esc(season.label)} — ready for fixtures straight away.</p>
+
+    <form class="rp-form" data-league>
+      <label class="rp-label" for="lg-name">Name</label>
+      <input class="rp-input" id="lg-name" name="name" required
+             placeholder="SRFA Division 3" autocapitalize="words">
+
+      <label class="rp-label" for="lg-code">Short code</label>
+      <input class="rp-input" id="lg-code" name="code" required maxlength="12"
+             placeholder="SRFA3" autocapitalize="characters" autocorrect="off"
+             spellcheck="false">
+      <p class="rp-hint">Letters and numbers, used in the competition's
+        permanent id. It cannot be changed later.</p>
+
+      <label class="rp-label" for="lg-type">Type</label>
+      <select class="rp-select" id="lg-type" name="type">
+        <option value="league" selected>League</option>
+        <option value="cup">Cup</option>
+      </select>
+
+      <label class="rp-label" for="lg-gender">Gender</label>
+      <select class="rp-select" id="lg-gender" name="gender">
+        <option value="m" selected>Men</option>
+        <option value="w">Women</option>
+      </select>
+
+      <label class="rp-label" for="lg-age">Age group</label>
+      <select class="rp-select" id="lg-age" name="age">
+        ${AGE_GROUPS.map((a) => `<option value="${a}">${
+          a === "senior" ? "Senior" : a.toUpperCase()}</option>`).join("")}
+      </select>
+
+      <label class="rp-label" for="lg-tier">Tier</label>
+      <input class="rp-input" id="lg-tier" name="tier" type="number" min="1"
+             max="10" step="1" inputmode="numeric" placeholder="3">
+      <p class="rp-hint">Optional. 1 is the top division.</p>
+
+      <label class="rp-label" for="lg-region">Region</label>
+      <input class="rp-input" id="lg-region" name="region" placeholder="SRFA">
+      <p class="rp-hint">Optional.</p>
+
+      <label class="rp-label" for="lg-teams">Teams</label>
+      <textarea class="rp-input rp-textarea" id="lg-teams" name="teams" rows="10"
+                required placeholder="One team per line, e.g.&#10;Chilomoni United&#10;Bangwe All Stars&#10;Ndirande Sparrows"></textarea>
+      <p class="rp-hint">One per line. A club already in the database is
+        reused; anything new gets a club and a team created for it.</p>
+
+      <button class="rp-btn" type="submit" data-submit>Create league</button>
+    </form>
+  `);
+
+  const form = view.querySelector("[data-league]");
+  const button = form.querySelector("[data-submit]");
+  let busy = false;
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (busy) return;                          // rule 2
+    clearFlash();
+
+    const teams = form.teams.value.split("\n")
+      .map((line) => line.trim()).filter(Boolean);
+    // Said here as well as in the RPC so the reporter is not made to wait for
+    // a round trip to learn something the page already knew.
+    const unique = new Set(teams.map((t) => t.toLowerCase()));
+    if (unique.size < 2) {
+      flash("Add at least two different teams, one per line.", "error");
+      return;
+    }
+
+    busy = true;
+    button.disabled = true;
+    button.textContent = "Creating…";
+
+    const { data, error } = await supabase.rpc("create_league", {
+      p_name: form.name.value.trim(),
+      p_short_code: form.code.value.trim(),
+      p_teams: teams,
+      p_type: form.type.value,
+      p_gender: form.gender.value,
+      p_age_group: form.age.value,
+      p_tier: form.tier.value ? Number(form.tier.value) : null,
+      p_region: form.region.value.trim(),
+    });
+
+    busy = false;
+    button.disabled = false;
+    button.textContent = "Create league";
+
+    if (error) {
+      // Rule 1: everything typed — including a long team list — is still here.
+      flash(humanError(error), "error");
+      return;
+    }
+
+    // A new competition changes what the home screen and the fixture form can
+    // offer, and the assignment list the context was built from.
+    invalidateHome();
+    invalidateReference();
+    context = await loadContext().catch(() => context);
+    flash(`Created ${unique.size} teams. Now add its fixtures.`, "ok", 8000);
+    location.hash = `#/add?comp=${encodeURIComponent(data)}`;
+  });
 }
 
 async function renderMatch(publicId) {
@@ -379,6 +971,7 @@ async function renderMatch(publicId) {
     home: match.home_goals ?? 0,
     away: match.away_goals ?? 0,
     status: match.home_goals != null ? match.status : "played",
+    source: match.source_ref || "",
     published: match.home_goals != null || match.status !== "scheduled",
     busy: false,
   };
@@ -435,6 +1028,15 @@ function drawMatch(match, names, state) {
     <h2 class="rp-field-head">Match status</h2>
     <div class="rp-status" data-status>${statusOptions}</div>
 
+    <h2 class="rp-field-head">Where is this from?</h2>
+    <input class="rp-input" type="text" data-source maxlength="500"
+           value="${esc(state.source)}"
+           placeholder="Facebook link, or how you know"
+           autocapitalize="sentences" autocorrect="off" spellcheck="false">
+    <p class="rp-hint">Optional, and never shown publicly — it is there so a
+      result can be checked later. A link, or plain words like
+      &ldquo;told to me by the referee&rdquo;.</p>
+
     <div class="rp-publish">
       <button class="rp-btn" type="button" data-publish></button>
       <p class="rp-publish-note" data-note></p>
@@ -451,6 +1053,12 @@ function drawMatch(match, names, state) {
   };
   const publishBtn = view.querySelector("[data-publish]");
   const note = view.querySelector("[data-note]");
+  const sourceEl = view.querySelector("[data-source]");
+
+  // Kept in state on every keystroke, for the same reason the score is: a
+  // failed publish redraws the screen, and a pasted link that vanished would
+  // be the most annoying thing in the app to type again.
+  sourceEl.addEventListener("input", () => { state.source = sourceEl.value; });
 
   function refresh() {
     const info = statusMeta(state.status);
@@ -502,6 +1110,7 @@ function drawMatch(match, names, state) {
       p_home_score: info.scored ? state.home : null,
       p_away_score: info.scored ? state.away : null,
       p_status: state.status,
+      p_source_ref: state.source.trim(),
     });
 
     state.busy = false;
@@ -519,6 +1128,8 @@ function drawMatch(match, names, state) {
       status: state.status,
     });
     state.published = true;
+    // The home screen's buckets are now wrong for this match.
+    invalidateHome();
     flash("Published. The site updates in a few minutes.", "ok", 6000);
     requestRebuild();
     drawMatch(match, names, state);
@@ -935,6 +1546,10 @@ async function renderAccount() {
 async function signOut() {
   await supabase.auth.signOut();
   context = null;
+  // The next person to sign in on this phone must not see the last one's
+  // fixture list, or a competition menu built from their assignments.
+  invalidateHome();
+  invalidateReference();
   location.hash = "#/login";
 }
 
@@ -981,9 +1596,11 @@ async function route() {
   }
 
   if (path.startsWith("/m/")) return renderMatch(path.slice(3));
+  if (path === "/add") return renderAddFixture(params);
+  if (path === "/league/new") return renderNewLeague();
   if (path === "/account") return renderAccount();
   if (path === "/login") { location.hash = "#/"; return; }
-  return renderHome();
+  return renderHome(params);
 }
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
