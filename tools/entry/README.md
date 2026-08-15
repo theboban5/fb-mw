@@ -1,3 +1,17 @@
+> # ⚠ DEPRECATED — DO NOT USE
+>
+> This tool writes to the Google Spreadsheet, which is **no longer the source
+> of truth**. Since the Supabase cutover nothing reads it, so anything entered
+> here is silently discarded — it will never appear on the site.
+>
+> Use instead:
+>
+> * **results** — `everyleague.co/report` (reporters and admins)
+> * **competitions, teams, venues, fixtures** — `python3 scripts/season.py`
+>
+> Kept for reference only, because the id-minting and cell-format rules it
+> documents were the basis for the replacement.
+
 # Data-entry tooling
 
 A fast entry UI for fixtures, results, scorers, and venues, replacing

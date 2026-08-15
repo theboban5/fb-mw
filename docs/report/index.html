@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<!-- A reporting tool, not content. It must never appear in search results, and
+     the deep links get shared in WhatsApp where a preview card would leak the
+     fixture list. -->
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0b6b3a">
+<title>Everyleague Reporter</title>
+<link rel="stylesheet" href="report.css">
+<link rel="icon" href="../favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+</head>
+<body>
+
+<!-- The whole app is one page: a reporter opening a WhatsApp link on a weak
+     connection pays for the shell once, and every move between the list and a
+     match after that is local. Routing is by hash for the same reason — and
+     because GitHub Pages cannot rewrite /report/m/<id> to a file. -->
+
+<header class="rp-top">
+  <a class="rp-brand" href="#/">EVERYLEAGUE <span>REPORTER</span></a>
+  <button class="rp-top-btn" type="button" data-account hidden aria-label="Account">
+    <span data-account-initial>·</span>
+  </button>
+</header>
+
+<!-- Connection/save state. Announced politely so a screen reader hears the
+     outcome without being interrupted mid-entry. -->
+<div class="rp-flash" data-flash hidden role="status" aria-live="polite"></div>
+
+<main id="main" data-view>
+  <div class="rp-loading" data-boot>
+    <span class="rp-spinner" aria-hidden="true"></span>
+    <p>Loading…</p>
+  </div>
+</main>
+
+<noscript>
+  <div class="rp-noscript">
+    <h1>JavaScript required</h1>
+    <p>The reporter tool needs JavaScript. The public site at
+       <a href="/">everyleague.co</a> does not.</p>
+  </div>
+</noscript>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

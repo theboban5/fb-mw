@@ -142,6 +142,42 @@ the source CSV text, which legitimately differs — Sheets published 865 blank
 trailing rows and left `source_type` blank where the parser reads `unknown`).
 Every other byte must match, and does.
 
+### Setting up a competition
+
+Adding a division means a competition, its teams, their badges, some venues and
+a fixture list — in foreign-key order, with ids that follow the conventions.
+`scripts/season.py` does all of it from one file:
+
+```bash
+python3 scripts/season.py template > new-division.json
+$EDITOR new-division.json
+python3 scripts/season.py apply new-division.json --dry-run   # read the plan
+python3 scripts/season.py apply new-division.json
+python3 scripts/season.py logos new-division.json             # where badges go
+```
+
+Every section is optional except `season_id`, so the same command adds three
+teams mid-season, or a fixture list to a competition that already exists.
+Teams and venues are named — not id'd — everywhere, including in fixtures.
+
+Two properties make it safe to re-run:
+
+* **Nothing is created twice.** A club, team, venue or fixture that already
+  matches is reused. A team promoted from another division needs only an entry,
+  and the tool works that out from the name. Re-running an unchanged file is a
+  no-op.
+* **Nothing is written until everything resolves.** The whole plan is built and
+  checked first, so a typo in the last fixture cannot leave half a division in
+  the database. `--dry-run` prints exactly what would be created, including
+  every minted id, so you can correct them in the file before committing.
+
+Badges are files, not data. `logos` prints the exact path for each — the
+renderer tries `logos/clubs/<legacy_code>` first and then `logos/clubs/<club_id>`,
+so it names whichever key that team actually carries. A missing badge is fine.
+
+The old `static/admin/` entry UI and `tools/entry/` Apps Script wrote to the
+Google Sheet and are **dead** — the sheet is no longer read. Use this instead.
+
 ### Match detail (optional, per match)
 
 Below the result, `/report` offers collapsed sections a reporter can ignore
