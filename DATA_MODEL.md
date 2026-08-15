@@ -1,12 +1,25 @@
 # Data model
 
-The site builds from a single published Google Spreadsheet: 13 league tabs
-plus six `nt_*` national-team tabs (a separate schema — see "National teams"
-below), fetched as CSV by `src/dataset.py` (the only module that knows the URLs).
-Every build validates the whole dataset first (`validate.py`); any ERROR
-aborts the build before a page is written. The last validated fetch is
-committed to `data/canonical/`, making git history the audit log and giving
-the validator a baseline to detect accidental row deletion.
+**Supabase/Postgres is the source of truth.** The schema lives in
+`supabase/migrations/`; `src/source_supabase.py` reads it back as the same
+`{tab: csv_text}` the spreadsheet used to publish, so every rule below still
+holds and every downstream module is unchanged.
+
+Results arrive from reporters through `/report`, which writes via the
+`submit_match_report` RPC and triggers a rebuild. Every build still validates
+the whole dataset first (`validate.py`); any ERROR aborts the build before a
+page is written. The validated fetch is committed to `data/canonical/`, making
+git history the audit log and giving the validator a baseline to detect
+accidental row deletion.
+
+The original 13-tab Google Spreadsheet (plus seven `nt_*` national-team tabs)
+is **deprecated**: still readable with `DATASET_SOURCE=sheets` as an emergency
+fallback, no longer written to by anyone.
+
+Reporter-facing tables that are NOT part of the `Dataset` — `reporter_assignments`,
+`match_change_log`, `match_incidents`, `lineup_entries`, `match_media`,
+`rebuild_state` — are invisible to the build by design. They carry no rules
+below and cannot affect a rendered page.
 
 ## Entity model
 

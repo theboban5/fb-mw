@@ -276,3 +276,70 @@ a { color: var(--accent); }
 @media (min-width: 620px) {
   .rp-status { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ─── Optional match detail ──────────────────────────────────────────────────
+   Collapsed by default. A reporter in a hurry publishes the score and leaves;
+   these sections must not make the screen look like a form to fill in. */
+
+.rp-optional {
+  font-weight: 600; letter-spacing: 0; text-transform: none;
+  color: var(--muted); font-size: 0.72rem;
+}
+
+.rp-sec { border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 8px; }
+.rp-sec > summary {
+  display: flex; align-items: center; gap: 8px;
+  min-height: var(--tap); padding: 12px 14px;
+  font-weight: 600; cursor: pointer; list-style: none;
+}
+.rp-sec > summary::-webkit-details-marker { display: none; }
+.rp-sec > summary::after {
+  content: "+"; margin-left: auto; font-size: 1.3rem; color: var(--muted);
+}
+.rp-sec[open] > summary::after { content: "\2212"; }
+.rp-sec[open] > summary { border-bottom: 1px solid var(--line); }
+.rp-sec-count {
+  min-width: 22px; padding: 1px 7px; border-radius: 999px;
+  background: var(--accent-wash); color: var(--accent);
+  font-size: 0.75rem; font-weight: 800; text-align: center;
+}
+.rp-sec-body { padding: 14px; }
+.rp-sec-body .rp-btn { margin-top: 12px; }
+.rp-sec-body .rp-input + .rp-input { margin-top: 8px; }
+
+.rp-row { display: flex; gap: 8px; margin-top: 8px; }
+.rp-row .rp-input { flex: 1; margin-top: 0; }
+.rp-textarea { margin-top: 8px; resize: vertical; line-height: 1.6; }
+
+/* Which side did it — two big targets, never a dropdown. */
+.rp-side-pick { display: flex; gap: 8px; margin-bottom: 10px; }
+.rp-side-pick label { position: relative; flex: 1; }
+.rp-side-pick input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; }
+.rp-side-pick span {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 44px; padding: 8px 10px; text-align: center;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  font-size: 0.86rem; font-weight: 600;
+}
+.rp-side-pick input:checked + span {
+  border-color: var(--accent); background: var(--accent-wash); color: var(--accent);
+}
+.rp-side-pick input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.rp-inline { display: flex; align-items: center; gap: 6px; font-size: 0.88rem; }
+
+.rp-list { list-style: none; margin: 0 0 4px; padding: 0; }
+.rp-list:empty { display: none; }
+.rp-list li {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 0; border-bottom: 1px solid var(--line);
+  font-size: 0.94rem;
+}
+.rp-list li em { display: block; color: var(--muted); font-size: 0.78rem; font-style: normal; }
+.rp-x {
+  flex: 0 0 auto; width: 34px; height: 34px;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: var(--bg); color: var(--muted);
+  font-size: 1.1rem; line-height: 1; cursor: pointer;
+}
+.rp-x:active { background: var(--danger-wash); color: var(--danger); border-color: var(--danger); }

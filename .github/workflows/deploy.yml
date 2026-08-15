@@ -1,8 +1,13 @@
 name: Build and deploy
 
-# Rebuild daily from the published Google Sheet, plus on push and on demand.
-# The build validates before rendering: any data error exits non-zero, the
-# job fails, and the deploy job never runs — production stays untouched.
+# Rebuild daily from Supabase, plus on push, on demand, and whenever a
+# reporter publishes a result (the trigger-rebuild Edge Function calls
+# workflow_dispatch). The build validates before rendering: any data error
+# exits non-zero, the job fails, and the deploy job never runs — production
+# stays untouched.
+#
+# The daily cron is now a backstop rather than the main path: it catches
+# anything a missed rebuild trigger left unbuilt.
 on:
   schedule:
     - cron: "7 5 * * *"  # daily 05:07 UTC (:07 to dodge the on-the-hour cron rush)
@@ -30,19 +35,28 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Build site (fetch -> validate -> snapshot -> render)
-        # SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY are written into
-        # docs/report/config.js so the reporter app knows its endpoint. The
-        # publishable key is designed to be public and is subject to RLS, under
-        # which every policy grants SELECT on football data only — it is served
-        # to browsers at /report/config.js either way. The SECRET key is not
-        # here and must never be: build.py refuses to build if the publishable
-        # slot looks like one.
+        # SUPABASE IS THE SOURCE OF TRUTH. DATASET_SOURCE=supabase reads the
+        # Postgres tables and rebuilds the identical CSV text the spreadsheet
+        # used to publish, so every downstream step — validate.py, the parsers,
+        # standings, every renderer — is unchanged. Set DATASET_SOURCE=sheets
+        # to fall back to the (deprecated) spreadsheet in an emergency.
         #
-        # Unset is not fatal: the build warns and /report ships unconfigured
-        # rather than a results deploy failing over the reporter portal.
+        # SUPABASE_SECRET_KEY is required, not optional: `reporters` has no
+        # public read policy, and reading it with the publishable key would
+        # return an empty list rather than an error — an empty tab in the
+        # snapshot, indistinguishable from every reporter having been deleted.
+        # src/source_supabase.py refuses to build rather than allow that.
+        #
+        # SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY are additionally written into
+        # docs/report/config.js so the reporter app knows its endpoint. The
+        # publishable key is designed to be public and is served to browsers at
+        # /report/config.js anyway. build.py refuses to build if the
+        # publishable slot holds something that looks like a secret key.
         env:
+          DATASET_SOURCE: supabase
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: python build.py
       - name: Commit data snapshot
         # data/canonical/ is the audit log of every data change and the

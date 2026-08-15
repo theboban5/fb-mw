@@ -148,14 +148,19 @@ def tab_csv(tab: str, rows: "list[dict]") -> str:
     return buf.getvalue()
 
 
+# Tabs with no public read policy. Reading one with the publishable key does
+# not fail — RLS *filters*, so the answer is an empty list — which would put an
+# empty tab into the snapshot and look exactly like every reporter having been
+# deleted. Requiring the secret key turns that silent loss into a loud stop.
+SECRET_ONLY = frozenset({"reporters"})
+
+
 def fetch_tab(tab: str) -> str:
     """One tab, read from Postgres in `ord` order and rendered as CSV."""
     if tab not in COLUMNS:
         raise sb.SupabaseError(f"unknown tab {tab!r}")
-    # `reporters` has no public read policy, so a build that needs it must be
-    # holding the secret key. Everything else is readable with the publishable
-    # key, which is what makes a local read-only build possible.
-    rows = sb.select(tab, order="ord.asc")
+    rows = sb.select(tab, order="ord.asc",
+                     require_secret=tab in SECRET_ONLY)
     return tab_csv(tab, rows)
 
 

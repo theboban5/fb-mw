@@ -74,19 +74,27 @@ DATASET_LOCAL_DIR=data/canonical python build.py --no-snapshot
 
 ## Data source: the Supabase migration
 
-The football data is being moved out of Google Sheets into Supabase/Postgres.
-The move is a **source swap, not a rewrite**: everything downstream of
-`dataset.fetch_all()` consumes `{tab: csv_text}`, so Postgres enters as a
-second implementation of that one function and the validator, parsers,
-standings, renderers and national-team code are untouched.
+**Supabase/Postgres is the source of truth.** The move was a *source swap,
+not a rewrite*: everything downstream of `dataset.fetch_all()` consumes
+`{tab: csv_text}`, so Postgres entered as a second implementation of that one
+function and the validator, parsers, standings, renderers and national-team
+code are untouched.
+
+The Google Spreadsheet is **deprecated** — still readable as an emergency
+fallback, no longer written to by anyone. Google Forms are gone from the
+workflow entirely.
 
 ```
-DATASET_SOURCE=sheets     the published spreadsheet (default, unchanged)
-DATASET_SOURCE=supabase   the Postgres tables, rebuilt into identical CSV text
+DATASET_SOURCE=supabase   the Postgres tables (what CI runs)
+DATASET_SOURCE=sheets     the deprecated spreadsheet, emergency fallback
 DATASET_LOCAL_DIR=DIR     outranks both: a directory of {tab}.csv, fully offline
 ```
 
-Migration status — steps 1-4 of 10 are done and verified:
+Note the code default is still `sheets`; CI sets `supabase` explicitly. That
+way a stray local script cannot write to production data by accident, and the
+fallback is one environment variable away.
+
+The whole migration, done and verified:
 
 | | |
 |---|---|
@@ -98,9 +106,15 @@ Migration status — steps 1-4 of 10 are done and verified:
 | Reporter app | `static/report/` — login, fixtures, deep links, score entry |
 | Publishing | `0003_reporting.sql` — `submit_match_report` RPC + audit log |
 | Auto-deploy | `supabase/functions/trigger-rebuild` + `claim_rebuild()` debounce |
+| Match detail | `0007_match_detail.sql` — scorers, cards, subs, line-ups, photos |
+| Cutover | CI reads Supabase; the spreadsheet is deprecated |
 
-Still to come: match detail (scorers, cards, lineups, photos) and retiring
-Sheets.
+The workflow this replaced:
+
+```
+was:  reporter → WhatsApp → Google Form → Sheet → hand-edit → commit → deploy
+now:  reporter → everyleague.co/report → Supabase → automatic rebuild → live
+```
 
 ### Setup
 
@@ -127,6 +141,41 @@ wall-clock "last updated" stamp, and the search-index cache-buster (it hashes
 the source CSV text, which legitimately differs — Sheets published 865 blank
 trailing rows and left `source_type` blank where the parser reads `unknown`).
 Every other byte must match, and does.
+
+### Match detail (optional, per match)
+
+Below the result, `/report` offers collapsed sections a reporter can ignore
+entirely: goalscorers, cards, substitutions, line-ups and photos. Each saves
+independently and immediately — none of it is part of the publish, so a failed
+photo upload can never cost someone the result they already got in.
+
+**Goalscorers go through an RPC; everything else uses ordinary RLS policies.**
+That asymmetry is deliberate. `validate.py` check 5 fails the build when a
+match carries more goal rows than its score, and a failed build deploys
+nothing — so a plain INSERT policy would let a reporter add a third scorer to a
+2-1 match and silently stop the site updating for everyone.
+`submit_match_goal()` counts the existing rows under a row lock and refuses.
+Cards, substitutions, line-ups and media live in new tables that `validate.py`
+has never heard of and the renderers never read, so they cannot break a build
+and need no such gate.
+
+A reporter-entered scorer keeps the existing convention exactly:
+`player_id = CAF_MW_UNKNOWN` with the typed name in `reported_player_name`. The
+goal counts toward team and match totals and stays out of scorer rankings,
+which is already how the build treats `CAF_MW_UNKNOWN`. **No player row is
+created for a free-text name.** Reconciling later is a matter of setting
+`player_id`; the goal joins the rankings at the next build.
+
+Line-ups take plain names, one per line, so a whole team can be pasted in.
+Photos are shrunk to 1600px on the phone before upload; the `match-media`
+bucket independently caps size at 5 MB and restricts MIME types, and uploads
+are authorized by reading the match id out of the object's own path — so the
+path layout is a rule, not a convention.
+
+**Not yet rendered publicly.** The site has no per-match page, so cards,
+substitutions, line-ups and photos are captured but displayed nowhere. That is
+data collection ahead of a match page, not an oversight. Goals are the
+exception: they already feed scorer totals.
 
 ### Reporter accounts
 

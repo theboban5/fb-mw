@@ -439,7 +439,11 @@ function drawMatch(match, names, state) {
       <button class="rp-btn" type="button" data-publish></button>
       <p class="rp-publish-note" data-note></p>
     </div>
+
+    <div data-detail></div>
   `);
+
+  drawDetail(match, state);
 
   const valueEls = {
     home: view.querySelector('[data-value="home"]'),
@@ -521,6 +525,347 @@ function drawMatch(match, names, state) {
   });
 
   refresh();
+}
+
+// ── Optional match detail ────────────────────────────────────────────────────
+// Everything below the result is optional, and the app is built so a reporter
+// can ignore all of it: score, status, publish, leave. These sections stay
+// collapsed until asked for, so the screen a reporter sees in a hurry is the
+// short one.
+//
+// Each section saves independently and immediately. Nothing here is part of
+// the publish, so a failed photo upload cannot cost someone the result they
+// already got in — the mistake the whole design is trying to avoid.
+
+const CARD_TYPES = [
+  ["yellow_card", "Yellow"],
+  ["second_yellow", "Second yellow"],
+  ["red_card", "Red"],
+];
+
+function sideButtons(match, name) {
+  return `
+    <div class="rp-side-pick" role="radiogroup">
+      <label><input type="radio" name="${name}" value="${esc(match.home_team_id)}" checked>
+        <span>${esc(match.home?.display_name || match.home_team_id)}</span></label>
+      <label><input type="radio" name="${name}" value="${esc(match.away_team_id)}">
+        <span>${esc(match.away?.display_name || match.away_team_id)}</span></label>
+    </div>`;
+}
+
+function section(key, title, count, inner) {
+  const badge = count ? `<span class="rp-sec-count">${count}</span>` : "";
+  return `<details class="rp-sec" data-sec="${key}">
+    <summary>${esc(title)}${badge}</summary>
+    <div class="rp-sec-body">${inner}</div>
+  </details>`;
+}
+
+async function drawDetail(match, state) {
+  const host = view.querySelector("[data-detail]");
+  if (!host) return;
+
+  const teamName = (id) => id === match.home_team_id
+    ? (match.home?.display_name || id) : (match.away?.display_name || id);
+
+  const [goalsRes, incidentsRes, lineupRes, mediaRes] = await Promise.all([
+    supabase.from("goals").select("goal_id,team_id,reported_player_name,minute,player_id")
+      .eq("match_id", match.match_id).order("ord"),
+    supabase.from("match_incidents").select("*")
+      .eq("match_id", match.match_id).order("incident_id"),
+    supabase.from("lineup_entries").select("*")
+      .eq("match_id", match.match_id).order("ord"),
+    supabase.from("match_media").select("*")
+      .eq("match_id", match.match_id).order("created_at"),
+  ]);
+
+  const goals = goalsRes.data || [];
+  const incidents = incidentsRes.data || [];
+  const lineup = lineupRes.data || [];
+  const media = mediaRes.data || [];
+  const cards = incidents.filter((i) => i.incident_type !== "substitution");
+  const subs = incidents.filter((i) => i.incident_type === "substitution");
+  const scored = match.home_goals != null;
+
+  const goalList = goals.map((g) => `
+    <li><span>${esc(g.reported_player_name || "Unknown")}
+      <em>${esc(teamName(g.team_id))}${g.minute ? " · " + esc(g.minute) + "'" : ""}</em></span>
+      <button class="rp-x" type="button" data-del-goal="${esc(g.goal_id)}"
+              aria-label="Remove ${esc(g.reported_player_name)}">&times;</button></li>`).join("");
+
+  const goalForm = scored ? `
+    <form data-goal-form>
+      ${sideButtons(match, "goal-team")}
+      <input class="rp-input" name="player" placeholder="Scorer's name" required
+             autocomplete="off" autocapitalize="words">
+      <div class="rp-row">
+        <input class="rp-input" name="minute" placeholder="Min" inputmode="numeric">
+        <select class="rp-input" name="type">
+          <option value="">Goal</option>
+          <option value="penalty">Penalty</option>
+          <option value="own_goal">Own goal</option>
+          <option value="header">Header</option>
+          <option value="free_kick">Free kick</option>
+        </select>
+      </div>
+      <button class="rp-btn is-ghost" type="submit">Add scorer</button>
+    </form>`
+    : `<p class="rp-hint">Publish the score first — a scorer needs a goal to
+         belong to.</p>`;
+
+  host.innerHTML = `
+    <h2 class="rp-field-head">Match detail <span class="rp-optional">optional</span></h2>
+
+    ${section("goals", "Goalscorers", goals.length,
+      `<ul class="rp-list">${goalList}</ul>${goalForm}`)}
+
+    ${section("cards", "Cards", cards.length, `
+      <ul class="rp-list">${cards.map((c) => `
+        <li><span>${esc(c.player_name)}
+          <em>${esc(teamName(c.team_id))} · ${esc(
+            (CARD_TYPES.find((t) => t[0] === c.incident_type) || [, c.incident_type])[1])}
+          ${c.minute ? " · " + esc(c.minute) + "'" : ""}</em></span>
+          <button class="rp-x" type="button" data-del-incident="${c.incident_id}"
+                  aria-label="Remove card">&times;</button></li>`).join("")}</ul>
+      <form data-card-form>
+        ${sideButtons(match, "card-team")}
+        <input class="rp-input" name="player" placeholder="Player's name" required
+               autocomplete="off" autocapitalize="words">
+        <div class="rp-row">
+          <select class="rp-input" name="type">
+            ${CARD_TYPES.map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}
+          </select>
+          <input class="rp-input" name="minute" placeholder="Min" inputmode="numeric">
+        </div>
+        <button class="rp-btn is-ghost" type="submit">Add card</button>
+      </form>`)}
+
+    ${section("subs", "Substitutions", subs.length, `
+      <ul class="rp-list">${subs.map((s) => `
+        <li><span>${esc(s.player_name)} <em>for ${esc(s.secondary_player_name)} ·
+          ${esc(teamName(s.team_id))}${s.minute ? " · " + esc(s.minute) + "'" : ""}</em></span>
+          <button class="rp-x" type="button" data-del-incident="${s.incident_id}"
+                  aria-label="Remove substitution">&times;</button></li>`).join("")}</ul>
+      <form data-sub-form>
+        ${sideButtons(match, "sub-team")}
+        <input class="rp-input" name="on" placeholder="Player coming on" required
+               autocomplete="off" autocapitalize="words">
+        <input class="rp-input" name="off" placeholder="Player going off" required
+               autocomplete="off" autocapitalize="words">
+        <input class="rp-input" name="minute" placeholder="Min" inputmode="numeric">
+        <button class="rp-btn is-ghost" type="submit">Add substitution</button>
+      </form>`)}
+
+    ${section("lineup", "Line-ups", lineup.length, `
+      <p class="rp-hint">One name per line. Paste a whole team in at once —
+        no need to type them into separate boxes.</p>
+      <form data-lineup-form>
+        ${sideButtons(match, "lineup-team")}
+        <div class="rp-row">
+          <label class="rp-inline"><input type="radio" name="role" value="starter" checked>
+            <span>Starting XI</span></label>
+          <label class="rp-inline"><input type="radio" name="role" value="substitute">
+            <span>Substitutes</span></label>
+        </div>
+        <textarea class="rp-input rp-textarea" name="names" rows="6"
+                  placeholder="Yamikani Phiri&#10;Chikondi Banda&#10;..."></textarea>
+        <button class="rp-btn is-ghost" type="submit">Save line-up</button>
+      </form>
+      <ul class="rp-list">${lineup.map((l) => `
+        <li><span>${esc(l.player_name)}
+          <em>${esc(teamName(l.team_id))} · ${l.role === "starter" ? "XI" : "sub"}</em></span>
+          <button class="rp-x" type="button" data-del-lineup="${l.id}"
+                  aria-label="Remove ${esc(l.player_name)}">&times;</button></li>`).join("")}</ul>`)}
+
+    ${section("photo", "Photos", media.length, `
+      <ul class="rp-list">${media.map((m) => `
+        <li><span>${esc(m.caption || "Photo")}
+          <em>${Math.round((m.byte_size || 0) / 1024)} KB</em></span>
+          <button class="rp-x" type="button" data-del-media="${esc(m.id)}"
+                  data-path="${esc(m.storage_path)}" aria-label="Remove photo">&times;</button></li>`).join("")}</ul>
+      <form data-photo-form>
+        <input class="rp-input" type="file" name="photo" accept="image/jpeg,image/png,image/webp">
+        <input class="rp-input" name="caption" placeholder="Caption (optional)"
+               autocomplete="off">
+        <button class="rp-btn is-ghost" type="submit">Upload photo</button>
+        <p class="rp-hint" data-upload-note>Large photos are shrunk on the phone
+          before sending, so this works on a slow connection.</p>
+      </form>`)}
+  `;
+
+  wireDetail(match, state);
+}
+
+/** Run an action with a button locked, then redraw. Never throws at the caller. */
+async function detailAction(button, busyLabel, fn, match, state) {
+  if (button.disabled) return;                    // no double submits
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = busyLabel;
+  try {
+    const error = await fn();
+    if (error) { flash(humanError(error), "error"); return; }
+    flash("Saved.", "ok", 2500);
+    await drawDetail(match, state);
+  } catch (err) {
+    flash(humanError(err), "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+function wireDetail(match, state) {
+  const host = view.querySelector("[data-detail]");
+  const pick = (name) =>
+    host.querySelector(`input[name="${name}"]:checked`)?.value;
+  const reporterId = context.reporter?.reporter_id;
+
+  host.querySelector("[data-goal-form]")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    detailAction(f.querySelector("button"), "Adding…", async () => {
+      const { error } = await supabase.rpc("submit_match_goal", {
+        p_match_id: match.match_id,
+        p_team_id: pick("goal-team"),
+        p_player_name: f.player.value,
+        p_minute: f.minute.value,
+        p_goal_type: f.type.value,
+      });
+      return error;
+    }, match, state);
+  });
+
+  host.querySelector("[data-card-form]")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    detailAction(f.querySelector("button"), "Adding…", async () => {
+      const { error } = await supabase.from("match_incidents").insert({
+        match_id: match.match_id, team_id: pick("card-team"),
+        incident_type: f.type.value, player_name: f.player.value.trim(),
+        minute: f.minute.value.trim(), reported_by: reporterId,
+      });
+      return error;
+    }, match, state);
+  });
+
+  host.querySelector("[data-sub-form]")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    detailAction(f.querySelector("button"), "Adding…", async () => {
+      const { error } = await supabase.from("match_incidents").insert({
+        match_id: match.match_id, team_id: pick("sub-team"),
+        incident_type: "substitution",
+        // Documented convention: player_name is ON, secondary is OFF.
+        player_name: f.on.value.trim(),
+        secondary_player_name: f.off.value.trim(),
+        minute: f.minute.value.trim(), reported_by: reporterId,
+      });
+      return error;
+    }, match, state);
+  });
+
+  host.querySelector("[data-lineup-form]")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const team = pick("lineup-team");
+    const role = host.querySelector('input[name="role"]:checked').value;
+    const names = f.names.value.split("\n")
+      .map((n) => n.trim()).filter(Boolean);
+    if (!names.length) { flash("Add at least one name.", "warn"); return; }
+    detailAction(f.querySelector("button"), "Saving…", async () => {
+      // Replace this side's rows for this role rather than appending, so
+      // fixing a typo means editing the list and saving again.
+      await supabase.from("lineup_entries").delete()
+        .eq("match_id", match.match_id).eq("team_id", team).eq("role", role);
+      const { error } = await supabase.from("lineup_entries").insert(
+        names.map((player_name, i) => ({
+          match_id: match.match_id, team_id: team, player_name,
+          role, ord: i + 1, reported_by: reporterId,
+        })));
+      if (!error) f.names.value = "";
+      return error;
+    }, match, state);
+  });
+
+  host.querySelector("[data-photo-form]")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const file = f.photo.files?.[0];
+    if (!file) { flash("Choose a photo first.", "warn"); return; }
+    const note = host.querySelector("[data-upload-note]");
+    detailAction(f.querySelector("button"), "Uploading…", async () => {
+      let blob;
+      try {
+        note.textContent = "Shrinking…";
+        blob = await shrinkImage(file);
+      } catch (err) {
+        return { message: "That file is not a supported image." };
+      }
+      note.textContent = `Sending ${Math.round(blob.size / 1024)} KB…`;
+      // Unique filename, never upsert: two reporters uploading at the same
+      // second must not overwrite each other.
+      const path = `${match.public_id}/${crypto.randomUUID()}.jpg`;
+      const up = await supabase.storage.from("match-media")
+        .upload(path, blob, { contentType: "image/jpeg", upsert: false });
+      if (up.error) return up.error;
+      const { error } = await supabase.from("match_media").insert({
+        match_id: match.match_id, storage_path: path,
+        caption: f.caption.value.trim(), content_type: "image/jpeg",
+        byte_size: blob.size, reported_by: reporterId,
+      });
+      return error;
+    }, match, state);
+  });
+
+  host.addEventListener("click", (e) => {
+    const goal = e.target.closest("[data-del-goal]");
+    const incident = e.target.closest("[data-del-incident]");
+    const line = e.target.closest("[data-del-lineup]");
+    const photo = e.target.closest("[data-del-media]");
+    if (goal) {
+      detailAction(goal, "…", async () =>
+        (await supabase.rpc("delete_match_goal",
+          { p_goal_id: goal.dataset.delGoal })).error, match, state);
+    } else if (incident) {
+      detailAction(incident, "…", async () =>
+        (await supabase.from("match_incidents").delete()
+          .eq("incident_id", incident.dataset.delIncident)).error, match, state);
+    } else if (line) {
+      detailAction(line, "…", async () =>
+        (await supabase.from("lineup_entries").delete()
+          .eq("id", line.dataset.delLineup)).error, match, state);
+    } else if (photo) {
+      detailAction(photo, "…", async () => {
+        await supabase.storage.from("match-media").remove([photo.dataset.path]);
+        return (await supabase.from("match_media").delete()
+          .eq("id", photo.dataset.delMedia)).error;
+      }, match, state);
+    }
+  });
+}
+
+/** Shrink a phone photo before sending it over a weak connection.
+ *
+ * A modern Android camera produces 4-8 MB; the interesting content survives
+ * 1600px and ~200 KB perfectly well. The bucket also caps size and MIME type
+ * server-side, so a client that skipped this could not sneak a huge file past
+ * it — this is about the reporter's data bundle, not about trust.
+ */
+async function shrinkImage(file, maxPx = 1600, quality = 0.82) {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+    throw new Error("unsupported image type");
+  }
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxPx / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", quality));
+  bitmap.close?.();
+  return blob || file;
 }
 
 /** Ask for a site rebuild. Deliberately not awaited, and never surfaced.

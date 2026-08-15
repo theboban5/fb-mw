@@ -1,9 +1,14 @@
-"""New-schema data layer: fetch and parse the 13 normalized tabs.
+"""Data layer: fetch and parse the 13 normalized tabs.
 
-This is the only module that may know the CSV URLs of the new schema —
-everything downstream (validator, standings, rendering) works from the parsed
-`Dataset`. It replaces the old per-league src/data.py, which remains in place
-only until the production build is swapped over.
+This is the only module that may know where the data comes from — everything
+downstream (validator, standings, rendering) works from the parsed `Dataset`.
+
+**Supabase/Postgres is the source of truth** (DATASET_SOURCE=supabase, the
+default in CI). The Google Spreadsheet path below is DEPRECATED and kept only
+as an emergency fallback and for historical reference; reporters write to
+Supabase through /report, and nothing writes to the sheet any more. Do not add
+features to the sheet path — it will be deleted once the Supabase-backed build
+has run unattended for a season.
 
 Schema conventions (as built — do not "fix"):
   * ID separator is underscore, country prefix ``MW_`` (club ``MW_BULL``,
@@ -36,9 +41,11 @@ class DataError(Exception):
 
 # ── Sources ──────────────────────────────────────────────────────────────────
 
-# Single published spreadsheet; each tab is one gid. Override the base with
+# DEPRECATED — the published Google Spreadsheet. Supabase replaced it as the
+# source of truth; this remains as a fallback (DATASET_SOURCE=sheets) and is
+# no longer written to by anyone. Each tab is one gid. Override the base with
 # env DATASET_BASE_URL, or point DATASET_LOCAL_DIR at a directory of
-# {tab}.csv files to build fully offline (tests, drift snapshots).
+# {tab}.csv files to build fully offline (tests, parity checks).
 BASE_URL = (
     "https://docs.google.com/spreadsheets/d/e/"
     "2PACX-1vSF7xMvjTyQLckW3IHBIip7msX2H4qj0MS8Yedatly3LJXDosMvjSz4MbSq42rxzL"
