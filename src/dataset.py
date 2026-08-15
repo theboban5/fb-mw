@@ -144,8 +144,40 @@ def fetch_tab(tab: str) -> str:
 FETCH_WORKERS = 6
 
 
+# ── Source selection ─────────────────────────────────────────────────────────
+# Where the tabs come from. Everything downstream consumes {tab: csv_text} and
+# cannot tell the difference, which is what makes the Supabase migration a
+# source swap rather than a rewrite.
+#
+#   sheets    the published Google Spreadsheet (the original, still the default
+#             until the Supabase cutover is signed off)
+#   supabase  the Postgres tables, rebuilt into the identical CSV text by
+#             src/source_supabase.py
+#
+# DATASET_LOCAL_DIR outranks both: a directory of {tab}.csv files builds fully
+# offline, which is how the tests and the parity check run.
+SOURCE_SHEETS = "sheets"
+SOURCE_SUPABASE = "supabase"
+SOURCES = (SOURCE_SHEETS, SOURCE_SUPABASE)
+
+
+def source() -> str:
+    value = os.environ.get("DATASET_SOURCE", SOURCE_SHEETS).strip().lower()
+    if value not in SOURCES:
+        raise DataError(
+            f"DATASET_SOURCE {value!r} is not one of {', '.join(SOURCES)}")
+    return value
+
+
 def _fetch_many(tabs: "tuple[str, ...]") -> "dict[str, str]":
-    """Fetch tabs concurrently, in the order given. First failure propagates."""
+    """Fetch tabs, in the order given. First failure propagates."""
+    if not os.environ.get("DATASET_LOCAL_DIR") and source() == SOURCE_SUPABASE:
+        # Imported here so the default path keeps its import graph, and so a
+        # sheets build never touches the Supabase credentials.
+        from . import source_supabase
+        return source_supabase.fetch_many(tabs)
+    # Concurrency is for the network source only: it exists to overlap Google's
+    # random stalls (see FETCH_TIMEOUT above), which Postgres does not have.
     with concurrent.futures.ThreadPoolExecutor(FETCH_WORKERS) as pool:
         return dict(zip(tabs, pool.map(fetch_tab, tabs)))
 

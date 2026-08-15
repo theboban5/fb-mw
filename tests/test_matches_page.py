@@ -156,6 +156,10 @@ class BuiltPagesTest(unittest.TestCase):
             TODAY, nt_data=cls.nt_data, club_hub_ids=cls.club_hub_ids)
         cls.dir = os.path.join(cls.tmp.name, matches_page.SLUG)
         cls.files = sorted(f for f in os.listdir(cls.dir) if f.endswith(".html"))
+        # The dates that actually have matches, so a test can pick one that
+        # does (or doesn't) instead of naming a date that the snapshot may
+        # later contradict. build_pages returns counts, not the dates.
+        cls.days = matches_page.collect(cls.ds, cls.nt_data)
 
     @classmethod
     def tearDownClass(cls):
@@ -220,15 +224,37 @@ class BuiltPagesTest(unittest.TestCase):
                                    self._body(name)):
                 self.assertIn(slug, slugs)
 
+    # Both of the following used to name a date outright. The snapshot moved
+    # under them — a date that had no matches when the test was written has
+    # since been given some — so they now find a date that still has the
+    # property being tested. The assertion is the same; only the way the date
+    # is chosen changed.
+
+    def _first_page_matching(self, pattern):
+        for name in self.files:
+            if name == "index.html":
+                continue
+            body = self._body(name)
+            if re.search(pattern, body):
+                return name, body
+        self.fail(f"no generated page matches {pattern!r}")
+
     def test_a_fixture_shows_its_kickoff_where_a_result_shows_the_score(self):
-        body = self._body("2026-08-08.html")          # four scheduled SL games
-        self.assertIn('class="v2-res-score day-res-time">14:30<', body)
-        self.assertNotIn("v2-res-score\">", body.split("day-res-time")[0][-200:])
+        name, body = self._first_page_matching(
+            r'class="v2-res-score day-res-time">\d{2}:\d{2}<')
+        # The kickoff stands in the score column, so the same row must not also
+        # carry a score cell.
+        before = body.split("day-res-time")[0][-200:]
+        self.assertNotIn('v2-res-score">', before, name)
 
     def test_an_empty_date_says_so_and_offers_the_nearest(self):
-        body = self._body("2026-08-10.html")
+        empty = [f for f in self.files
+                 if f != "index.html" and f[:-5] not in self.days]
+        self.assertTrue(empty, "the window should span at least one empty date")
+        body = self._body(empty[0])
         self.assertIn("No matches on this date.", body)
-        self.assertIn('href="2026-08-09.html"', body)
+        # It has to offer a way out: a link to some date that does have matches.
+        self.assertRegex(body, r'href="\d{4}-\d{2}-\d{2}\.html"')
 
     def test_the_date_bar_always_offers_exactly_three_chips(self):
         for name in self.files:

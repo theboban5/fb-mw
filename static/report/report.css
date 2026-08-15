@@ -1,0 +1,278 @@
+/* Everyleague Reporter — mobile-first, built for a cheap Android on a weak
+   connection. Brand tokens are lifted from static/style.css rather than
+   @imported: this is a separate app that must render before anything else
+   loads, and it uses almost none of the site's stylesheet.
+
+   Two rules drive the layout:
+     * every control a thumb has to hit is at least 48px;
+     * nothing that shows entered data may move when the network is slow, so
+       saving states are additive (a spinner, a disabled button) and never
+       reflow the score. */
+
+:root {
+  --bg: #ffffff;
+  --ink: #16181c;
+  --muted: #6b7280;
+  --line: #e6e8eb;
+  --accent: #0b6b3a;
+  --accent-ink: #ffffff;
+  --accent-wash: #eef9f2;
+  --danger: #b3261e;
+  --danger-wash: #fdeceb;
+  --warn: #8a5a00;
+  --warn-wash: #fff6e5;
+  --row-alt: #fafbfc;
+  --max: 560px;
+  --tap: 48px;
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  line-height: 1.45;
+  /* Reporters tap fast and repeatedly on the score steppers; the double-tap
+     zoom delay would otherwise eat every second press. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ─── Chrome ─────────────────────────────────────────────────────────────── */
+
+.rp-top {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  padding-top: max(10px, env(safe-area-inset-top));
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.rp-brand {
+  font-size: 0.82rem; font-weight: 800; letter-spacing: 0.08em;
+  color: inherit; text-decoration: none;
+}
+.rp-brand span { font-weight: 400; opacity: 0.85; }
+.rp-top-btn {
+  width: 34px; height: 34px; flex: 0 0 auto;
+  border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--accent-ink);
+  font-weight: 700; font-size: 0.9rem;
+  cursor: pointer;
+}
+
+main { max-width: var(--max); margin: 0 auto; padding: 16px 16px 40px; }
+
+.rp-loading { padding: 48px 0; text-align: center; color: var(--muted); }
+.rp-spinner {
+  display: inline-block; width: 22px; height: 22px;
+  border: 2px solid var(--line); border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: rp-spin 0.7s linear infinite;
+}
+@keyframes rp-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .rp-spinner { animation-duration: 2.4s; }
+}
+
+.rp-noscript { max-width: var(--max); margin: 0 auto; padding: 24px 16px; }
+
+/* Flash messages. Fixed, so a failure is visible without scrolling back up —
+   the reporter may be at the bottom of a long match screen when it lands. */
+.rp-flash {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
+  z-index: 50; width: calc(100% - 32px); max-width: var(--max);
+  padding: 12px 14px; border-radius: var(--radius);
+  font-size: 0.9rem; font-weight: 600;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.rp-flash.is-error { background: var(--danger-wash); color: var(--danger); }
+.rp-flash.is-warn  { background: var(--warn-wash);   color: var(--warn); }
+.rp-flash.is-ok    { background: var(--accent-wash); color: var(--accent); }
+
+/* ─── Typography ─────────────────────────────────────────────────────────── */
+
+.rp-greeting { margin: 4px 0 2px; font-size: 1.5rem; letter-spacing: -0.01em; }
+.rp-sub { margin: 0 0 20px; color: var(--muted); font-size: 0.9rem; }
+
+.rp-group-head {
+  margin: 26px 0 8px;
+  font-size: 0.74rem; font-weight: 800; letter-spacing: 0.1em;
+  color: var(--muted); text-transform: uppercase;
+}
+.rp-group-head:first-of-type { margin-top: 14px; }
+.rp-group-head .rp-count { color: var(--line); }
+
+.rp-empty {
+  padding: 22px 16px; border: 1px dashed var(--line); border-radius: var(--radius);
+  color: var(--muted); font-size: 0.9rem; text-align: center;
+}
+
+/* ─── Fixture cards ──────────────────────────────────────────────────────── */
+
+.rp-card {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px; margin-bottom: 10px; background: var(--bg);
+}
+.rp-card-comp {
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--accent); text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.rp-teams { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; }
+.rp-team { font-size: 1.05rem; font-weight: 600; }
+.rp-score { font-size: 1.05rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.rp-card-meta { margin-top: 8px; color: var(--muted); font-size: 0.82rem; }
+
+.rp-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 0.68rem; font-weight: 800; letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.rp-badge.is-done { background: var(--accent-wash); color: var(--accent); }
+.rp-badge.is-late { background: var(--warn-wash); color: var(--warn); }
+.rp-badge.is-off  { background: var(--danger-wash); color: var(--danger); }
+
+/* ─── Buttons ────────────────────────────────────────────────────────────── */
+
+.rp-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; min-height: var(--tap);
+  margin-top: 12px; padding: 12px 16px;
+  border: 0; border-radius: var(--radius);
+  background: var(--accent); color: var(--accent-ink);
+  font-size: 1rem; font-weight: 700; font-family: inherit;
+  text-decoration: none; cursor: pointer;
+}
+.rp-btn[disabled] { opacity: 0.55; cursor: default; }
+.rp-btn.is-ghost {
+  background: transparent; color: var(--accent);
+  border: 1px solid var(--line);
+}
+.rp-btn.is-quiet {
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--line); font-weight: 600;
+}
+.rp-btn-row { display: flex; gap: 10px; }
+.rp-btn-row .rp-btn { flex: 1; }
+
+/* ─── Score stepper — the most-used control in the app ───────────────────── */
+
+.rp-report-comp {
+  font-size: 0.74rem; font-weight: 800; letter-spacing: 0.08em;
+  color: var(--accent); text-transform: uppercase;
+}
+.rp-report-meta { margin: 4px 0 20px; color: var(--muted); font-size: 0.88rem; }
+
+.rp-side { padding: 16px 0; border-top: 1px solid var(--line); }
+.rp-side:first-of-type { border-top: 0; }
+.rp-side-name {
+  margin: 0 0 12px; font-size: 1.15rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.01em;
+}
+.rp-stepper { display: flex; align-items: center; gap: 16px; }
+.rp-step {
+  flex: 0 0 auto; width: 60px; height: 60px;
+  border: 2px solid var(--line); border-radius: 50%;
+  background: var(--bg); color: var(--ink);
+  font-size: 1.9rem; font-weight: 400; line-height: 1;
+  cursor: pointer;
+}
+.rp-step:active { background: var(--accent-wash); border-color: var(--accent); }
+.rp-step[disabled] { opacity: 0.35; cursor: default; }
+.rp-step-value {
+  flex: 1 1 auto; text-align: center;
+  font-size: 3.4rem; font-weight: 800; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Status picker ──────────────────────────────────────────────────────── */
+
+.rp-field-head {
+  margin: 24px 0 10px;
+  font-size: 0.74rem; font-weight: 800; letter-spacing: 0.1em;
+  color: var(--muted); text-transform: uppercase;
+}
+.rp-status { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.rp-status-opt { position: relative; }
+.rp-status-opt input {
+  position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0;
+  cursor: pointer;
+}
+.rp-status-opt span {
+  display: flex; align-items: center; justify-content: center;
+  min-height: var(--tap); padding: 10px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  font-size: 0.92rem; font-weight: 600; text-align: center;
+}
+.rp-status-opt input:checked + span {
+  border-color: var(--accent); background: var(--accent-wash);
+  color: var(--accent); font-weight: 700;
+}
+.rp-status-opt input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* The publish bar sticks to the bottom: on a long match screen the reporter
+   should never have to hunt for it. */
+.rp-publish {
+  position: sticky; bottom: 0;
+  margin: 24px -16px 0; padding: 12px 16px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  background: var(--bg); border-top: 1px solid var(--line);
+}
+.rp-publish .rp-btn { margin-top: 0; font-size: 1.05rem; }
+.rp-publish-note { margin: 8px 0 0; text-align: center; color: var(--muted); font-size: 0.78rem; }
+
+/* ─── Published confirmation ─────────────────────────────────────────────── */
+
+.rp-done {
+  padding: 22px 16px; margin-bottom: 16px;
+  border: 1px solid var(--accent); border-radius: var(--radius);
+  background: var(--accent-wash); text-align: center;
+}
+.rp-done-tick { font-size: 2rem; line-height: 1; color: var(--accent); }
+.rp-done-head { margin: 6px 0 10px; font-weight: 800; color: var(--accent); }
+.rp-done-score { font-size: 1.25rem; font-weight: 700; }
+.rp-done-status { margin-top: 4px; color: var(--muted); font-size: 0.9rem; }
+
+/* ─── Forms (login, change password) ─────────────────────────────────────── */
+
+.rp-form { margin-top: 8px; }
+.rp-label {
+  display: block; margin: 14px 0 6px;
+  font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--muted);
+}
+.rp-input {
+  width: 100%; min-height: var(--tap); padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  /* 16px minimum, or iOS Safari zooms the viewport on focus and the reporter
+     has to pinch back out to see the form. */
+  font-size: 16px; font-family: inherit; color: var(--ink); background: var(--bg);
+}
+.rp-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+.rp-hint { margin: 8px 0 0; color: var(--muted); font-size: 0.82rem; }
+
+.rp-login-head { margin: 24px 0 4px; font-size: 1.4rem; }
+.rp-login-sub { margin: 0 0 8px; color: var(--muted); font-size: 0.92rem; }
+
+.rp-account-row {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 14px 0; border-bottom: 1px solid var(--line);
+  font-size: 0.92rem;
+}
+.rp-account-row span:first-child { color: var(--muted); }
+.rp-account-row span:last-child { font-weight: 600; text-align: right; }
+
+a { color: var(--accent); }
+
+/* Nobody using this is on a large screen by choice, but a desktop check
+   during a season should not look broken. */
+@media (min-width: 620px) {
+  .rp-status { grid-template-columns: repeat(3, 1fr); }
+}

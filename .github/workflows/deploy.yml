@@ -30,6 +30,19 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Build site (fetch -> validate -> snapshot -> render)
+        # SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY are written into
+        # docs/report/config.js so the reporter app knows its endpoint. The
+        # publishable key is designed to be public and is subject to RLS, under
+        # which every policy grants SELECT on football data only — it is served
+        # to browsers at /report/config.js either way. The SECRET key is not
+        # here and must never be: build.py refuses to build if the publishable
+        # slot looks like one.
+        #
+        # Unset is not fatal: the build warns and /report ships unconfigured
+        # rather than a results deploy failing over the reporter portal.
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
         run: python build.py
       - name: Commit data snapshot
         # data/canonical/ is the audit log of every data change and the
