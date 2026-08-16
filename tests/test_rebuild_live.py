@@ -126,5 +126,99 @@ class ClaimRebuildTest(unittest.TestCase):
             self.assertIn(status, (401, 403, 404))
 
 
+@unittest.skipUnless(live_support.available(), "Supabase credentials not configured")
+class TriggerRebuildCorsTest(unittest.TestCase):
+    """The preflight — the check whose absence broke this twice.
+
+    The only caller that matters is a browser on everyleague.co, and a
+    cross-origin POST carrying Authorization and apikey is never sent on its
+    own: the browser sends an OPTIONS preflight first and issues the real
+    request only if the answer allows it.
+
+    Both times this function broke, the fix was verified with curl. curl sends
+    no preflight, so it passed from a terminal while every phone silently
+    failed — results piling up in Postgres with no build dispatched and nothing
+    anywhere saying so. THIS is the test that closes that gap, and it has to
+    speak HTTP directly rather than through live_support.call, because what is
+    being asserted is the CORS handshake itself.
+    """
+
+    ORIGIN = "https://everyleague.co"
+
+    @staticmethod
+    def _lower(headers):
+        """Header names are case-insensitive, and here they genuinely differ:
+        the gateway title-cases the ones it adds while the function's own come
+        through lowercase. Comparing literal keys silently misses half of
+        them."""
+        return {k.lower(): v for k, v in dict(headers).items()}
+
+    def preflight(self, headers="authorization,apikey,content-type,x-client-info"):
+        import urllib.error
+        import urllib.request
+
+        url = f"{sb.url()}/functions/v1/trigger-rebuild"
+        req = urllib.request.Request(url, method="OPTIONS")
+        req.add_header("Origin", self.ORIGIN)
+        req.add_header("Access-Control-Request-Method", "POST")
+        req.add_header("Access-Control-Request-Headers", headers)
+        try:
+            with urllib.request.urlopen(req, timeout=sb.TIMEOUT) as resp:
+                return resp.status, self._lower(resp.headers)
+        except urllib.error.HTTPError as err:
+            return err.code, self._lower(err.headers)
+
+    def test_the_preflight_succeeds(self):
+        status, _ = self.preflight()
+        self.assertIn(status, (200, 204),
+                      "the browser preflight was refused, so no phone can "
+                      "reach this function however well it works from curl")
+
+    def test_the_preflight_allows_this_origin(self):
+        _, headers = self.preflight()
+        allow = headers.get("access-control-allow-origin", "")
+        self.assertTrue(allow in ("*", self.ORIGIN),
+                        f"Allow-Origin was {allow!r}")
+
+    def test_the_preflight_allows_every_header_supabase_js_sends(self):
+        """A header missing from the allow-list fails the preflight just as
+        surely as a missing Allow-Origin. supabase-js sends x-client-info
+        without being asked."""
+        _, headers = self.preflight()
+        allowed = headers.get("access-control-allow-headers", "").lower()
+        for header in ("authorization", "apikey", "content-type", "x-client-info"):
+            self.assertIn(header, allowed)
+
+    def test_the_preflight_allows_post(self):
+        _, headers = self.preflight()
+        self.assertIn("post",
+                      headers.get("access-control-allow-methods", "").lower())
+
+    def test_a_rejected_call_still_carries_cors_headers(self):
+        """An error the browser cannot READ is an error nobody can diagnose.
+        The 403 for a non-reporter has to be a real response, not an opaque
+        network failure."""
+        import json as _json
+        import urllib.error
+        import urllib.request
+
+        anon = os.environ["SUPABASE_PUBLISHABLE_KEY"]
+        req = urllib.request.Request(
+            f"{sb.url()}/functions/v1/trigger-rebuild",
+            data=_json.dumps({}).encode(), method="POST")
+        req.add_header("Origin", self.ORIGIN)
+        req.add_header("Authorization", f"Bearer {anon}")
+        req.add_header("apikey", anon)
+        req.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(req, timeout=sb.TIMEOUT) as resp:
+                headers = self._lower(resp.headers)
+        except urllib.error.HTTPError as err:
+            # 403: the publishable key is not a reporter. That is the point.
+            self.assertEqual(err.code, 403)
+            headers = self._lower(err.headers)
+        self.assertIn("access-control-allow-origin", headers)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -489,17 +489,36 @@ publish succeeds → app invokes trigger-rebuild (Edge Function)
 **The GitHub credential lives only in the Edge Function**, as a secret. It is
 never in `static/`, never in `config.js`, and never reachable from a browser.
 
+**CORS is not optional here, and its absence is the bug that ran longest.**
+The only caller that matters is a browser, and a cross-origin POST carrying
+`Authorization` and `apikey` is never sent on its own: the browser sends an
+`OPTIONS` **preflight** first and issues the real request only if the answer
+allows it. The function answered `405 method not allowed` with no CORS headers,
+so the preflight failed, the browser cancelled the POST, and **the function was
+never reached from `/report` at all** — from the portal's first day until
+2026-08-16.
+
+**How it hid for a day: every fix was verified with `curl`, which sends no
+preflight.** It therefore worked perfectly from a terminal and never once from
+a phone. `{"dispatched":true}` from a shell proves only that the server half
+works. **Verify this function from a browser, or the test does not cover the
+only path that is used.** `TriggerRebuildCorsTest` in `tests/test_rebuild_live.py`
+now asserts the preflight directly, which is the check that was missing.
+
+`Access-Control-Allow-Origin` is `*` on purpose. CORS is not the security
+boundary and cannot be — anything can call this with `curl`. The boundary is
+the reporter token. `*` is safe precisely because that token is a bearer token
+read from `localStorage` rather than an ambient cookie: another origin cannot
+read it, so it cannot forge a call in a reporter's name.
+
 **How the caller is identified, and why it is not the obvious way.** The
 natural implementation asks `current_reporter_id()` as the caller — but calling
 PostgREST as the caller needs a publishable key in the `apikey` header, and the
 function cannot get one. The platform injects `SUPABASE_ANON_KEY`, but on a
 project using the new API keys that slot holds a 64-character digest rather
 than a usable key: PostgREST answers `Invalid API key`, the lookup returns
-null, and **every reporter is silently told they are "not an active
-reporter"**. That was live from the portal's first day until 2026-08-16 —
-`rebuild_state.dispatch_count` sat at 0 while results published normally, and
-nothing surfaced it because the trigger is deliberately best-effort and never
-shown to the reporter.
+null, and every reporter is silently told they are "not an active reporter".
+That was a second, independent fault on the same path.
 
 So identification runs in two steps, neither of which needs a publishable key:
 GoTrue (`/auth/v1/user`) resolves the caller's own token to a user, and the
@@ -508,7 +527,12 @@ reporter row is then read with the secret key. The trust boundary is unchanged
 decides the answer. The publishable key is not a user token, so it stops at
 GoTrue with a 401, which is what keeps this from being an open endpoint.
 
-If `dispatch_count` is not climbing, that is the first thing to check.
+**Diagnosing it next time.** `rebuild_state.dispatch_count` not climbing while
+results arrive means the nudge is not landing. `requestRebuild()` no longer
+swallows the outcome: it logs to the browser console either way, so opening the
+console on the phone answers in one line what previously took a database
+forensics session. Silence about a failure the reporter should not be alarmed
+by is right; leaving no trace anywhere was not.
 
 **Debounce.** `claim_rebuild()` returns true at most once per cooldown window
 (60s default) and is a *single atomic UPDATE* — the decision is the `WHERE`
@@ -544,7 +568,21 @@ npx supabase secrets set --project-ref <your-project-ref> \
 ```
 
 `GH_REPO`, `GH_WORKFLOW` and `GH_REF` have working defaults; only `GH_TOKEN` is
-required. Verify with a manual call as a signed-in reporter:
+required.
+
+Verify the **preflight** first, because that is the half `curl` normally skips
+and the half that actually broke:
+
+```bash
+curl -i -X OPTIONS "$SUPABASE_URL/functions/v1/trigger-rebuild" \
+     -H "Origin: https://everyleague.co" \
+     -H "Access-Control-Request-Method: POST" \
+     -H "Access-Control-Request-Headers: authorization,apikey,content-type"
+# 204, with access-control-allow-origin / -headers / -methods present.
+# A 405 here means no phone can reach the function, however well the POST works.
+```
+
+Then the call itself, as a signed-in reporter:
 
 ```bash
 curl -X POST "$SUPABASE_URL/functions/v1/trigger-rebuild" \
@@ -552,6 +590,10 @@ curl -X POST "$SUPABASE_URL/functions/v1/trigger-rebuild" \
      -H "apikey: $SUPABASE_PUBLISHABLE_KEY"
 # {"dispatched":true}   then {"dispatched":false,"reason":"coalesced"} if repeated
 ```
+
+**Neither of these is sufficient on its own.** Publish a result from a real
+browser and confirm `rebuild_state.dispatch_count` moved. That is the only test
+that exercises the path reporters actually use.
 
 Rotate the PAT by re-running `secrets set`; no redeploy is needed.
 

@@ -1633,7 +1633,8 @@ async function shrinkImage(file, maxPx = 1600, quality = 0.82) {
   return blob || file;
 }
 
-/** Ask for a site rebuild. Deliberately not awaited, and never surfaced.
+/** Ask for a site rebuild. Deliberately not awaited, and never shown to the
+ *  reporter — but no longer silent to anyone.
  *
  * everyleague.co is static, so the result is in the database but not yet on
  * the page until GitHub Actions rebuilds. This nudges that along.
@@ -1644,13 +1645,24 @@ async function shrinkImage(file, maxPx = 1600, quality = 0.82) {
  * daily cron still ships the result, and the next reporter to publish
  * dispatches a build that includes it. Turning a successful publish into a
  * visible failure over a deploy nudge would be a lie about what happened.
+ *
+ * WHAT CHANGED, AND WHY. The failure was previously swallowed by `() => {}`,
+ * which is how two separate faults — a dead anon key, then a missing CORS
+ * preflight — each ran for a day with results piling up unbuilt and nothing
+ * anywhere saying so. "Do not alarm the reporter" is right; "leave no trace"
+ * was not. The outcome now goes to the console either way, so the next time
+ * this breaks, opening the browser console on the phone answers it in one
+ * line instead of requiring a database forensics session.
  */
 function requestRebuild() {
   try {
     supabase.functions.invoke("trigger-rebuild", { body: {} })
-      .then(() => {}, () => {});
-  } catch (_err) {
-    /* nothing to tell the reporter */
+      .then(({ data, error }) => {
+        if (error) console.warn("[everyleague] rebuild nudge failed:", error);
+        else console.info("[everyleague] rebuild nudge:", data);
+      }, (err) => console.warn("[everyleague] rebuild nudge threw:", err));
+  } catch (err) {
+    console.warn("[everyleague] rebuild nudge could not be sent:", err);
   }
 }
 

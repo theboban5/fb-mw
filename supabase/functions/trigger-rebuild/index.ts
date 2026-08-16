@@ -24,14 +24,50 @@
 
 const GITHUB_API = "https://api.github.com";
 
+// ── CORS ─────────────────────────────────────────────────────────────────────
+// THIS IS NOT DECORATION. The only caller that matters is a browser on
+// everyleague.co, and a cross-origin POST carrying Authorization and apikey is
+// never sent on its own: the browser first sends an OPTIONS *preflight* and
+// makes the real request only if the answer allows it. Without these headers
+// the preflight was answered "405 method not allowed", the browser cancelled
+// the POST, and this function was never reached from /report at all.
+//
+// That is exactly how this failed twice without anyone noticing. Both times
+// the fix was verified with curl — which sends no preflight, so it always
+// worked from a terminal and never from a phone. VERIFY THIS FUNCTION FROM A
+// BROWSER, or the test does not cover the only path that is used.
+//
+// Allow-Origin is `*` deliberately. CORS is not the security boundary here and
+// cannot be: anything can call this with curl. The boundary is the reporter
+// token checked below. And `*` is safe precisely because that token is a
+// bearer token read from localStorage rather than an ambient cookie — another
+// origin cannot read it, so it cannot forge a call in a reporter's name.
+//
+// x-client-info and x-supabase-api-version are sent by supabase-js itself. A
+// header missing from this list fails the preflight just as surely as a
+// missing Allow-Origin.
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "authorization, apikey, content-type, x-client-info, x-supabase-api-version",
+  "Access-Control-Max-Age": "86400",
+};
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
   });
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
+  // The preflight. Must be answered before any other check — including the
+  // method check, which is what used to reject it.
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
   if (req.method !== "POST") {
     return json({ error: "method not allowed" }, 405);
   }
