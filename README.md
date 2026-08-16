@@ -612,6 +612,32 @@ dispatched from inside a run of the same workflow would cancel its own parent,
 turning every follow-up into a cancelled run and hiding genuine deploy
 failures. `workflow_run` fires only after the triggering run has completed.
 
+**Order matters, and it is look → dispatch → clear.** Consuming first is the
+obvious way round and it is wrong: the first live run dispatched into an error
+*after* clearing the flag, destroying the record of an unbuilt result — worse
+than the gap being closed. Anything failing before the clear now leaves
+`pending` set for the next deploy to retry, so a failure costs a late build
+rather than a missing result.
+
+**Chain depth is exactly one, which leaves a measured tail.** A run created by
+`GITHUB_TOKEN` emits no events that start further runs. `workflow_dispatch` is
+excepted so the follow-up's build *does* start, but that build's completion
+emits no `workflow_run`, so nothing follows it:
+
+| build triggered by | follow-up fired? |
+|---|---|
+| `push` | yes |
+| `workflow_dispatch` (user PAT) | yes |
+| `workflow_dispatch` (this workflow's `GITHUB_TOKEN`) | **no** |
+
+So one follow-up build per real build. That covers the case this exists for — a
+result published while a build was running. It does **not** cover a result
+published while the *follow-up* build is running: that sets `pending` again
+with no third build to consume it, and waits for the next publish (whose own
+build includes it anyway) or the cron. The residual window is roughly half a
+minute at the very end of a reporting session. Closing it would need a PAT
+instead of `GITHUB_TOKEN`, or a job that polls the build it started.
+
 The trigger is **best-effort**: the publish has already succeeded, so a failed
 nudge is never shown to the reporter. If it never lands, the cron ships the
 result anyway.

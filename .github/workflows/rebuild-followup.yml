@@ -18,14 +18,35 @@ name: Rebuild follow-up
 # `workflow_run` fires only after the triggering run has COMPLETED, so there is
 # nothing left in the group to cancel.
 #
-# WHY THIS DOES NOT LOOP. consume_rebuild_pending() clears the flag in the same
-# statement that reports it, so the follow-up build finds nothing pending
-# unless something new was published while IT ran — which is precisely when
-# another build is wanted. Worst case is one extra build per burst of reports.
+# WHY THIS DOES NOT LOOP, TWICE OVER. consume_rebuild_pending() clears the flag
+# in the same statement that reports it, so a follow-up would find nothing
+# pending unless something new was published meanwhile. GitHub then enforces
+# the same thing independently — see the chain depth note below.
 #
 # workflow_dispatch is one of the two events GitHub still delivers when fired
 # with the default GITHUB_TOKEN (repository_dispatch is the other), so this
-# does not need a PAT.
+# does not need a PAT to dispatch a build.
+#
+# CHAIN DEPTH IS EXACTLY ONE, AND THAT IS A REAL LIMIT, NOT A CHOICE.
+# A run created by GITHUB_TOKEN does not emit events that start further runs —
+# the recursion guard. workflow_dispatch is excepted, so the build below IS
+# dispatched; but that build's completion emits no workflow_run, so no
+# follow-up runs after it. Measured on 2026-08-16:
+#
+#   09:30:48  Build and deploy  (push)              -> follow-up fired
+#   09:26:58  Build and deploy  (dispatch, user PAT)-> follow-up fired
+#   09:32:01  Build and deploy  (dispatch, this job)-> NO follow-up
+#
+# So one follow-up build per real build, which covers the case this exists
+# for: a result published while a build was running. It does NOT cover a
+# result published while the FOLLOW-UP build is running — that sets pending
+# again with no third build to consume it, and waits for the next publish
+# (whose own build includes it anyway) or the 05:07 cron.
+#
+# Closing that tail would mean dispatching with a PAT instead of GITHUB_TOKEN,
+# or making this job poll the build it started and re-check. Neither is worth
+# it for a window of roughly half a minute at the very end of a reporting
+# session; the cron remains the honest backstop for it.
 
 on:
   workflow_run:
