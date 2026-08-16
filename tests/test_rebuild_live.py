@@ -98,6 +98,68 @@ class ClaimRebuildTest(unittest.TestCase):
         self.assertEqual(self.state()["dispatch_count"], 1)
         self.assertTrue(self.state()["pending"])
 
+    # ── consume_rebuild_pending: the follow-up that closes the debounce gap ──
+    # A publish inside the cooldown sets `pending` and dispatches nothing. If
+    # the build already running reads the database before that publish lands,
+    # the result is in no build at all — which happened on 2026-08-16, twice
+    # inside 26 seconds. The follow-up workflow calls this after every
+    # successful deploy; a true answer means "dispatch one more build".
+
+    @staticmethod
+    def consume():
+        return sb.rpc("consume_rebuild_pending", {}, require_secret=True)
+
+    def test_a_coalesced_report_asks_for_a_follow_up_build(self):
+        self.assertTrue(self.claim(3600))       # dispatched
+        self.assertFalse(self.claim(3600))      # coalesced -> pending
+        self.assertTrue(self.state()["pending"])
+        self.assertTrue(self.consume())
+
+    def test_consuming_clears_the_flag(self):
+        self.claim(3600)
+        self.claim(3600)
+        self.consume()
+        self.assertFalse(self.state()["pending"])
+
+    def test_a_quiet_build_asks_for_nothing(self):
+        """The common case: nothing was published while the build ran. A false
+        answer is what stops the follow-up dispatching builds forever."""
+        self.assertTrue(self.claim(3600))
+        self.assertFalse(self.consume())
+
+    def test_consuming_twice_dispatches_once(self):
+        """The loop-termination property, stated as a test. The flag is
+        cleared by the same statement that reports it, so a follow-up build
+        finds nothing pending unless something new was published while it ran.
+        """
+        self.claim(3600)
+        self.claim(3600)
+        self.assertTrue(self.consume())
+        self.assertFalse(self.consume())
+
+    def test_a_follow_up_is_booked_as_a_real_dispatch(self):
+        """It IS a dispatch, so it must restart the cooldown. Leaving the
+        timestamp stale would let the next publish claim immediately and
+        deploy twice for one change."""
+        self.claim(3600)
+        self.claim(3600)
+        before = self.state()
+        self.assertTrue(self.consume())
+        after = self.state()
+        self.assertEqual(after["dispatch_count"], before["dispatch_count"] + 1)
+        self.assertGreater(after["last_dispatched_at"],
+                           before["last_dispatched_at"])
+
+    def test_a_concurrent_consume_dispatches_exactly_once(self):
+        """Two deploys finishing together must not both dispatch. The
+        test-and-clear is one UPDATE, so the second waits on the row lock and
+        then fails its own WHERE."""
+        self.claim(3600)
+        self.claim(3600)
+        with concurrent.futures.ThreadPoolExecutor(8) as pool:
+            results = list(pool.map(lambda _: self.consume(), range(8)))
+        self.assertEqual(sum(1 for r in results if r), 1, results)
+
     def test_a_reporter_cannot_dispatch_deploys_directly(self):
         """EXECUTE is service_role only. Build minutes are not a reporter's to
         spend, and the Edge Function is the only intended caller."""
@@ -116,6 +178,24 @@ class ClaimRebuildTest(unittest.TestCase):
         status, body = call("rpc/claim_rebuild", token=None, method="POST",
                             body={"p_cooldown_seconds": 0})
         self.assertIn(status, (401, 403, 404), body)
+
+    def test_anon_cannot_request_a_follow_up_build(self):
+        """Same boundary as claim_rebuild: a true answer costs build minutes,
+        so the follow-up must be service_role only too."""
+        status, body = call("rpc/consume_rebuild_pending", token=None,
+                            method="POST", body={})
+        self.assertIn(status, (401, 403, 404), body)
+
+    def test_a_reporter_cannot_request_a_follow_up_build(self):
+        identities = live_support.Identities(prefix="MW_FOLLOWUPTEST").setup()
+        try:
+            for label in ("a", "admin"):
+                status, body = call("rpc/consume_rebuild_pending",
+                                    token=identities.tokens[label],
+                                    method="POST", body={})
+                self.assertIn(status, (401, 403, 404), f"{label}: {body}")
+        finally:
+            identities.teardown()
 
     def test_the_state_table_is_invisible_to_everyone_else(self):
         status, rows = call("rebuild_state?select=*", token=None)

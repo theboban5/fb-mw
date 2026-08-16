@@ -1,0 +1,68 @@
+name: Rebuild follow-up
+
+# Catches a result published while a build was already running.
+#
+# claim_rebuild debounces on a 60-second cooldown: a publish inside that window
+# does not dispatch a build, it sets rebuild_state.pending. Usually the build
+# already on its way reads the database late enough to include the change
+# anyway — but not always, and when it does not, the result sits unbuilt until
+# the 05:07 UTC cron. See 0011_consume_rebuild_pending.sql for the incident
+# that motivated this.
+#
+# WHY THIS IS ITS OWN WORKFLOW, AND NOT A LAST STEP OF "Build and deploy".
+# That workflow declares `concurrency: group: pages, cancel-in-progress: true`.
+# A run dispatched from inside a run of the same workflow joins that group and
+# cancels the run that dispatched it — the deploy would be fine, having already
+# finished, but the run would be reported as cancelled and a genuinely failed
+# deploy would become hard to spot among self-inflicted cancellations.
+# `workflow_run` fires only after the triggering run has COMPLETED, so there is
+# nothing left in the group to cancel.
+#
+# WHY THIS DOES NOT LOOP. consume_rebuild_pending() clears the flag in the same
+# statement that reports it, so the follow-up build finds nothing pending
+# unless something new was published while IT ran — which is precisely when
+# another build is wanted. Worst case is one extra build per burst of reports.
+#
+# workflow_dispatch is one of the two events GitHub still delivers when fired
+# with the default GITHUB_TOKEN (repository_dispatch is the other), so this
+# does not need a PAT.
+
+on:
+  workflow_run:
+    workflows: ["Build and deploy"]
+    types: [completed]
+
+permissions:
+  actions: write        # to dispatch "Build and deploy"
+
+jobs:
+  followup:
+    # A failed build published nothing, so the flag must stay set for the next
+    # attempt rather than being consumed by a run that shipped no data.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch another build if a report landed mid-build
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The secret key is required: rebuild_state is revoked from anon and
+          # authenticated, and EXECUTE on the function is service_role only.
+          pending=$(curl -fsS -X POST \
+            "${SUPABASE_URL}/rest/v1/rpc/consume_rebuild_pending" \
+            -H "apikey: ${SUPABASE_SECRET_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SECRET_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          echo "consume_rebuild_pending -> ${pending}"
+          if [ "${pending}" = "true" ]; then
+            echo "A report landed while the last build was running; rebuilding."
+            gh workflow run "Build and deploy" --ref main
+          else
+            echo "Nothing pending. The last build is current."
+          fi

@@ -106,6 +106,7 @@ The whole migration, done and verified:
 | Reporter app | `static/report/` — login, fixtures, deep links, score entry |
 | Publishing | `0003_reporting.sql` — `submit_match_report` RPC + audit log |
 | Auto-deploy | `supabase/functions/trigger-rebuild` + `claim_rebuild()` debounce |
+| Debounce gap | `0011_consume_rebuild_pending.sql` + the Rebuild follow-up workflow |
 | Match detail | `0007_match_detail.sql` — scorers, cards, subs, line-ups, photos |
 | Entry | `0008`/`0009` — `create_fixture`, `create_league`, `reschedule_match` |
 | Scorer identity | `0010_scorer_players.sql` — `create_player`, scorers resolve to a `player_id` |
@@ -569,9 +570,47 @@ exactly one wins.
 
 A request that arrives during the cooldown is folded into the run already on
 its way — that run checks out the repo and reads the database fresh, well after
-it was dispatched, so the change is almost always in it anyway. `pending`
-records the remainder and the daily cron is the backstop. This is the V1 target
-— "live within the build cycle", not realtime.
+it was dispatched, so the change is almost always in it anyway. This is the V1
+target — "live within the build cycle", not realtime.
+
+**Almost always is not always, and `pending` is how the remainder is caught.**
+On 2026-08-16 two results were published 26 seconds apart. The first dispatched
+a build; the second landed inside the cooldown, and the running build had
+already read Supabase by then. The result was in neither build:
+
+```
+09:08:35.195  Agumbala Stars v Yizo Yizo published
+09:08:35.749  claimed → build dispatched, 60s cooldown starts
+09:09:01.287  Brothers in Arms v Ndirande Dortmund published
+09:09:01.580  folded in: pending = true, nothing dispatched
+```
+
+`pending` recorded it faithfully — and **nothing read the flag**. Neither the
+workflow nor the Edge Function touched it, so the only backstop was the 05:07
+cron, twenty hours away. A reporter watched a correctly entered result fail to
+appear, which is the exact failure this pipeline exists to prevent. The
+`/report` "next match" button makes sub-minute publishes the normal case, so
+this was going to get more common, not less.
+
+`consume_rebuild_pending()` (migration `0011`) closes it. The **Rebuild
+follow-up** workflow calls it after every successful deploy; a true answer
+means one more build is dispatched. It is one atomic test-and-clear, so:
+
+* it **cannot loop** — the flag is cleared by the same statement that reports
+  it, so the follow-up build finds nothing pending unless something new was
+  published while *it* ran, which is exactly when another build is wanted.
+  Worst case is one extra build per burst of reports;
+* it **books the dispatch** (`last_dispatched_at`, `dispatch_count`) as
+  `claim_rebuild` does, so a reporter publishing at that moment is debounced
+  against real state rather than a stale timestamp;
+* it is **service_role only**, same boundary as `claim_rebuild` — a true
+  answer costs build minutes.
+
+It is a separate workflow rather than a last step of `deploy.yml` because that
+workflow declares `concurrency: group: pages, cancel-in-progress: true`: a run
+dispatched from inside a run of the same workflow would cancel its own parent,
+turning every follow-up into a cancelled run and hiding genuine deploy
+failures. `workflow_run` fires only after the triggering run has completed.
 
 The trigger is **best-effort**: the publish has already succeeded, so a failed
 nudge is never shown to the reporter. If it never lands, the cron ships the
