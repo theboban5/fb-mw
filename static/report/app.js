@@ -145,6 +145,12 @@ function humanError(error) {
       || message.includes("both teams are required")
       || message.includes("gender must be")
       || message.includes("type must be")
+      // ...and the scorer-identity rules from 0010, phrased the same way.
+      || message.includes("name is too long")
+      || message.includes("not in the database")
+      || message.includes("already have a scorer")
+      || message.includes("did not play in this match")
+      || message.includes("publish the score before")
       || message.includes("needs a name")) {
     return error.message.charAt(0).toUpperCase() + error.message.slice(1);
   }
@@ -275,7 +281,7 @@ function renderLogin(next) {
   });
 }
 
-function matchCard(match, names, { showScore }) {
+function matchCard(match, names, { showScore, from }) {
   const meta = [formatDate(match.date), formatKickoff(match.kickoff),
                 match.venue?.name].filter(Boolean).join(" · ");
   const info = statusMeta(match.status);
@@ -296,7 +302,7 @@ function matchCard(match, names, { showScore }) {
         <span class="rp-score">${scored ? esc(match.away_goals) : ""}</span>
       </div>
       <p class="rp-card-meta">${esc(meta)} ${badge}</p>
-      <a class="rp-btn${scored ? " is-ghost" : ""}" href="#/m/${esc(match.public_id)}">
+      <a class="rp-btn${scored ? " is-ghost" : ""}" href="${esc(matchHref(match, from))}">
         ${scored ? "Edit result" : "Report match"}
       </a>
     </article>`;
@@ -307,6 +313,32 @@ function group(title, matches, names, options = {}) {
   return `<h2 class="rp-group-head">${esc(title)}
             <span class="rp-count">${matches.length}</span></h2>`
     + matches.map((m) => matchCard(m, names, options)).join("");
+}
+
+// ── Carrying the list into the match, and back out ───────────────────────────
+// A reporter working through a matchday sets three filters, taps a match,
+// publishes, and used to land back on an unfiltered list with all of it to do
+// again. The filters they chose travel with them as `from` — the home screen's
+// own query string, url-encoded once so it survives being a value inside
+// another query string.
+//
+// It is carried in the URL rather than in a variable for the same reason the
+// filters themselves are: the browser back button, a reload and a shared link
+// all keep working without anything remembering anything.
+
+function matchHref(match, from) {
+  const tail = from ? `?from=${encodeURIComponent(from)}` : "";
+  return `#/m/${match.public_id}${tail}`;
+}
+
+/** Where "My matches" goes from a match screen: back to the list they came
+ *  from, or the plain home screen when they arrived by a WhatsApp deep link. */
+function backHash(params) {
+  const from = params?.get("from") || "";
+  // Re-read through readFilters/filterHash rather than trusting the string:
+  // `from` is user input like every other part of the hash, and this is what
+  // stops a hand-edited one from being echoed into an href.
+  return from ? filterHash(readFilters(new URLSearchParams(from))) : "#/";
 }
 
 // ── Home filters ─────────────────────────────────────────────────────────────
@@ -388,6 +420,17 @@ function stageOptions(matches) {
 // league's results behind sixty newer ones from everywhere else. So narrowing
 // to a competition asks the database again, scoped to it.
 let homeCache = null;   // { key, matches, names }
+
+// The list the reporter is currently working through, captured whenever the
+// home screen draws: enough to offer "next match" from inside a match screen
+// without a second query, and deliberately NOT cleared by invalidateHome().
+//
+// It is a snapshot on purpose. Publishing a result invalidates the fixture
+// cache, and a queue rebuilt from fresh data would re-order itself under the
+// reporter's feet — the match they just did would leave the "awaiting" bucket
+// and every position after it would shift. Walking the list as it looked when
+// they started is the only version that behaves like a list.
+let queue = null;       // { from, items: [{ id, label, needsResult }] }
 
 const invalidateHome = () => { homeCache = null; };
 
@@ -555,21 +598,28 @@ async function renderHome(params) {
     return true;
   });
 
+  // The filters travel with every match link, so publishing a result and
+  // coming back lands on the same list rather than on an unfiltered one.
+  const from = filterHash(filters).replace(/^#\/\??/, "");
+
   // Filtered to one thing: a flat list, because the headings would each hold
   // the whole list and say nothing. Unfiltered: the buckets, which are the
   // reason the home screen is useful at all.
   let body;
+  let ordered;
   if (filters.show === "all" && !filters.date && !filters.md) {
+    const bucket = (name) => shown.filter((m) => bucketOf(m, today) === name);
+    const today_ = bucket("today");
+    const awaiting = bucket("awaiting");
+    const upcoming = bucket("upcoming");
+    const reported = bucket("reported").slice(0, 12);
     body = [
-      group("Today", shown.filter((m) => bucketOf(m, today) === "today"),
-            names, { showScore: true }),
-      group("Awaiting result", shown.filter((m) => bucketOf(m, today) === "awaiting"),
-            names, { showScore: true }),
-      group("Upcoming", shown.filter((m) => bucketOf(m, today) === "upcoming"),
-            names, {}),
-      group("Recently reported", shown.filter((m) => bucketOf(m, today) === "reported")
-            .slice(0, 12), names, {}),
+      group("Today", today_, names, { showScore: true, from }),
+      group("Awaiting result", awaiting, names, { showScore: true, from }),
+      group("Upcoming", upcoming, names, { from }),
+      group("Recently reported", reported, names, { from }),
     ].join("");
+    ordered = [...today_, ...awaiting, ...upcoming, ...reported];
   } else {
     // The most specific filter names the list, because that is what the
     // reporter just asked for.
@@ -577,8 +627,21 @@ async function renderHome(params) {
       : filters.date ? formatDate(filters.date)
       : SHOW_OPTIONS.find((o) => o.value === filters.show).label;
     body = group(heading, shown, names,
-                 { showScore: filters.show !== "upcoming" });
+                 { showScore: filters.show !== "upcoming", from });
+    ordered = shown;
   }
+
+  // Captured in the order it is about to be drawn, so "next match" means the
+  // next one down the screen and nothing cleverer.
+  queue = {
+    from,
+    items: ordered.map((m) => ({
+      id: m.public_id,
+      label: `${m.home?.display_name || m.home_team_id} v `
+             + `${m.away?.display_name || m.away_team_id}`,
+      needsResult: m.status === "scheduled",
+    })),
+  };
 
   const canAdd = context.isAdmin || context.competitions.length > 0;
   const actions = `
@@ -993,8 +1056,9 @@ async function renderNewLeague() {
   });
 }
 
-async function renderMatch(publicId) {
+async function renderMatch(publicId, params) {
   h('<div class="rp-loading"><span class="rp-spinner"></span><p>Loading match…</p></div>');
+  const back = backHash(params);
 
   const { data: matches, error } = await supabase.from("matches")
     .select(MATCH_FIELDS).eq("public_id", publicId).limit(1);
@@ -1007,7 +1071,7 @@ async function renderMatch(publicId) {
   if (!match) {
     h(`<p class="rp-empty">That match could not be found. The link may be
          out of date.</p>
-       <a class="rp-btn is-ghost" href="#/">Back to my matches</a>`);
+       <a class="rp-btn is-ghost" href="${esc(back)}">Back to my matches</a>`);
     return;
   }
 
@@ -1027,7 +1091,7 @@ async function renderMatch(publicId) {
        </div>
        <p class="rp-empty">You are not assigned to this competition, so you
          cannot report this match. If that looks wrong, ask an administrator.</p>
-       <a class="rp-btn is-ghost" href="#/">Back to my matches</a>`);
+       <a class="rp-btn is-ghost" href="${esc(back)}">Back to my matches</a>`);
     return;
   }
 
@@ -1040,12 +1104,38 @@ async function renderMatch(publicId) {
     source: match.source_ref || "",
     published: match.home_goals != null || match.status !== "scheduled",
     busy: false,
+    back,
+    from: params?.get("from") || "",
+    // Which of the collapsed sections were open, so a redraw does not shut
+    // them. See drawDetail.
+    open: {},
   };
 
   drawMatch(match, names, state);
 }
 
+/** The next match in the list the reporter came from that still needs a
+ *  result, or null. Sits on the queue captured by the home screen, so it costs
+ *  nothing and is in the order they saw. */
+function nextInQueue(publicId, from) {
+  // A different list (or none) is not this reporter's run — offering to walk
+  // it would send them somewhere they never asked to be.
+  if (!queue || queue.from !== from) return null;
+  const at = queue.items.findIndex((it) => it.id === publicId);
+  if (at === -1) return null;
+  return queue.items.slice(at + 1).find((it) => it.needsResult) || null;
+}
+
+/** Mark a match done in the queue so walking the list never offers it twice. */
+function markQueued(publicId) {
+  const item = queue?.items.find((it) => it.id === publicId);
+  if (item) item.needsResult = false;
+}
+
 function drawMatch(match, names, state) {
+  // Publishing, and saving a new date, both redraw this whole screen. Neither
+  // should shut a section the reporter had opened underneath.
+  captureDetailState(state);
   const meta = [formatDate(match.date), formatKickoff(match.kickoff),
                 match.venue?.name].filter(Boolean).join(" · ");
   const homeName = match.home?.display_name || match.home_team_id;
@@ -1058,6 +1148,14 @@ function drawMatch(match, names, state) {
       <span>${esc(s.label)}</span>
     </label>`).join("");
 
+  // Walking a matchday: the next fixture in the list they came from that still
+  // needs a result. Offered only after publishing, because before that the
+  // reporter is still on the job in front of them.
+  const next = state.published ? nextInQueue(match.public_id, state.from) : null;
+  const nextBtn = next ? `
+    <a class="rp-btn" href="${esc(matchHref({ public_id: next.id }, state.from))}">
+      Next: ${esc(next.label)} &rarr;</a>` : "";
+
   const done = state.published ? `
     <div class="rp-done">
       <div class="rp-done-tick" aria-hidden="true">&#10003;</div>
@@ -1065,10 +1163,11 @@ function drawMatch(match, names, state) {
       <p class="rp-done-score">${esc(homeName)} ${esc(match.home_goals ?? state.home)}&ndash;${esc(match.away_goals ?? state.away)} ${esc(awayName)}</p>
       <p class="rp-done-status">${esc(statusMeta(match.status).label)}</p>
       <p class="rp-done-status">Live on everyleague.co within a few minutes.</p>
+      ${nextBtn}
     </div>` : "";
 
   h(`
-    <a class="rp-btn is-quiet" href="#/" style="margin-top:0">&larr; My matches</a>
+    <a class="rp-btn is-quiet" href="${esc(state.back)}" style="margin-top:0">&larr; My matches</a>
     ${done}
     <p class="rp-report-comp">${esc(names[match.competition_id] || match.competition_id)}</p>
     <p class="rp-report-meta">${esc(meta)}</p>
@@ -1108,7 +1207,7 @@ function drawMatch(match, names, state) {
       <p class="rp-publish-note" data-note></p>
     </div>
 
-    ${section("reschedule", "Move this match", 0, `
+    ${section("reschedule", "Change date", 0, `
       <p class="rp-hint" style="margin-top:0">The fixture list said one day and
         it was played on another? Change it here. This saves on its own — it is
         not part of publishing the score.</p>
@@ -1121,7 +1220,7 @@ function drawMatch(match, names, state) {
              value="${esc((match.kickoff || "").slice(0, 5))}">
       <p class="rp-hint">Malawi time.</p>
       <button class="rp-btn is-ghost" type="button" data-rs-save>Save new date</button>
-    `)}
+    `, state.open?.reschedule)}
 
     <div data-detail></div>
   `);
@@ -1212,6 +1311,8 @@ function drawMatch(match, names, state) {
     state.published = true;
     // The home screen's buckets are now wrong for this match.
     invalidateHome();
+    // ...and the run this match belongs to has one fewer match left in it.
+    markQueued(match.public_id);
     flash("Published. The site updates in a few minutes.", "ok", 6000);
     requestRebuild();
     drawMatch(match, names, state);
@@ -1281,11 +1382,10 @@ function wireReschedule(match, names, state) {
     flash(match.date ? `Moved to ${formatDate(match.date)}.`
                      : "Date removed.", "ok");
     // The date is printed in the header line above the score, so the whole
-    // screen is redrawn rather than patched — and it reopens this section, so
-    // the reporter can see the change landed where they made it.
+    // screen is redrawn rather than patched. drawMatch records which sections
+    // were open before it redraws, so this one comes back open and the
+    // reporter can see the change landed where they made it.
     drawMatch(match, names, state);
-    const reopened = view.querySelector('[data-sec="reschedule"]');
-    if (reopened) reopened.open = true;
     // Only a published result is live on the site; moving an unplayed fixture
     // still changes the fixture list, so both are worth a rebuild.
     requestRebuild();
@@ -1308,27 +1408,115 @@ const CARD_TYPES = [
   ["red_card", "Red"],
 ];
 
-function sideButtons(match, name) {
+// ── Naming a scorer ──────────────────────────────────────────────────────────
+// A goal has to say WHO, and "who" on everyleague.co is a player_id: that is
+// what puts the goal in the league's top-scorer table and on the player's own
+// page. A reporter has a name and a phone, so the gap between the two is this
+// picker — type a few letters, tap the player, and if the player is genuinely
+// new, tap once more to add them.
+//
+// It never blocks. A reporter with no signal, or one who simply types a name
+// and presses Add, still gets the goal saved under that name (see
+// submit_match_goal's optional p_player_id) — it shows on the match line and
+// can be reconciled to a player later. Refusing to save a scorer because a
+// lookup failed would be exactly the wrong trade for the connection this app
+// is written for.
+
+const UNKNOWN_PLAYER = "CAF_MW_UNKNOWN";
+
+// Set by whichever scorer picker is currently on screen, so the one document
+// click listener (see start()) can close its suggestion list.
+let dismissPicker = null;
+
+/** Characters that would be read as PostgREST filter syntax rather than as
+ *  part of a name. Stripped rather than escaped: no Malawian player's name
+ *  contains a bracket, and a stripped character costs one wrong suggestion
+ *  where a mis-escaped one costs a 400. */
+const FILTER_UNSAFE = /[(),"\\*]/g;
+
+async function searchPlayers(term) {
+  const q = term.trim().replace(FILTER_UNSAFE, " ").replace(/\s+/g, " ").trim();
+  // One letter matches most of the database and is not a search.
+  if (q.length < 2) return [];
+  const like = `*${q}*`;
+  const { data, error } = await supabase.from("players")
+    .select("player_id,full_name,known_as")
+    .or(`full_name.ilike.${like},known_as.ilike.${like}`)
+    .neq("player_id", UNKNOWN_PLAYER)
+    .limit(8);
+  if (error) throw error;
+  return data || [];
+}
+
+const playerLabel = (p) => p.known_as || p.full_name || p.player_id;
+
+/** player_id -> team_id for everyone who has already scored for either side in
+ *  this match. Two players share a name often enough that "has scored for
+ *  Ekhaya" is usually the whole answer to which one the reporter means, and it
+ *  is one query per match screen. */
+function knownScorers(match) {
+  return once(`scorers:${match.match_id}`, async () => {
+    const { data } = await supabase.from("goals").select("player_id,team_id")
+      .in("team_id", [match.home_team_id, match.away_team_id])
+      .neq("player_id", UNKNOWN_PLAYER).limit(500);
+    const seen = {};
+    (data || []).forEach((g) => { seen[g.player_id] = g.team_id; });
+    return seen;
+  });
+}
+
+/** Which side did it. `checked` keeps the reporter's choice across the redraw
+ *  that follows a save — a second scorer for the same team is the common case,
+ *  and re-tapping the same button every time is the sort of small tax that
+ *  stops people entering detail at all. */
+function sideButtons(match, name, checked) {
+  const home = checked ? checked === match.home_team_id : true;
   return `
     <div class="rp-side-pick" role="radiogroup">
-      <label><input type="radio" name="${name}" value="${esc(match.home_team_id)}" checked>
+      <label><input type="radio" name="${name}" value="${esc(match.home_team_id)}"${home ? " checked" : ""}>
         <span>${esc(match.home?.display_name || match.home_team_id)}</span></label>
-      <label><input type="radio" name="${name}" value="${esc(match.away_team_id)}">
+      <label><input type="radio" name="${name}" value="${esc(match.away_team_id)}"${home ? "" : " checked"}>
         <span>${esc(match.away?.display_name || match.away_team_id)}</span></label>
     </div>`;
 }
 
-function section(key, title, count, inner) {
+function section(key, title, count, inner, open) {
   const badge = count ? `<span class="rp-sec-count">${count}</span>` : "";
-  return `<details class="rp-sec" data-sec="${key}">
+  return `<details class="rp-sec" data-sec="${key}"${open ? " open" : ""}>
     <summary>${esc(title)}${badge}</summary>
     <div class="rp-sec-body">${inner}</div>
   </details>`;
 }
 
+/** Remember which sections are open and which side each form is set to.
+ *
+ *  Every save redraws the whole detail block from fresh data, which is what
+ *  keeps the lists honest — but a <details> rebuilt from HTML is a CLOSED
+ *  <details>. Entering two scorers therefore meant: type, save, watch the
+ *  section shut, re-open it, re-pick the team, type. This is that bug's fix,
+ *  and it is a read of the live DOM rather than a flag set on click, so it
+ *  cannot drift out of step with what is actually on screen. */
+function captureDetailState(state) {
+  state.open = state.open || {};
+  view.querySelectorAll("[data-sec]").forEach((el) => {
+    state.open[el.dataset.sec] = el.open;
+  });
+  state.pick = state.pick || {};
+  view.querySelectorAll(".rp-side-pick input:checked").forEach((el) => {
+    state.pick[el.name] = el.value;
+  });
+}
+
 async function drawDetail(match, state) {
   const host = view.querySelector("[data-detail]");
   if (!host) return;
+
+  // Read the screen BEFORE the queries below replace it: after the await the
+  // reporter may already have collapsed something, and this has to record what
+  // they last did, not what the page looked like when it finally answered.
+  captureDetailState(state);
+  const open = state.open || {};
+  const pick = state.pick || {};
 
   const teamName = (id) => id === match.home_team_id
     ? (match.home?.display_name || id) : (match.away?.display_name || id);
@@ -1352,17 +1540,33 @@ async function drawDetail(match, state) {
   const subs = incidents.filter((i) => i.incident_type === "substitution");
   const scored = match.home_goals != null;
 
-  const goalList = goals.map((g) => `
+  // A goal names its scorer twice over: reported_player_name is what someone
+  // typed, and player_id is who that turned out to be. The list shows the
+  // typed name — it is the one a reporter recognises — and marks whether it
+  // reached a player page or is still just a name.
+  const goalList = goals.map((g) => {
+    const identified = g.player_id && g.player_id !== UNKNOWN_PLAYER;
+    return `
     <li><span>${esc(g.reported_player_name || "Unknown")}
-      <em>${esc(teamName(g.team_id))}${g.minute ? " · " + esc(g.minute) + "'" : ""}</em></span>
+      <em>${esc(teamName(g.team_id))}${g.minute ? " · " + esc(g.minute) + "'" : ""}
+        · ${identified ? "in the scorer table" : "name only"}</em></span>
       <button class="rp-x" type="button" data-del-goal="${esc(g.goal_id)}"
-              aria-label="Remove ${esc(g.reported_player_name)}">&times;</button></li>`).join("");
+              aria-label="Remove ${esc(g.reported_player_name)}">&times;</button></li>`;
+  }).join("");
 
   const goalForm = scored ? `
-    <form data-goal-form>
-      ${sideButtons(match, "goal-team")}
-      <input class="rp-input" name="player" placeholder="Scorer's name" required
-             autocomplete="off" autocapitalize="words">
+    <form data-goal-form autocomplete="off">
+      ${sideButtons(match, "goal-team", pick["goal-team"])}
+      <div class="rp-pick" data-pick>
+        <input class="rp-input" name="player" placeholder="Scorer's name" required
+               autocomplete="off" autocapitalize="words" role="combobox"
+               aria-expanded="false" aria-autocomplete="list"
+               aria-controls="rp-player-list">
+        <input type="hidden" name="player_id" value="">
+        <ul class="rp-suggest" id="rp-player-list" role="listbox" data-suggest hidden></ul>
+      </div>
+      <p class="rp-hint" data-pick-note>Start typing and pick the player, so the
+        goal counts towards their record and the league's top scorers.</p>
       <div class="rp-row">
         <input class="rp-input" name="minute" placeholder="Min" inputmode="numeric">
         <select class="rp-input" name="type">
@@ -1374,6 +1578,8 @@ async function drawDetail(match, state) {
         </select>
       </div>
       <button class="rp-btn is-ghost" type="submit">Add scorer</button>
+      <p class="rp-hint">Scorers show under the result on everyleague.co. Add
+        one at a time — this stays open for the next.</p>
     </form>`
     : `<p class="rp-hint">Publish the score first — a scorer needs a goal to
          belong to.</p>`;
@@ -1382,7 +1588,7 @@ async function drawDetail(match, state) {
     <h2 class="rp-field-head">Match detail <span class="rp-optional">optional</span></h2>
 
     ${section("goals", "Goalscorers", goals.length,
-      `<ul class="rp-list">${goalList}</ul>${goalForm}`)}
+      `<ul class="rp-list">${goalList}</ul>${goalForm}`, open.goals)}
 
     ${section("cards", "Cards", cards.length, `
       <ul class="rp-list">${cards.map((c) => `
@@ -1393,7 +1599,7 @@ async function drawDetail(match, state) {
           <button class="rp-x" type="button" data-del-incident="${c.incident_id}"
                   aria-label="Remove card">&times;</button></li>`).join("")}</ul>
       <form data-card-form>
-        ${sideButtons(match, "card-team")}
+        ${sideButtons(match, "card-team", pick["card-team"])}
         <input class="rp-input" name="player" placeholder="Player's name" required
                autocomplete="off" autocapitalize="words">
         <div class="rp-row">
@@ -1403,7 +1609,7 @@ async function drawDetail(match, state) {
           <input class="rp-input" name="minute" placeholder="Min" inputmode="numeric">
         </div>
         <button class="rp-btn is-ghost" type="submit">Add card</button>
-      </form>`)}
+      </form>`, open.cards)}
 
     ${section("subs", "Substitutions", subs.length, `
       <ul class="rp-list">${subs.map((s) => `
@@ -1412,20 +1618,20 @@ async function drawDetail(match, state) {
           <button class="rp-x" type="button" data-del-incident="${s.incident_id}"
                   aria-label="Remove substitution">&times;</button></li>`).join("")}</ul>
       <form data-sub-form>
-        ${sideButtons(match, "sub-team")}
+        ${sideButtons(match, "sub-team", pick["sub-team"])}
         <input class="rp-input" name="on" placeholder="Player coming on" required
                autocomplete="off" autocapitalize="words">
         <input class="rp-input" name="off" placeholder="Player going off" required
                autocomplete="off" autocapitalize="words">
         <input class="rp-input" name="minute" placeholder="Min" inputmode="numeric">
         <button class="rp-btn is-ghost" type="submit">Add substitution</button>
-      </form>`)}
+      </form>`, open.subs)}
 
     ${section("lineup", "Line-ups", lineup.length, `
       <p class="rp-hint">One name per line. Paste a whole team in at once —
         no need to type them into separate boxes.</p>
       <form data-lineup-form>
-        ${sideButtons(match, "lineup-team")}
+        ${sideButtons(match, "lineup-team", pick["lineup-team"])}
         <div class="rp-row">
           <label class="rp-inline"><input type="radio" name="role" value="starter" checked>
             <span>Starting XI</span></label>
@@ -1440,7 +1646,7 @@ async function drawDetail(match, state) {
         <li><span>${esc(l.player_name)}
           <em>${esc(teamName(l.team_id))} · ${l.role === "starter" ? "XI" : "sub"}</em></span>
           <button class="rp-x" type="button" data-del-lineup="${l.id}"
-                  aria-label="Remove ${esc(l.player_name)}">&times;</button></li>`).join("")}</ul>`)}
+                  aria-label="Remove ${esc(l.player_name)}">&times;</button></li>`).join("")}</ul>`, open.lineup)}
 
     ${section("photo", "Photos", media.length, `
       <ul class="rp-list">${media.map((m) => `
@@ -1455,7 +1661,7 @@ async function drawDetail(match, state) {
         <button class="rp-btn is-ghost" type="submit">Upload photo</button>
         <p class="rp-hint" data-upload-note>Large photos are shrunk on the phone
           before sending, so this works on a slow connection.</p>
-      </form>`)}
+      </form>`, open.photo)}
   `;
 
   wireDetail(match, state);
@@ -1480,23 +1686,178 @@ async function detailAction(button, busyLabel, fn, match, state) {
   }
 }
 
+/** The scorer combobox: search as you type, tap to identify, or add a player.
+ *
+ *  The hidden player_id field is the output. Everything else here exists to
+ *  fill it in, and to be honest on screen about whether it is filled — a
+ *  reporter should never have to guess whether the goal they just entered
+ *  reached the scorer table. */
+function wirePlayerPicker(host, match) {
+  const wrap = host.querySelector("[data-pick]");
+  if (!wrap) return;
+
+  const input = wrap.querySelector('input[name="player"]');
+  const hidden = wrap.querySelector('input[name="player_id"]');
+  const list = wrap.querySelector("[data-suggest]");
+  const note = host.querySelector("[data-pick-note]");
+  const defaultNote = note.textContent;
+
+  let timer = null;
+  // Only the most recent search may paint. On a slow connection the answer to
+  // "Th" can easily arrive after the answer to "Thandiwe", and a list that
+  // rewinds under a moving finger is worse than no list.
+  let latest = 0;
+
+  const close = () => {
+    list.hidden = true;
+    list.innerHTML = "";
+    input.setAttribute("aria-expanded", "false");
+  };
+
+  function setNote(text, kind) {
+    note.textContent = text;
+    note.className = kind ? `rp-hint is-${kind}` : "rp-hint";
+  }
+
+  function choose(playerId, name) {
+    hidden.value = playerId;
+    input.value = name;
+    close();
+    setNote(`${name} is identified — this goal counts towards their record.`,
+            "good");
+  }
+
+  function render(players, term, known) {
+    const rows = players.map((p) => {
+      const name = playerLabel(p);
+      const teamId = known[p.player_id];
+      const hint = teamId
+        ? `has scored for ${teamId === match.home_team_id
+            ? (match.home?.display_name || "the home team")
+            : (match.away?.display_name || "the away team")}`
+        : (p.known_as && p.full_name && p.known_as !== p.full_name
+            ? p.full_name : "");
+      return `<li role="option"><button type="button" class="rp-suggest-btn"
+        data-player="${esc(p.player_id)}" data-name="${esc(name)}">
+        <span>${esc(name)}</span>${hint ? `<em>${esc(hint)}</em>` : ""}</button></li>`;
+    });
+
+    // Offered unless the typed name IS one of the answers: a reporter looking
+    // straight at "Thandiwe Phiri" in the list must not also be invited to
+    // create a second one.
+    const exact = players.some(
+      (p) => playerLabel(p).toLowerCase() === term.trim().toLowerCase());
+    if (!exact) {
+      rows.push(`<li role="option"><button type="button"
+        class="rp-suggest-btn is-new" data-create="${esc(term.trim())}">
+        <span>＋ Add “${esc(term.trim())}” as a new player</span>
+        <em>only if they are not in the list above</em></button></li>`);
+    }
+    list.innerHTML = rows.join("");
+    list.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+  }
+
+  input.addEventListener("input", () => {
+    // The typed name no longer belongs to whoever was picked.
+    hidden.value = "";
+    setNote(defaultNote);
+    clearTimeout(timer);
+    const term = input.value;
+    if (term.trim().length < 2) { close(); return; }
+    // Long enough that a two-finger typist does not fire a query per letter,
+    // short enough to feel like it is keeping up.
+    timer = setTimeout(async () => {
+      const mine = ++latest;
+      try {
+        const [players, known] = await Promise.all([
+          searchPlayers(term), knownScorers(match),
+        ]);
+        if (mine !== latest) return;
+        // Familiar faces first: someone who has scored for one of these two
+        // teams is far more likely to be the person meant.
+        players.sort((a, b) =>
+          Number(Boolean(known[b.player_id])) - Number(Boolean(known[a.player_id])));
+        render(players, term, known);
+      } catch (err) {
+        if (mine !== latest) return;
+        // Rule 3, and the reason the picker is optional: a failed lookup must
+        // not read as a failed entry. The name they typed still saves.
+        close();
+        setNote("Could not search players just now — the name you typed will "
+                + "still be saved with the goal.", "warn");
+      }
+    }, 250);
+  });
+
+  input.addEventListener("focus", () => {
+    if (!hidden.value && input.value.trim().length >= 2) {
+      input.dispatchEvent(new Event("input"));
+    }
+  });
+
+  list.addEventListener("click", async (event) => {
+    const button = event.target.closest("button");
+    if (!button) return;
+    if (button.dataset.player) {
+      choose(button.dataset.player, button.dataset.name);
+      return;
+    }
+    const name = button.dataset.create;
+    if (!name || button.disabled) return;
+    button.disabled = true;
+    button.querySelector("span").textContent = "Adding…";
+    const { data, error } = await supabase.rpc("create_player", {
+      p_full_name: name,
+    });
+    if (error) {
+      button.disabled = false;
+      close();
+      setNote("Could not add that player — the name will still be saved with "
+              + "the goal.", "warn");
+      console.warn("[everyleague] create_player failed:", error);
+      return;
+    }
+    const created = (data || [])[0];
+    // create_player is idempotent on the name, so this may be a player who
+    // already existed under a spelling the search did not surface.
+    choose(created.player_id, playerLabel(created));
+  });
+
+  // A tap anywhere else means "not that list". Handed to the single listener
+  // installed in start() rather than adding one per redraw: the detail block
+  // is rebuilt after every save, and a listener per rebuild would pile up
+  // holding a detached form each time.
+  dismissPicker = (event) => { if (!wrap.contains(event.target)) close(); };
+}
+
 function wireDetail(match, state) {
   const host = view.querySelector("[data-detail]");
   const pick = (name) =>
     host.querySelector(`input[name="${name}"]:checked`)?.value;
   const reporterId = context.reporter?.reporter_id;
 
+  wirePlayerPicker(host, match);
+
   host.querySelector("[data-goal-form]")?.addEventListener("submit", (e) => {
     e.preventDefault();
     const f = e.target;
-    detailAction(f.querySelector("button"), "Adding…", async () => {
+    detailAction(f.querySelector('button[type="submit"]'), "Adding…", async () => {
       const { error } = await supabase.rpc("submit_match_goal", {
         p_match_id: match.match_id,
         p_team_id: pick("goal-team"),
         p_player_name: f.player.value,
         p_minute: f.minute.value,
         p_goal_type: f.type.value,
+        // Blank when the reporter typed a name without picking anyone. The
+        // goal is still saved and still shown — see submit_match_goal.
+        p_player_id: f.player_id.value,
       });
+      if (!error) {
+        // Unlike a card or a line-up, a scorer is rendered on the public site,
+        // so it is worth a build the same way a score is.
+        requestRebuild();
+      }
       return error;
     }, match, state);
   });
@@ -1589,9 +1950,14 @@ function wireDetail(match, state) {
     const line = e.target.closest("[data-del-lineup]");
     const photo = e.target.closest("[data-del-media]");
     if (goal) {
-      detailAction(goal, "…", async () =>
-        (await supabase.rpc("delete_match_goal",
-          { p_goal_id: goal.dataset.delGoal })).error, match, state);
+      detailAction(goal, "…", async () => {
+        const { error } = await supabase.rpc("delete_match_goal",
+          { p_goal_id: goal.dataset.delGoal });
+        // A removed scorer is a change to a published page, same as an added
+        // one — the site should stop showing a name the reporter took back.
+        if (!error) requestRebuild();
+        return error;
+      }, match, state);
     } else if (incident) {
       detailAction(incident, "…", async () =>
         (await supabase.from("match_incidents").delete()
@@ -1732,6 +2098,8 @@ async function route() {
   // "something" includes leaving the screen: a failure from the last match
   // must not follow them onto the next one.
   clearFlash();
+  // The scorer picker belongs to the screen being left.
+  dismissPicker = null;
   const { path, params } = parseHash();
   const { data: { session } } = await supabase.auth.getSession();
 
@@ -1761,7 +2129,7 @@ async function route() {
     }
   }
 
-  if (path.startsWith("/m/")) return renderMatch(path.slice(3));
+  if (path.startsWith("/m/")) return renderMatch(path.slice(3), params);
   if (path === "/add") return renderAddFixture(params);
   if (path === "/league/new") return renderNewLeague();
   if (path === "/account") return renderAccount();
@@ -1789,6 +2157,7 @@ function start() {
   });
 
   accountBtn.addEventListener("click", () => { location.hash = "#/account"; });
+  document.addEventListener("click", (event) => { dismissPicker?.(event); });
   window.addEventListener("hashchange", route);
   supabase.auth.onAuthStateChange((event) => {
     if (event === "SIGNED_OUT") { context = null; route(); }

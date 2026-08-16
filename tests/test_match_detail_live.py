@@ -58,12 +58,27 @@ class MatchDetailTest(unittest.TestCase):
                         "p_match_id": match["match_id"], "p_home_score": home,
                         "p_away_score": away, "p_status": "played"})
 
-    def add_goal(self, label, match, team_id, name, minute="", goal_type=""):
+    def add_goal(self, label, match, team_id, name, minute="", goal_type="",
+                 player_id=""):
         return call("rpc/submit_match_goal", token=self.tokens[label],
                     method="POST", body={
                         "p_match_id": match["match_id"], "p_team_id": team_id,
                         "p_player_name": name, "p_minute": minute,
-                        "p_goal_type": goal_type})
+                        "p_goal_type": goal_type, "p_player_id": player_id})
+
+    def create_player(self, label, name):
+        return call("rpc/create_player", token=self.tokens[label],
+                    method="POST", body={"p_full_name": name})
+
+    @staticmethod
+    def drop_player(player_id):
+        """Players are global, not namespaced to a test competition, so every
+        one a test mints has to be taken back out by hand."""
+        if player_id:
+            sb._request("DELETE", "players",
+                        query=f"player_id=eq.{player_id}",
+                        headers={"Prefer": "return=minimal"},
+                        require_secret=True)
 
     def goals(self, match):
         return sb.select("goals", params={"match_id": f"eq.{match['match_id']}"},
@@ -139,11 +154,110 @@ class MatchDetailTest(unittest.TestCase):
         self.assertEqual(goal["reported_by"], self.ids["a"])
 
     def test_no_new_player_row_is_created_for_a_typed_name(self):
+        """Adding a scorer never mints a person as a side effect.
+
+        0010 does let a reporter create a player — but only through
+        create_player, and only from a tap that says so. This is the half of
+        that split that has to keep holding: someone entering results at speed
+        must not be able to fill the players table with typos by accident.
+        """
         before = len(sb.select("players", columns="player_id", require_secret=True))
         self.publish("a", self.match_a, 1, 0)
         self.add_goal("a", self.match_a, self.match_a["home_team_id"], "Some Name")
         after = len(sb.select("players", columns="player_id", require_secret=True))
         self.assertEqual(before, after)
+
+    # ── Identified scorers (0010) ────────────────────────────────────────────
+    # A goal with a real player_id is the one that reaches the league's top
+    # scorer table and the player's own page. Everything here is about getting
+    # that id right, and about never letting the attempt cost a reporter the
+    # scorer they were entering.
+
+    def test_a_created_player_gets_a_canonical_id(self):
+        status, body = self.create_player("a", "  Zzztest  Mwale  ")
+        self.addCleanup(self.drop_player, body[0]["player_id"] if status == 200 else None)
+        self.assertEqual(status, 200, body)
+        player = body[0]
+        self.assertRegex(player["player_id"], r"^CAF_MW_\d{6}$")
+        # Trimmed, and inner whitespace collapsed: "Zzztest  Mwale" and
+        # "Zzztest Mwale" are one person and look identical on screen.
+        self.assertEqual(player["full_name"], "Zzztest Mwale")
+        self.assertEqual(player["status"], "active")
+
+    def test_creating_the_same_name_twice_returns_the_same_player(self):
+        """Two reporters typing one name must not make two people."""
+        status, body = self.create_player("a", "Zzztest Kachala")
+        self.addCleanup(self.drop_player, body[0]["player_id"] if status == 200 else None)
+        self.assertEqual(status, 200, body)
+        again = self.create_player("admin", "  zzztest KACHALA ")
+        self.assertEqual(again[0], 200, again[1])
+        self.assertEqual(again[1][0]["player_id"], body[0]["player_id"])
+
+    def test_a_created_player_can_be_named_as_a_scorer(self):
+        status, body = self.create_player("a", "Zzztest Chirwa")
+        self.addCleanup(self.drop_player, body[0]["player_id"] if status == 200 else None)
+        player_id = body[0]["player_id"]
+
+        self.publish("a", self.match_a, 1, 0)
+        self.assertEqual(
+            self.add_goal("a", self.match_a, self.match_a["home_team_id"],
+                          "Zzztest Chirwa", minute="12",
+                          player_id=player_id)[0], 200)
+        goal = self.goals(self.match_a)[0]
+        self.assertEqual(goal["player_id"], player_id)
+        # What was typed is kept as well as who it resolved to: it is the only
+        # record of the identification if the wrong player was picked.
+        self.assertEqual(goal["reported_player_name"], "Zzztest Chirwa")
+
+    def test_an_unknown_player_id_is_refused(self):
+        self.publish("a", self.match_a, 1, 0)
+        status, body = self.add_goal(
+            "a", self.match_a, self.match_a["home_team_id"], "Ghost",
+            player_id="CAF_MW_999999")
+        self.assertNotEqual(status, 200)
+        self.assertIn("not in the database", str(body))
+        self.assertEqual(len(self.goals(self.match_a)), 0)
+
+    def test_the_reserved_unknown_player_cannot_be_named_explicitly(self):
+        """Passing CAF_MW_UNKNOWN would read as "identified" and mean the
+        opposite. Blank already says "not identified"."""
+        self.publish("a", self.match_a, 1, 0)
+        status, body = self.add_goal(
+            "a", self.match_a, self.match_a["home_team_id"], "Nobody",
+            player_id="CAF_MW_UNKNOWN")
+        self.assertNotEqual(status, 200)
+        self.assertEqual(len(self.goals(self.match_a)), 0)
+
+    def test_omitting_the_player_id_still_works(self):
+        """The 0007 signature, still valid.
+
+        A phone that cannot reach the player search — or a reporter who just
+        types a name and presses Add — must still get the scorer saved. This
+        is the fallback that makes the picker optional rather than a gate.
+        """
+        self.publish("a", self.match_a, 1, 0)
+        status, _ = call("rpc/submit_match_goal", token=self.tokens["a"],
+                         method="POST", body={
+                             "p_match_id": self.match_a["match_id"],
+                             "p_team_id": self.match_a["home_team_id"],
+                             "p_player_name": "Unidentified Scorer"})
+        self.assertEqual(status, 200)
+        goal = self.goals(self.match_a)[0]
+        self.assertEqual(goal["player_id"], "CAF_MW_UNKNOWN")
+        self.assertEqual(goal["reported_player_name"], "Unidentified Scorer")
+
+    def test_a_player_needs_a_name(self):
+        self.assertNotEqual(self.create_player("a", "   ")[0], 200)
+        self.assertNotEqual(self.create_player("a", "X")[0], 200)
+
+    def test_anon_cannot_create_a_player(self):
+        before = len(sb.select("players", columns="player_id", require_secret=True))
+        status, _ = call("rpc/create_player", token=None, method="POST",
+                         body={"p_full_name": "Zzztest Intruder"})
+        self.assertIn(status, (401, 403, 404))
+        self.assertEqual(
+            len(sb.select("players", columns="player_id", require_secret=True)),
+            before)
 
     def test_goal_ids_do_not_collide(self):
         self.publish("a", self.match_a, 3, 0)

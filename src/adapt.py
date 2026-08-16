@@ -12,9 +12,12 @@ Conventions preserved deliberately:
     those URLs are live — do not switch them to team_id.
   * `source_type=placeholder` matches (and their goals) are dropped here, so
     nothing downstream can ever render them.
-  * Scorer names resolve via player_id -> players; CAF_MW_UNKNOWN scorer
-    lines are dropped from display/rankings (own-goal totals still count
-    them via LeagueData.own_goal_total).
+  * Scorer names resolve via player_id -> players. A CAF_MW_UNKNOWN goal
+    falls back to its `reported_player_name` and renders with a blank
+    player_id — shown and ranked under the name a reporter typed, but with
+    no player page to link to. Only a goal with neither is dropped from
+    display/rankings (own-goal totals still count it via
+    LeagueData.own_goal_total).
 """
 
 from dataclasses import dataclass, field
@@ -360,18 +363,27 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
             continue
         if g.is_own_goal:
             own_goal_total += 1
-        if g.player_id == dataset.UNKNOWN_PLAYER_ID:
-            # Counts toward totals (own_goal_total above; match/team totals
-            # come from the score), but never renders a scorer line or a
-            # ranking entry — same as the old sheets' blank-scorer rows.
+        # An unresolved scorer is one the reporter named but EveryLeague has no
+        # canonical player row for. It used to be dropped outright, which meant
+        # a name typed into /report was stored and then never appeared
+        # anywhere — the feature looked broken to the only person who could
+        # tell. It now renders under its reported name, with a BLANK player_id:
+        # scorers.py keys those by name and render.py links only ids, so the
+        # line shows and ranks without inventing a player page for a name.
+        #
+        # A goal with neither an id nor a reported name still has nothing to
+        # show and is still skipped — the old sheets' blank-scorer rows.
+        unresolved = g.player_id == dataset.UNKNOWN_PLAYER_ID
+        if unresolved and not g.reported_player_name:
             continue
         goals.append(GoalView(
             match_id=g.match_id,
             team_code=code_of.get(g.team_id, g.team_id),
-            player_name=ds.player_display_name(g.player_id),
+            player_name=(g.reported_player_name if unresolved
+                         else ds.player_display_name(g.player_id)),
             minute=_goal_display_minute(g),
             goal_type=_GOAL_TYPE_DISPLAY.get(g.goal_type, ""),
-            player_id=g.player_id,
+            player_id="" if unresolved else g.player_id,
         ))
 
     return LeagueData(
