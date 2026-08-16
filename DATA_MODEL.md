@@ -60,7 +60,9 @@ goals (match_id, team_id, player_id, assist_player_id) >── players
   squad suffix, where `team_id == club_id`. Handled by joining on the teams
   tab, never by parsing the ID.
 - `player_id` is `CAF_MW_000123`, plus the reserved `CAF_MW_UNKNOWN` for
-  goals whose scorer is not yet identified.
+  goals whose scorer is not yet identified. New ids continue the six-digit
+  sequence — `create_player()` mints the highest plus one. The digits are a
+  counter and carry no meaning; do not read anything else out of them.
 - `match_id` like `MW_SL_2627_001`. Opaque string everywhere.
 - **General rule: NEVER derive meaning by parsing an ID. Always join through
   the tabs.** The only sanctioned string transform is presentational
@@ -108,8 +110,16 @@ goals (match_id, team_id, player_id, assist_player_id) >── players
 - **Own goals (`goal_type=own_goal`) never appear in scorer tables.** In this
   data an own-goal row credits the benefiting team with the defender as
   player — it is not a scorer credit. They do count in the "Own Goals" total.
-- `CAF_MW_UNKNOWN` goals count toward team/match totals but never appear in
-  scorer rankings or match scorer lines.
+- `CAF_MW_UNKNOWN` goals count toward team/match totals. Whether they are
+  *shown* depends on `reported_player_name` — the name a reporter typed when
+  no canonical player existed:
+  - **with** a name: rendered on the match scorer line and ranked in the
+    scorer table under that name, with a blank `player_id` so nothing links to
+    a player page that does not exist;
+  - **without** one: dropped from scorer lines and rankings entirely, as
+    before — there is nothing to show.
+  Setting a real `player_id` later promotes the goal to the canonical
+  rankings and a player page at the next build.
 - Only `status=played` matches count for standings; `awarded` matches count
   with their recorded score (and show `awarded_note`).
 - Dates are strict `YYYY-MM-DD`; a blank match date is allowed (fixture not

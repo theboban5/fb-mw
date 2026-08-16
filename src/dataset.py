@@ -371,6 +371,14 @@ class Goal:
     confidence: str
     verified_by: str
     verified_at: str
+    # What a reporter typed, when EveryLeague had no canonical player to point
+    # at. Paired with player_id == UNKNOWN_PLAYER_ID it is the ONLY name this
+    # goal has, and adapt.py shows it on the match line rather than dropping
+    # the scorer entirely. Kept after reconciliation as provenance, so a
+    # non-blank value here does not imply an unidentified scorer — read
+    # player_id for that. Defaulted because the historic rows predate the
+    # column and the national-team tabs never had it.
+    reported_player_name: str = ""
 
     @property
     def is_own_goal(self) -> bool:
@@ -736,7 +744,10 @@ def parse_matches(text: str) -> "dict[str, Match]":
 def parse_goals(text: str) -> "dict[str, Goal]":
     out: "dict[str, Goal]" = {}
     # player_name is intentionally absent: the denormalized column is ignored;
-    # names come from player_id -> players.
+    # names come from player_id -> players. reported_player_name is NOT the
+    # same column and is read below — it is what a reporter typed for a scorer
+    # with no canonical id, and the only name such a goal has. It stays out of
+    # `required` so a snapshot taken before the column existed still parses.
     required = {"goal_id", "match_id", "team_id", "player_id", "minute",
                 "goal_type", "source_type", "confidence"}
     for i, r in _rows(text, "goals", required):
@@ -754,6 +765,7 @@ def parse_goals(text: str) -> "dict[str, Goal]":
             _enum(_require(r, "confidence", "goals", i), CONFIDENCES,
                   "confidence", "goals", i),
             r.get("verified_by", ""), r.get("verified_at", ""),
+            r.get("reported_player_name", ""),
         ), "goals", i)
     return out
 

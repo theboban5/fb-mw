@@ -107,6 +107,8 @@ The whole migration, done and verified:
 | Publishing | `0003_reporting.sql` — `submit_match_report` RPC + audit log |
 | Auto-deploy | `supabase/functions/trigger-rebuild` + `claim_rebuild()` debounce |
 | Match detail | `0007_match_detail.sql` — scorers, cards, subs, line-ups, photos |
+| Entry | `0008`/`0009` — `create_fixture`, `create_league`, `reschedule_match` |
+| Scorer identity | `0010_scorer_players.sql` — `create_player`, scorers resolve to a `player_id` |
 | Cutover | CI reads Supabase; the spreadsheet is deprecated |
 
 The workflow this replaced:
@@ -201,12 +203,35 @@ Cards, substitutions, line-ups and media live in new tables that `validate.py`
 has never heard of and the renderers never read, so they cannot break a build
 and need no such gate.
 
-A reporter-entered scorer keeps the existing convention exactly:
-`player_id = CAF_MW_UNKNOWN` with the typed name in `reported_player_name`. The
-goal counts toward team and match totals and stays out of scorer rankings,
-which is already how the build treats `CAF_MW_UNKNOWN`. **No player row is
-created for a free-text name.** Reconciling later is a matter of setting
-`player_id`; the goal joins the rankings at the next build.
+**Naming a scorer resolves to a `player_id`** (migration `0010`). The reporter
+types a few letters, the app searches `players` and shows who it found —
+ranked so that anyone who has already scored for either of these two teams
+comes first — and the reporter taps the right one. A goal named that way is an
+ordinary goal in every respect: it ranks in the league's top-scorer table and
+appears on the player's own page.
+
+When the player is genuinely new, one further tap creates them. Creating a
+player is its **own** RPC (`create_player`), never a side effect of adding a
+goal, because `players` is a canonical table and a typo in it becomes a
+permanent person. `create_player` is idempotent on the name — two reporters
+typing "Thandiwe Phiri" get one player, not two — and `submit_match_goal`
+still refuses to mint anybody.
+
+**The picker never blocks a save.** `p_player_id` is optional: a reporter with
+no signal, or one who simply types a name and presses Add, falls back to the
+original convention — `player_id = CAF_MW_UNKNOWN` with the typed name in
+`reported_player_name`. Such a goal now *renders* (see below); it shows under
+the result and ranks by name, but links to no player page. Reconciling later is
+a matter of setting `player_id`; the goal joins the canonical rankings at the
+next build.
+
+> **What changed and why.** Until `0010`, every reporter-entered scorer was
+> written against `CAF_MW_UNKNOWN` — and `adapt.league_data` dropped every
+> `CAF_MW_UNKNOWN` goal before rendering. The data was stored correctly and
+> displayed nowhere, so from the reporter's side the feature was
+> indistinguishable from broken, with silence as the only evidence. The
+> adapter now falls back to `reported_player_name` rather than dropping the
+> goal, and only a goal with *neither* an id nor a name is skipped.
 
 Line-ups take plain names, one per line, so a whole team can be pasted in.
 Photos are shrunk to 1600px on the phone before upload; the `match-media`
@@ -217,7 +242,8 @@ path layout is a rule, not a convention.
 **Not yet rendered publicly.** The site has no per-match page, so cards,
 substitutions, line-ups and photos are captured but displayed nowhere. That is
 data collection ahead of a match page, not an oversight. Goals are the
-exception: they already feed scorer totals.
+exception: they show under the result on league and club pages and feed the
+scorer tables.
 
 ### Reporter accounts
 
