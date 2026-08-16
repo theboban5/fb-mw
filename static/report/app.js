@@ -1138,6 +1138,11 @@ async function renderMatch(publicId, params) {
     // Which of the collapsed sections were open, so a redraw does not shut
     // them. See drawDetail.
     open: {},
+    // Scorers typed BEFORE the score exists, waiting on the publish that will
+    // give them a goal to belong to. Empty once the match is published: from
+    // then on a scorer saves the moment it is added, because there is
+    // something for it to attach to. See stageOrSaveGoal.
+    pendingGoals: [],
   };
 
   drawMatch(match, names, state);
@@ -1281,17 +1286,30 @@ function drawMatch(match, names, state) {
     view.querySelectorAll('[data-status] input').forEach((i) => {
       i.disabled = state.busy;
     });
+    const waiting = state.pendingGoals.length;
+    const scorers = `${waiting} scorer${waiting === 1 ? "" : "s"}`;
     publishBtn.disabled = state.busy;
     publishBtn.textContent = state.busy
       ? "Publishing…"
       : info.scored
+        // The button names everything it is about to do, scorers included —
+        // they are staged on this phone and nowhere else until it is pressed.
         ? `Publish ${state.home}–${state.away} ${info.short}`
+          + (waiting ? ` + ${scorers}` : "")
         : `Publish as ${info.label.toLowerCase()}`;
     // The button says exactly what will become public.
     note.textContent = info.scored
-      ? "This will appear on everyleague.co."
-      : "No score will be published for this match.";
+      ? (waiting ? `The result and ${scorers} will appear on everyleague.co.`
+                 : "This will appear on everyleague.co.")
+      : (waiting ? `No score will be published, so the ${scorers} you added `
+                   + "cannot be saved yet."
+                 : "No score will be published for this match.");
   }
+
+  // drawDetail redraws only the detail block, but staging a scorer changes
+  // what the publish button says. Handed over rather than exported so there is
+  // one owner of the button's text.
+  state.refreshPublish = refresh;
 
   view.querySelector("[data-status]").addEventListener("change", (event) => {
     state.status = event.target.value;
@@ -1342,7 +1360,36 @@ function drawMatch(match, names, state) {
     invalidateHome();
     // ...and the run this match belongs to has one fewer match left in it.
     markQueued(match.public_id);
-    flash("Published. The site updates in a few minutes.", "ok", 6000);
+
+    // The goals now exist for the staged scorers to belong to. This is the
+    // second half of the one button press, and it deliberately runs AFTER the
+    // score is safely published — see flushPendingGoals.
+    let message = "Published. The site updates in a few minutes.";
+    let kind = "ok";
+    if (state.pendingGoals.length) {
+      if (!info.scored) {
+        // Postponed, abandoned, cancelled: there is no score, so there are no
+        // goals to attach to. The names are kept rather than thrown away.
+        message = "Published. The scorers you added were not saved — a match "
+                  + "with no score cannot have any.";
+        kind = "warn";
+      } else {
+        state.busy = true;
+        refresh();
+        const { saved, failed, firstError } = await flushPendingGoals(match, state);
+        state.busy = false;
+        if (failed) {
+          message = `Published${saved ? `, with ${saved} of `
+            + `${saved + failed} scorers` : ""}. ${humanError(firstError)}`;
+          kind = "error";
+        } else {
+          message = `Published with ${saved} scorer${saved === 1 ? "" : "s"}. `
+                    + "The site updates in a few minutes.";
+        }
+      }
+    }
+
+    flash(message, kind, 6000);
     requestRebuild();
     drawMatch(match, names, state);
   });
@@ -1479,6 +1526,73 @@ async function searchPlayers(term) {
 
 const playerLabel = (p) => p.known_as || p.full_name || p.player_id;
 
+/** One scorer, saved. Returns the error rather than throwing, like every other
+ *  save on this screen. */
+async function saveGoal(match, entry) {
+  const { error } = await supabase.rpc("submit_match_goal", {
+    p_match_id: match.match_id,
+    p_team_id: entry.team_id,
+    p_player_name: entry.player_name,
+    p_minute: entry.minute,
+    p_goal_type: entry.goal_type,
+    // Blank when the reporter typed a name without picking anyone. The goal
+    // is still saved and still shown — see submit_match_goal.
+    p_player_id: entry.player_id,
+  });
+  return error;
+}
+
+/** Save the scorers staged before the score existed, now that it does.
+ *
+ *  ONE AT A TIME, IN ORDER, AND NOT IN PARALLEL. submit_match_goal takes a row
+ *  lock on the match and counts the existing goals for that side before
+ *  inserting, so concurrent calls would serialise on the lock anyway — and
+ *  firing them together would make goal_id numbering depend on which request
+ *  won, and turn one failure into an unattributable one.
+ *
+ *  A failure does NOT roll anything back. The score is already published and
+ *  is the thing that mattered; a scorer that would not save stays staged so
+ *  the reporter can press publish again. Losing a result because a name
+ *  failed would be the trade this whole screen is built to avoid. */
+async function flushPendingGoals(match, state) {
+  const stuck = [];
+  let saved = 0;
+  let firstError = null;
+  for (const entry of state.pendingGoals) {
+    const error = await saveGoal(match, entry);
+    if (error) {
+      stuck.push(entry);
+      firstError = firstError || error;
+    } else {
+      saved += 1;
+    }
+  }
+  state.pendingGoals = stuck;
+  return { saved, failed: stuck.length, firstError };
+}
+
+/** How many goals a side is credited with on the screen right now.
+ *
+ *  Before publishing that is the stepper the reporter is looking at; after, it
+ *  is what the database holds. submit_match_goal enforces this again under a
+ *  row lock — it has to, it is validate.py check 5 and a broken build — but a
+ *  reporter should be told they are adding a third scorer to a 2-0 while they
+ *  can still see the score, not by a rejection afterwards. */
+function scoreFor(match, state, teamId) {
+  const home = teamId === match.home_team_id;
+  if (state.published) {
+    const value = home ? match.home_goals : match.away_goals;
+    return value == null ? 0 : value;
+  }
+  return home ? state.home : state.away;
+}
+
+/** Scorers already counted against a side: saved rows plus staged ones. */
+function goalsNamedFor(saved, state, teamId) {
+  return saved.filter((g) => g.team_id === teamId).length
+    + (state.pendingGoals || []).filter((g) => g.team_id === teamId).length;
+}
+
 /** player_id -> team_id for everyone who has already scored for either side in
  *  this match. Two players share a name often enough that "has scored for
  *  Ekhaya" is usually the whole answer to which one the reporter means, and it
@@ -1536,7 +1650,15 @@ function captureDetailState(state) {
   });
 }
 
-async function drawDetail(match, state) {
+/** Redraw the optional-detail block.
+ *
+ *  `local` means "nothing on the server changed" — staging a scorer, or
+ *  removing one that was never saved. Those only move client state, and on the
+ *  connection this app is written for, four round trips to redraw a list the
+ *  phone just edited itself is the slowest thing on the screen. Every path
+ *  that DOES touch the database still refetches, because that is what keeps
+ *  the lists honest about what actually saved. */
+async function drawDetail(match, state, { local = false } = {}) {
   const host = view.querySelector("[data-detail]");
   if (!host) return;
 
@@ -1550,21 +1672,26 @@ async function drawDetail(match, state) {
   const teamName = (id) => id === match.home_team_id
     ? (match.home?.display_name || id) : (match.away?.display_name || id);
 
-  const [goalsRes, incidentsRes, lineupRes, mediaRes] = await Promise.all([
-    supabase.from("goals").select("goal_id,team_id,reported_player_name,minute,player_id")
-      .eq("match_id", match.match_id).order("ord"),
-    supabase.from("match_incidents").select("*")
-      .eq("match_id", match.match_id).order("incident_id"),
-    supabase.from("lineup_entries").select("*")
-      .eq("match_id", match.match_id).order("ord"),
-    supabase.from("match_media").select("*")
-      .eq("match_id", match.match_id).order("created_at"),
-  ]);
+  if (!local || !state.detail) {
+    const [goalsRes, incidentsRes, lineupRes, mediaRes] = await Promise.all([
+      supabase.from("goals").select("goal_id,team_id,reported_player_name,minute,player_id")
+        .eq("match_id", match.match_id).order("ord"),
+      supabase.from("match_incidents").select("*")
+        .eq("match_id", match.match_id).order("incident_id"),
+      supabase.from("lineup_entries").select("*")
+        .eq("match_id", match.match_id).order("ord"),
+      supabase.from("match_media").select("*")
+        .eq("match_id", match.match_id).order("created_at"),
+    ]);
+    state.detail = {
+      goals: goalsRes.data || [],
+      incidents: incidentsRes.data || [],
+      lineup: lineupRes.data || [],
+      media: mediaRes.data || [],
+    };
+  }
 
-  const goals = goalsRes.data || [];
-  const incidents = incidentsRes.data || [];
-  const lineup = lineupRes.data || [];
-  const media = mediaRes.data || [];
+  const { goals, incidents, lineup, media } = state.detail;
   const cards = incidents.filter((i) => i.incident_type !== "substitution");
   const subs = incidents.filter((i) => i.incident_type === "substitution");
   const scored = match.home_goals != null;
@@ -1583,7 +1710,18 @@ async function drawDetail(match, state) {
               aria-label="Remove ${esc(g.reported_player_name)}">&times;</button></li>`;
   }).join("");
 
-  const goalForm = scored ? `
+  // Scorers typed before the score exists. They are shown in the same list as
+  // saved ones — a reporter who has entered four names wants to see four
+  // names — but marked as not yet saved, because until publish they exist
+  // only on this phone.
+  const stagedList = (state.pendingGoals || []).map((g, i) => `
+    <li><span>${esc(g.player_name)}
+      <em>${esc(teamName(g.team_id))}${g.minute ? " · " + esc(g.minute) + "'" : ""}
+        · saves when you publish</em></span>
+      <button class="rp-x" type="button" data-del-staged="${i}"
+              aria-label="Remove ${esc(g.player_name)}">&times;</button></li>`).join("");
+
+  const goalForm = `
     <form data-goal-form autocomplete="off">
       ${sideButtons(match, "goal-team", pick["goal-team"])}
       <div class="rp-pick" data-pick>
@@ -1607,17 +1745,17 @@ async function drawDetail(match, state) {
         </select>
       </div>
       <button class="rp-btn is-ghost" type="submit">Add scorer</button>
-      <p class="rp-hint">Scorers show under the result on everyleague.co. Add
-        one at a time — this stays open for the next.</p>
-    </form>`
-    : `<p class="rp-hint">Publish the score first — a scorer needs a goal to
-         belong to.</p>`;
+      <p class="rp-hint">${scored
+        ? "Scorers show under the result on everyleague.co. Add one at a time — this stays open for the next."
+        : "Add them now and they publish together with the score — one button, one go."}</p>
+    </form>`;
 
   host.innerHTML = `
     <h2 class="rp-field-head">Match detail <span class="rp-optional">optional</span></h2>
 
-    ${section("goals", "Goalscorers", goals.length,
-      `<ul class="rp-list">${goalList}</ul>${goalForm}`, open.goals)}
+    ${section("goals", "Goalscorers",
+      goals.length + (state.pendingGoals || []).length,
+      `<ul class="rp-list">${goalList}${stagedList}</ul>${goalForm}`, open.goals)}
 
     ${section("cards", "Cards", cards.length, `
       <ul class="rp-list">${cards.map((c) => `
@@ -1693,7 +1831,7 @@ async function drawDetail(match, state) {
       </form>`, open.photo)}
   `;
 
-  wireDetail(match, state);
+  wireDetail(match, state, goals);
 }
 
 /** Run an action with a button locked, then redraw. Never throws at the caller. */
@@ -1860,28 +1998,65 @@ function wirePlayerPicker(host, match) {
   dismissPicker = (event) => { if (!wrap.contains(event.target)) close(); };
 }
 
-function wireDetail(match, state) {
+function wireDetail(match, state, goals) {
   const host = view.querySelector("[data-detail]");
   const pick = (name) =>
     host.querySelector(`input[name="${name}"]:checked`)?.value;
   const reporterId = context.reporter?.reporter_id;
+  const teamName = (id) => id === match.home_team_id
+    ? (match.home?.display_name || id) : (match.away?.display_name || id);
 
   wirePlayerPicker(host, match);
 
+  // ADDING A SCORER MEANS TWO DIFFERENT THINGS, DEPENDING ON ONE FACT.
+  //
+  // Before the score is published there is no goal for a scorer to belong to —
+  // submit_match_goal refuses, and it is right to, because validate.py check 5
+  // rejects goal rows on a match with no score. So the name is STAGED on the
+  // phone and saved by the publish that creates the goals it needs. One
+  // button: "Publish 2–0 FT + 2 scorers".
+  //
+  // Afterwards the goals exist, so a scorer saves the moment it is added, as
+  // it always has. That is the right behaviour for editing a published result
+  // and there was no reason to change it.
   host.querySelector("[data-goal-form]")?.addEventListener("submit", (e) => {
     e.preventDefault();
     const f = e.target;
+    const teamId = pick("goal-team");
+    const playerName = f.player.value.trim();
+    if (!playerName) { flash("Type the scorer's name first.", "warn"); return; }
+
+    // Said here as well as in the RPC so the reporter is told while the score
+    // is still on screen and editable, rather than by a rejection.
+    const allowed = scoreFor(match, state, teamId);
+    if (goalsNamedFor(goals, state, teamId) >= allowed) {
+      flash(allowed === 0
+        ? `${teamName(teamId)} did not score in this match.`
+        : `All ${allowed} of ${teamName(teamId)}'s goals already have a scorer.`,
+        "warn");
+      return;
+    }
+
+    const entry = {
+      team_id: teamId,
+      player_name: playerName,
+      player_id: f.player_id.value,
+      minute: f.minute.value.trim(),
+      goal_type: f.type.value,
+    };
+
+    if (!state.published) {
+      state.pendingGoals.push(entry);
+      // The publish button names what it is about to do, so it has to be
+      // redrawn as well as the list. Nothing left the phone, hence local.
+      drawDetail(match, state, { local: true });
+      state.refreshPublish?.();
+      flash("Added — it saves when you publish.", "ok", 2500);
+      return;
+    }
+
     detailAction(f.querySelector('button[type="submit"]'), "Adding…", async () => {
-      const { error } = await supabase.rpc("submit_match_goal", {
-        p_match_id: match.match_id,
-        p_team_id: pick("goal-team"),
-        p_player_name: f.player.value,
-        p_minute: f.minute.value,
-        p_goal_type: f.type.value,
-        // Blank when the reporter typed a name without picking anyone. The
-        // goal is still saved and still shown — see submit_match_goal.
-        p_player_id: f.player_id.value,
-      });
+      const error = await saveGoal(match, entry);
       if (!error) {
         // Unlike a card or a line-up, a scorer is rendered on the public site,
         // so it is worth a build the same way a score is.
@@ -1974,6 +2149,16 @@ function wireDetail(match, state) {
   });
 
   host.addEventListener("click", (e) => {
+    // A staged scorer has never been saved, so removing it is a splice, not a
+    // request. Handled before the others because it must not fall through to
+    // detailAction, which would try to redraw against a network call.
+    const stagedRow = e.target.closest("[data-del-staged]");
+    if (stagedRow) {
+      state.pendingGoals.splice(Number(stagedRow.dataset.delStaged), 1);
+      drawDetail(match, state, { local: true });
+      state.refreshPublish?.();
+      return;
+    }
     const goal = e.target.closest("[data-del-goal]");
     const incident = e.target.closest("[data-del-incident]");
     const line = e.target.closest("[data-del-lineup]");
