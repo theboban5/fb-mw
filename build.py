@@ -414,6 +414,14 @@ def _scorchers_feature(fl, team_data):
     focus ring lands on it once. With a match scheduled the card runs two
     columns and the next-match panel takes the right one; without, it is a
     single column and the logo watermark fills the space instead.
+
+    THE COPY BELOW IS HAND-WRITTEN AND DATES. It said "Follow the Scorchers as
+    they take on Cameroon on Sunday" for a day after Cameroon had won that
+    final 3-0, because nothing here reads the result — only `landing_next_match`
+    is derived, and it correctly went quiet once there was no fixture left,
+    which is what made the stale sentence beside it so obvious. Whoever changes
+    the tournament this card points at must rewrite these three lines by hand.
+    Last edited after the 2026 WAFCON final, 16 Aug 2026.
     """
     flag = fl.img_for("Malawi", cls="el-flag")
     nxt = nt_page.landing_next_match(team_data, fl)
@@ -421,9 +429,10 @@ def _scorchers_feature(fl, team_data):
     return f"""<a class="el-feature{split}" href="{nt_page.SLUG}/">
     <div class="el-feature-body">
       <span class="el-feature-eyebrow">{flag}Scorchers at WAFCON</span>
-      <span class="el-feature-title">WAFCON Final!</span>
-      <span class="el-feature-copy">Malawi beat Algeria 3-1 to reach the final of the Women&#x2019;s Africa Cup of
-        Nations! Follow the Scorchers as they take on Cameroon on Sunday.</span>
+      <span class="el-feature-title">The journey to the final</span>
+      <span class="el-feature-copy">Malawi beat Nigeria, Ghana and Algeria on the way to the Women&#x2019;s Africa
+        Cup of Nations final, where Cameroon won 3&#x2013;0. Every result,
+        line-up and scorer.</span>
       <span class="el-feature-cta">Fixtures, results and squad
         <span class="el-feature-arrow">&#x2192;</span></span>
     </div>
