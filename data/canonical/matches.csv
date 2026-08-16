@@ -1,4 +1,5 @@
 match_id,competition_id,season_id,stage,matchday,date,kickoff,venue_id,home_team_id,away_team_id,home_goals,away_goals,status,awarded_note,source_type,source_ref,reported_by,reported_at,confidence,verified_by,verified_at,extra_time,home_pens,away_pens
+MW_RPCTEST_corscheck_MW_KU19,MW_KU19,MW_2026_27,md_1,,,,,MW_YY_MU19,MW_MM_MU19,0,0,played,,reporter,,MW_REP_002,2026-08-16T01:09:03.055449+00:00,unconfirmed,,,,,
 MW_CRFA_2627_001,MW_CRFA,MW_2026_27,md_1,1,2026-06-07,,MW_MCJ_003,MW_MV_M1,MW_MCHS_M1,0,0,played,,facebook,,,,confirmed,,,,,
 MW_CRFA_2627_002,MW_CRFA,MW_2026_27,md_1,1,2026-06-28,,MW_KAS_001,MW_TNS_M1,MW_MC_M1,1,1,played,,facebook,,,,confirmed,,,,,
 MW_CRFA_2627_003,MW_CRFA,MW_2026_27,md_1,1,2026-06-28,,MW_MCJ_003,MW_MCHS_M1,MW_MPFC_M1,2,0,played,,facebook,,,,confirmed,,,,,
