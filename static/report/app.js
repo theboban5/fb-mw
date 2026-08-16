@@ -2826,6 +2826,12 @@ async function drawNTDetail(match, state, { local = false } = {}) {
                 r.replaced_player === o.player_name ? " selected" : ""}>
               ${esc(o.player_name)}</option>`).join("")}
           </select>` : ""}
+        ${r.role === "starting" ? `
+          <input class="rp-input" data-sheet-field="minute_off" data-sheet-i="${i}"
+                 value="${esc(r.minute_off || "")}"
+                 placeholder="${esc(offMinuteFor(state.sheet, r) || "Off'")}"
+                 title="Only needed when no substitution says it — a sending-off, or coming off unreplaced"
+                 inputmode="numeric">` : ""}
       </div>
       <div class="rp-sheet-flags">
         <label class="rp-inline"><input type="checkbox" data-sheet-field="captain"
@@ -2995,6 +3001,19 @@ function wireNTDetail(match, state) {
  *  Both affixes are optional and the middle is the name, so a line that is
  *  just a name still works. Written for pasting a team sheet off a phone
  *  screenshot, which is how these arrive. */
+/** The minute a substitution already says this starter came off, or "".
+ *
+ *  Shown as the placeholder on their Off' box so the reporter can see the
+ *  derivation has happened and does not type it a second time. save_nt_lineup
+ *  works the same value out server-side — this is the same answer said early,
+ *  not a second source of it. */
+function offMinuteFor(sheet, row) {
+  if (row.role !== "starting") return "";
+  const sub = sheet.find((o) => o.role === "sub_on"
+    && o.replaced_player === row.player_name && o.minute_on);
+  return sub ? `${sub.minute_on}'` : "";
+}
+
 function parseTeamSheet(text) {
   const out = [];
   // A heading changes what follows, and holds until the next one. A team sheet

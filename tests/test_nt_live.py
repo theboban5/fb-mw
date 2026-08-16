@@ -275,6 +275,38 @@ class NTReportingTest(unittest.TestCase):
         self.assertTrue(by_name["ZZ P4"]["red_card"])
         self.assertEqual(by_name["ZZ Sub"]["replaced_player"], "ZZ P3")
 
+    def test_a_replaced_starter_is_marked_off_at_the_substitution(self):
+        """nt_page draws "↓ 63'" beside a starter from minute_off, and nothing
+        set it — so the first sheet entered through /report rendered a starting
+        XI with no substitution arrows while the list below it read correctly.
+        The arrival already says it, so the departure is derived rather than
+        asked for twice."""
+        mid = self.new_match()
+        rows = self.xi()
+        rows.append({"player_name": "ZZ Sub", "role": "sub_on",
+                     "minute_on": "63", "replaced_player": "ZZ P7"})
+        status, saved = self.lineup(mid, rows)
+        self.assertEqual(status, 200, saved)
+        by_name = {r["player_name"]: r for r in saved}
+        self.assertEqual(by_name["ZZ P7"]["minute_off"], "63")
+        # Everyone who stayed on is untouched.
+        self.assertEqual(by_name["ZZ P8"]["minute_off"], "")
+
+    def test_an_explicit_minute_off_is_not_overwritten(self):
+        """A player sent off, or withdrawn with nobody replacing them, leaves
+        at a minute no substitution records. That has to stay sayable."""
+        mid = self.new_match()
+        rows = self.xi()
+        rows[6]["minute_off"] = "30"
+        rows[6]["red_card"] = True
+        rows.append({"player_name": "ZZ Sub", "role": "sub_on",
+                     "minute_on": "63", "replaced_player": "ZZ P7"})
+        status, saved = self.lineup(mid, rows)
+        self.assertEqual(status, 200, saved)
+        by_name = {r["player_name"]: r for r in saved}
+        self.assertEqual(by_name["ZZ P7"]["minute_off"], "30")
+        self.assertTrue(by_name["ZZ P7"]["red_card"])
+
     def test_saving_a_line_up_replaces_the_previous_one(self):
         """A team sheet is a set, not a patch — re-saving is how a mistake is
         corrected, so the old rows must not survive alongside the new."""
