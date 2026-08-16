@@ -73,12 +73,20 @@ class MatchDetailTest(unittest.TestCase):
     @staticmethod
     def drop_player(player_id):
         """Players are global, not namespaced to a test competition, so every
-        one a test mints has to be taken back out by hand."""
-        if player_id:
-            sb._request("DELETE", "players",
-                        query=f"player_id=eq.{player_id}",
-                        headers={"Prefer": "return=minimal"},
-                        require_secret=True)
+        one a test mints has to be taken back out by hand.
+
+        Its goals go first. goals.player_id is a foreign key, so a test that
+        named this player as a scorer leaves a row pointing at them, and the
+        DELETE would fail on it — cleanup that only works when the test did
+        nothing interesting is not cleanup. The goals are the test's own, on a
+        MW_DETAILTEST match that tearDownClass drops anyway.
+        """
+        if not player_id:
+            return
+        sb._request("DELETE", "goals", query=f"player_id=eq.{player_id}",
+                    headers={"Prefer": "return=minimal"}, require_secret=True)
+        sb._request("DELETE", "players", query=f"player_id=eq.{player_id}",
+                    headers={"Prefer": "return=minimal"}, require_secret=True)
 
     def goals(self, match):
         return sb.select("goals", params={"match_id": f"eq.{match['match_id']}"},
@@ -175,9 +183,9 @@ class MatchDetailTest(unittest.TestCase):
 
     def test_a_created_player_gets_a_canonical_id(self):
         status, body = self.create_player("a", "  Zzztest  Mwale  ")
-        self.addCleanup(self.drop_player, body[0]["player_id"] if status == 200 else None)
         self.assertEqual(status, 200, body)
         player = body[0]
+        self.addCleanup(self.drop_player, player["player_id"])
         self.assertRegex(player["player_id"], r"^CAF_MW_\d{6}$")
         # Trimmed, and inner whitespace collapsed: "Zzztest  Mwale" and
         # "Zzztest Mwale" are one person and look identical on screen.
@@ -187,16 +195,17 @@ class MatchDetailTest(unittest.TestCase):
     def test_creating_the_same_name_twice_returns_the_same_player(self):
         """Two reporters typing one name must not make two people."""
         status, body = self.create_player("a", "Zzztest Kachala")
-        self.addCleanup(self.drop_player, body[0]["player_id"] if status == 200 else None)
         self.assertEqual(status, 200, body)
+        self.addCleanup(self.drop_player, body[0]["player_id"])
         again = self.create_player("admin", "  zzztest KACHALA ")
         self.assertEqual(again[0], 200, again[1])
         self.assertEqual(again[1][0]["player_id"], body[0]["player_id"])
 
     def test_a_created_player_can_be_named_as_a_scorer(self):
         status, body = self.create_player("a", "Zzztest Chirwa")
-        self.addCleanup(self.drop_player, body[0]["player_id"] if status == 200 else None)
+        self.assertEqual(status, 200, body)
         player_id = body[0]["player_id"]
+        self.addCleanup(self.drop_player, player_id)
 
         self.publish("a", self.match_a, 1, 0)
         self.assertEqual(
