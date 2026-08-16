@@ -387,6 +387,34 @@ a { color: var(--accent); }
 }
 .rp-x:active { background: var(--danger-wash); color: var(--danger); border-color: var(--danger); }
 
+/* ─── The national-team team sheet ───────────────────────────────────────────
+   One row per player carrying the position, the role, the change and the
+   cards — because on this side of the schema a booking is a flag on the
+   player's row rather than a record of its own. Denser than anything else in
+   this app, and unavoidably so: a team sheet is 14 players wide. */
+
+.rp-sheet { list-style: none; margin: 12px 0 0; padding: 0; }
+.rp-sheet-row {
+  padding: 10px; margin-bottom: 8px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--row-alt);
+}
+.rp-sheet-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.rp-sheet-name { font-weight: 600; font-size: 0.95rem; }
+.rp-sheet-name b { color: var(--accent); }
+.rp-sheet-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.rp-sheet-controls .rp-input {
+  flex: 1 1 90px; min-width: 0; margin-top: 0;
+  min-height: 40px; padding: 6px 8px; font-size: 15px;
+}
+.rp-sheet-flags {
+  display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: 8px;
+  font-size: 0.8rem; color: var(--muted);
+}
+.rp-sheet-flags .rp-inline { font-size: 0.8rem; }
+
 /* ─── Home actions and filters ───────────────────────────────────────────── */
 
 /* Add fixture / New league / Refresh. Laid out as a row that wraps rather

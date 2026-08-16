@@ -673,10 +673,15 @@ async function renderHome(params) {
   };
 
   const canAdd = context.isAdmin || context.competitions.length > 0;
+  // Only offered to someone who has a national team to report: for an ordinary
+  // league reporter the whole section is empty and the link would be a dead
+  // end. Resolved rather than assumed because an admin always has one.
+  const hasNT = (await ntTeams().catch(() => [])).length > 0;
   const actions = `
     <div class="rp-actions">
       ${canAdd ? '<a class="rp-btn is-ghost" href="#/add">＋ Add fixture</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/league/new">＋ New league</a>' : ""}
+      ${hasNT ? '<a class="rp-btn is-ghost" href="#/nt">National teams</a>' : ""}
       <button class="rp-btn is-quiet" type="button" data-refresh>Refresh</button>
     </div>`;
 
@@ -2299,6 +2304,1018 @@ async function signOut() {
   location.hash = "#/login";
 }
 
+// ── National teams ───────────────────────────────────────────────────────────
+// A parallel world to everything above, and deliberately not folded into it.
+// The nt_* tables record ONE team's perspective — `opponent` is a display name
+// with no row to resolve, so there is no fixture between two teams here, only
+// "Malawi played somebody". Trying to reuse the club screens would have meant
+// pretending an opponent is a team; keeping them apart costs some repetition
+// and keeps both honest.
+//
+// The other structural difference: a booking and a substitution are not
+// records of their own. A card is a flag on the player's line-up row and a
+// change is a role=sub_on row naming who it replaced, so the team sheet IS the
+// stats screen and saves in one piece (see save_nt_lineup).
+
+const NT_STATUSES = [
+  { value: "played", label: "Full time", short: "FT", scored: true },
+  { value: "scheduled", label: "Not played yet", short: "", scored: false },
+  { value: "awarded", label: "Awarded", short: "AWD", scored: true },
+];
+const ntStatusMeta = (value) =>
+  NT_STATUSES.find((s) => s.value === value) || NT_STATUSES[1];
+
+const NT_ROLES = [
+  ["starting", "Starting XI"],
+  ["sub_on", "Came on"],
+  ["unused_sub", "Unused sub"],
+];
+const NT_POSITIONS = ["", "GK", "DF", "MF", "FW"];
+const NT_STAGES = [
+  ["r64", "Round of 64"], ["r32", "Round of 32"], ["r16", "Round of 16"],
+  ["qf", "Quarter-final"], ["sf", "Semi-final"], ["final", "Final"],
+  ["3p", "Third-place play-off"],
+];
+const ntStageLabel = (v) => (NT_STAGES.find((s) => s[0] === v) || [v, v])[1];
+
+/** The national teams this account may report. An admin gets all of them;
+ *  everyone else gets exactly their nt_assignments. */
+function ntTeams() {
+  return once("ntTeams", async () => {
+    const [{ data: teams, error }, { data: mine }] = await Promise.all([
+      supabase.from("nt_teams").select("team_code,team_name,category"),
+      supabase.from("nt_assignments").select("team_code"),
+    ]);
+    if (error) throw error;
+    const allowed = new Set((mine || []).map((a) => a.team_code));
+    return (teams || []).filter(
+      (t) => context.isAdmin || allowed.has(t.team_code));
+  });
+}
+
+const NT_MATCH_FIELDS =
+  "match_id,team_code,date,kickoff,competition,opponent,home_away,neutral,"
+  + "venue,city,country,team_score,opponent_score,status,coach,extra_time,"
+  + "penalty_shootout,extra_time_result";
+
+/** A Malawi-perspective scoreline, written the way the page reads it. */
+function ntScoreline(m) {
+  if (m.team_score == null) return "";
+  return m.home_away === "A" ? `${m.opponent_score}–${m.team_score}`
+                             : `${m.team_score}–${m.opponent_score}`;
+}
+
+function ntCard(m, teamName) {
+  const meta = [formatDate(m.date), formatKickoff(m.kickoff), m.venue]
+    .filter(Boolean).join(" · ");
+  const info = ntStatusMeta(m.status);
+  const scored = m.team_score != null;
+  const badge = scored
+    ? `<span class="rp-badge is-done">${esc(info.short || "Result")}</span>`
+    : (m.date && m.date < catToday()
+        ? '<span class="rp-badge is-late">Needs result</span>' : "");
+  return `
+    <article class="rp-card">
+      <div class="rp-card-comp">${esc(m.competition || "Friendly")}</div>
+      <div class="rp-teams">
+        <span class="rp-team">${esc(teamName)}</span>
+        <span class="rp-score">${scored ? esc(m.team_score) : ""}</span>
+        <span class="rp-team">${esc(m.opponent)}</span>
+        <span class="rp-score">${scored ? esc(m.opponent_score) : ""}</span>
+      </div>
+      <p class="rp-card-meta">${esc(meta)} ${badge}</p>
+      <a class="rp-btn${scored ? " is-ghost" : ""}" href="#/nt/m/${esc(m.match_id)}">
+        ${scored ? "Edit result" : "Report match"}
+      </a>
+    </article>`;
+}
+
+async function renderNTHome(params) {
+  h('<div class="rp-loading"><span class="rp-spinner"></span><p>Loading national teams…</p></div>');
+
+  let teams;
+  try {
+    teams = await ntTeams();
+  } catch (error) {
+    h('<p class="rp-empty">Could not load the national teams.</p>'
+      + '<a class="rp-btn is-ghost" href="#/">Back to my matches</a>');
+    flash(humanError(error), "error");
+    return;
+  }
+  if (!teams.length) {
+    h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+       <p class="rp-empty">You are not assigned to a national team. An
+         administrator can grant one.</p>`);
+    return;
+  }
+
+  const wanted = params?.get("team") || "";
+  const team = teams.find((t) => t.team_code === wanted) || teams[0];
+
+  const [{ data: matches, error }, { data: comps }] = await Promise.all([
+    supabase.from("nt_matches").select(NT_MATCH_FIELDS)
+      .eq("team_code", team.team_code).order("date", { ascending: false }),
+    supabase.from("nt_competitions").select("competition_name"),
+  ]);
+  if (error) {
+    h('<p class="rp-empty">Could not load fixtures.</p>');
+    flash(humanError(error), "error");
+    return;
+  }
+
+  const today = catToday();
+  const rows = matches || [];
+  // "tbd" is a legal date meaning the fixture is agreed with no day yet, so it
+  // sorts as upcoming rather than as something overdue.
+  const undated = rows.filter((m) => !/^\d{4}-\d{2}-\d{2}$/.test(m.date || ""));
+  const dated = rows.filter((m) => /^\d{4}-\d{2}-\d{2}$/.test(m.date || ""));
+  const awaiting = dated.filter((m) => m.team_score == null && m.date <= today);
+  const upcoming = dated.filter((m) => m.team_score == null && m.date > today);
+  const done = dated.filter((m) => m.team_score != null);
+
+  const list = (title, set) => set.length
+    ? `<h2 class="rp-group-head">${esc(title)}
+         <span class="rp-count">${set.length}</span></h2>`
+      + set.map((m) => ntCard(m, team.team_name)).join("")
+    : "";
+
+  const teamPicker = teams.length > 1 ? `
+    <label class="rp-filter rp-filter-wide">
+      <span class="rp-filter-label">Team</span>
+      <select class="rp-select" data-nt-team>
+        ${teams.map((t) => `<option value="${esc(t.team_code)}"${
+          t.team_code === team.team_code ? " selected" : ""}>
+          ${esc(t.team_name)}</option>`).join("")}
+      </select>
+    </label>` : "";
+
+  const names = [...new Set((comps || []).map((c) => c.competition_name))].sort();
+
+  h(`<a class="rp-btn is-quiet" href="#/" style="margin-top:0">&larr; My matches</a>
+     <h1 class="rp-greeting">${esc(team.team_name)}</h1>
+     <p class="rp-sub">National team${team.category === "youth" ? " · youth" : ""}</p>
+     <div class="rp-actions">
+       <a class="rp-btn is-ghost" href="#/nt/add?team=${esc(team.team_code)}">＋ Add fixture</a>
+       <a class="rp-btn is-ghost" href="#/nt/comps">Competitions</a>
+       <button class="rp-btn is-quiet" type="button" data-refresh>Refresh</button>
+     </div>
+     ${teamPicker ? `<div class="rp-filters">${teamPicker}</div>` : ""}
+     ${list("Awaiting result", awaiting)}
+     ${list("Upcoming", upcoming)}
+     ${list("Date to be confirmed", undated)}
+     ${list("Results", done.slice(0, 20))}
+     ${rows.length ? "" : '<p class="rp-empty">No fixtures for this team yet.</p>'}
+     ${names.length ? `<p class="rp-hint">Competitions: ${names.map(esc).join(" · ")}</p>` : ""}`);
+
+  const picker = view.querySelector("[data-nt-team]");
+  if (picker) {
+    picker.onchange = () => {
+      location.hash = `#/nt?team=${encodeURIComponent(picker.value)}`;
+    };
+  }
+  view.querySelector("[data-refresh]").onclick = () => {
+    invalidateReference();
+    renderNTHome(params);
+  };
+}
+
+// ── Adding an international fixture ──────────────────────────────────────────
+// Opponent and competition are FREE TEXT, unlike everywhere else in this app.
+// That is the schema's shape, not an oversight: there is no table of national
+// teams other than ours, and inventing one would mean maintaining a register
+// of every country to record a friendly against Zambia.
+
+async function renderNTAddFixture(params) {
+  const teams = await ntTeams().catch(() => []);
+  if (!teams.length) { location.hash = "#/nt"; return; }
+  const wanted = params?.get("team") || "";
+  const team = teams.find((t) => t.team_code === wanted) || teams[0];
+  const { data: comps } = await supabase.from("nt_competitions")
+    .select("competition_name");
+  const names = [...new Set((comps || []).map((c) => c.competition_name))].sort();
+
+  h(`<a class="rp-btn is-quiet" href="#/nt?team=${esc(team.team_code)}">&larr; ${esc(team.team_name)}</a>
+     <h1 class="rp-login-head">Add an international</h1>
+     <p class="rp-login-sub">${esc(team.team_name)}</p>
+     <form class="rp-form" data-nt-fixture>
+       <label class="rp-label" for="nt-comp">Competition</label>
+       <input class="rp-input" id="nt-comp" name="competition" required
+              list="nt-comp-list" placeholder="WAFCON, AFCON Qualification, Friendly"
+              autocapitalize="words">
+       <datalist id="nt-comp-list">
+         ${names.map((n) => `<option value="${esc(n)}"></option>`).join("")}
+       </datalist>
+       <p class="rp-hint">Type a new name or pick one already in use.</p>
+
+       <label class="rp-label" for="nt-opponent">Opponent</label>
+       <input class="rp-input" id="nt-opponent" name="opponent" required
+              placeholder="Cameroon" autocapitalize="words">
+
+       <label class="rp-label" for="nt-date">Date</label>
+       <input class="rp-input" id="nt-date" name="date" type="date">
+       <p class="rp-hint">Leave blank if the day is not fixed yet.</p>
+
+       <label class="rp-label" for="nt-kickoff">Kick-off</label>
+       <input class="rp-input" id="nt-kickoff" name="kickoff" type="time">
+       <p class="rp-hint">Malawi time.</p>
+
+       <label class="rp-label">Home or away</label>
+       <div class="rp-side-pick" role="radiogroup">
+         <label><input type="radio" name="home_away" value="H" checked><span>Home</span></label>
+         <label><input type="radio" name="home_away" value="A"><span>Away</span></label>
+       </div>
+       <label class="rp-inline" style="margin-top:8px">
+         <input type="checkbox" name="neutral"><span>Neutral venue</span></label>
+
+       <label class="rp-label" for="nt-venue">Venue</label>
+       <input class="rp-input" id="nt-venue" name="venue" autocapitalize="words">
+       <div class="rp-row">
+         <input class="rp-input" name="city" placeholder="City" autocapitalize="words">
+         <input class="rp-input" name="country" placeholder="Country" autocapitalize="words">
+       </div>
+
+       <button class="rp-btn" type="submit" data-submit>Add fixture</button>
+     </form>`);
+
+  const form = view.querySelector("[data-nt-fixture]");
+  const button = form.querySelector("[data-submit]");
+  let busy = false;
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (busy) return;                            // rule 2
+    clearFlash();
+    busy = true; button.disabled = true; button.textContent = "Adding…";
+    const { data, error } = await supabase.rpc("create_nt_match", {
+      p_team_code: team.team_code,
+      p_competition: form.competition.value,
+      p_opponent: form.opponent.value,
+      p_date: form.date.value || "",
+      p_kickoff: form.kickoff.value || "",
+      p_home_away: form.home_away.value,
+      p_neutral: form.neutral.checked,
+      p_venue: form.venue.value,
+      p_city: form.city.value,
+      p_country: form.country.value,
+    });
+    busy = false; button.disabled = false; button.textContent = "Add fixture";
+    if (error) { flash(humanError(error), "error"); return; }   // rule 1
+    flash("Fixture added.", "ok");
+    location.hash = `#/nt/m/${(data || [])[0]?.match_id}`;
+  });
+}
+
+// ── One international ────────────────────────────────────────────────────────
+
+async function renderNTMatch(matchId) {
+  h('<div class="rp-loading"><span class="rp-spinner"></span><p>Loading match…</p></div>');
+
+  const [{ data: matches, error }, teams] = await Promise.all([
+    supabase.from("nt_matches").select(NT_MATCH_FIELDS)
+      .eq("match_id", matchId).limit(1),
+    ntTeams().catch(() => []),
+  ]);
+  if (error) {
+    h('<p class="rp-empty">Could not load this match.</p>');
+    flash(humanError(error), "error");
+    return;
+  }
+  const match = (matches || [])[0];
+  if (!match) {
+    h(`<p class="rp-empty">That match could not be found.</p>
+       <a class="rp-btn is-ghost" href="#/nt">Back to national teams</a>`);
+    return;
+  }
+  const team = teams.find((t) => t.team_code === match.team_code);
+  if (!team) {
+    h(`<p class="rp-empty">You are not assigned to that national team.</p>
+       <a class="rp-btn is-ghost" href="#/nt">Back to national teams</a>`);
+    return;
+  }
+
+  const state = {
+    ours: match.team_score ?? 0,
+    theirs: match.opponent_score ?? 0,
+    status: match.team_score != null ? match.status : "played",
+    extraTime: Boolean(match.extra_time),
+    pens: match.penalty_shootout || "",
+    published: match.team_score != null,
+    busy: false,
+    open: {},
+    teamName: team.team_name,
+  };
+  drawNTMatch(match, state);
+}
+
+function drawNTMatch(match, state) {
+  captureDetailState(state);
+  const meta = [formatDate(match.date), formatKickoff(match.kickoff),
+                match.venue, match.city].filter(Boolean).join(" · ");
+  const statusOptions = NT_STATUSES.map((s) => `
+    <label class="rp-status-opt">
+      <input type="radio" name="nt-status" value="${s.value}"
+             ${s.value === state.status ? "checked" : ""}>
+      <span>${esc(s.label)}</span>
+    </label>`).join("");
+
+  const done = state.published ? `
+    <div class="rp-done">
+      <div class="rp-done-tick" aria-hidden="true">&#10003;</div>
+      <p class="rp-done-head">Published</p>
+      <p class="rp-done-score">${esc(state.teamName)} ${esc(match.team_score)}&ndash;${esc(match.opponent_score)} ${esc(match.opponent)}</p>
+      <p class="rp-done-status">Live on everyleague.co within a few minutes.</p>
+    </div>` : "";
+
+  h(`
+    <a class="rp-btn is-quiet" href="#/nt?team=${esc(match.team_code)}" style="margin-top:0">&larr; ${esc(state.teamName)}</a>
+    ${done}
+    <p class="rp-report-comp">${esc(match.competition || "Friendly")}</p>
+    <p class="rp-report-meta">${esc(meta)}</p>
+
+    <section class="rp-side">
+      <h2 class="rp-side-name">${esc(state.teamName)}</h2>
+      <div class="rp-stepper">
+        <button class="rp-step" type="button" data-nt-step="ours:-1" aria-label="One fewer">&minus;</button>
+        <span class="rp-step-value" data-nt-value="ours" aria-live="polite">${state.ours}</span>
+        <button class="rp-step" type="button" data-nt-step="ours:1" aria-label="One more">+</button>
+      </div>
+    </section>
+
+    <section class="rp-side">
+      <h2 class="rp-side-name">${esc(match.opponent)}</h2>
+      <div class="rp-stepper">
+        <button class="rp-step" type="button" data-nt-step="theirs:-1" aria-label="One fewer">&minus;</button>
+        <span class="rp-step-value" data-nt-value="theirs" aria-live="polite">${state.theirs}</span>
+        <button class="rp-step" type="button" data-nt-step="theirs:1" aria-label="One more">+</button>
+      </div>
+    </section>
+
+    <h2 class="rp-field-head">Match status</h2>
+    <div class="rp-status" data-nt-status>${statusOptions}</div>
+
+    <label class="rp-inline" style="margin-top:12px">
+      <input type="checkbox" data-nt-et ${state.extraTime ? "checked" : ""}>
+      <span>Went to extra time</span></label>
+    <label class="rp-label" for="nt-pens">Penalty shoot-out</label>
+    <input class="rp-input" id="nt-pens" data-nt-pens value="${esc(state.pens)}"
+           placeholder="e.g. 4-3" autocomplete="off">
+    <p class="rp-hint">Leave blank unless it went to penalties.</p>
+
+    <div class="rp-publish">
+      <button class="rp-btn" type="button" data-nt-publish></button>
+      <p class="rp-publish-note" data-nt-note></p>
+    </div>
+
+    <div data-nt-detail></div>
+  `);
+
+  drawNTDetail(match, state);
+
+  const valueEls = {
+    ours: view.querySelector('[data-nt-value="ours"]'),
+    theirs: view.querySelector('[data-nt-value="theirs"]'),
+  };
+  const publishBtn = view.querySelector("[data-nt-publish]");
+  const note = view.querySelector("[data-nt-note]");
+  const etEl = view.querySelector("[data-nt-et]");
+  const pensEl = view.querySelector("[data-nt-pens]");
+
+  etEl.addEventListener("change", () => { state.extraTime = etEl.checked; });
+  pensEl.addEventListener("input", () => { state.pens = pensEl.value; });
+
+  function refresh() {
+    const info = ntStatusMeta(state.status);
+    valueEls.ours.textContent = state.ours;
+    valueEls.theirs.textContent = state.theirs;
+    view.querySelectorAll("[data-nt-step]").forEach((b) => {
+      b.disabled = state.busy || !info.scored;
+    });
+    publishBtn.disabled = state.busy;
+    publishBtn.textContent = state.busy ? "Publishing…"
+      : info.scored ? `Publish ${state.ours}–${state.theirs} ${info.short}`
+                    : "Save as not played yet";
+    note.textContent = info.scored
+      ? "This will appear on everyleague.co."
+      : "This clears any score already recorded.";
+  }
+  state.refreshPublish = refresh;
+
+  view.querySelector("[data-nt-status]").addEventListener("change", (e) => {
+    state.status = e.target.value;
+    refresh();
+  });
+  view.addEventListener("click", (event) => {
+    const target = event.target.closest("[data-nt-step]");
+    if (!target || target.disabled) return;
+    const [side, delta] = target.dataset.ntStep.split(":");
+    state[side] = Math.max(0, Math.min(99, state[side] + Number(delta)));
+    refresh();
+  });
+
+  publishBtn.addEventListener("click", async () => {
+    if (state.busy) return;                      // rule 2
+    clearFlash();
+    state.busy = true; refresh();
+    const info = ntStatusMeta(state.status);
+    const { data, error } = await supabase.rpc("submit_nt_result", {
+      p_match_id: match.match_id,
+      p_team_score: info.scored ? state.ours : null,
+      p_opponent_score: info.scored ? state.theirs : null,
+      p_status: state.status,
+      p_extra_time: state.extraTime,
+      p_penalty_shootout: state.pens.trim(),
+    });
+    state.busy = false;
+    if (error) { refresh(); flash(humanError(error), "error"); return; }  // rule 1
+    Object.assign(match, (data || [])[0] || {});
+    state.published = match.team_score != null;
+    invalidateReference();
+    flash("Published. The site updates in a few minutes.", "ok", 6000);
+    requestRebuild();
+    drawNTMatch(match, state);
+  });
+
+  refresh();
+}
+
+// ── Scorers and the team sheet ───────────────────────────────────────────────
+
+async function drawNTDetail(match, state, { local = false } = {}) {
+  const host = view.querySelector("[data-nt-detail]");
+  if (!host) return;
+  captureDetailState(state);
+  const open = state.open || {};
+
+  if (!local || !state.ntDetail) {
+    const [goalsRes, lineRes] = await Promise.all([
+      supabase.from("nt_goals")
+        .select("goal_id,team_id,player_name,minute,goal_type")
+        .eq("match_id", match.match_id).order("ord"),
+      supabase.from("nt_lineups").select("*")
+        .eq("match_id", match.match_id).order("ord"),
+    ]);
+    state.ntDetail = {
+      goals: goalsRes.data || [],
+      lineup: lineRes.data || [],
+    };
+  }
+  const { goals, lineup } = state.ntDetail;
+  // The team sheet is edited as a whole, so it lives in state once loaded and
+  // is only re-read from the database after a save.
+  if (!state.sheet) {
+    state.sheet = lineup.filter((r) => r.team_id === match.team_code)
+      .map((r) => ({ ...r }));
+  }
+
+  const scored = match.team_score != null;
+  const sideName = (id) => id === match.team_code ? state.teamName : match.opponent;
+
+  const goalList = goals.map((g) => `
+    <li><span>${esc(g.player_name)}
+      <em>${esc(sideName(g.team_id))}${g.minute ? " · " + esc(g.minute) + "'" : ""}
+        ${g.goal_type ? " · " + esc(g.goal_type) : ""}</em></span>
+      <button class="rp-x" type="button" data-nt-del-goal="${esc(g.goal_id)}"
+              aria-label="Remove ${esc(g.player_name)}">&times;</button></li>`).join("");
+
+  const goalForm = scored ? `
+    <form data-nt-goal-form autocomplete="off">
+      <div class="rp-side-pick" role="radiogroup">
+        <label><input type="radio" name="nt-goal-side" value="${esc(match.team_code)}" checked>
+          <span>${esc(state.teamName)}</span></label>
+        <label><input type="radio" name="nt-goal-side" value="OPPONENT">
+          <span>${esc(match.opponent)}</span></label>
+      </div>
+      <input class="rp-input" name="player" placeholder="Scorer's name" required
+             autocomplete="off" autocapitalize="words">
+      <div class="rp-row">
+        <input class="rp-input" name="minute" placeholder="Min" inputmode="numeric">
+        <select class="rp-input" name="type">
+          <option value="">Goal</option>
+          <option value="penalty">Penalty</option>
+          <option value="own goal">Own goal</option>
+        </select>
+      </div>
+      <button class="rp-btn is-ghost" type="submit">Add scorer</button>
+    </form>`
+    : `<p class="rp-hint">Publish the score first — a scorer needs a goal to
+         belong to.</p>`;
+
+  const sheetRows = state.sheet.map((r, i) => `
+    <li class="rp-sheet-row" data-sheet-row="${i}">
+      <div class="rp-sheet-head">
+        <span class="rp-sheet-name">${r.shirt_number ? esc(r.shirt_number) + ". " : ""}${esc(r.player_name)}
+          ${r.captain ? '<b title="Captain">(C)</b>' : ""}</span>
+        <button class="rp-x" type="button" data-sheet-del="${i}"
+                aria-label="Remove ${esc(r.player_name)}">&times;</button>
+      </div>
+      <div class="rp-sheet-controls">
+        <select class="rp-input" data-sheet-field="role" data-sheet-i="${i}">
+          ${NT_ROLES.map(([v, l]) => `<option value="${v}"${
+            r.role === v ? " selected" : ""}>${l}</option>`).join("")}
+        </select>
+        <select class="rp-input" data-sheet-field="position" data-sheet-i="${i}">
+          ${NT_POSITIONS.map((p) => `<option value="${p}"${
+            r.position === p ? " selected" : ""}>${p || "—"}</option>`).join("")}
+        </select>
+        ${r.role === "sub_on" ? `
+          <input class="rp-input" data-sheet-field="minute_on" data-sheet-i="${i}"
+                 value="${esc(r.minute_on || "")}" placeholder="On'" inputmode="numeric">
+          <select class="rp-input" data-sheet-field="replaced_player" data-sheet-i="${i}">
+            <option value="">for…</option>
+            ${state.sheet.filter((o, j) => j !== i).map((o) => `
+              <option value="${esc(o.player_name)}"${
+                r.replaced_player === o.player_name ? " selected" : ""}>
+              ${esc(o.player_name)}</option>`).join("")}
+          </select>` : ""}
+      </div>
+      <div class="rp-sheet-flags">
+        <label class="rp-inline"><input type="checkbox" data-sheet-field="captain"
+          data-sheet-i="${i}" ${r.captain ? "checked" : ""}><span>C</span></label>
+        <label class="rp-inline"><input type="checkbox" data-sheet-field="yellow_card"
+          data-sheet-i="${i}" ${r.yellow_card ? "checked" : ""}><span>Yellow</span></label>
+        <label class="rp-inline"><input type="checkbox" data-sheet-field="yellow_red_card"
+          data-sheet-i="${i}" ${r.yellow_red_card ? "checked" : ""}><span>2nd yellow</span></label>
+        <label class="rp-inline"><input type="checkbox" data-sheet-field="red_card"
+          data-sheet-i="${i}" ${r.red_card ? "checked" : ""}><span>Red</span></label>
+      </div>
+    </li>`).join("");
+
+  const starters = state.sheet.filter((r) => r.role === "starting").length;
+
+  host.innerHTML = `
+    <h2 class="rp-field-head">Match detail <span class="rp-optional">optional</span></h2>
+
+    ${section("ntgoals", "Goalscorers", goals.length,
+      `<ul class="rp-list">${goalList}</ul>${goalForm}`, open.ntgoals)}
+
+    ${section("ntsheet", "Team sheet", state.sheet.length, `
+      <p class="rp-hint" style="margin-top:0">The XI, the bench, the changes and
+        the cards are one sheet here — that is how they are stored, and how a
+        team sheet reads. Paste the names in, then set each row.</p>
+      <textarea class="rp-input rp-textarea" data-sheet-paste rows="5"
+                placeholder="1 Mercy Sikelo GK&#10;4 Tabitha Chawinga FW&#10;…"></textarea>
+      <p class="rp-hint">One per line. A leading number is the shirt, a
+        trailing GK/DF/MF/FW is the position; both optional.</p>
+      <button class="rp-btn is-ghost" type="button" data-sheet-add>Add these players</button>
+      <p class="rp-hint ${starters > 11 ? "is-warn" : ""}">
+        ${starters} in the starting XI${starters > 11 ? " — that is too many" : ""}.</p>
+      <ul class="rp-sheet">${sheetRows}</ul>
+      <button class="rp-btn" type="button" data-sheet-save>Save team sheet</button>
+    `, open.ntsheet)}
+  `;
+
+  wireNTDetail(match, state);
+}
+
+function wireNTDetail(match, state) {
+  const host = view.querySelector("[data-nt-detail]");
+  if (!host) return;
+
+  host.querySelector("[data-nt-goal-form]")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const side = host.querySelector('input[name="nt-goal-side"]:checked').value;
+    const button = f.querySelector('button[type="submit"]');
+    if (button.disabled) return;
+    button.disabled = true; button.textContent = "Adding…";
+    (async () => {
+      // The opponent has no code of its own — anything that is not our
+      // team_code counts as theirs, so a stable label is enough.
+      const teamId = side === "OPPONENT"
+        ? (match.opponent || "OPPONENT").toUpperCase().replace(/\s+/g, "_")
+        : match.team_code;
+      const { error } = await supabase.rpc("submit_nt_goal", {
+        p_match_id: match.match_id,
+        p_team_id: teamId,
+        p_player_name: f.player.value,
+        p_minute: f.minute.value,
+        p_goal_type: f.type.value,
+      });
+      button.disabled = false; button.textContent = "Add scorer";
+      if (error) { flash(humanError(error), "error"); return; }
+      flash("Saved.", "ok", 2500);
+      requestRebuild();
+      state.ntDetail = null;
+      await drawNTDetail(match, state);
+    })();
+  });
+
+  host.addEventListener("click", async (e) => {
+    const del = e.target.closest("[data-nt-del-goal]");
+    if (del) {
+      if (del.disabled) return;
+      del.disabled = true;
+      const { error } = await supabase.rpc("delete_nt_goal",
+        { p_goal_id: del.dataset.ntDelGoal });
+      del.disabled = false;
+      if (error) { flash(humanError(error), "error"); return; }
+      requestRebuild();
+      state.ntDetail = null;
+      await drawNTDetail(match, state);
+      return;
+    }
+    const drop = e.target.closest("[data-sheet-del]");
+    if (drop) {
+      state.sheet.splice(Number(drop.dataset.sheetDel), 1);
+      drawNTDetail(match, state, { local: true });
+    }
+  });
+
+  host.querySelector("[data-sheet-add]")?.addEventListener("click", () => {
+    const box = host.querySelector("[data-sheet-paste]");
+    const added = parseTeamSheet(box.value);
+    if (!added.length) { flash("Type at least one name.", "warn"); return; }
+    const seen = new Set(state.sheet.map((r) => r.player_name.toLowerCase()));
+    added.forEach((row) => {
+      if (!seen.has(row.player_name.toLowerCase())) state.sheet.push(row);
+    });
+    box.value = "";
+    drawNTDetail(match, state, { local: true });
+  });
+
+  host.addEventListener("change", (e) => {
+    const field = e.target.dataset?.sheetField;
+    if (!field) return;
+    const row = state.sheet[Number(e.target.dataset.sheetI)];
+    if (!row) return;
+    row[field] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    // The role decides which controls a row shows, so that one redraws.
+    if (field === "role") drawNTDetail(match, state, { local: true });
+  });
+
+  host.querySelector("[data-sheet-save]")?.addEventListener("click", async (e) => {
+    const button = e.target;
+    if (button.disabled) return;
+    clearFlash();
+    button.disabled = true; button.textContent = "Saving…";
+    const { error } = await supabase.rpc("save_nt_lineup", {
+      p_match_id: match.match_id,
+      p_team_id: match.team_code,
+      p_rows: state.sheet.map((r) => ({
+        player_name: r.player_name, player_id: r.player_id || "",
+        shirt_number: r.shirt_number || "", position: r.position || "",
+        role: r.role || "starting", captain: Boolean(r.captain),
+        minute_on: r.minute_on || "", minute_off: r.minute_off || "",
+        replaced_player: r.replaced_player || "",
+        yellow_card: Boolean(r.yellow_card),
+        yellow_red_card: Boolean(r.yellow_red_card),
+        red_card: Boolean(r.red_card),
+      })),
+    });
+    button.disabled = false; button.textContent = "Save team sheet";
+    // Rule 1: the sheet stays in state on failure, so nothing typed is lost.
+    if (error) { flash(humanError(error), "error"); return; }
+    flash("Team sheet saved.", "ok");
+    requestRebuild();
+    state.ntDetail = null;
+    state.sheet = null;
+    await drawNTDetail(match, state);
+  });
+}
+
+/** "10 Tabitha Chawinga FW" -> {shirt_number, player_name, position}.
+ *
+ *  Both affixes are optional and the middle is the name, so a line that is
+ *  just a name still works. Written for pasting a team sheet off a phone
+ *  screenshot, which is how these arrive. */
+function parseTeamSheet(text) {
+  return (text || "").split("\n").map((line) => {
+    let rest = line.trim();
+    if (!rest) return null;
+    let shirt = "";
+    const lead = /^(\d{1,2})[.)]?\s+/.exec(rest);
+    if (lead) { shirt = lead[1]; rest = rest.slice(lead[0].length); }
+    let position = "";
+    const tail = /\s+(GK|DF|MF|FW)$/i.exec(rest);
+    if (tail) { position = tail[1].toUpperCase(); rest = rest.slice(0, tail.index); }
+    rest = rest.trim();
+    if (!rest) return null;
+    return {
+      player_name: rest, shirt_number: shirt, position,
+      role: "starting", captain: false, player_id: "",
+      minute_on: "", minute_off: "", replaced_player: "",
+      yellow_card: false, yellow_red_card: false, red_card: false,
+    };
+  }).filter(Boolean);
+}
+
+// ── Competitions: groups, brackets and squads ────────────────────────────────
+
+async function renderNTCompetitions() {
+  h('<div class="rp-loading"><span class="rp-spinner"></span><p>Loading competitions…</p></div>');
+  const [{ data: rows, error }, teams] = await Promise.all([
+    supabase.from("nt_competitions").select("competition_name,group_name,team_code"),
+    ntTeams().catch(() => []),
+  ]);
+  if (error) {
+    h('<p class="rp-empty">Could not load competitions.</p>');
+    flash(humanError(error), "error");
+    return;
+  }
+  const names = [...new Set((rows || []).map((r) => r.competition_name))].sort();
+  h(`<a class="rp-btn is-quiet" href="#/nt">&larr; National teams</a>
+     <h1 class="rp-login-head">International competitions</h1>
+     <p class="rp-login-sub">Group tables, brackets and squads.</p>
+     ${teams.length ? '<a class="rp-btn is-ghost" href="#/nt/comp/new">＋ New competition</a>' : ""}
+     ${names.length ? names.map((n) => `
+       <article class="rp-card">
+         <div class="rp-team">${esc(n)}</div>
+         <a class="rp-btn is-ghost" href="#/nt/c/${encodeURIComponent(n)}">Open</a>
+       </article>`).join("")
+       : '<p class="rp-empty">No competitions yet.</p>'}`);
+}
+
+async function renderNTNewCompetition() {
+  const teams = await ntTeams().catch(() => []);
+  if (!teams.length) { location.hash = "#/nt"; return; }
+  h(`<a class="rp-btn is-quiet" href="#/nt/comps">&larr; Competitions</a>
+     <h1 class="rp-login-head">New competition</h1>
+     <p class="rp-login-sub">A competition exists once one of our teams has a
+       row in it — that group table is what gives it a page, and what a bracket
+       hangs off.</p>
+     <form class="rp-form" data-nt-newcomp>
+       <label class="rp-label" for="nc-name">Name</label>
+       <input class="rp-input" id="nc-name" name="name" required
+              placeholder="2027 Women's Africa Cup of Nations" autocapitalize="words">
+       <label class="rp-label" for="nc-team">Our team</label>
+       <select class="rp-select" id="nc-team" name="team">
+         ${teams.map((t) => `<option value="${esc(t.team_code)}">${esc(t.team_name)}</option>`).join("")}
+       </select>
+       <label class="rp-label" for="nc-group">Group</label>
+       <input class="rp-input" id="nc-group" name="group" placeholder="Group A">
+       <p class="rp-hint">Optional — leave blank for a competition with no
+         group stage.</p>
+       <label class="rp-label" for="nc-wiki">Wikipedia link</label>
+       <input class="rp-input" id="nc-wiki" name="wiki" type="url"
+              inputmode="url" autocapitalize="off" spellcheck="false">
+       <p class="rp-hint">Optional.</p>
+       <button class="rp-btn" type="submit" data-submit>Create competition</button>
+     </form>`);
+
+  const form = view.querySelector("[data-nt-newcomp]");
+  const button = form.querySelector("[data-submit]");
+  let busy = false;
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (busy) return;
+    clearFlash();
+    busy = true; button.disabled = true; button.textContent = "Creating…";
+    const { error } = await supabase.rpc("create_nt_competition", {
+      p_competition_name: form.name.value,
+      p_team_code: form.team.value,
+      p_group_name: form.group.value,
+      p_wikipedia_url: form.wiki.value,
+    });
+    busy = false; button.disabled = false; button.textContent = "Create competition";
+    if (error) { flash(humanError(error), "error"); return; }
+    invalidateReference();
+    flash("Competition created.", "ok");
+    location.hash = `#/nt/c/${encodeURIComponent(form.name.value.trim())}`;
+  });
+}
+
+async function renderNTCompetition(name) {
+  h('<div class="rp-loading"><span class="rp-spinner"></span><p>Loading…</p></div>');
+  const [{ data: rows, error }, { data: ties }, { data: squads }, teams] =
+    await Promise.all([
+      supabase.from("nt_competitions").select("*").eq("competition_name", name),
+      supabase.from("nt_knockout").select("*").eq("competition_name", name)
+        .order("ord"),
+      supabase.from("nt_squads").select("*").eq("competition", name).order("ord"),
+      ntTeams().catch(() => []),
+    ]);
+  if (error) {
+    h('<p class="rp-empty">Could not load this competition.</p>');
+    flash(humanError(error), "error");
+    return;
+  }
+  const groupRows = rows || [];
+  if (!groupRows.length) {
+    h(`<p class="rp-empty">No competition by that name.</p>
+       <a class="rp-btn is-ghost" href="#/nt/comps">Back to competitions</a>`);
+    return;
+  }
+  const state = { name, groupRows, ties: ties || [], squads: squads || [],
+                  teams, open: {} };
+  drawNTCompetition(state);
+}
+
+function drawNTCompetition(state) {
+  captureDetailState(state);
+  const open = state.open || {};
+  const ourCodes = new Set(state.teams.map((t) => t.team_code));
+
+  const byGroup = {};
+  state.groupRows.forEach((r) => {
+    (byGroup[r.group_name] = byGroup[r.group_name] || []).push(r);
+  });
+
+  const groupTables = Object.entries(byGroup).map(([group, rows]) => `
+    <h3 class="rp-field-head">${esc(group || "Table")}</h3>
+    <ul class="rp-list">${rows
+      .slice().sort((a, b) => (a.position || "99").localeCompare(b.position || "99"))
+      .map((r) => `
+        <li><span>${esc(r.position ? r.position + ". " : "")}${esc(r.team_name || r.team_code)}
+          <em>P${esc(r.played || "0")} · ${esc(r.points || "0")} pts${
+            ourCodes.has(r.team_code) ? " · ours" : ""}</em></span>
+          <button class="rp-x" type="button" data-del-group="${esc(r.team_code)}"
+                  aria-label="Remove ${esc(r.team_name || r.team_code)}">&times;</button></li>`)
+      .join("")}</ul>`).join("");
+
+  const tieList = state.ties.map((t) => `
+    <li><span>${esc(ntStageLabel(t.stage))} ${t.slot ? "· slot " + esc(t.slot) : ""}
+      <em>${esc(t.home_name || t.home_from || "—")} v ${esc(t.away_name || t.away_from || "—")}
+        ${t.nt_match_id ? " · from match " + esc(t.nt_match_id)
+          : (t.home_score != null ? ` · ${esc(t.home_score)}–${esc(t.away_score)}` : "")}</em></span>
+      <button class="rp-x" type="button" data-del-tie="${esc(t.tie_id)}"
+              aria-label="Remove tie">&times;</button></li>`).join("");
+
+  const squadIds = [...new Set(state.squads.map((s) => s.squad_id))];
+
+  h(`
+    <a class="rp-btn is-quiet" href="#/nt/comps" style="margin-top:0">&larr; Competitions</a>
+    <h1 class="rp-login-head">${esc(state.name)}</h1>
+
+    ${section("ntgroup", "Group table", state.groupRows.length, `
+      ${groupTables}
+      <h3 class="rp-field-head">Add or update a row</h3>
+      <form data-group-form autocomplete="off">
+        <input class="rp-input" name="team_code" placeholder="Team code (NIGERIA_W)"
+               required autocapitalize="characters">
+        <input class="rp-input" name="team_name" placeholder="Team name (Nigeria)"
+               autocapitalize="words">
+        <p class="rp-hint">One of our own teams takes its name automatically;
+          anyone else needs one here, or the row renders nameless.</p>
+        <input class="rp-input" name="group_name" placeholder="Group A">
+        <div class="rp-row">
+          <input class="rp-input" name="position" placeholder="Pos" inputmode="numeric">
+          <input class="rp-input" name="played" placeholder="P" inputmode="numeric">
+          <input class="rp-input" name="points" placeholder="Pts" inputmode="numeric">
+        </div>
+        <div class="rp-row">
+          <input class="rp-input" name="won" placeholder="W" inputmode="numeric">
+          <input class="rp-input" name="drawn" placeholder="D" inputmode="numeric">
+          <input class="rp-input" name="lost" placeholder="L" inputmode="numeric">
+        </div>
+        <div class="rp-row">
+          <input class="rp-input" name="goals_for" placeholder="GF" inputmode="numeric">
+          <input class="rp-input" name="goals_against" placeholder="GA" inputmode="numeric">
+        </div>
+        <button class="rp-btn is-ghost" type="submit">Save row</button>
+      </form>`, open.ntgroup)}
+
+    ${section("ntbracket", "Knockout bracket", state.ties.length, `
+      <ul class="rp-list">${tieList}</ul>
+      <h3 class="rp-field-head">Add or update a tie</h3>
+      <form data-tie-form autocomplete="off">
+        <div class="rp-row">
+          <select class="rp-input" name="stage">
+            ${NT_STAGES.map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}
+          </select>
+          <input class="rp-input" name="slot" placeholder="Slot" inputmode="numeric" value="1">
+        </div>
+        <input class="rp-input" name="home_name" placeholder="Home team"
+               autocapitalize="words">
+        <input class="rp-input" name="away_name" placeholder="Away team"
+               autocapitalize="words">
+        <div class="rp-row">
+          <input class="rp-input" name="home_score" placeholder="Home" inputmode="numeric">
+          <input class="rp-input" name="away_score" placeholder="Away" inputmode="numeric">
+        </div>
+        <input class="rp-input" name="nt_match_id"
+               placeholder="Our match id (leave blank if we are not in it)"
+               inputmode="numeric">
+        <p class="rp-hint">Give the match id for a tie we play, and the score
+          comes from that match instead — entered once, where every other
+          result is entered.</p>
+        <div class="rp-row">
+          <input class="rp-input" name="date" type="date">
+          <input class="rp-input" name="venue" placeholder="Venue">
+        </div>
+        <button class="rp-btn is-ghost" type="submit">Save tie</button>
+      </form>`, open.ntbracket)}
+
+    ${section("ntsquad", "Squad", state.squads.length, `
+      ${squadIds.map((id) => {
+        const players = state.squads.filter((s) => s.squad_id === id);
+        return `<h3 class="rp-field-head">${esc(players[0].announcement_date
+          || "Squad " + id)}${players[0].coach ? " · " + esc(players[0].coach) : ""}</h3>
+          <ul class="rp-list">${players.map((p) => `
+            <li><span>${esc(p.shirt_number ? p.shirt_number + ". " : "")}${esc(p.player_name)}
+              <em>${esc(p.position || "")}${p.club ? " · " + esc(p.club) : ""}</em></span></li>`).join("")}</ul>`;
+      }).join("")}
+      <h3 class="rp-field-head">Publish a squad</h3>
+      <form data-squad-form autocomplete="off">
+        <select class="rp-select" name="team">
+          ${state.teams.map((t) => `<option value="${esc(t.team_code)}">${esc(t.team_name)}</option>`).join("")}
+        </select>
+        <div class="rp-row">
+          <input class="rp-input" name="announced" type="date">
+          <input class="rp-input" name="coach" placeholder="Coach" autocapitalize="words">
+        </div>
+        <textarea class="rp-input rp-textarea" name="players" rows="8"
+                  placeholder="1 Mercy Sikelo GK&#10;10 Tabitha Chawinga FW&#10;…"></textarea>
+        <p class="rp-hint">One per line, same shape as a team sheet. Saving
+          replaces the squad it belongs to rather than adding a second.</p>
+        <button class="rp-btn is-ghost" type="submit">Publish squad</button>
+      </form>`, open.ntsquad)}
+  `);
+
+  wireNTCompetition(state);
+}
+
+function wireNTCompetition(state) {
+  const done = async (message) => {
+    flash(message, "ok");
+    requestRebuild();
+    await renderNTCompetition(state.name);
+  };
+
+  const lock = async (button, label, fn) => {
+    if (button.disabled) return;
+    clearFlash();
+    const original = button.textContent;
+    button.disabled = true; button.textContent = label;
+    const error = await fn();
+    button.disabled = false; button.textContent = original;
+    if (error) flash(humanError(error), "error");
+    return !error;
+  };
+
+  view.querySelector("[data-group-form]")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    lock(f.querySelector("button"), "Saving…", async () => {
+      const { error } = await supabase.rpc("upsert_nt_group_row", {
+        p_competition_name: state.name,
+        p_group_name: f.group_name.value,
+        p_team_code: f.team_code.value.trim(),
+        p_team_name: f.team_name.value,
+        p_position: f.position.value, p_played: f.played.value,
+        p_won: f.won.value, p_drawn: f.drawn.value, p_lost: f.lost.value,
+        p_goals_for: f.goals_for.value, p_goals_against: f.goals_against.value,
+        p_points: f.points.value,
+      });
+      return error;
+    }).then((ok) => ok && done("Row saved."));
+  });
+
+  view.querySelector("[data-tie-form]")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const num = (v) => v.trim() === "" ? null : Number(v);
+    lock(f.querySelector("button"), "Saving…", async () => {
+      const { error } = await supabase.rpc("upsert_nt_tie", {
+        p_competition_name: state.name,
+        p_stage: f.stage.value,
+        p_slot: Number(f.slot.value || 1),
+        p_home_name: f.home_name.value, p_away_name: f.away_name.value,
+        p_home_score: num(f.home_score.value), p_away_score: num(f.away_score.value),
+        p_date: f.date.value, p_venue: f.venue.value,
+        p_status: num(f.home_score.value) == null ? "scheduled" : "played",
+        p_nt_match_id: f.nt_match_id.value.trim(),
+      });
+      return error;
+    }).then((ok) => ok && done("Tie saved."));
+  });
+
+  view.querySelector("[data-squad-form]")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const players = parseTeamSheet(f.players.value).map((p) => ({
+      player_name: p.player_name, shirt_number: p.shirt_number,
+      position: p.position,
+    }));
+    if (!players.length) { flash("Add at least one player.", "warn"); return; }
+    lock(f.querySelector("button"), "Publishing…", async () => {
+      const { error } = await supabase.rpc("save_nt_squad", {
+        p_team_id: f.team.value,
+        p_competition: state.name,
+        p_players: players,
+        p_announcement_date: f.announced.value,
+        p_coach: f.coach.value,
+      });
+      return error;
+    }).then((ok) => ok && done("Squad published."));
+  });
+
+  view.addEventListener("click", async (e) => {
+    const group = e.target.closest("[data-del-group]");
+    const tie = e.target.closest("[data-del-tie]");
+    if (group) {
+      await lock(group, "…", async () =>
+        (await supabase.rpc("delete_nt_group_row", {
+          p_competition_name: state.name,
+          p_team_code: group.dataset.delGroup,
+        })).error).then((ok) => ok && done("Row removed."));
+    } else if (tie) {
+      await lock(tie, "…", async () =>
+        (await supabase.rpc("delete_nt_tie", {
+          p_tie_id: tie.dataset.delTie,
+        })).error).then((ok) => ok && done("Tie removed."));
+    }
+  });
+}
+
 // ── Router ───────────────────────────────────────────────────────────────────
 
 function parseHash() {
@@ -2344,6 +3361,14 @@ async function route() {
   }
 
   if (path.startsWith("/m/")) return renderMatch(path.slice(3), params);
+  // National teams. A separate branch of the router for a separate schema —
+  // see the section above for why they are not folded together.
+  if (path === "/nt") return renderNTHome(params);
+  if (path === "/nt/add") return renderNTAddFixture(params);
+  if (path === "/nt/comps") return renderNTCompetitions();
+  if (path === "/nt/comp/new") return renderNTNewCompetition();
+  if (path.startsWith("/nt/m/")) return renderNTMatch(decodeURIComponent(path.slice(6)));
+  if (path.startsWith("/nt/c/")) return renderNTCompetition(decodeURIComponent(path.slice(6)));
   if (path === "/add") return renderAddFixture(params);
   if (path === "/league/new") return renderNewLeague();
   if (path === "/account") return renderAccount();
