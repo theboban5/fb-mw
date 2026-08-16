@@ -110,6 +110,7 @@ class CreateFixtureTest(unittest.TestCase):
         if len(entries) < 3:
             raise unittest.SkipTest(f"{cls.COMP} has too few entries")
         cls.teams = [e["team_id"] for e in entries]
+        cls.D = live_support.season_dates(14)
         cls.made = []
 
     @classmethod
@@ -136,7 +137,7 @@ class CreateFixtureTest(unittest.TestCase):
         row = self.add_ok(self.tokens["a"],
                           p_home_team_id=self.teams[0],
                           p_away_team_id=self.teams[1],
-                          p_date="2031-05-01", p_kickoff="15:00", p_matchday=1)
+                          p_date=self.D[0], p_kickoff="15:00", p_matchday=1)
         self.assertEqual(row["status"], "scheduled")
         self.assertIsNone(row["home_goals"])
         self.assertIsNone(row["away_goals"])
@@ -146,25 +147,25 @@ class CreateFixtureTest(unittest.TestCase):
 
     def test_reporter_for_another_competition_cannot(self):
         status, body = self.add(self.tokens["b"], p_home_team_id=self.teams[0],
-                                p_away_team_id=self.teams[1], p_date="2031-05-02")
+                                p_away_team_id=self.teams[1], p_date=self.D[1])
         self.assertEqual(status, 403, body)
         self.assertIn("not assigned", message(body))
 
     def test_inactive_reporter_cannot(self):
         status, body = self.add(self.tokens["inactive"],
                                 p_home_team_id=self.teams[0],
-                                p_away_team_id=self.teams[1], p_date="2031-05-03")
+                                p_away_team_id=self.teams[1], p_date=self.D[2])
         self.assertEqual(status, 403, body)
         self.assertIn("inactive", message(body))
 
     def test_anon_cannot(self):
         status, body = self.add(None, p_home_team_id=self.teams[0],
-                                p_away_team_id=self.teams[1], p_date="2031-05-04")
+                                p_away_team_id=self.teams[1], p_date=self.D[3])
         self.assertGreaterEqual(status, 400, body)
 
     def test_admin_may_add_to_any_competition(self):
         row = self.add_ok(self.tokens["admin"], p_home_team_id=self.teams[0],
-                          p_away_team_id=self.teams[2], p_date="2031-05-05")
+                          p_away_team_id=self.teams[2], p_date=self.D[4])
         self.assertEqual(row["competition_id"], self.COMP)
 
     # ── validation, mirroring validate.py ────────────────────────────────────
@@ -172,7 +173,7 @@ class CreateFixtureTest(unittest.TestCase):
     def test_rejects_a_team_playing_itself(self):
         """validate.py check 4."""
         status, body = self.add(self.tokens["a"], p_home_team_id=self.teams[0],
-                                p_away_team_id=self.teams[0], p_date="2031-05-06")
+                                p_away_team_id=self.teams[0], p_date=self.D[5])
         self.assertGreaterEqual(status, 400, body)
         self.assertIn("cannot play itself", message(body))
 
@@ -187,22 +188,22 @@ class CreateFixtureTest(unittest.TestCase):
         if outsider is None:
             self.skipTest("no team outside the competition to test with")
         status, body = self.add(self.tokens["a"], p_home_team_id=self.teams[0],
-                                p_away_team_id=outsider, p_date="2031-05-07")
+                                p_away_team_id=outsider, p_date=self.D[6])
         self.assertGreaterEqual(status, 400, body)
         self.assertIn("not entered", message(body))
 
     def test_rejects_a_malformed_kickoff(self):
         status, body = self.add(self.tokens["a"], p_home_team_id=self.teams[0],
                                 p_away_team_id=self.teams[1],
-                                p_date="2031-05-08", p_kickoff="3pm")
+                                p_date=self.D[7], p_kickoff="3pm")
         self.assertGreaterEqual(status, 400, body)
         self.assertIn("kickoff", message(body))
 
     def test_rejects_the_same_fixture_twice_on_one_day(self):
         self.add_ok(self.tokens["a"], p_home_team_id=self.teams[1],
-                    p_away_team_id=self.teams[2], p_date="2031-05-09")
+                    p_away_team_id=self.teams[2], p_date=self.D[8])
         status, body = self.add(self.tokens["a"], p_home_team_id=self.teams[1],
-                                p_away_team_id=self.teams[2], p_date="2031-05-09")
+                                p_away_team_id=self.teams[2], p_date=self.D[8])
         self.assertGreaterEqual(status, 400, body)
         self.assertIn("already in the list", message(body))
 
@@ -214,15 +215,28 @@ class CreateFixtureTest(unittest.TestCase):
 
     def test_ids_do_not_collide(self):
         a = self.add_ok(self.tokens["a"], p_home_team_id=self.teams[0],
-                        p_away_team_id=self.teams[1], p_date="2031-05-11")
+                        p_away_team_id=self.teams[1], p_date=self.D[10])
         b = self.add_ok(self.tokens["a"], p_home_team_id=self.teams[0],
-                        p_away_team_id=self.teams[1], p_date="2031-05-12")
+                        p_away_team_id=self.teams[1], p_date=self.D[11])
         self.assertNotEqual(a["match_id"], b["match_id"])
+
+    def test_rejects_a_date_outside_the_season(self):
+        """validate.py check 6, and the one 0008 missed.
+
+        A mistyped year is a single keystroke, and the row it produces fails
+        every build until someone finds it — which blocks everyone else's
+        results, not just this one.
+        """
+        status, body = self.add(self.tokens["a"], p_home_team_id=self.teams[0],
+                                p_away_team_id=self.teams[1],
+                                p_date=live_support.out_of_season_date())
+        self.assertGreaterEqual(status, 400, body)
+        self.assertIn("outside the", message(body))
 
     def test_a_new_fixture_is_immediately_reportable(self):
         """The whole point: add it, then score it through the normal path."""
         row = self.add_ok(self.tokens["a"], p_home_team_id=self.teams[2],
-                          p_away_team_id=self.teams[1], p_date="2031-05-10")
+                          p_away_team_id=self.teams[1], p_date=self.D[9])
         status, published = rpc("submit_match_report", {
             "p_match_id": row["match_id"], "p_home_score": 2,
             "p_away_score": 0, "p_status": "played",
@@ -307,6 +321,128 @@ class SourceRefTest(unittest.TestCase):
 
 
 @unittest.skipUnless(live_support.available(), "Supabase credentials not configured")
+class RescheduleMatchTest(unittest.TestCase):
+    """Moving a fixture — and, just as much, what it must refuse to move.
+
+    reschedule_match exists as a SEPARATE function rather than as new
+    parameters on submit_match_report, so the narrow-update guarantee is
+    tested twice over: publishing still cannot touch the date, and
+    rescheduling still cannot touch anything else.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.identities = live_support.Identities(prefix="MW_RSTEST").setup()
+        cls.tokens = cls.identities.tokens
+        cls.D = live_support.season_dates(6)
+        cls.match = live_support.make_test_match(
+            live_support.Identities.COMP_A, cls.identities.suffix)
+
+    @classmethod
+    def tearDownClass(cls):
+        delete("match_change_log", f"match_id=eq.{cls.match['match_id']}")
+        live_support.drop_test_match(cls.match["match_id"])
+        cls.identities.teardown()
+
+    def move(self, token, **kwargs):
+        body = {"p_match_id": self.match["match_id"]}
+        body.update(kwargs)
+        return rpc("reschedule_match", body, token=token)
+
+    def row(self):
+        return sb.select("matches",
+                         params={"match_id": f"eq.{self.match['match_id']}"},
+                         require_secret=True)[0]
+
+    def test_an_assigned_reporter_moves_a_fixture(self):
+        status, rows = self.move(self.tokens["a"], p_date=self.D[0],
+                                 p_kickoff="16:00")
+        self.assertEqual(status, 200, rows)
+        self.assertEqual(rows[0]["date"], self.D[0])
+        self.assertEqual(rows[0]["kickoff"], "16:00")
+
+    def test_the_date_can_be_cleared(self):
+        """A postponed match with no new day yet is a fixture with no date —
+        876 rows in the real data look like that."""
+        self.move(self.tokens["a"], p_date=self.D[1], p_kickoff="15:00")
+        status, rows = self.move(self.tokens["a"], p_date=None, p_kickoff="")
+        self.assertEqual(status, 200, rows)
+        self.assertIsNone(rows[0]["date"])
+        self.assertEqual(rows[0]["kickoff"], "")
+
+    def test_it_moves_nothing_else(self):
+        """The whole reason this is its own function."""
+        before = self.row()
+        status, _ = self.move(self.tokens["a"], p_date=self.D[2],
+                              p_kickoff="14:00")
+        self.assertEqual(status, 200)
+        after = self.row()
+        for column in ("home_team_id", "away_team_id", "competition_id",
+                       "season_id", "home_goals", "away_goals", "status",
+                       "venue_id", "public_id", "stage"):
+            self.assertEqual(before[column], after[column], column)
+
+    def test_publishing_still_cannot_move_a_fixture(self):
+        """The guarantee 0003 made, still true now that moving is possible."""
+        self.move(self.tokens["a"], p_date=self.D[3], p_kickoff="15:00")
+        status, _ = rpc("submit_match_report", {
+            "p_match_id": self.match["match_id"], "p_home_score": 1,
+            "p_away_score": 0, "p_status": "played"}, token=self.tokens["a"])
+        self.assertEqual(status, 200)
+        self.assertEqual(self.row()["date"], self.D[3])
+
+    def test_rejects_a_date_outside_the_season(self):
+        status, body = self.move(self.tokens["a"],
+                                 p_date=live_support.out_of_season_date())
+        self.assertGreaterEqual(status, 400, body)
+        self.assertIn("outside the", message(body))
+
+    def test_rejects_a_malformed_kickoff(self):
+        status, body = self.move(self.tokens["a"], p_date=self.D[4],
+                                 p_kickoff="half three")
+        self.assertGreaterEqual(status, 400, body)
+        self.assertIn("kickoff", message(body))
+
+    def test_a_reporter_for_another_competition_cannot(self):
+        status, body = self.move(self.tokens["b"], p_date=self.D[5])
+        self.assertEqual(status, 403, body)
+        self.assertIn("not assigned", message(body))
+
+    def test_an_inactive_reporter_cannot(self):
+        status, body = self.move(self.tokens["inactive"], p_date=self.D[5])
+        self.assertEqual(status, 403, body)
+        self.assertIn("inactive", message(body))
+
+    def test_anon_cannot(self):
+        status, body = self.move(None, p_date=self.D[5])
+        self.assertGreaterEqual(status, 400, body)
+
+    def test_the_move_is_audited(self):
+        self.move(self.tokens["a"], p_date=self.D[0], p_kickoff="15:00")
+        self.move(self.tokens["a"], p_date=self.D[1], p_kickoff="17:30")
+        log = sb.select("match_change_log", columns="old_values,new_values",
+                        params={"match_id": f"eq.{self.match['match_id']}"},
+                        order="id.desc", require_secret=True)
+        self.assertEqual(log[0]["new_values"],
+                         {"date": self.D[1], "kickoff": "17:30"})
+        self.assertEqual(log[0]["old_values"],
+                         {"date": self.D[0], "kickoff": "15:00"})
+
+    def test_an_unchanged_move_adds_no_log_row(self):
+        self.move(self.tokens["a"], p_date=self.D[2], p_kickoff="15:00")
+        before = len(sb.select("match_change_log", columns="id",
+                               params={"match_id": f"eq.{self.match['match_id']}"},
+                               require_secret=True))
+        status, rows = self.move(self.tokens["a"], p_date=self.D[2],
+                                 p_kickoff="15:00")
+        self.assertEqual(status, 200, rows)
+        after = len(sb.select("match_change_log", columns="id",
+                              params={"match_id": f"eq.{self.match['match_id']}"},
+                              require_secret=True))
+        self.assertEqual(before, after)
+
+
+@unittest.skipUnless(live_support.available(), "Supabase credentials not configured")
 class CreateLeagueTest(unittest.TestCase):
     """Creating a competition — admin only, because it mints permanent ids."""
 
@@ -315,6 +451,7 @@ class CreateLeagueTest(unittest.TestCase):
         cls.identities = live_support.Identities(prefix="MW_LGTEST").setup()
         cls.tokens = cls.identities.tokens
         cls.suffix = uuid.uuid4().hex[:4].upper()
+        cls.D = live_support.season_dates(4)
 
     @classmethod
     def tearDownClass(cls):
@@ -363,7 +500,7 @@ class CreateLeagueTest(unittest.TestCase):
         teams = [e["team_id"] for e in entries]
         status, rows = rpc("create_fixture", {
             "p_competition_id": competition_id, "p_home_team_id": teams[0],
-            "p_away_team_id": teams[1], "p_date": "2031-06-01",
+            "p_away_team_id": teams[1], "p_date": self.D[0],
         }, token=self.tokens["admin"])
         self.assertEqual(status, 200, rows)
         self.assertEqual(rows[0]["status"], "scheduled")
@@ -444,14 +581,14 @@ class CreateLeagueTest(unittest.TestCase):
 
         status, body = rpc("create_fixture", {
             "p_competition_id": competition_id, "p_home_team_id": teams[0],
-            "p_away_team_id": teams[1], "p_date": "2031-06-02",
+            "p_away_team_id": teams[1], "p_date": self.D[1],
         }, token=self.tokens["admin"])
         self.assertGreaterEqual(status, 400, body)
         self.assertIn("round", message(body))
 
         status, rows = rpc("create_fixture", {
             "p_competition_id": competition_id, "p_home_team_id": teams[0],
-            "p_away_team_id": teams[1], "p_date": "2031-06-02", "p_stage": "SF",
+            "p_away_team_id": teams[1], "p_date": self.D[1], "p_stage": "SF",
         }, token=self.tokens["admin"])
         self.assertEqual(status, 200, rows)
         self.assertEqual(rows[0]["stage"], "sf")

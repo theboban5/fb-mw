@@ -263,17 +263,29 @@ the ordinary static tree copy. No framework, no bundler, no build step.
 /report/#/account       change password, sign out
 ```
 
-**Filtering the fixture list.** The home screen takes three filters —
-competition, bucket (today / awaiting result / upcoming / recently reported)
-and a single date — and they live in the URL (`#/?comp=MW_SRFA2&show=awaiting`)
-rather than in a variable. The back button therefore works, a reload keeps the
-view, and "my league, awaiting result" is a link a reporter can keep.
+**Filtering the fixture list.** The home screen takes four filters —
+competition, matchday, bucket (today / awaiting result / upcoming / recently
+reported) and a single date — and they live in the URL
+(`#/?comp=MW_SL&md=md_12`) rather than in a variable. The back button therefore
+works, a reload keeps the view, and "my league, matchday 12" is a link a
+reporter can keep.
 
-`show` and `date` are applied on the phone, to a list it already holds.
+`show`, `date` and `md` are applied on the phone, to a list it already holds.
 **Competition is not**: played results are capped at 60 per load, and a cap
 applied before filtering would hide an older league's results behind sixty
 newer ones from elsewhere, so narrowing to a competition re-reads the database
 scoped to it.
+
+The matchday filter keys off **`stage`, not `matchday`**, because stage is the
+column that works for both kinds of competition: `md_<n>` on a league and the
+round on a cup, so one menu offers "Matchday 12" in the Premiership and
+"Quarter-final" in the Top 8. The data agrees — 554 of 556 rows carry a stage,
+where `matchday` is null on every cup tie. Options are ordered as played
+(matchdays numerically, then rounds by depth), they are drawn from the chosen
+competition rather than from the filtered result — otherwise picking matchday 5
+would leave 5 as the only option and no way back — and changing competition
+clears the matchday, since "matchday 12" means different fixtures in each
+league.
 
 Routing is by **hash** rather than real paths for two reasons: GitHub Pages
 cannot rewrite `/report/m/<id>` onto a file, and one cached page means moving
@@ -315,6 +327,7 @@ close that, at two different levels of privilege:
 | | who | what it does |
 |---|---|---|
 | `create_fixture` | any reporter, for a competition they are assigned to | one scheduled fixture |
+| `reschedule_match` | any reporter who may report that match | moves it — `date` and `kickoff`, nothing else |
 | `create_league` | **admin only** | a competition, its season row, and a club + team + entry per pasted name |
 
 **Why creating a league is admin-only and adding a fixture is not.** It is not
@@ -334,8 +347,16 @@ insert time where it can still be shown to the person who caused it:
 |---|---|
 | check 2 — foreign keys | every reference resolved before insert |
 | check 3 — both teams entered in the competition+season | `create_fixture` step 6 (and the composite FK behind it) |
-| check 4 — no self-play, no score on a scheduled match | `create_fixture` steps 4 and the insert itself |
+| check 4 — no self-play, no score on a scheduled match | `create_fixture` step 4 and the insert itself |
+| check 6 — date inside the season's range | `assert_date_in_season`, shared by `create_fixture` and `reschedule_match` |
 | check 7 — cup stage vocabulary | `create_fixture` step 7, which reads `competitions.type` |
+
+**Check 6 was missed in `0008` and added in `0009`.** `create_fixture` accepted
+any date, so a mistyped year — 2031 for 2027, one keystroke — would have been
+stored happily and then failed every build until someone found it. The rule now
+lives in one function that both writers call, so the two cannot drift, and the
+message names the actual bounds ("outside the 2026/27 season (01 Apr 2026 to
+30 Jun 2027)") rather than just refusing.
 
 The fixture form goes further and simply *does not offer* a team that is not
 entered in the chosen competition, so the commonest way to break check 3 is
@@ -352,6 +373,27 @@ competition that cannot hold a fixture is not a thing to have created.
 `scripts/season.py` remains the better tool for a whole division with venues,
 badges and a full fixture list from one reviewed file. The portal is for the
 phone — a league someone needs to start reporting today.
+
+### Moving a fixture
+
+A fixture list is published weeks ahead and then a match gets moved.
+`reschedule_match(match_id, date, kickoff)` handles that from the match screen,
+under **Move this match**.
+
+**It is a separate function, not extra parameters on `submit_match_report`.**
+That RPC refuses to touch `date` on purpose — the narrow-update guarantee in
+`0003` exists so that permission to report a score is not permission to move a
+fixture into another season. Widening it would have dissolved the guarantee to
+save one function. Two narrow doors, not one wide one, and the tests assert
+both halves: publishing still cannot move a match, and rescheduling still
+cannot change teams, competition, season, venue, score, status or stage.
+
+It also **saves on its own**, like every other section below the result. A
+reporter who came to enter a score should not have to think about the date, and
+someone fixing a date should not risk the score. Clearing the date is allowed
+and means what it means everywhere else in the data — a fixture with no day
+yet. The move is appended to `match_change_log` alongside score changes; an
+unchanged re-save adds no row and is not an error.
 
 ### Publishing a result
 
@@ -413,10 +455,15 @@ RLS_LIVE=1 python3 -m unittest tests.test_reporting_live tests.test_entry_live
 
 24 tests covering authorization, validation, the narrow-update guarantee (that
 publishing cannot alter teams, competition, season, date, kickoff, venue or
-`public_id`) and the audit trail, plus 33 in `test_entry_live` covering
-`create_fixture`, `create_league` and `source_ref`. They build their own
-throwaway fixtures in a real competition — no test ever rewrites a genuine
-scoreline.
+`public_id`) and the audit trail, plus 45 in `test_entry_live` covering
+`create_fixture`, `create_league`, `reschedule_match` and `source_ref`. They
+build their own throwaway fixtures in a real competition — no test ever
+rewrites a genuine scoreline.
+
+Test dates come from `live_support.season_dates()` rather than from literals,
+because check 6 now refuses anything outside the season: a hardcoded 2031 is
+exactly the mistake the rule exists to catch, so the tests take their dates
+from the season itself and stay correct when it rolls over.
 
 `test_entry_live` is the one suite that creates whole competitions, and unlike
 a match there is no `source_type='placeholder'` that would make a leaked one

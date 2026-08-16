@@ -141,6 +141,7 @@ function humanError(error) {
       || message.includes("age group")
       || message.includes("round")
       || message.includes("no active season")
+      || message.includes("outside the")
       || message.includes("both teams are required")
       || message.includes("gender must be")
       || message.includes("type must be")
@@ -215,8 +216,8 @@ function competitionNames() {
 }
 
 const MATCH_FIELDS =
-  "match_id,public_id,competition_id,season_id,date,kickoff,status," +
-  "home_goals,away_goals,home_team_id,away_team_id,source_ref," +
+  "match_id,public_id,competition_id,season_id,date,kickoff,status,stage," +
+  "matchday,home_goals,away_goals,home_team_id,away_team_id,source_ref," +
   "home:teams!matches_home_team_id_fkey(display_name)," +
   "away:teams!matches_away_team_id_fkey(display_name)," +
   "venue:venues(name)";
@@ -322,17 +323,21 @@ const SHOW_OPTIONS = [
   { value: "reported", label: "Recently reported" },
 ];
 
-/** Filters live in the URL (#/?comp=…&show=…&date=…), not in a variable.
+/** Filters live in the URL (#/?comp=…&show=…&date=…&md=…), not in a variable.
  *  The back button then works, a reload keeps the view, and "my league,
- *  awaiting result" is a link a reporter can keep. Both values are validated
- *  on the way in — the hash is user input. */
+ *  matchday 5" is a link a reporter can keep. Every value is validated on the
+ *  way in — the hash is user input. */
 function readFilters(params) {
   const show = params.get("show");
   const date = params.get("date") || "";
+  const md = params.get("md") || "";
   return {
     comp: params.get("comp") || "",
     show: SHOW_OPTIONS.some((o) => o.value === show) ? show : "all",
     date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "",
+    // A stage value: md_<n> on a league, a knockout round on a cup. Anything
+    // else came from a hand-edited URL and is ignored rather than queried.
+    md: /^(md_\d{1,3}|r64|r32|r16|qf|sf|final|3p)$/.test(md) ? md : "",
   };
 }
 
@@ -341,8 +346,35 @@ function filterHash(filters) {
   if (filters.comp) query.set("comp", filters.comp);
   if (filters.show !== "all") query.set("show", filters.show);
   if (filters.date) query.set("date", filters.date);
+  if (filters.md) query.set("md", filters.md);
   const encoded = query.toString();
   return encoded ? `#/?${encoded}` : "#/";
+}
+
+/** "md_5" → "Matchday 5"; "qf" → "Quarter-final".
+ *
+ *  `stage` is the field that works for both: create_fixture writes md_<n> for
+ *  a league and the round for a cup, and the existing data agrees — 554 of 556
+ *  rows carry one, where `matchday` is null on every cup tie. So the filter
+ *  keys off stage and this is the only place its shape is interpreted. */
+function stageLabel(stage) {
+  const round = CUP_ROUNDS.find((r) => r.value === stage);
+  if (round) return round.label;
+  const md = /^md_(\d+)$/.exec(stage || "");
+  return md ? `Matchday ${md[1]}` : (stage || "—");
+}
+
+/** Stages present in a set of matches, in the order they are played:
+ *  matchdays numerically, then knockout rounds by depth. */
+function stageOptions(matches) {
+  const present = [...new Set(matches.map((m) => m.stage).filter(Boolean))];
+  const rank = (stage) => {
+    const md = /^md_(\d+)$/.exec(stage);
+    if (md) return Number(md[1]);            // 1, 2, 3 … before any round
+    const i = CUP_ROUNDS.findIndex((r) => r.value === stage);
+    return i === -1 ? 9999 : 1000 + i;
+  };
+  return present.sort((a, b) => rank(a) - rank(b));
 }
 
 // The fixture list is re-read from the network only when it might have
@@ -405,7 +437,10 @@ function bucketOf(match, today) {
   return "upcoming";
 }
 
-function filterBar(filters, names, competitions) {
+const anyFilterSet = (filters) =>
+  Boolean(filters.comp || filters.show !== "all" || filters.date || filters.md);
+
+function filterBar(filters, names, competitions, stages) {
   // A competition in the hash that is not in the list — a hand-edited URL, or
   // an assignment removed since the link was saved — is still shown as the
   // chosen one. Dropping it silently would leave the menu reading "All
@@ -421,12 +456,27 @@ function filterBar(filters, names, competitions) {
     <option value="${o.value}"${o.value === filters.show ? " selected" : ""}>
       ${esc(o.label)}</option>`).join("");
 
+  // Same reasoning as the competition menu: a matchday chosen before the list
+  // narrowed must stay selectable, or the filter cannot be undone from the UI.
+  const mdValues = filters.md && !stages.includes(filters.md)
+    ? [filters.md, ...stages] : stages;
+  const mdOptions = ['<option value="">All matchdays</option>']
+    .concat(mdValues.map((s) => `
+      <option value="${esc(s)}"${s === filters.md ? " selected" : ""}>
+        ${esc(stageLabel(s))}</option>`))
+    .join("");
+
   return `
     <div class="rp-filters" data-filters>
       <label class="rp-filter">
         <span class="rp-filter-label">Competition</span>
         <select class="rp-select" data-filter="comp">${compOptions}</select>
       </label>
+      ${mdValues.length ? `
+        <label class="rp-filter rp-filter-wide">
+          <span class="rp-filter-label">Matchday</span>
+          <select class="rp-select" data-filter="md">${mdOptions}</select>
+        </label>` : ""}
       <label class="rp-filter">
         <span class="rp-filter-label">Show</span>
         <select class="rp-select" data-filter="show">${showOptions}</select>
@@ -436,7 +486,7 @@ function filterBar(filters, names, competitions) {
         <input class="rp-input rp-date" type="date" data-filter="date"
                value="${esc(filters.date)}">
       </label>
-      ${(filters.comp || filters.show !== "all" || filters.date)
+      ${anyFilterSet(filters)
         ? '<button class="rp-btn is-quiet rp-filter-clear" type="button" data-clear>Clear filters</button>'
         : ""}
     </div>`;
@@ -488,9 +538,19 @@ async function renderHome(params) {
   const { names } = data;
   const competitions = choices.map((c) => c.competition_id);
 
+  // The matchday menu lists the stages available in the CHOSEN COMPETITION,
+  // not in the filtered result — otherwise picking matchday 5 would leave 5 as
+  // the only option and no way back. Competition is the only filter that
+  // narrows it, because "matchday 5" means different fixtures in each league.
+  const inScope = filters.comp
+    ? data.matches.filter((m) => m.competition_id === filters.comp)
+    : data.matches;
+  const stages = stageOptions(inScope);
+
   const shown = data.matches.filter((m) => {
     if (filters.comp && m.competition_id !== filters.comp) return false;
     if (filters.date && m.date !== filters.date) return false;
+    if (filters.md && m.stage !== filters.md) return false;
     if (filters.show !== "all" && bucketOf(m, today) !== filters.show) return false;
     return true;
   });
@@ -499,7 +559,7 @@ async function renderHome(params) {
   // the whole list and say nothing. Unfiltered: the buckets, which are the
   // reason the home screen is useful at all.
   let body;
-  if (filters.show === "all" && !filters.date) {
+  if (filters.show === "all" && !filters.date && !filters.md) {
     body = [
       group("Today", shown.filter((m) => bucketOf(m, today) === "today"),
             names, { showScore: true }),
@@ -511,8 +571,10 @@ async function renderHome(params) {
             .slice(0, 12), names, {}),
     ].join("");
   } else {
-    const heading = filters.date
-      ? formatDate(filters.date)
+    // The most specific filter names the list, because that is what the
+    // reporter just asked for.
+    const heading = filters.md ? stageLabel(filters.md)
+      : filters.date ? formatDate(filters.date)
       : SHOW_OPTIONS.find((o) => o.value === filters.show).label;
     body = group(heading, shown, names,
                  { showScore: filters.show !== "upcoming" });
@@ -530,15 +592,19 @@ async function renderHome(params) {
      <p class="rp-sub">${esc(formatDate(today))}${
         context.isAdmin ? " · administrator" : ""}</p>
      ${actions}
-     ${filterBar(filters, names, competitions)}
+     ${filterBar(filters, names, competitions, stages)}
      ${body || `<p class="rp-empty">Nothing matches these filters.${
-        (filters.comp || filters.show !== "all" || filters.date)
-          ? " Try clearing them." : ""}</p>`}`);
+        anyFilterSet(filters) ? " Try clearing them." : ""}</p>`}`);
 
   view.querySelector("[data-filters]").addEventListener("change", (event) => {
     const key = event.target.dataset.filter;
     if (!key) return;
-    location.hash = filterHash({ ...filters, [key]: event.target.value });
+    const next = { ...filters, [key]: event.target.value };
+    // Matchdays belong to a competition. Carrying "matchday 12" across to a
+    // league that has only played six would show an empty list and read as a
+    // bug rather than as a stale filter.
+    if (key === "comp") next.md = "";
+    location.hash = filterHash(next);
   });
   const clear = view.querySelector("[data-clear]");
   if (clear) clear.onclick = () => { location.hash = "#/"; };
@@ -1042,10 +1108,26 @@ function drawMatch(match, names, state) {
       <p class="rp-publish-note" data-note></p>
     </div>
 
+    ${section("reschedule", "Move this match", 0, `
+      <p class="rp-hint" style="margin-top:0">The fixture list said one day and
+        it was played on another? Change it here. This saves on its own — it is
+        not part of publishing the score.</p>
+      <label class="rp-label" for="rs-date">Date</label>
+      <input class="rp-input" id="rs-date" type="date" data-rs-date
+             value="${esc(match.date || "")}">
+      <p class="rp-hint">Clear it if the match no longer has a fixed day.</p>
+      <label class="rp-label" for="rs-kickoff">Kick-off</label>
+      <input class="rp-input" id="rs-kickoff" type="time" data-rs-kickoff
+             value="${esc((match.kickoff || "").slice(0, 5))}">
+      <p class="rp-hint">Malawi time.</p>
+      <button class="rp-btn is-ghost" type="button" data-rs-save>Save new date</button>
+    `)}
+
     <div data-detail></div>
   `);
 
   drawDetail(match, state);
+  wireReschedule(match, names, state);
 
   const valueEls = {
     home: view.querySelector('[data-value="home"]'),
@@ -1136,6 +1218,78 @@ function drawMatch(match, names, state) {
   });
 
   refresh();
+}
+
+/** Moving a fixture to another day.
+ *
+ *  Its own call to its own RPC, not part of publishing. submit_match_report
+ *  cannot write `date` by design — being allowed to report a score is not
+ *  permission to move a fixture — so rescheduling goes through
+ *  reschedule_match, which writes date and kickoff and nothing else.
+ *
+ *  It also saves on its own, like every other section below the result: a
+ *  reporter who came to enter a score must not have to think about the date,
+ *  and someone fixing the date must not risk the score. */
+function wireReschedule(match, names, state) {
+  const dateEl = view.querySelector("[data-rs-date]");
+  const timeEl = view.querySelector("[data-rs-kickoff]");
+  const save = view.querySelector("[data-rs-save]");
+  if (!dateEl || !save) return;
+
+  let busy = false;
+
+  save.addEventListener("click", async () => {
+    if (busy) return;                          // rule 2: never submit twice
+    clearFlash();
+
+    const date = dateEl.value || null;
+    const kickoff = timeEl.value || "";
+    if (date === (match.date || null)
+        && kickoff === (match.kickoff || "").slice(0, 5)) {
+      flash("That is already the date and kick-off.", "warn");
+      return;
+    }
+    // A kickoff with no day is a time nobody can turn up for.
+    if (!date && kickoff) {
+      flash("Set a date as well, or clear the kick-off time.", "error");
+      return;
+    }
+
+    busy = true;
+    save.disabled = true;
+    save.textContent = "Saving…";
+
+    const { data, error } = await supabase.rpc("reschedule_match", {
+      p_match_id: match.match_id,
+      p_date: date,
+      p_kickoff: kickoff,
+    });
+
+    busy = false;
+    save.disabled = false;
+    save.textContent = "Save new date";
+
+    if (error) {
+      // Rule 1: the inputs are untouched, so nothing typed is lost.
+      flash(humanError(error), "error");
+      return;
+    }
+
+    Object.assign(match, (data || [])[0] || { date, kickoff });
+    // The match has probably moved between Today / Awaiting / Upcoming.
+    invalidateHome();
+    flash(match.date ? `Moved to ${formatDate(match.date)}.`
+                     : "Date removed.", "ok");
+    // The date is printed in the header line above the score, so the whole
+    // screen is redrawn rather than patched — and it reopens this section, so
+    // the reporter can see the change landed where they made it.
+    drawMatch(match, names, state);
+    const reopened = view.querySelector('[data-sec="reschedule"]');
+    if (reopened) reopened.open = true;
+    // Only a published result is live on the site; moving an unplayed fixture
+    // still changes the fixture list, so both are worth a rebuild.
+    requestRebuild();
+  });
 }
 
 // ── Optional match detail ────────────────────────────────────────────────────

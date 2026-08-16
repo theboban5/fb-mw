@@ -391,3 +391,7 @@ a { color: var(--accent); }
   min-height: 200px; padding: 12px 14px;
   line-height: 1.5; resize: vertical;
 }
+
+/* The matchday menu holds "Quarter-final" as well as "Matchday 12", so it gets
+   a row of its own rather than sharing one with Show and Date. */
+.rp-filter-wide { flex-basis: 100%; }

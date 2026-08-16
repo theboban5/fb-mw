@@ -177,3 +177,40 @@ def drop_test_match(match_id):
     # goals and match_change_log cascade from matches.
     sb._request("DELETE", "matches", query=f"match_id=eq.{match_id}",
                 headers={"Prefer": "return=minimal"}, require_secret=True)
+
+
+def season_dates(count, season_id=None):
+    """`count` distinct dates that are inside a season, newest first.
+
+    Not hardcoded, and not arbitrary. validate.py check 6 requires every match
+    date to fall inside its season's start..end range, and 0009 enforces that
+    at write time — so a test fixture dated 2031 is now correctly REFUSED. The
+    dates therefore have to come from the season itself.
+
+    They are counted back from the season's last day because that end is the
+    least likely to hold real fixtures, and a test must not collide with one.
+    """
+    import datetime
+
+    params = {"season_id": f"eq.{season_id}"} if season_id else {"status": "eq.active"}
+    rows = sb.select("seasons", columns="season_id,start_date,end_date",
+                     params=params, require_secret=True)
+    if not rows:
+        raise RuntimeError("no season to take test dates from")
+    start = datetime.date.fromisoformat(rows[0]["start_date"])
+    end = datetime.date.fromisoformat(rows[0]["end_date"])
+    dates = [end - datetime.timedelta(days=i) for i in range(count)]
+    if dates[-1] < start:
+        raise RuntimeError(f"season {rows[0]['season_id']} is shorter than {count} days")
+    return [d.isoformat() for d in dates]
+
+
+def out_of_season_date(season_id=None):
+    """A date one day past the season end — the thing check 6 rejects."""
+    import datetime
+
+    params = {"season_id": f"eq.{season_id}"} if season_id else {"status": "eq.active"}
+    rows = sb.select("seasons", columns="end_date", params=params,
+                     require_secret=True)
+    end = datetime.date.fromisoformat(rows[0]["end_date"])
+    return (end + datetime.timedelta(days=1)).isoformat()
