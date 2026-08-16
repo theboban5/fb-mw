@@ -3270,6 +3270,15 @@ function drawNTCompetition(state) {
           <input class="rp-input" name="home_score" placeholder="Home" inputmode="numeric">
           <input class="rp-input" name="away_score" placeholder="Away" inputmode="numeric">
         </div>
+        <label class="rp-inline" style="margin-top:8px">
+          <input type="checkbox" name="extra_time"><span>Went to extra time</span></label>
+        <div class="rp-row">
+          <input class="rp-input" name="home_pens" placeholder="Home pens" inputmode="numeric">
+          <input class="rp-input" name="away_pens" placeholder="Away pens" inputmode="numeric">
+        </div>
+        <p class="rp-hint">Penalties only if it went to a shoot-out. The score
+          above stays the score after extra time, as it is recorded everywhere
+          else — 1&ndash;1, won 3&ndash;2 on penalties.</p>
         <input class="rp-input" name="nt_match_id"
                placeholder="Our match id (leave blank if we are not in it)"
                inputmode="numeric">
@@ -3359,6 +3368,8 @@ function wireNTCompetition(state) {
         p_slot: Number(f.slot.value || 1),
         p_home_name: f.home_name.value, p_away_name: f.away_name.value,
         p_home_score: num(f.home_score.value), p_away_score: num(f.away_score.value),
+        p_home_pens: num(f.home_pens.value), p_away_pens: num(f.away_pens.value),
+        p_extra_time: f.extra_time.checked,
         p_date: f.date.value, p_venue: f.venue.value,
         p_status: num(f.home_score.value) == null ? "scheduled" : "played",
         p_nt_match_id: f.nt_match_id.value.trim(),
