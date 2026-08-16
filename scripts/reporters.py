@@ -163,6 +163,43 @@ def cmd_assign(args):
     return 0
 
 
+def _check_nt_team(team_code):
+    rows = sb.select("nt_teams", columns="team_code",
+                     params={"team_code": f"eq.{team_code}"}, require_secret=True)
+    if not rows:
+        known = [t["team_code"] for t in
+                 sb.select("nt_teams", columns="team_code", require_secret=True)]
+        raise sb.SupabaseError(
+            f"no national team {team_code!r}. Known: {', '.join(sorted(known))}")
+
+
+def cmd_nt_assign(args):
+    """Grant one national team.
+
+    Separate from `assign` because a national team is not a competition: it
+    has no season, and the tables it unlocks (nt_matches, nt_goals,
+    nt_lineups, nt_squads) are a different schema from the club side. An
+    administrator needs none of this — can_edit_nt() already grants them
+    everything, exactly as can_report_match() does.
+    """
+    _find_reporter(args.reporter)
+    _check_nt_team(args.team)
+    sb.upsert("nt_assignments",
+              [{"reporter_id": args.reporter, "team_code": args.team}],
+              on_conflict="reporter_id,team_code")
+    print(f"{args.reporter} may now report {args.team}")
+    return 0
+
+
+def cmd_nt_unassign(args):
+    _find_reporter(args.reporter)
+    sb._request("DELETE", "nt_assignments",
+                query=f"reporter_id=eq.{args.reporter}&team_code=eq.{args.team}",
+                headers={"Prefer": "return=minimal"}, require_secret=True)
+    print(f"{args.reporter} may no longer report {args.team}")
+    return 0
+
+
 def cmd_unassign(args):
     _find_reporter(args.reporter)
     query = (f"reporter_id=eq.{args.reporter}"
@@ -219,6 +256,10 @@ def cmd_list(args):
         if a.get("season_id"):
             label += f"@{a['season_id']}"
         by_reporter.setdefault(a["reporter_id"], []).append(label)
+    nt_by_reporter = {}
+    for a in sb.select("nt_assignments", order="reporter_id.asc",
+                       require_secret=True):
+        nt_by_reporter.setdefault(a["reporter_id"], []).append(a["team_code"])
 
     for r in reporters:
         flags = []
@@ -232,6 +273,11 @@ def cmd_list(args):
         print(f"{r['reporter_id']}  {r['name']} <{r.get('email', '')}>{suffix}")
         covers = by_reporter.get(r["reporter_id"], [])
         print(f"    {', '.join(covers) if covers else '(no competitions)'}")
+        # Only worth a line when there is one: an admin reports every national
+        # team without an assignment, so a blank here is not a gap.
+        nt = nt_by_reporter.get(r["reporter_id"], [])
+        if nt:
+            print(f"    national teams: {', '.join(sorted(nt))}")
     return 0
 
 
@@ -267,6 +313,16 @@ def main(argv=None):
     p.add_argument("--competition", required=True)
     p.add_argument("--season")
     p.set_defaults(func=cmd_unassign)
+
+    p = sub.add_parser("nt-assign", help="grant a national team")
+    p.add_argument("--reporter", required=True)
+    p.add_argument("--team", required=True, help="an nt_teams code, e.g. MW_W")
+    p.set_defaults(func=cmd_nt_assign)
+
+    p = sub.add_parser("nt-unassign", help="revoke a national team")
+    p.add_argument("--reporter", required=True)
+    p.add_argument("--team", required=True)
+    p.set_defaults(func=cmd_nt_unassign)
 
     p = sub.add_parser("deactivate", help="revoke all reporting rights")
     p.add_argument("--reporter", required=True)
