@@ -167,12 +167,39 @@ function humanError(error) {
 // ── Auth + context ───────────────────────────────────────────────────────────
 
 async function loadContext() {
-  // reporters and reporter_assignments are invisible to anon and filtered to
-  // the caller for a reporter, so these two reads ARE the identity.
+  // WHO AM I IS A FILTERED READ, NEVER "THE FIRST ROW".
+  //
+  // This used to take reporters[0], on the reasoning that RLS filters the
+  // table to the caller. That is true for an ordinary reporter and FALSE for
+  // an administrator: the policy is
+  //
+  //     using (auth_user_id = auth.uid() or public.is_admin())
+  //
+  // so an admin reads every row and [0] is whichever one Postgres felt like
+  // returning. With a single reporter in the database that was always the
+  // right answer, which is why it survived; the moment a second account
+  // existed, one admin was greeted by the other's name.
+  //
+  // It was not only cosmetic. context.reporter.reporter_id is sent as
+  // `reported_by` when saving a card, substitution, line-up or photo, and
+  // those policies check `reported_by = current_reporter_id()` — so the
+  // mismatched admin could not save any match detail at all. Scores and
+  // scorers were unaffected: their RPCs derive the reporter server-side and
+  // never trust this value.
+  const { data: { session } } = await supabase.auth.getSession();
+  const authUserId = session?.user?.id;
+  if (!authUserId) return { reporter: null, isAdmin: false, competitions: [] };
+
   const [{ data: reporters, error: rErr }, { data: assignments },
          { data: isAdmin }] = await Promise.all([
-    supabase.from("reporters").select("reporter_id,name,public_byline,active"),
-    supabase.from("reporter_assignments").select("competition_id,season_id"),
+    supabase.from("reporters").select("reporter_id,name,public_byline,active")
+      .eq("auth_user_id", authUserId).limit(1),
+    // Same policy shape, same trap: an admin sees everyone's assignments.
+    // reporter_id comes back so the rows can be narrowed to this account
+    // below — filtering here would mean waiting for the query above and
+    // giving up the parallel fetch for a list that is at most a few rows.
+    supabase.from("reporter_assignments")
+      .select("reporter_id,competition_id,season_id"),
     supabase.rpc("is_admin"),
   ]);
   if (rErr) throw rErr;
@@ -182,7 +209,9 @@ async function loadContext() {
     reporter,
     isAdmin: Boolean(isAdmin),
     // An admin is not assigned to anything, and does not need to be.
-    competitions: (assignments || []).map((a) => a.competition_id),
+    competitions: (assignments || [])
+      .filter((a) => a.reporter_id === reporter?.reporter_id)
+      .map((a) => a.competition_id),
   };
 }
 

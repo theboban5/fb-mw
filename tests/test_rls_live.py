@@ -46,6 +46,9 @@ class RLSTest(unittest.TestCase):
         cls.identities = live_support.Identities().setup()
         cls.ids = cls.identities.ids
         cls.tokens = cls.identities.tokens
+        # Declared at class level since this file was written, but never
+        # populated until identity resolution needed to be tested.
+        cls.users = cls.identities.users
         cls.comp_a = live_support.Identities.COMP_A
         cls.comp_b = live_support.Identities.COMP_B
         # Real matches, read only: nothing in this file publishes a result.
@@ -137,6 +140,56 @@ class RLSTest(unittest.TestCase):
                              token=self.tokens["admin"])
         self.assertEqual(status, 200, rows)
         self.assertGreaterEqual(len(rows), len(self.ids))
+
+    # ── Resolving "who am I" on top of that policy ───────────────────────────
+    # The policy above is `auth_user_id = auth.uid() OR is_admin()`, so the
+    # answer to "which row is me" is a filtered read and never "the first row".
+    # /report used to take reporters[0], which was right only while a single
+    # reporter existed: the day a second account was created, one admin was
+    # greeted by the other's name — and, worse, sent the other's reporter_id
+    # as `reported_by`, which the match-detail policies reject outright.
+
+    def test_an_admin_reading_unfiltered_gets_more_than_themselves(self):
+        """The precondition for the bug, asserted so the fix has a reason.
+
+        If this ever returns exactly one row the filter below stops being
+        load-bearing, and someone will delete it as redundant.
+        """
+        status, rows = _call("reporters?select=reporter_id",
+                             token=self.tokens["admin"])
+        self.assertEqual(status, 200, rows)
+        self.assertGreater(len(rows), 1, rows)
+
+    def test_an_admin_resolves_their_own_row_by_auth_user_id(self):
+        status, rows = _call(
+            "reporters?select=reporter_id"
+            f"&auth_user_id=eq.{self.users['admin']}",
+            token=self.tokens["admin"])
+        self.assertEqual(status, 200, rows)
+        self.assertEqual([r["reporter_id"] for r in rows],
+                         [self.ids["admin"]])
+
+    def test_a_reporter_resolves_their_own_row_by_auth_user_id(self):
+        """The same query has to be right for both roles — /report cannot
+        branch on a role it has not resolved yet."""
+        status, rows = _call(
+            "reporters?select=reporter_id"
+            f"&auth_user_id=eq.{self.users['a']}",
+            token=self.tokens["a"])
+        self.assertEqual(status, 200, rows)
+        self.assertEqual([r["reporter_id"] for r in rows], [self.ids["a"]])
+
+    def test_an_admins_own_assignments_are_separable_from_everyone_elses(self):
+        """reporter_assignments carries the same OR is_admin() clause, so the
+        competition list has to be narrowed by reporter_id too — otherwise an
+        admin inherits every colleague's assignments."""
+        status, rows = _call("reporter_assignments?select=reporter_id,competition_id",
+                             token=self.tokens["admin"])
+        self.assertEqual(status, 200, rows)
+        others = [r for r in rows if r["reporter_id"] != self.ids["admin"]]
+        self.assertTrue(others, "admin should see other reporters' assignments")
+        mine = [r for r in rows if r["reporter_id"] == self.ids["admin"]]
+        self.assertEqual(mine, [], "this admin fixture has no assignments")
 
     # ── Anonymous visitors ───────────────────────────────────────────────────
 
