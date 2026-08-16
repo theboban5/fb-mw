@@ -37,6 +37,15 @@
 -- claim_rebuild does. A follow-up IS a dispatch; recording it keeps the
 -- cooldown honest, so a reporter publishing at that moment is debounced
 -- against the real state rather than a stale timestamp.
+--
+-- CALL THIS ONLY AFTER THE BUILD HAS ACTUALLY BEEN DISPATCHED. The name says
+-- consume, and consuming is destructive: this clears the only record that a
+-- result is unbuilt. The follow-up workflow's first live run called it first
+-- and then failed to dispatch, which destroyed the signal it existed to act
+-- on. The caller must look at `pending`, dispatch, and only then consume — so
+-- that anything going wrong leaves the flag set for the next attempt.
+
+
 
 begin;
 

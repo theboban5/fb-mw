@@ -49,20 +49,55 @@ jobs:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           GH_TOKEN: ${{ github.token }}
+          # gh resolves the repo from the git remote, and this job deliberately
+          # does not check out — there is nothing here to build. Name it.
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          # The secret key is required: rebuild_state is revoked from anon and
-          # authenticated, and EXECUTE on the function is service_role only.
-          pending=$(curl -fsS -X POST \
-            "${SUPABASE_URL}/rest/v1/rpc/consume_rebuild_pending" \
-            -H "apikey: ${SUPABASE_SECRET_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_SECRET_KEY}" \
-            -H "Content-Type: application/json" \
-            -d '{}')
-          echo "consume_rebuild_pending -> ${pending}"
-          if [ "${pending}" = "true" ]; then
-            echo "A report landed while the last build was running; rebuilding."
-            gh workflow run "Build and deploy" --ref main
-          else
+
+          # ORDER MATTERS, AND IT IS: LOOK, DISPATCH, ONLY THEN CLEAR.
+          #
+          # Consuming first is the obvious way round and it is wrong. It was
+          # written that way, the dispatch failed on its first live run, and
+          # the flag had already been cleared — so the signal that a result
+          # was unbuilt had been destroyed by the very job meant to act on it,
+          # which is a worse outcome than the gap this workflow exists to
+          # close.
+          #
+          # This order fails safe instead. Anything that goes wrong before the
+          # clear — a dispatch error, a runner dying, the API refusing — leaves
+          # pending set, and the next successful deploy tries again. The cost
+          # of a failure is one late build; the cost of the other order was a
+          # result that never appeared.
+          #
+          # The look-then-clear window is not a race worth closing: a publish
+          # landing inside it sets pending again, but the build dispatched a
+          # moment earlier reads the database tens of seconds later and picks
+          # it up regardless. Clearing it is correct, not lossy.
+          #
+          # The secret key is required for both calls: rebuild_state is
+          # revoked from anon and authenticated, and EXECUTE on the function
+          # is service_role only.
+          auth=(-H "apikey: ${SUPABASE_SECRET_KEY}"
+                -H "Authorization: Bearer ${SUPABASE_SECRET_KEY}"
+                -H "Content-Type: application/json")
+
+          pending=$(curl -fsS "${SUPABASE_URL}/rest/v1/rebuild_state?select=pending" \
+            "${auth[@]}" -H "Accept: application/vnd.pgrst.object+json" | jq -r .pending)
+          echo "pending -> ${pending}"
+
+          if [ "${pending}" != "true" ]; then
             echo "Nothing pending. The last build is current."
+            exit 0
           fi
+
+          echo "A report landed while the last build was running; rebuilding."
+          gh workflow run "Build and deploy" --ref main
+
+          # Dispatched. Now it is safe to clear the flag and book the dispatch,
+          # which also restarts the cooldown so a reporter publishing at this
+          # moment is debounced against real state.
+          consumed=$(curl -fsS -X POST \
+            "${SUPABASE_URL}/rest/v1/rpc/consume_rebuild_pending" \
+            "${auth[@]}" -d '{}')
+          echo "consume_rebuild_pending -> ${consumed}"
