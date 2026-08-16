@@ -393,6 +393,19 @@ a { color: var(--accent); }
    player's row rather than a record of its own. Denser than anything else in
    this app, and unavoidably so: a team sheet is 14 players wide. */
 
+/* The paste shorthand, spelled out where it is used. A reporter should never
+   have to remember it — every one of these can be set by hand on the row
+   instead — so it reads as a list of shortcuts, not a syntax to learn. */
+.rp-legend {
+  margin: 6px 0 0; padding: 0 0 0 18px;
+  color: var(--muted); font-size: 0.8rem; line-height: 1.7;
+}
+.rp-legend code {
+  padding: 1px 5px; border-radius: 4px;
+  background: var(--accent-wash); color: var(--accent);
+  font-size: 0.78rem; font-weight: 600;
+}
+
 .rp-sheet { list-style: none; margin: 12px 0 0; padding: 0; }
 .rp-sheet-row {
   padding: 10px; margin-bottom: 8px;

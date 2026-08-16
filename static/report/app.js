@@ -2848,18 +2848,36 @@ async function drawNTDetail(match, state, { local = false } = {}) {
       `<ul class="rp-list">${goalList}</ul>${goalForm}`, open.ntgoals)}
 
     ${section("ntsheet", "Team sheet", state.sheet.length, `
-      <p class="rp-hint" style="margin-top:0">The XI, the bench, the changes and
-        the cards are one sheet here — that is how they are stored, and how a
-        team sheet reads. Paste the names in, then set each row.</p>
-      <textarea class="rp-input rp-textarea" data-sheet-paste rows="5"
-                placeholder="1 Mercy Sikelo GK&#10;4 Tabitha Chawinga FW&#10;…"></textarea>
-      <p class="rp-hint">One per line. A leading number is the shirt, a
-        trailing GK/DF/MF/FW is the position; both optional.</p>
+      <p class="rp-hint" style="margin-top:0"><b>Step 1 — paste the names.</b>
+        The XI, the bench, the changes and the cards are one sheet here: that is
+        how they are stored, and how a team sheet reads.</p>
+      <textarea class="rp-input rp-textarea" data-sheet-paste rows="7"
+                placeholder="1 Mercy Sikelo GK (C)&#10;5 Sabina Thom MF [Y]&#10;Subs:&#10;14 Rachel Kundananji 62' for Sabina Thom"></textarea>
+      <p class="rp-hint">One player per line. Everything below is optional and
+        can be set by hand afterwards instead:</p>
+      <ul class="rp-legend">
+        <li><code>10</code> leading number — shirt</li>
+        <li><code>GK DF MF FW</code> — position</li>
+        <li><code>(C)</code> — captain</li>
+        <li><code>[Y]</code> <code>[YR]</code> <code>[R]</code> — yellow, second
+          yellow, red</li>
+        <li><code>Subs:</code> — a heading; everyone under it is a substitute
+          until the next heading</li>
+        <li><code>62'</code> and <code>for Sabina Thom</code> — came on, and for
+          whom</li>
+      </ul>
       <button class="rp-btn is-ghost" type="button" data-sheet-add>Add these players</button>
-      <p class="rp-hint ${starters > 11 ? "is-warn" : ""}">
-        ${starters} in the starting XI${starters > 11 ? " — that is too many" : ""}.</p>
+      ${state.sheet.length ? `
+        <p class="rp-hint" style="margin-top:16px"><b>Step 2 — check each row.</b>
+          Role, position, cards and substitutions are all editable below.</p>
+        <p class="rp-hint ${starters > 11 ? "is-warn" : ""}">
+          ${starters} in the starting XI${starters > 11 ? " — that is too many" : ""}.</p>`
+        : `<p class="rp-hint" style="margin-top:16px">Once they are added, every
+             player gets a row here for their role, cards and substitution.</p>`}
       <ul class="rp-sheet">${sheetRows}</ul>
-      <button class="rp-btn" type="button" data-sheet-save>Save team sheet</button>
+      ${state.sheet.length
+        ? '<button class="rp-btn" type="button" data-sheet-save>Save team sheet</button>'
+        : ""}
     `, open.ntsheet)}
   `;
 
@@ -2978,24 +2996,76 @@ function wireNTDetail(match, state) {
  *  just a name still works. Written for pasting a team sheet off a phone
  *  screenshot, which is how these arrive. */
 function parseTeamSheet(text) {
-  return (text || "").split("\n").map((line) => {
+  const out = [];
+  // A heading changes what follows, and holds until the next one. A team sheet
+  // is written that way — "Subs:" then the bench — so reading it that way
+  // means a whole sheet pastes in one go instead of being typed into
+  // fourteen dropdowns afterwards.
+  let role = "starting";
+
+  (text || "").split("\n").forEach((line) => {
     let rest = line.trim();
-    if (!rest) return null;
+    if (!rest) return;
+
+    if (/:$/.test(rest)) {
+      const head = rest.slice(0, -1).toLowerCase();
+      if (/sub|bench|replac/.test(head)) role = "unused_sub";
+      else if (/start|xi|line/.test(head)) role = "starting";
+      return;                                  // a heading is not a player
+    }
+
+    let rowRole = role;
+    let captain = false;
+    let yellow = false, secondYellow = false, red = false;
+    let minuteOn = "";
+    let replaced = "";
+
+    // Cards are bracketed rather than bare letters: a lone Y or R in a name is
+    // far more likely to be an initial than a booking.
+    rest = rest.replace(/\[([^\]]+)\]/g, (_, token) => {
+      const t = token.trim().toUpperCase();
+      if (t === "Y") yellow = true;
+      else if (t === "YR" || t === "Y2" || t === "2Y") secondYellow = true;
+      else if (t === "R") red = true;
+      else if (t === "C") captain = true;
+      return " ";
+    });
+
+    // "(C)" is how a captain is written on every team sheet.
+    rest = rest.replace(/\((?:c|capt(?:ain)?)\)/i, () => { captain = true; return " "; });
+
+    // "for Vanessa Chikupira" — naming who they replaced also says they came
+    // on, so the role follows from it rather than having to be set as well.
+    rest = rest.replace(/\bfor\s+(.+)$/i, (_, name) => {
+      replaced = name.trim();
+      rowRole = "sub_on";
+      return " ";
+    });
+
+    // A minute, written 62' or 62" or "on 62".
+    rest = rest.replace(/\b(?:on\s+)?(\d{1,3}(?:\+\d{1,2})?)\s*['’"]/, (_, m) => {
+      minuteOn = m; rowRole = "sub_on"; return " ";
+    });
+
     let shirt = "";
     const lead = /^(\d{1,2})[.)]?\s+/.exec(rest);
     if (lead) { shirt = lead[1]; rest = rest.slice(lead[0].length); }
+
     let position = "";
-    const tail = /\s+(GK|DF|MF|FW)$/i.exec(rest);
-    if (tail) { position = tail[1].toUpperCase(); rest = rest.slice(0, tail.index); }
-    rest = rest.trim();
-    if (!rest) return null;
-    return {
+    const tail = /\s+(GK|DF|MF|FW)\b/i.exec(rest);
+    if (tail) { position = tail[1].toUpperCase(); rest = rest.replace(tail[0], " "); }
+
+    rest = rest.replace(/\s+/g, " ").trim();
+    if (!rest) return;
+
+    out.push({
       player_name: rest, shirt_number: shirt, position,
-      role: "starting", captain: false, player_id: "",
-      minute_on: "", minute_off: "", replaced_player: "",
-      yellow_card: false, yellow_red_card: false, red_card: false,
-    };
-  }).filter(Boolean);
+      role: rowRole, captain, player_id: "",
+      minute_on: minuteOn, minute_off: "", replaced_player: replaced,
+      yellow_card: yellow, yellow_red_card: secondYellow, red_card: red,
+    });
+  });
+  return out;
 }
 
 // ── Competitions: groups, brackets and squads ────────────────────────────────
