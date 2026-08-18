@@ -17,7 +17,9 @@ Usage:
 
 from datetime import datetime, timezone, timedelta
 from html import escape
+import json
 import os
+import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -539,6 +541,91 @@ def _write_report_config(dist):
     ))
 
 
+def _crest_report(ds, club_ids):
+    """Which of `club_ids` would render with no crest on the live site.
+
+    Mirrors hubs.build_club_hubs exactly — logos/clubs/<club_id> first, then the
+    legacy_code of any of the club's teams — because a list that disagreed with
+    what the site actually shows would be worse than no list. The truth here is
+    the FILESYSTEM, not clubs.crest: that column is populated on rows whose file
+    does not exist, so it cannot answer this.
+    """
+    find = render._logo_finder(STATIC, "", "clubs")
+    teams_of_club = {}
+    for team in ds.teams.values():
+        teams_of_club.setdefault(team.club_id, []).append(team)
+    missing = []
+    for club_id in sorted(club_ids):
+        if find(club_id):
+            continue
+        if any(t.legacy_code and find(t.legacy_code)
+               for t in teams_of_club.get(club_id, [])):
+            continue
+        missing.append(club_id)
+    return missing
+
+
+def _commit_sha():
+    """The commit being built, for the ops dashboard. Best effort."""
+    sha = os.environ.get("GITHUB_SHA", "")
+    if sha:
+        return sha[:8]
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "--short=8", "HEAD"],
+            cwd=ROOT, capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def _write_build_info(dist, ds, club_ids, data_read_at, tz):
+    """Publish what the ops dashboard needs to know about this build.
+
+    Two questions live here that Postgres cannot answer. "Is the site up to
+    date?" needs the moment this build READ the database — nothing records it,
+    and rebuild_state only knows when a rebuild was dispatched. "Which clubs
+    have no crest?" needs the contents of static/logos/, which is in git, not
+    in the database.
+
+    A file rather than a write back to Supabase, deliberately: /report is served
+    from the same origin as this file, so the dashboard can fetch it with no
+    CORS, no credential and no new table. Everything in it is already public —
+    a build time, a commit, and which clubs are missing a logo you could see by
+    looking at the site.
+
+    NEVER FAILS THE BUILD. A deploy that stops because its telemetry could not
+    be written would be a far worse outcome than a dashboard with a stale
+    timestamp, so every error here is a warning and the build carries on.
+    """
+    try:
+        info = {
+            # Taken here rather than reusing main()'s `now`, which is stamped
+            # before the fetch: the dashboard reads this as "when the site was
+            # last rebuilt", and a value that predates data_read_at reads as a
+            # build that finished before it started.
+            "built_at": datetime.now(tz).isoformat(),
+            "data_read_at": data_read_at.isoformat(),
+            "commit": _commit_sha(),
+            "season_id": ds.active_season().season_id,
+            "counts": {
+                "matches": len(ds.matches),
+                "goals": len(ds.goals),
+                # Clubs that get a hub page — the same set hubs.build_club_hubs
+                # writes. Deliberately not "clubs entered this season": a crest
+                # is missing from a page a reader can open, and the completed
+                # Women's Premiership is still on the site. That makes this 142
+                # rather than the 137 entered in the active season.
+                "clubs_with_page": len(club_ids),
+            },
+            "clubs_missing_crest": _crest_report(ds, club_ids),
+        }
+        render._write(os.path.join(dist, "build-info.json"),
+                      json.dumps(info, indent=2) + "\n")
+    except Exception as err:                                  # noqa: BLE001
+        print(f"WARNING: could not write build-info.json: {err}")
+
+
 def main(argv):
     dist = os.path.join(ROOT, "docs")
     if "--dist" in argv:
@@ -561,6 +648,11 @@ def main(argv):
     try:
         texts = dataset.fetch_all()
         nt_texts = dataset.fetch_nt_all()
+        # The moment this build saw the database. The ops dashboard compares it
+        # against matches.updated_at to answer "is there a saved result the site
+        # has not shown yet?", so it is taken here — after the read, not at the
+        # start of the job — or it would claim to have seen changes it missed.
+        data_read_at = datetime.now(tz)
     except OSError as err:
         print(f"ERROR: could not fetch data: {err}", file=sys.stderr)
         return 1
@@ -646,6 +738,10 @@ def main(argv):
     n_search = search.write_index(dist, ds, leagues, scorchers=scorchers,
                                   hidden=HIDDEN_ON_LANDING)
     search.build_page(dist, TEMPLATES, STATIC, updated)
+
+    # Written last: club_hub_ids is only known once the leagues are built, and
+    # the file should describe a build that actually finished.
+    _write_build_info(dist, ds, club_hub_ids, data_read_at, tz)
 
     print(f"Built {dist}/  " + " | ".join(parts)
           + f" | {n_clubs} club hubs | {n_players} player pages"

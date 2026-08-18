@@ -686,6 +686,7 @@ async function renderHome(params) {
     <div class="rp-actions">
       ${canAdd ? '<a class="rp-btn is-ghost" href="#/add">＋ Add fixtures</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/league/new">＋ New league</a>' : ""}
+      ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/ops">Operations</a>' : ""}
       ${hasNT ? '<a class="rp-btn is-ghost" href="#/nt">National teams</a>' : ""}
       <button class="rp-btn is-quiet" type="button" data-refresh>Refresh</button>
     </div>`;
@@ -3935,6 +3936,495 @@ function wireNTCompetition(state) {
   });
 }
 
+// ── Operations: coverage and data backlog ────────────────────────────────────
+// Administrators only. Ten questions, one screen: which competitions have
+// incomplete past rounds, what is due next, what is overdue, and what is
+// missing from what has already been published.
+//
+// It is a READ-ONLY lens. Nothing here writes football data — every row links
+// back to its existing #/m/<public_id> screen, which owns the write path. That
+// keeps one way into public.matches rather than two.
+//
+// The counts come from the ops_* views (0016), which carry the is_admin()
+// predicate in their own bodies. The gate below is a courtesy so an ordinary
+// reporter gets a sentence instead of an empty screen; it is not the boundary.
+
+const OPS_TABS = [
+  { key: "results",      label: "Results",      flag: "is_overdue",
+    head: "Overdue results", blank: "Every past fixture has a result." },
+  { key: "fixtures",     label: "Fixtures",     flag: null,
+    head: "Rounds and fixture gaps", blank: "Every round is the right size." },
+  { key: "scorers",      label: "Scorers",      flag: "missing_scorers",
+    head: "Missing scorers", blank: "Every goal is accounted for." },
+  { key: "venues",       label: "Venues",       flag: "missing_venue",
+    head: "Missing venues", blank: "Every fixture has a ground." },
+  { key: "sources",      label: "Sources",      flag: "missing_source",
+    head: "Missing sources", blank: "Every result cites a source." },
+  { key: "verification", label: "Verification", flag: "is_unconfirmed",
+    head: "Unconfirmed results", blank: "Nothing is waiting on confirmation." },
+  { key: "crests",       label: "Crests",       flag: null,
+    head: "Clubs without a crest", blank: "Every club has a crest." },
+];
+
+const opsTab = (key) => OPS_TABS.find((t) => t.key === key) || null;
+
+// The manifest build.py writes into the site root. It answers the two questions
+// Postgres cannot: when this site last read the database, and which clubs have
+// no crest file — crests live in static/logos/, not in any table.
+//
+// Same-origin (/report/ and /build-info.json are the same site), so no CORS and
+// no credential. no-store because a cached copy would report a stale build as
+// current, which is the one thing this file exists to detect.
+function loadBuildInfo() {
+  return once("build-info", async () => {
+    try {
+      const res = await fetch("../build-info.json", { cache: "no-store" });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;                 // local build, or offline: reported as unknown
+    }
+  });
+}
+
+async function loadOpsSummary() {
+  const [{ data: totals, error: tErr }, { data: comps, error: cErr }] =
+    await Promise.all([
+      supabase.from("ops_dashboard_totals").select("*").limit(1),
+      supabase.from("ops_competition_summary").select("*"),
+    ]);
+  if (tErr) throw tErr;
+  if (cErr) throw cErr;
+  // tier ascending, unranked last, then by name — the order an administrator
+  // reads them in, not the order Postgres returns them.
+  const rows = (comps || []).slice().sort((a, b) =>
+    (a.competition_tier ?? 99) - (b.competition_tier ?? 99)
+    || a.competition_name.localeCompare(b.competition_name));
+  return { totals: (totals || [])[0] || null, comps: rows };
+}
+
+/** Site freshness: is everything saved actually on everyleague.co? */
+async function loadOpsFreshness() {
+  const info = await loadBuildInfo();
+  let state = null;
+  try {
+    const { data } = await supabase.rpc("ops_rebuild_status", {
+      p_since: info?.data_read_at || null,
+    });
+    state = (data || [])[0] || null;
+  } catch {
+    state = null;
+  }
+  if (!info || !state) return { info, state, verdict: "unknown", minutes: null };
+
+  const read = new Date(info.data_read_at).getTime();
+  const newest = state.newest_match_update
+    ? new Date(state.newest_match_update).getTime() : 0;
+  // How far the site is behind the database, in minutes. Negative means the
+  // build read after the last change — i.e. the site is current.
+  const behind = newest > read ? Math.round((newest - read) / 60000) : 0;
+  const pendingFor = state.pending && state.state_updated_at
+    ? Math.round((Date.now() - new Date(state.state_updated_at).getTime()) / 60000)
+    : 0;
+  const verdict = (behind > 30 || pendingFor > 15) ? "stale" : "ok";
+  return { info, state, verdict, minutes: behind, pendingFor,
+           since: state.matches_since || 0 };
+}
+
+// ── The urgent strip ─────────────────────────────────────────────────────────
+// Only non-zero items appear. A clean day should say so in one line rather than
+// showing seven zeros, which trains an administrator to stop reading it.
+
+function opsUrgent(totals, fresh) {
+  const items = [];
+  const add = (n, label, tab) => {
+    if (n > 0) items.push(
+      `<a class="ops-urgent-item" href="#/ops?tab=${tab}">
+         <span class="ops-urgent-n">${n}</span>
+         <span class="ops-urgent-l">${esc(label)}</span></a>`);
+  };
+  add(totals.overdue, "overdue results", "results");
+  add(totals.incomplete_rounds, "incomplete past rounds", "fixtures");
+  add(totals.unscheduled, "fixtures with no date", "fixtures");
+  add(totals.competitions_without_fixtures, "leagues with nothing upcoming", "fixtures");
+  add(totals.awaiting_reschedule, "awaiting a new date", "fixtures");
+
+  const site = fresh.verdict === "ok"
+    ? `<a class="ops-urgent-item is-ok"><span class="ops-urgent-n">✓</span>
+         <span class="ops-urgent-l">site up to date</span></a>`
+    : fresh.verdict === "stale"
+      ? `<a class="ops-urgent-item is-bad" href="#/ops?tab=site">
+           <span class="ops-urgent-n">${fresh.minutes}m</span>
+           <span class="ops-urgent-l">site behind</span></a>`
+      : `<a class="ops-urgent-item" href="#/ops?tab=site">
+           <span class="ops-urgent-n">?</span>
+           <span class="ops-urgent-l">site status unknown</span></a>`;
+
+  if (!items.length) {
+    return `<div class="ops-urgent">
+      <a class="ops-urgent-item is-ok"><span class="ops-urgent-n">✓</span>
+        <span class="ops-urgent-l">nothing urgent</span></a>${site}</div>`;
+  }
+  return `<div class="ops-urgent">${items.join("")}${site}</div>`;
+}
+
+// ── One row per competition ──────────────────────────────────────────────────
+// A table on a wide screen, a stack of cards on a phone — same markup, the CSS
+// does the collapsing (see .ops-table in report.css).
+
+function opsNextCell(row) {
+  if (row.next_round_state === "none") {
+    return `<span class="ops-warn">none entered</span>`;
+  }
+  const label = row.next_round_label || "—";
+  const when = row.next_round_state === "undated"
+    ? "no date" : formatDate(row.next_date);
+  const expected = row.next_round_expected;
+  // "9 of 8" is not a typo when it appears: it is a round holding more
+  // fixtures than it can, which is the anomaly the Fixtures tab explains.
+  const count = expected == null
+    ? `${row.next_round_entered}`
+    : `${row.next_round_entered} of ${expected}`;
+  const bad = expected != null && row.next_round_entered !== expected;
+  return `<strong>${esc(label)}</strong>
+          <span class="ops-sub">${esc(when)} ·
+            <span class="ops-nowrap${bad ? " ops-warn" : ""}">${esc(count)}</span></span>`;
+}
+
+function opsCount(n, tab, comp, { warn = false } = {}) {
+  if (!n) return `<span class="ops-zero">·</span>`;
+  return `<a class="ops-n${warn ? " ops-warn" : ""}"
+             href="#/ops?tab=${tab}&comp=${encodeURIComponent(comp)}">${n}</a>`;
+}
+
+function opsCompetitionTable(comps) {
+  const rows = comps.map((r) => {
+    const anomalies = r.rounds_with_surplus + r.rounds_with_deficit
+                    + (r.unassigned_fixtures ? 1 : 0);
+    return `
+    <tr>
+      <th scope="row">
+        <span class="ops-comp">${esc(r.competition_name)}</span>
+        <span class="ops-sub">${esc(r.competition_id)} · ${r.matches_total} fixtures</span>
+      </th>
+      <td data-h="Next round">${opsNextCell(r)}</td>
+      <td data-h="Past rounds">${opsCount(r.incomplete_rounds, "fixtures", r.competition_id, { warn: true })}</td>
+      <td data-h="Round faults">${opsCount(anomalies, "fixtures", r.competition_id)}</td>
+      <td data-h="Overdue">${opsCount(r.overdue, "results", r.competition_id, { warn: true })}</td>
+      <td data-h="Scorers">${opsCount(r.missing_scorers_current, "scorers", r.competition_id)}</td>
+      <td data-h="Venues">${opsCount(r.missing_venue_current, "venues", r.competition_id)}</td>
+      <td data-h="Sources">${opsCount(r.missing_source_current, "sources", r.competition_id)}</td>
+      <td data-h="Unconfirmed">${opsCount(r.unconfirmed, "verification", r.competition_id)}</td>
+    </tr>`;
+  }).join("");
+
+  return `
+    <div class="ops-table-wrap">
+      <table class="ops-table">
+        <thead><tr>
+          <th scope="col">Competition</th>
+          <th scope="col">Next round</th>
+          <th scope="col" title="Past rounds still waiting on a result">Past</th>
+          <th scope="col" title="Rounds the wrong size, plus unassigned fixtures">Faults</th>
+          <th scope="col">Overdue</th>
+          <th scope="col">Scorers</th>
+          <th scope="col">Venues</th>
+          <th scope="col">Sources</th>
+          <th scope="col">Unconf.</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <p class="rp-hint">Scorer, venue and source counts hide the historical
+      import by default — open a tab to see everything.</p>`;
+}
+
+// ── Backlog rows ─────────────────────────────────────────────────────────────
+
+function opsMatchRow(m, names) {
+  const bits = [formatDate(m.date), formatKickoff(m.kickoff)].filter(Boolean);
+  if (m.round_key) bits.push(m.competition_type === "cup" ? m.round_key : `md${m.round_key}`);
+  const score = (m.home_goals != null && m.away_goals != null)
+    ? `${m.home_goals}–${m.away_goals}` : "";
+  return `
+    <a class="ops-row" href="#/m/${esc(m.public_id)}?from=${encodeURIComponent("ops")}">
+      <span class="ops-row-teams">${esc(m.home_name)} <span class="ops-row-v">v</span> ${esc(m.away_name)}</span>
+      <span class="ops-row-score">${esc(score)}</span>
+      <span class="ops-row-meta">${esc(names[m.competition_id] || m.competition_id)}
+        · ${esc(bits.join(" · "))}${m.is_pre_tracker ? ' · <span class="ops-tag">imported</span>' : ""}</span>
+    </a>`;
+}
+
+async function opsBacklog(tab, comp, showAll) {
+  let q = supabase.from("ops_match_flags")
+    .select("match_id,public_id,competition_id,competition_type,round_key,date," +
+            "kickoff,status,home_name,away_name,home_goals,away_goals," +
+            "source_type,is_pre_tracker")
+    .is(tab.flag, true)
+    .order("date", { ascending: true, nullsFirst: false })
+    .limit(400);
+  if (comp) q = q.eq("competition_id", comp);
+  const { data: all, error } = await q;
+  if (error) throw error;
+  const rows = showAll ? (all || []) : (all || []).filter((m) => !m.is_pre_tracker);
+  return { rows, hidden: (all || []).length - rows.length };
+}
+
+// ── The Fixtures tab: rounds, their size, and what is missing ────────────────
+// This is the working surface for decision 1 — a matchday is a logical round,
+// so a round holding the wrong number of fixtures means some are filed under
+// the wrong matchday. The reconciliation line says which of the two problems
+// it is: an exact multiple means nothing is missing and it is purely
+// mislabelling; a remainder means fixtures were never entered.
+
+async function opsRounds(comp) {
+  let q = supabase.from("ops_matchday_status").select("*")
+    .order("competition_id").order("round_sort");
+  if (comp) q = q.eq("competition_id", comp);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+function opsRoundsPanel(rounds, comps) {
+  const byComp = {};
+  rounds.forEach((r) => { (byComp[r.competition_id] ||= []).push(r); });
+
+  return comps.map((c) => {
+    const list = byComp[c.competition_id] || [];
+    const faults = list.filter((r) => r.size_delta || r.round_key === null
+                                   || r.is_incomplete);
+    const reconcile = c.expected_per_round == null ? ""
+      : c.fixtures_spare === 0
+        ? `<span class="ops-ok">${c.whole_rounds} whole rounds — nothing missing,
+             so any fault below is a fixture filed under the wrong matchday.</span>`
+        : `<span class="ops-warn">${c.whole_rounds} whole rounds + ${c.fixtures_spare}
+             spare — fixtures are genuinely missing.</span>`;
+
+    const items = faults.map((r) => {
+      const delta = r.size_delta;
+      const tag = r.round_key === null
+        ? `<span class="ops-tag is-bad">no matchday</span>`
+        : delta > 0 ? `<span class="ops-tag is-bad">+${delta} too many</span>`
+        : delta < 0 ? `<span class="ops-tag is-warn">${delta} short</span>` : "";
+      const late = r.is_incomplete
+        ? `<span class="ops-tag is-warn">${r.awaiting_result} awaiting a result</span>` : "";
+      return `<li><a href="#/ops?tab=round&comp=${encodeURIComponent(c.competition_id)}&round=${encodeURIComponent(r.round_key ?? "")}">
+                <strong>${esc(r.round_label)}</strong></a>
+              <span class="ops-sub">${r.entered}${r.expected != null ? ` of ${r.expected}` : ""}
+                · ${esc(r.first_date ? formatDate(r.first_date) : "no dates")}</span>
+              ${tag}${late}</li>`;
+    }).join("");
+
+    return section(`ops-${c.competition_id}`,
+      c.competition_name, faults.length,
+      `<p class="ops-sub ops-recon">${reconcile}</p>`
+      + (items ? `<ul class="ops-list">${items}</ul>`
+               : `<p class="rp-empty">Every round is the right size.</p>`),
+      Boolean(faults.length) && comps.length === 1);
+  }).join("");
+}
+
+async function opsRoundFixtures(comp, roundKey) {
+  let q = supabase.from("ops_match_flags")
+    .select("match_id,public_id,competition_id,competition_type,round_key,date," +
+            "kickoff,status,home_name,away_name,home_goals,away_goals,is_pre_tracker")
+    .eq("competition_id", comp).order("date", { nullsFirst: false });
+  q = roundKey ? q.eq("round_key", roundKey) : q.is("round_key", null);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+// ── The Crests tab ───────────────────────────────────────────────────────────
+// The one list that is not matches, and the one the database cannot answer:
+// a crest is a FILE in static/logos/clubs/, and clubs.crest disagrees with what
+// is actually on disk. build.py resolves it the same way the site does and
+// publishes the answer in build-info.json.
+
+async function opsCrests() {
+  const info = await loadBuildInfo();
+  if (!info) return null;
+  const ids = info.clubs_missing_crest || [];
+  if (!ids.length) return { rows: [], total: info.counts?.clubs_with_page || 0 };
+  // Names and tier, so the clubs a reader is most likely to see come first.
+  const { data: clubs } = await supabase.from("clubs")
+    .select("club_id,name").in("club_id", ids.slice(0, 300));
+  const { data: teams } = await supabase.from("teams")
+    .select("team_id,club_id").in("club_id", ids.slice(0, 300));
+  const teamIds = (teams || []).map((t) => t.team_id);
+  const { data: entries } = await supabase.from("entries")
+    .select("team_id,competition_id").in("team_id", teamIds.slice(0, 400));
+  const { data: comps } = await supabase.from("competitions")
+    .select("competition_id,name,tier");
+
+  const tierOf = {};
+  (comps || []).forEach((c) => { tierOf[c.competition_id] = c.tier ?? 99; });
+  const clubOfTeam = {};
+  (teams || []).forEach((t) => { clubOfTeam[t.team_id] = t.club_id; });
+  const bestTier = {};
+  (entries || []).forEach((e) => {
+    const club = clubOfTeam[e.team_id];
+    const tier = tierOf[e.competition_id] ?? 99;
+    if (club && (bestTier[club] == null || tier < bestTier[club])) bestTier[club] = tier;
+  });
+  const nameOf = {};
+  (clubs || []).forEach((c) => { nameOf[c.club_id] = c.name; });
+
+  const rows = ids.map((id) => ({
+    club_id: id, name: nameOf[id] || id, tier: bestTier[id] ?? 99,
+  })).sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name));
+  return { rows, total: info.counts?.clubs_with_page || 0 };
+}
+
+// ── Site freshness panel ─────────────────────────────────────────────────────
+
+function opsSitePanel(fresh) {
+  if (fresh.verdict === "unknown") {
+    return `<p class="rp-empty">Cannot read <code>/build-info.json</code>.
+      A local build writes it; the deployed site publishes it every rebuild.</p>`;
+  }
+  const { info, state } = fresh;
+  const when = (iso) => (iso ? new Date(iso).toLocaleString("en-GB",
+    { dateStyle: "medium", timeStyle: "short" }) : "—");
+  const verdict = fresh.verdict === "ok"
+    ? `<span class="ops-ok">Up to date</span>`
+    : `<span class="ops-warn">${fresh.minutes} minutes behind</span>`;
+  return `
+    <div class="rp-account-row"><span>Status</span><span>${verdict}</span></div>
+    <div class="rp-account-row"><span>Site built</span><span>${esc(when(info.built_at))}</span></div>
+    <div class="rp-account-row"><span>Data read at</span><span>${esc(when(info.data_read_at))}</span></div>
+    <div class="rp-account-row"><span>Commit</span><span>${esc(info.commit || "—")}</span></div>
+    <div class="rp-account-row"><span>Newest saved change</span><span>${esc(when(state.newest_match_update))}</span></div>
+    <div class="rp-account-row"><span>Changes since that build</span><span>${fresh.since}</span></div>
+    <div class="rp-account-row"><span>Rebuild queued</span><span>${state.pending ? "yes" : "no"}</span></div>
+    <div class="rp-account-row"><span>Last rebuild asked for</span><span>${esc(when(state.last_dispatched_at))}</span></div>
+    <p class="rp-hint">This reports the last <em>successful</em> build. A build
+      that fails validation publishes nothing, so a repeated failure shows here
+      as growing staleness rather than an error.</p>`;
+}
+
+// ── The screen ───────────────────────────────────────────────────────────────
+
+function opsTabBar(active, comp) {
+  const q = comp ? `&comp=${encodeURIComponent(comp)}` : "";
+  const tabs = [{ key: "", label: "Overview" }]
+    .concat(OPS_TABS, [{ key: "site", label: "Site" }]);
+  return `<nav class="ops-tabs">` + tabs.map((t) =>
+    `<a class="ops-tab${t.key === active ? " is-on" : ""}"
+        href="#/ops${t.key ? `?tab=${t.key}${q}` : ""}">${esc(t.label)}</a>`).join("")
+    + `</nav>`;
+}
+
+async function renderOps(params) {
+  if (!context.isAdmin) {
+    h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+       <p class="rp-empty">Only an administrator can open operations.</p>`);
+    return;
+  }
+
+  // The overview compares eleven competitions across nine columns; 560px
+  // cannot show that. Every other screen keeps the reading width.
+  view.classList.add("is-wide");
+  // A hash change does not reset the scroll position, so opening a tab from
+  // halfway down the overview used to land halfway down the next screen with
+  // its heading off-screen. Deliberately NOT done globally in route(): the
+  // fixture list depends on keeping its place when a reporter returns from a
+  // match they have just published.
+  window.scrollTo(0, 0);
+
+  const tab = params.get("tab") || "";
+  const comp = params.get("comp") || "";
+  const showAll = params.get("all") === "1";
+  const round = params.get("round");
+
+  h(`<div class="rp-loading"><span class="rp-spinner" aria-hidden="true"></span>
+       <p>Loading operations…</p></div>`);
+
+  try {
+    const names = await competitionNames();
+    const header = (body) => h(
+      `<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+       <h1 class="rp-greeting">Operations</h1>
+       ${opsTabBar(tab, comp)}${body}`);
+
+    // A single round's fixtures, reached from the Fixtures tab.
+    if (tab === "round") {
+      const rows = await opsRoundFixtures(comp, round);
+      header(`<a class="rp-btn is-ghost" href="#/ops?tab=fixtures&comp=${encodeURIComponent(comp)}">&larr; Rounds</a>
+              <h2 class="rp-group-head">
+                ${esc(names[comp] || comp)} · ${esc(round ? `md${round}` : "unassigned")}
+                <span class="rp-count">${rows.length}</span></h2>
+              ${rows.map((m) => opsMatchRow(m, names)).join("")
+                || '<p class="rp-empty">No fixtures in this round.</p>'}`);
+      return;
+    }
+
+    if (tab === "site") {
+      header(opsSitePanel(await loadOpsFreshness()));
+      return;
+    }
+
+    if (tab === "crests") {
+      const data = await opsCrests();
+      if (!data) {
+        header(`<p class="rp-empty">Crest coverage comes from
+          <code>/build-info.json</code>, which this build has not published.</p>`);
+        return;
+      }
+      const rows = data.rows.map((c) => `
+        <a class="ops-row" href="/clubs/${esc(c.club_id)}.html" target="_blank" rel="noopener">
+          <span class="ops-row-teams">${esc(c.name)}</span>
+          <span class="ops-row-meta">${esc(c.club_id)}${c.tier < 99 ? ` · tier ${c.tier}` : ""}</span>
+        </a>`).join("");
+      header(`<h2 class="rp-group-head">Clubs without a crest
+                <span class="rp-count">${data.rows.length} of ${data.total}</span></h2>
+              <p class="rp-hint">Highest tier first. A crest is a file in
+                <code>static/logos/clubs/</code> named for the club id or a
+                team's legacy code.</p>
+              ${rows || '<p class="rp-empty">Every club has a crest.</p>'}`);
+      return;
+    }
+
+    if (tab === "fixtures") {
+      const [{ comps }, rounds] = await Promise.all([
+        loadOpsSummary(), opsRounds(comp)]);
+      const shown = comp ? comps.filter((c) => c.competition_id === comp) : comps;
+      header(`<h2 class="rp-group-head">Rounds and fixture gaps</h2>
+              ${opsRoundsPanel(rounds, shown)}`);
+      return;
+    }
+
+    const meta = opsTab(tab);
+    if (meta && meta.flag) {
+      const { rows, hidden } = await opsBacklog(meta, comp, showAll);
+      const toggle = hidden || showAll
+        ? `<p class="rp-hint">${rows.length} outstanding${hidden ? ` · ${hidden} imported rows hidden` : ""}
+             — <a href="#/ops?tab=${meta.key}${comp ? `&comp=${encodeURIComponent(comp)}` : ""}${showAll ? "" : "&all=1"}">
+             ${showAll ? "hide the import" : "show everything"}</a></p>`
+        : "";
+      header(`<h2 class="rp-group-head">${esc(meta.head)}
+                <span class="rp-count">${rows.length}</span></h2>
+              ${toggle}
+              ${rows.map((m) => opsMatchRow(m, names)).join("")
+                || `<p class="rp-empty">${esc(meta.blank)}</p>`}`);
+      return;
+    }
+
+    // Overview.
+    const [{ totals, comps }, fresh] = await Promise.all([
+      loadOpsSummary(), loadOpsFreshness()]);
+    if (!totals) {
+      header('<p class="rp-empty">No active competitions this season.</p>');
+      return;
+    }
+    header(opsUrgent(totals, fresh) + opsCompetitionTable(comps));
+  } catch (error) {
+    h('<p class="rp-empty">Could not load operations.</p>');
+    flash(humanError(error), "error");
+  }
+}
+
 // ── Router ───────────────────────────────────────────────────────────────────
 
 function parseHash() {
@@ -3950,6 +4440,9 @@ async function route() {
   clearFlash();
   // The scorer picker belongs to the screen being left.
   dismissPicker = null;
+  // Only /ops widens the column (see main.is-wide). Cleared on every route so
+  // leaving it cannot strand another screen at the wrong width.
+  view.classList.remove("is-wide");
   const { path, params } = parseHash();
   const { data: { session } } = await supabase.auth.getSession();
 
@@ -3988,6 +4481,7 @@ async function route() {
   if (path === "/nt/comp/new") return renderNTNewCompetition();
   if (path.startsWith("/nt/m/")) return renderNTMatch(decodeURIComponent(path.slice(6)));
   if (path.startsWith("/nt/c/")) return renderNTCompetition(decodeURIComponent(path.slice(6)));
+  if (path === "/ops") return renderOps(params);
   if (path === "/add") return renderAddFixture(params);
   if (path === "/league/new") return renderNewLeague();
   if (path === "/account") return renderAccount();

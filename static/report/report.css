@@ -68,6 +68,8 @@ body {
 }
 
 main { max-width: var(--max); margin: 0 auto; padding: 16px 16px 40px; }
+/* Only the operations dashboard, which compares competitions side by side. */
+main.is-wide { max-width: 900px; }
 
 .rp-loading { padding: 48px 0; text-align: center; color: var(--muted); }
 .rp-spinner {
@@ -533,3 +535,141 @@ a { color: var(--accent); }
   margin: 8px 0 0; color: var(--danger);
   font-size: 0.82rem; font-weight: 600;
 }
+
+/* ─── Operations dashboard ────────────────────────────────────────────────────
+   Administrator-only. Wider than the rest of the app on purpose: the overview
+   is a comparison across competitions, which a 560px column cannot show. On a
+   phone the table collapses to one card per competition (below), so the same
+   markup serves both without a second template. */
+
+.ops-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  margin: 10px 0 16px;
+  padding-bottom: 4px;
+  /* The tab strip scrolls sideways on a phone; hide the scrollbar so it reads
+     as a strip rather than a broken layout. */
+  scrollbar-width: none;
+}
+.ops-tabs::-webkit-scrollbar { display: none; }
+.ops-tab {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ops-tab.is-on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+/* The urgent strip. Only non-zero items are rendered, so an empty strip is a
+   single "nothing urgent" chip rather than a row of zeros. */
+.ops-urgent { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.ops-urgent-item {
+  flex: 1 1 auto;
+  min-width: 132px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--warn-wash);
+  text-decoration: none;
+  color: var(--ink);
+}
+.ops-urgent-item.is-ok  { background: var(--accent-wash); }
+.ops-urgent-item.is-bad { background: var(--danger-wash); }
+.ops-urgent-n { font-size: 1.3rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.ops-urgent-l { font-size: 0.8rem; color: var(--muted); }
+
+.ops-table-wrap { overflow-x: auto; }
+.ops-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.ops-table th, .ops-table td {
+  padding: 10px 8px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+.ops-table thead th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ops-table tbody tr:nth-child(even) { background: var(--row-alt); }
+.ops-comp { display: block; font-weight: 700; }
+.ops-sub { display: block; color: var(--muted); font-size: 0.76rem; }
+.ops-n { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+.ops-zero { color: var(--line); }
+.ops-warn { color: var(--danger); font-weight: 700; }
+.ops-ok   { color: var(--accent); font-weight: 600; }
+.ops-recon { margin: 0 0 8px; }
+
+/* A backlog row. Deliberately not .rp-card: these are scanned by the dozen,
+   so they are one compact line each rather than a card with a button. */
+.ops-row {
+  display: block;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+  color: var(--ink);
+}
+.ops-row-teams { font-weight: 600; }
+.ops-row-v { color: var(--muted); font-weight: 400; }
+.ops-row-score { float: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+.ops-row-meta { display: block; color: var(--muted); font-size: 0.78rem; }
+
+.ops-list { margin: 0; padding-left: 18px; }
+.ops-list li { margin-bottom: 8px; }
+.ops-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--line);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.ops-tag.is-bad  { background: var(--danger-wash); color: var(--danger); }
+.ops-tag.is-warn { background: var(--warn-wash);   color: var(--warn); }
+
+/* Phone: the comparison table becomes one card per competition. Each cell
+   carries its own label from data-h, so nothing depends on reading a header
+   row that is no longer above it. */
+@media (max-width: 620px) {
+  .ops-table, .ops-table tbody, .ops-table tr, .ops-table td, .ops-table th {
+    display: block;
+  }
+  .ops-table thead { display: none; }
+  .ops-table tr {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+    padding: 4px 12px 8px;
+  }
+  .ops-table tbody tr:nth-child(even) { background: transparent; }
+  .ops-table th, .ops-table td { border-bottom: 0; padding: 6px 0; }
+  .ops-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    border-top: 1px solid var(--line);
+  }
+  .ops-table td::before {
+    content: attr(data-h);
+    color: var(--muted);
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .ops-table td:empty { display: none; }
+}
+
+.ops-nowrap { white-space: nowrap; }

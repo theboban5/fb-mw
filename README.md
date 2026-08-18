@@ -761,6 +761,75 @@ that exercises the path reporters actually use.
 
 Rotate the PAT by re-running `secrets set`; no redeploy is needed.
 
+### Operations: coverage and data backlog
+
+`/report/#/ops`, administrators only. A read-only lens over what is already in
+Postgres: which competitions have incomplete past rounds, what is due next,
+what is overdue, and what is missing from what has already been published.
+
+It writes **no** football data. Every row links back to its ordinary
+`#/m/<public_id>` screen, so corrections go through the existing reporter flow
+and there stays exactly one write path into `matches`.
+
+Ten questions, one screen:
+
+| Tab | Answers |
+|---|---|
+| Overview | Urgent totals, then one row per active competition |
+| Results | Results overdue — `scheduled` with a date now past |
+| Fixtures | Round sizes, surpluses and deficits, and what is due next |
+| Scorers | Played matches with fewer goal rows than the score |
+| Venues | Fixtures with no ground |
+| Sources | Published results with no `source_ref` |
+| Verification | Results still `confidence = 'unconfirmed'` |
+| Crests | Clubs whose hub page renders without a logo |
+| Site | Whether everyleague.co is up to date |
+
+**A matchday is a logical round, not a weekend.** A fixture postponed out of its
+weekend keeps its matchday and changes only its date, so every matchday of a
+league should hold exactly `floor(active entries / 2)` fixtures. The Fixtures
+tab reports any that do not, and says which of two problems it is: if the
+competition's fixture count divides exactly into whole rounds, nothing is
+missing and the fault is a fixture filed under the wrong matchday; a remainder
+means fixtures were never entered. MW_SRFA is the first kind — 96 fixtures is
+exactly twelve rounds of eight, spread across thirteen labels. MW_SRFA2 is the
+second.
+
+Two things Postgres cannot answer are published by `build.py` in
+`docs/build-info.json`, which `/report` fetches from its own origin — no CORS,
+no credential, no extra table:
+
+* **when the site last read the database**, which is what makes "is there a
+  saved result the site has not shown yet?" answerable at all;
+* **which clubs have no crest**, because a crest is a file in
+  `static/logos/clubs/` and `clubs.crest` disagrees with what is on disk (87
+  rows populated, 65 clubs actually resolving).
+
+Writing that file never fails the build.
+
+`0016_ops_dashboard.sql` adds the views and one small settings table. The views
+carry `where public.is_admin()` in their own bodies — the football tables all
+have a public read policy from `0001`, so RLS alone would show this to a
+reporter. `anon` is revoked outright; a signed-in reporter gets zero rows. Only
+`rebuild_state` is genuinely non-public, and it keeps its "no policy at all"
+grants: `ops_rebuild_status()` reads it `SECURITY DEFINER` on an admin's behalf.
+
+`ops_competition_settings` holds only what cannot be derived — which
+competitions are cups, and `backlog_from`, the date before which rows are the
+historical import and are folded away by default in the backlog lists (never
+dropped from the totals). Round sizes are computed, not stored.
+
+Verify the whole boundary and the arithmetic:
+
+```bash
+RLS_LIVE=1 python3 -m unittest tests.test_ops_live
+```
+
+It signs in as anon, a reporter and an administrator, then recomputes every
+count in Python from the raw rows rather than re-running the view's own SQL —
+which is what catches a predicate that is subtly wrong, such as a 0-0 draw
+counted as missing its scorers.
+
 ### How authorization works
 
 Every question funnels through one function, `public.can_report_match()`:
