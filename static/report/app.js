@@ -1390,7 +1390,9 @@ async function renderAddFixture(params) {
 // fixture and is not a useful thing to have made — so the teams are part of
 // creating it, not a second step.
 
-const AGE_GROUPS = ["senior", "u20", "u19", "u17", "u16", "u15"];
+const AGE_GROUPS = [
+  "senior", "u20", "u19", "u17", "u16", "u15", "u14", "u13", "u12", "u11", "u10",
+];
 
 async function renderNewLeague() {
   if (!context.isAdmin) {
