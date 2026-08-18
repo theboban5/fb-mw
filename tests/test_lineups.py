@@ -625,22 +625,24 @@ class SwitchPlayerTest(unittest.TestCase):
 
 
 class GoalBadgeTest(unittest.TestCase):
-    """A ball beside the name, one per goal.
+    """A ball beside the name, one per goal — and a red A per assist.
 
     The join is the point: a sheet said who played and a block above it said
     who scored, and nothing connected the two — which is the one thing a reader
-    scanning eleven names is actually looking for.
+    scanning eleven names is actually looking for. The assist moved here from
+    brackets after the scorer on the result line, where it put two people
+    inside what reads as one fact.
     """
 
     def counts(self, **by_key):
         def goals_of(player_id, player_name):
-            return by_key.get(player_id) or by_key.get(player_name) or (0, 0)
+            return by_key.get(player_id) or by_key.get(player_name) or (0, 0, 0)
         return goals_of
 
     def test_two_goals_draw_two_balls(self):
         rows_in = dataset.parse_lineups(
             rows("M1,T_HOME,Zebron Kalima,P1,9,FW,starting,,,,,,,"))
-        out = lineups.with_goals(rows_in, self.counts(P1=(2, 0)))
+        out = lineups.with_goals(rows_in, self.counts(P1=(2, 0, 0)))
         html = lineups.player_html(out[0])
         self.assertEqual(html.count('class="el-goal"'), 2)
 
@@ -654,14 +656,14 @@ class GoalBadgeTest(unittest.TestCase):
         rows_in = dataset.parse_lineups(
             rows("M1,T_HOME,A. Josephy,,4,MF,starting,,,,,,,"))
         out = lineups.with_goals(
-            rows_in, self.counts(**{"A. Josephy": (1, 0)}))
+            rows_in, self.counts(**{"A. Josephy": (1, 0, 0)}))
         self.assertEqual(out[0].goals, 1)
 
     def test_an_own_goal_is_marked_apart(self):
         """It is a ball at the wrong end, and must not read as a goal."""
         rows_in = dataset.parse_lineups(
             rows("M1,T_HOME,Own Goaler,P2,5,DF,starting,,,,,,,"))
-        out = lineups.with_goals(rows_in, self.counts(P2=(0, 1)))
+        out = lineups.with_goals(rows_in, self.counts(P2=(0, 1, 0)))
         html = lineups.player_html(out[0])
         self.assertIn("el-goal-og", html)
         self.assertIn('title="Own goal"', html)
@@ -671,7 +673,7 @@ class GoalBadgeTest(unittest.TestCase):
             "M1,T_HOME,Starter,P1,4,MF,starting,,,63,,,,",
             "M1,T_HOME,Emmanuel Allan,P2,12,FW,sub_on,,63,,Starter,,,",
         ))
-        out = lineups.fold(lineups.with_goals(rows_in, self.counts(P2=(1, 0))))
+        out = lineups.fold(lineups.with_goals(rows_in, self.counts(P2=(1, 0, 0))))
         html = lineups.lineup_body(out)
         self.assertIn("el-goal", html.split("Substitutions")[1])
 
@@ -679,10 +681,26 @@ class GoalBadgeTest(unittest.TestCase):
         rows_in = dataset.parse_lineups(SIDE)
         self.assertEqual(lineups.with_goals(rows_in, self.counts()), rows_in)
 
-    def test_the_nt_row_carries_the_same_field(self):
-        """One renderer serves both schemas, so both rows have to hold it."""
-        self.assertIn("goals", nt.NTLineupRow.__dataclass_fields__)
-        self.assertIn("own_goals", nt.NTLineupRow.__dataclass_fields__)
+    def test_the_nt_row_carries_the_same_fields(self):
+        """One renderer serves both schemas, so both rows have to hold them."""
+        for name in ("goals", "own_goals", "assists"):
+            self.assertIn(name, nt.NTLineupRow.__dataclass_fields__)
+
+    def test_an_assist_is_a_red_a_beside_the_name(self):
+        rows_in = dataset.parse_lineups(
+            rows("M1,T_HOME,Rahim Mtondera,P3,8,MF,starting,,,,,,,"))
+        out = lineups.with_goals(rows_in, self.counts(P3=(0, 0, 2)))
+        html = lineups.player_html(out[0])
+        self.assertEqual(html.count('class="el-assist"'), 2)
+        self.assertIn('title="Assist"', html)
+
+    def test_a_goal_and_an_assist_can_be_the_same_player(self):
+        rows_in = dataset.parse_lineups(
+            rows("M1,T_HOME,Busy Person,P4,7,FW,starting,,,,,,,"))
+        out = lineups.with_goals(rows_in, self.counts(P4=(1, 0, 1)))
+        html = lineups.player_html(out[0])
+        self.assertIn("el-goal", html)
+        self.assertIn("el-assist", html)
 
 
 if __name__ == "__main__":

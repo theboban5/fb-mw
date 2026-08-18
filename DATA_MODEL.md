@@ -179,7 +179,11 @@ matches (home/away team_id, venue_id, competition_id, season_id)
   real `player_id` later promotes it at the next build.
 - **`assist_player_id` is an id or nothing.** Unlike a scorer there is no
   reported-name column to fall back on, so an assist nobody can name is simply
-  not recorded. Own goals never carry one.
+  not recorded. Own goals never carry one. **The scorer line does not name the
+  assister** — it did, in brackets, and that put two people inside what a
+  reader scans as one fact. The credit renders on the team sheet, beside the
+  person who earned it; where no sheet has been entered it renders nowhere,
+  and their own profile still counts it.
 - Only `status=played` matches count for standings; `awarded` matches count
   with their recorded score (and show `awarded_note`).
 - Dates are strict `YYYY-MM-DD`; a blank match date is allowed (fixture not
@@ -204,8 +208,9 @@ matches (home/away team_id, venue_id, competition_id, season_id)
   coach under its own side, the referee at the foot — and a match with
   officials but no team sheet still opens that block, titled "Match
   officials". Blank renders nothing, as everywhere else.
-- **A goal puts a ball beside its scorer on the team sheet.** One per goal, so
-  a brace is two. Joined from the `goals` tab by `player_id` where there is
+- **A goal puts a ball beside its scorer on the team sheet, and an assist puts
+  a red A beside the assister's.** One mark per goal or assist, so a brace is
+  two balls. Joined from the `goals` tab by `player_id` where there is
   one and by name where there is not (`lineups.with_goals`, applied AFTER
   `with_canonical_names` so both sides of that comparison are already spelled
   the registry's way). An own goal is marked apart and counted apart — it is

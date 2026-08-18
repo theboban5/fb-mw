@@ -241,10 +241,14 @@ class GoalView:
             label += " (P)"
         elif self.is_own_goal:
             label += " (OG)"
-        # An own goal has no assist worth naming — the credit would read as if
-        # the defender had been set up by a team-mate.
-        if self.assist_name and not self.is_own_goal:
-            label += f" ({self.assist_name})"
+        # THE ASSISTER IS NOT NAMED ON THIS LINE. It used to be, in brackets
+        # after the scorer, and that put two people in what a reader scans as
+        # one fact — "Samson Phiri 31' (Rahim Mtondera)" reads for a moment
+        # like a substitution or a disputed goal. The credit now shows where
+        # the person actually is: a red A beside their name on the team sheet
+        # (see lineups.with_goals). Where there is no team sheet it shows
+        # nowhere at all, and their profile still counts it — an assist is a
+        # fact about the player, and the scorer line is about the goal.
         return label
 
 
@@ -455,23 +459,36 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
     # back: the ball belongs on the sheet the player is actually named on.
     scored: "dict[tuple[str, str], dict]" = {}
     team_of = {code: team_id for team_id, code in code_of.items()}
+
+    def _add(match_id, team_id, keys, index):
+        """Add one to slot `index` of (goals, own_goals, assists)."""
+        tally = scored.setdefault((match_id, team_id), {})
+        # Filed under BOTH the id and the name, because either side of the
+        # join can be the unidentified one: a reporter routinely names the
+        # scorer properly and pastes the team sheet raw.
+        for key in keys:
+            if not key:
+                continue
+            counts = list(tally.get(key, (0, 0, 0)))
+            counts[index] += 1
+            tally[key] = tuple(counts)
+
     for g in goals:
         m = ds.matches.get(g.match_id)
         if m is None:
             continue
         team_id = team_of.get(g.team_code, g.team_code)
+        scorer_side = team_id
         if g.is_own_goal:
-            team_id = (m.away_team_id if team_id == m.home_team_id
-                       else m.home_team_id)
-        tally = scored.setdefault((g.match_id, team_id), {})
-        # Filed under BOTH the id and the name, because either side of the
-        # join can be the unidentified one: a reporter routinely names the
-        # scorer properly and pastes the team sheet raw.
-        for key in {g.player_id, g.player_name}:
-            if not key:
-                continue
-            got, own = tally.get(key, (0, 0))
-            tally[key] = (got, own + 1) if g.is_own_goal else (got + 1, own)
+            scorer_side = (m.away_team_id if team_id == m.home_team_id
+                           else m.home_team_id)
+        _add(g.match_id, scorer_side, {g.player_id, g.player_name},
+             1 if g.is_own_goal else 0)
+        # The assister is on the side the goal COUNTED for, which is why this
+        # uses team_id and not scorer_side. An own goal never carries one
+        # (DATA_MODEL.md), so the two cases cannot collide.
+        if g.assist_player_id or g.assist_name:
+            _add(g.match_id, team_id, {g.assist_player_id, g.assist_name}, 2)
 
     def _sheet(match_id, team_id):
         # Identified rows render the registry's name, not the one that was
@@ -486,7 +503,7 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
         tally = scored.get((match_id, team_id), {})
 
         def goals_of(player_id, player_name):
-            return tally.get(player_id) or tally.get(player_name) or (0, 0)
+            return tally.get(player_id) or tally.get(player_name) or (0, 0, 0)
 
         return lineups.fold(lineups.with_goals(
             lineups.with_canonical_names(

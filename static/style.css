@@ -1824,6 +1824,24 @@ table.nt-table {
   border-color: #d33a3a;
 }
 
+/* An assist, one per assist, in the red the cards already use so the line
+   keeps one palette. A LETTER rather than a second shape: it has to be
+   unmistakably not a goal, and it is the only mark on this line that says what
+   someone did for somebody else. Same chip as the captain's C, which is what
+   makes it read as a badge rather than as a typo. */
+.el-assist {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #d33a3a;
+  color: #ffffff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  vertical-align: 1px;
+}
+
 .el-off { margin-left: 6px; font-size: 0.72rem; color: #d33a3a; font-weight: 700; }
 
 /* Substitutions */

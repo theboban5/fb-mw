@@ -569,6 +569,7 @@ class LineupRow:
     # everyone on almost every sheet.
     goals: int = 0
     own_goals: int = 0
+    assists: int = 0
 
     @property
     def shirt_sort(self) -> "tuple[int, int, str]":

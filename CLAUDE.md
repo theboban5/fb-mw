@@ -184,9 +184,12 @@ Not built: the Wikipedia-style senior-career table on a profile. No data for it.
 
 Goals on the sheet, officials as people, migrations `0024`–`0025`:
 
-- A ball beside every scorer on a team sheet, one per goal (`lineups.with_goals`,
-  joined in `src/adapt.py` and `src/nt.py`). Own goals get their own marker and
-  are filed against the scorer's own side — `goals.team_id` is the beneficiary.
+- A ball beside every scorer on a team sheet, one per goal, and a red A beside
+  every assister (`lineups.with_goals`, joined in `src/adapt.py` and
+  `src/nt.py`). Own goals get their own marker and are filed against the
+  scorer's own side — `goals.team_id` is the beneficiary. The scorer line under
+  the result no longer names the assister in brackets; with no team sheet the
+  assist renders nowhere and still counts on the assister's profile.
 - Scorers on the club hub. It had the team sheets and not the scorer block, so
   a match there listed twenty-two names without saying who scored.
 - `officials` registry + `/officials/{id}.html`: every match a referee took,

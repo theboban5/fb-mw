@@ -294,6 +294,7 @@ class NTLineupRow:
     # schemas from one implementation, so both row types have to carry it.
     goals: int = 0
     own_goals: int = 0
+    assists: int = 0
 
     @property
     def shirt_sort(self) -> "tuple[int, int, str]":
@@ -905,18 +906,28 @@ def _goals_of(goals):
     sheet this site does not hold, and an opponent's own goal belongs to a
     player with no row here either. Passing them through would put a ball on
     whoever happened to share a name.
+
+    An assist joins by id alone: nt_goals has an `assist_player_id` and no
+    name column beside it (0019), so there is nothing to fall back on and
+    nothing to guess.
     """
-    tally: "dict[str, tuple[int, int]]" = {}
+    tally: "dict[str, list]" = {}
+
+    def _add(key, index):
+        if not key:
+            return
+        counts = tally.setdefault(key, [0, 0, 0])
+        counts[index] += 1
+
     for g in goals:
-        if g.is_own_goal:
-            continue
-        for key in {g.player_id, g.player_name}:
-            if key:
-                got, own = tally.get(key, (0, 0))
-                tally[key] = (got + 1, own)
+        if not g.is_own_goal:
+            for key in {g.player_id, g.player_name}:
+                _add(key, 0)
+        _add(g.assist_player_id, 2)
 
     def goals_of(player_id, player_name):
-        return tally.get(player_id) or tally.get(player_name) or (0, 0)
+        counts = tally.get(player_id) or tally.get(player_name)
+        return tuple(counts) if counts else (0, 0, 0)
 
     return goals_of
 

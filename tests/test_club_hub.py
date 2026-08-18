@@ -26,7 +26,7 @@ GOALS = (
     "goal_id,match_id,team_id,player_id,reported_player_name,minute,stoppage,"
     "period,goal_type,assist_player_id,source_type,source_ref,reported_by,"
     "reported_at,confidence,verified_by,verified_at\n"
-    "G1,M1,MW_SS_M1,CAF_MW_000001,,59,,,,,reporter,,,,unconfirmed,,\n"
+    "G1,M1,MW_SS_M1,CAF_MW_000001,,59,,,,CAF_MW_000003,reporter,,,,unconfirmed,,\n"
     "G2,M1,MW_SS_M1,CAF_MW_000001,,60,,,,,reporter,,,,unconfirmed,,\n"
     "G3,M1,MW_EK_M1,CAF_MW_000002,,71,,,,,reporter,,,,unconfirmed,,\n"
 )
@@ -36,6 +36,7 @@ LINEUPS = (
     "captain,minute_on,minute_off,replaced_player,yellow_card,"
     "yellow_red_card,red_card\n"
     "M1,MW_SS_M1,Z. Kalima,CAF_MW_000001,9,FW,starting,,,,,,,\n"
+    "M1,MW_SS_M1,R. Mtondera,CAF_MW_000003,8,MF,starting,,,,,,,\n"
 )
 
 
@@ -59,6 +60,8 @@ def a_dataset():
         "CAF_MW_000001", "Zebron Kalima", "", "", "", "", "active")
     ds.players["CAF_MW_000002"] = dataset.Player(
         "CAF_MW_000002", "Blessings Singini", "", "", "", "", "active")
+    ds.players["CAF_MW_000003"] = dataset.Player(
+        "CAF_MW_000003", "Rahim Mtondera", "", "", "", "", "active")
     ds.matches = dataset.parse_matches(MATCHES)
     ds.goals = dataset.parse_goals(GOALS)
     ds.lineups = dataset.parse_lineups(LINEUPS)
@@ -107,6 +110,40 @@ class GoalBadgeTest(unittest.TestCase):
         html = a_hub()
         self.assertIn("el-goal", html)
         self.assertEqual(html.count('class="el-goal"'), 2)
+
+
+class AssistTest(unittest.TestCase):
+    """The assister moved off the scorer line and onto their own name.
+
+    WHAT WAS WRONG. "Samson Phiri 31' (Rahim Mtondera)" put two people inside
+    what a reader scans as one fact, and for a moment reads as a substitution
+    or a disputed goal. The credit belongs on the person, so it is a red A
+    beside their name on the team sheet — and where there is no sheet it shows
+    nowhere at all, while still counting on their own profile.
+    """
+
+    def test_the_scorer_line_no_longer_names_them(self):
+        ds = a_dataset()
+        league = adapt.league_data(ds, "C1", "S1")
+        line = league.goals[0].annotation
+        self.assertEqual(line, "Zebron Kalima 59'")
+        self.assertNotIn("Rahim Mtondera", line)
+
+    def test_the_sheet_marks_the_assister(self):
+        html = a_hub()
+        self.assertIn('class="el-assist"', html)
+        self.assertEqual(html.count('class="el-assist"'), 1)
+
+    def test_no_sheet_means_no_mark_and_the_tally_survives(self):
+        """An assist with nowhere to render is still a fact about the player."""
+        ds = a_dataset()
+        ds.lineups = []
+        league = adapt.league_data(ds, "C1", "S1")
+        self.assertNotIn("el-assist", str(league.lineups))
+        career = hubs.player_careers(ds)["CAF_MW_000003"]
+        self.assertEqual(career.assists, 1)
+        # And they earn a page for it, with or without a team sheet.
+        self.assertIn("CAF_MW_000003", hubs.player_page_ids(ds))
 
 
 if __name__ == "__main__":

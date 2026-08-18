@@ -363,6 +363,14 @@ losing which goal it belonged to. Unlike a scorer there is no reported-name
 fallback: an assist that resolves to nobody is not recorded, because there is
 nowhere to keep it.
 
+Where it *shows* is the assister's own name on the team sheet, as a red A. It
+used to be in brackets after the scorer on the result line, which put two
+people inside what a reader scans as one fact — "Samson Phiri 31' (Rahim
+Mtondera)" reads for a moment like a substitution. On a match with no team
+sheet entered it therefore shows nowhere at all, and their profile counts it
+anyway: an assist is a fact about the player, and the scorer line is about the
+goal.
+
 **Officials and coaches** (`0023`, `0024`) are six optional boxes saved as one
 panel: referee, two assistants, fourth official, and a head coach per side.
 Each carries its label above it, not only inside it as a placeholder — a

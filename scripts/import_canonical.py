@@ -87,11 +87,20 @@ SPECS = [
     Spec("venues", "venue_id"),
     Spec("players", "player_id", dates=("dob",)),
     Spec("reporters", "reporter_id"),
+    # 0024. Ahead of matches, which has six FKs into it — this list is the
+    # import order.
+    Spec("officials", "official_id", lower=("kind", "status"),
+         defaults={"status": "active"}),
     Spec("matches", "match_id",
          ints=("matchday", "home_goals", "away_goals", "home_pens", "away_pens"),
          dates=("date",), stamps=("reported_at", "verified_at"),
          bools=("extra_time",),
-         nullable=("venue_id", "reported_by", "verified_by"),
+         # The six officials ids (0024) are FKs, so blank has to become NULL
+         # rather than '' — the same reason venue_id is here.
+         nullable=("venue_id", "reported_by", "verified_by",
+                   "referee_id", "assistant_referee_1_id",
+                   "assistant_referee_2_id", "fourth_official_id",
+                   "home_coach_id", "away_coach_id"),
          lower=("status", "source_type", "confidence"),
          defaults={"source_type": "unknown", "confidence": "unconfirmed"}),
     Spec("goals", "goal_id", stamps=("reported_at", "verified_at"),

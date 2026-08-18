@@ -265,8 +265,8 @@ def with_goals(rows, goals_of):
     every team-sheet graphic in the world says it.
 
     `goals_of` is a callback taking (player_id, player_name) and returning
-    (goals, own_goals), so this module keeps knowing nothing about either
-    schema. The id is the join wherever there is one; the name is the fallback,
+    (goals, own_goals, assists), so this module keeps knowing nothing about
+    either schema. The id is the join wherever there is one; the name is the fallback,
     which is the same pairing rule `fold` uses for a substitution and is what
     keeps a scorer nobody has identified from silently losing their ball.
 
@@ -282,12 +282,21 @@ def with_goals(rows, goals_of):
     end. Adding them to the tally would put a player top of a sheet for a
     mistake, which is the same reason they have never appeared in a scorer
     table.
+
+    Assists come the same way and land beside the same name. They used to be
+    named in brackets after the scorer on the result line, which put two people
+    inside what a reader scans as one fact; here the credit sits on the person
+    who earned it. A sheet is the ONLY place they render now — where nobody has
+    entered one, the assist is still counted on the assister's own profile,
+    because that is a fact about the player rather than about the goal.
     """
     rows = list(rows)
     out = []
     for r in rows:
-        goals, own = goals_of(getattr(r, "player_id", "") or "", r.player_name)
-        out.append(replace(r, goals=goals, own_goals=own) if (goals or own) else r)
+        goals, own, assists = goals_of(
+            getattr(r, "player_id", "") or "", r.player_name)
+        out.append(replace(r, goals=goals, own_goals=own, assists=assists)
+                   if (goals or own or assists) else r)
     return out
 
 
@@ -331,20 +340,26 @@ def cards_html(row) -> str:
     )
 
 
-def goal_badges(row) -> str:
-    """One ball per goal, beside the name. Two goals, two balls.
+def contribution_badges(row) -> str:
+    """What this player did in this match: a ball per goal, an A per assist.
 
     Counted rather than summarised ("x2") because at a glance the count IS the
     fact, and three balls read faster than a number on a line already carrying
     a shirt, a position and possibly a card. A hat-trick is the most this ever
     draws in practice.
+
+    The assist is a letter and not a second ball on purpose — it has to be
+    unmistakably not a goal, and it is the only mark on this line that says
+    what someone did for somebody else.
     """
     goals = getattr(row, "goals", 0) or 0
     own = getattr(row, "own_goals", 0) or 0
+    assists = getattr(row, "assists", 0) or 0
     ball = ('<span class="el-goal" title="Goal" aria-label="Goal"></span>')
     og = ('<span class="el-goal el-goal-og" title="Own goal" '
           'aria-label="Own goal"></span>')
-    return ball * goals + og * own
+    a = ('<span class="el-assist" title="Assist" aria-label="Assist">A</span>')
+    return ball * goals + og * own + a * assists
 
 
 def captain_badge(is_captain=False, is_vice=False) -> str:
@@ -396,7 +411,7 @@ def player_html(row, off_minute="", player_href=_no_href,
         '<li class="el-player">'
         f"{shirt}{pos}"
         f'<span class="el-player-name">{_name_html(row, player_href)}'
-        f"{captain_badge(is_captain=row.captain)}{goal_badges(row)}"
+        f"{captain_badge(is_captain=row.captain)}{contribution_badges(row)}"
         f"{cards_html(row)}{off}</span>"
         "</li>"
     )
@@ -443,7 +458,7 @@ def lineup_body(lineup, player_href=_no_href) -> str:
                 '<li class="el-sub">' + minute
                 + '<span class="el-sub-text">'
                 f'<span class="el-sub-on">{_name_html(s.on, player_href)}</span>'
-                f"{off}{goal_badges(s.on)}{cards_html(s.on)}</span></li>"
+                f"{off}{contribution_badges(s.on)}{cards_html(s.on)}</span></li>"
             )
         items = "".join(_sub(s) for s in lineup.substitutions)
         parts.append(
