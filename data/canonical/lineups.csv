@@ -1,5 +1,5 @@
 match_id,team_id,player_name,player_id,shirt_number,position,role,captain,minute_on,minute_off,replaced_player,yellow_card,yellow_red_card,red_card
-MW_SL_2627_098,MW_SS_M1,George Chikooka,CAF_MW_000459,,,starting,,,,,,,
+MW_SL_2627_098,MW_SS_M1,George Chikooka,CAF_MW_000459,,GK,starting,,,,,,,
 MW_SL_2627_098,MW_SS_M1,Eric Astigah,CAF_MW_000541,,,starting,,,,,,,
 MW_SL_2627_098,MW_SS_M1,Tatenda M'Balaka,CAF_MW_000542,,,starting,,,,,,,
 MW_SL_2627_098,MW_SS_M1,Innocent Shema,CAF_MW_000109,,,starting,,,,,,,
