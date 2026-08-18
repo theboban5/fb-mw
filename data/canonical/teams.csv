@@ -152,11 +152,27 @@ MW_GENESIS_MU16,MW_GENESIS,m,u16,1,Genesis,,active
 MW_MPINGWE_MU16,MW_MPINGWE,m,u16,1,Mpingwe United,,active
 MW_GREEN_MU16,MW_GREEN,m,u16,1,Green Stars,,active
 MW_FUTURE_MU16,MW_FUTURE,m,u16,1,Future Stars,,active
+MW_KA_M1,MW_KA,m,u14,1,Kangaroo Academy,,
 MW_KAKA_MU16,MW_KAKA,m,u16,1,Kaka Young Soccer,,active
+MW_GR_M1,MW_GR,m,u14,1,Ginger Rhizome,,
 MW_NEWLANDS_MU16,MW_NEWLANDS,m,u16,1,Newlands,,active
+MW_LB_M1,MW_LB,m,u14,1,Last Babies,,
 MW_SM_MU16,MW_SM,m,u16,1,Soche Madrid,,active
+MW_MTOPWA_M1,MW_MTOPWA,m,u14,1,Mtopwa,,
 MW_CCS_MU16,MW_CCS,m,u16,1,CC Stars,,active
 MW_APOS_M1,MW_APOS,m,senior,4,Apostle Hulhda FC,,active
+MW_TACH_M1,MW_TACH,m,u14,1,Tachila FC,,
 MW_DYER_M1,MW_DYER,m,senior,4,Dyeratu FC,,active
+MW_ZA_M1,MW_ZA,m,u14,1,Zarie Academy,,
 MW_ERGO_M1,MW_ERGO,m,senior,4,Ergo FC,,active
+MW_JA_M1,MW_JA,m,u14,1,JZ Academy,,
 MW_MPHA_M1,MW_MPHA,m,senior,4,Mphangala FC,,active
+MW_RE_M1,MW_RE,m,u14,1,Red Eagles,,
+MW_CHIG_M1,MW_CHIG,m,u14,1,Chigumula,,
+MW_BIA_M1,MW_BIA,m,u14,1,Brothers in Arms,,
+MW_ASSIMA_M1,MW_ASSIMA,m,u14,1,Assima,,
+MW_FU_M1,MW_FU,m,u14,1,Federation United,,
+MW_NTH_ACA_M1,MW_NTH_ACA,m,u14,1,Nthutha Academy,,
+MW_LA_M1,MW_LA,m,u14,1,Lunzu Academy,,
+MW_SB_M1,MW_SB,m,u14,1,Super Boys,,
+MW_HEBW_M1,MW_HEBW,m,u14,1,High Energy Brave Warriors,,
