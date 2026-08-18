@@ -90,8 +90,32 @@ a lie. Under the match table, **Switch Player** lists the rest of that squad,
 one tap each: everyone with a page who has appeared for the same side, bench
 included.
 
+An unused substitute's match shows too, as a **DNP** row. It is not an
+appearance and the tiles do not count it as one — but it is a real fact about
+that career, and the team sheet the reader arrived from is the very match the
+page would otherwise refuse to mention.
+
 There is no career/transfer table yet. That needs data nothing currently
 collects.
+
+### Referee and coach pages
+
+`/officials/{official_id}.html` is the same idea for the other people on a
+team-sheet graphic (`0024`): a header, counts, and every match they were named
+on. A referee's page shows all four match-official roles together — one person
+referees on Saturday and runs the line on Wednesday, and a page that split
+those would split a career. A coach's page shows W/D/L from their own side's
+point of view, and bolds that side in every row.
+
+The role column appears only when the role actually varies, which is the same
+rule the player table uses for the side: a coach's every row would otherwise
+say "Head coach" down a third of a 390px table.
+
+Names get there by being tapped in `/report`. One that was only typed renders
+as plain text, exactly as it did before — nothing was backfilled, because
+matching old strings to people automatically is how one referee becomes two.
+`officials.official_page_ids` is the single source of who has a page, for the
+reason the player set has one.
 
 ## Local development
 
@@ -153,6 +177,8 @@ The whole migration, done and verified:
 | Scorer identity | `0010_scorer_players.sql` — `create_player`, scorers resolve to a `player_id` |
 | Player identity | `0022_player_identity.sql` — `rename_player`, `merge_players`, surname-aware `search_players` |
 | Officials | `0023_match_officials.sql` — `set_match_officials`; referee, assistants, fourth official, both coaches |
+| Officials registry | `0024_officials_registry.sql` — `officials` table, id columns on `matches`, `create_official`/`rename_official`/`merge_officials`/`search_officials` |
+| Match notes | `0025_match_notes.sql` — `matches.notes` + `set_match_notes`; reporter-only, never rendered, never snapshotted |
 | Cutover | CI reads Supabase; the spreadsheet is deprecated |
 
 The workflow this replaced:
@@ -337,12 +363,26 @@ losing which goal it belonged to. Unlike a scorer there is no reported-name
 fallback: an assist that resolves to nobody is not recorded, because there is
 nowhere to keep it.
 
-**Officials and coaches** (`0023`) are six optional free-text boxes saved as
-one panel: referee, two assistants, fourth official, and a head coach per side.
-Nothing resolves them to an entity — this site does not track referees as
-people — and a blank box means blank, which is how a mistyped name gets
-removed. They render inside the line-up block on the site: each coach under its
-own side, where the graphic puts it, and the referee at the foot.
+**Officials and coaches** (`0023`, `0024`) are six optional boxes saved as one
+panel: referee, two assistants, fourth official, and a head coach per side.
+Each carries its label above it, not only inside it as a placeholder — a
+placeholder is gone the moment the first letter is typed, and six
+identical-looking boxes with nothing to tell them apart is how an assistant
+ends up in the fourth official's row.
+
+Each box is a picker, and the tap is the same design as the team sheet's: type,
+tap the person, and the id that arrives with them is what makes their name a
+link on the site. Tapping is optional — a name that was only typed saves and
+renders exactly as it did before `0024`, as plain text — and a blank box means
+blank, which is how a mistyped name gets removed. They render inside the
+line-up block: each coach under its own side, where the graphic puts it, and
+the referee at the foot.
+
+**Notes** (`0025`) sit at the bottom of the same screen: free text, optional,
+and never shown on everyleague.co. Somewhere to write down that the second goal
+might be Phiri, or that the graphic lists twelve names. Unlike "where is this
+from?", which is a fact about the match and rides along in the public data
+snapshot, a note about people stays in Postgres and nowhere else.
 
 Photos are shrunk to 1600px on the phone before upload; the `match-media`
 bucket independently caps size at 5 MB and restricts MIME types, and uploads

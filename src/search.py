@@ -28,7 +28,7 @@ import hashlib
 import json
 import os
 
-from . import dataset, hubs, nt_page, render
+from . import dataset, hubs, nt_page, officials, render
 
 # Index text is data, not markup: search.js renders every field through
 # textContent, so a "&middot;" here would show up literally on screen. Use the
@@ -44,11 +44,13 @@ COLUMNS = ("type", "name", "url", "meta", "weight", "extra")
 
 # Index into TYPES, stored as an integer per row. Order is also the grouping
 # order used on the /search/ page.
-TYPES = ("comp", "nt", "club", "team", "player")
-T_COMP, T_NT, T_CLUB, T_TEAM, T_PLAYER = range(len(TYPES))
+# Appended to, never reordered: the index stores the integer, not the word.
+TYPES = ("comp", "nt", "club", "team", "player", "official")
+T_COMP, T_NT, T_CLUB, T_TEAM, T_PLAYER, T_OFFICIAL = range(len(TYPES))
 
 # Human labels for the type groups on the /search/ results page.
-TYPE_LABELS = ("Competitions", "National Team", "Clubs", "Teams", "Players")
+TYPE_LABELS = ("Competitions", "National Team", "Clubs", "Teams", "Players",
+               "Referees & Coaches")
 
 # Static popularity priors, resolved before any query is typed. They only break
 # ties inside a match tier — a worse textual match never outranks a better one.
@@ -60,6 +62,9 @@ _CLUB_TIER_DEFAULT = 3
 _TEAM_PENALTY = 5        # a squad page ranks just under its club's hub
 _PLAYER_BASE = 18
 _PLAYER_GOAL_CAP = 25    # a prolific scorer surfaces first, but never above a club
+# Under a player of the same match quality: someone searching a name in Malawi
+# means the player far more often than the referee.
+_OFFICIAL_BASE = 14
 
 
 def index_version(texts, nt_texts=None) -> str:
@@ -297,6 +302,27 @@ def build_index(ds, leagues, scorchers=None, hidden=(), ntd=None) -> list:
             _extra(
                 player.full_name if player.full_name != player.display_name else "",
                 aliases.get(player_id, []),
+            ),
+        )
+
+    # ── Referees and coaches ────────────────────────────────────────────────
+    # The same set officials.build_official_pages writes, from the same
+    # function, for the same reason the player block says: indexing someone
+    # with no page is how a search result 404s.
+    by_official = officials.duties(ds)
+    for official_id in sorted(officials.official_page_ids(ds, by_official)):
+        official = ds.officials[official_id]
+        career = by_official[official_id]
+        kind = "Head coach" if official.kind == "coach" else "Match official"
+        n = len(career)
+        add(
+            T_OFFICIAL, official.display_name, f"officials/{official_id}.html",
+            f"{kind} {SEP} {n} match{'' if n == 1 else 'es'}",
+            _OFFICIAL_BASE,
+            _extra(
+                official.full_name
+                if official.full_name != official.display_name else "",
+                aliases.get(official_id, []),
             ),
         )
 

@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from html import escape
 import os
 
-from . import adapt, dataset, lineups, render
+from . import adapt, dataset, lineups, render, scorers
 
 RECENT_RESULTS = 10
 
@@ -70,13 +70,18 @@ def _page(base, title, content, updated, css_ver, header_logo="",
 
 # ── Club hubs ────────────────────────────────────────────────────────────────
 
-def _club_result_row(m, league):
+def _club_result_row(m, league, goals_by_match=None, official_pages=None):
     """One compact result row from the club's perspective, with league tag.
 
-    Carries the line-up toggle too. This hub is where someone following one
-    club actually lands — it is the page a club's own supporters share — so a
-    team sheet that renders on the competition's Matches tab and not here reads
-    as the feature being broken rather than as being somewhere else.
+    Carries the scorers and the line-up toggle too. This hub is where someone
+    following one club actually lands — it is the page a club's own supporters
+    share — so anything that renders on the competition's Matches tab and not
+    here reads as the feature being broken rather than as being somewhere else.
+
+    WHAT WAS WRONG. The line-up block was added here and the scorer block was
+    not, which produced the one arrangement that makes no sense: a match on
+    this page listing all twenty-two names and not saying who scored, while the
+    same match one page over said both.
     """
     home_name = league.teams[m.home_code].name if m.home_code in league.teams else m.home_code
     away_name = league.teams[m.away_code].name if m.away_code in league.teams else m.away_code
@@ -89,6 +94,7 @@ def _club_result_row(m, league):
     bits = [b for b in (date, escape(m.kickoff_label), escape(league.league_name)) if b]
     meta = " &middot; ".join(bits)
     home_sheet, away_sheet = league.lineups.get(m.match_id, (None, None))
+    scorers_html = render._scorers_block(m, goals_by_match)
     return (
         f'<tr class="v2-res-meta-row"><td colspan="3">'
         f'<span class="v2-res-meta">{meta}</span></td></tr>'
@@ -96,14 +102,18 @@ def _club_result_row(m, league):
         f'<td class="v2-res-home">{home}</td>'
         f'{score_cell}'
         f'<td class="v2-res-away">{away}</td></tr>'
+        + (f'<tr class="v2-scorers-row"><td colspan="3">{scorers_html}</td></tr>'
+           if scorers_html else "")
         + lineups.two_sided_row_html(
             home_sheet, away_sheet, home_name, away_name,
             player_href=render.player_href_for("../"),
-            officials=m.officials)
+            officials=m.officials,
+            official_href=render.official_href_for("../", official_pages))
     )
 
 
-def render_club_hub(club, club_teams, crest_url):
+def render_club_hub(club, club_teams, crest_url, goals_by_slug=None,
+                    official_pages=None):
     """The hub page body for one club.
 
     `club_teams` is a list of (team, league, standing, position, played,
@@ -187,7 +197,10 @@ def render_club_hub(club, club_teams, crest_url):
 
     v2.append('<h3 class="v2-sec-title">Recent Results</h3>')
     if all_recent:
-        body = "".join(_club_result_row(m, league) for _d, m, league in all_recent)
+        body = "".join(
+            _club_result_row(m, league, (goals_by_slug or {}).get(league.slug),
+                             official_pages)
+            for _d, m, league in all_recent)
         v2 += [
             '<div class="v2-results-outer">',
             '<table class="v2-results-table v2-results-compact">',
@@ -204,7 +217,7 @@ def render_club_hub(club, club_teams, crest_url):
 
 
 def build_club_hubs(dist, templates_dir, static_dir, ds, leagues, standings_by_slug,
-                    updated):
+                    updated, official_pages=None):
     """Write /clubs/{club_id}.html for every club with a team in a built league.
 
     `leagues` is the list of LeagueData that were built; `standings_by_slug`
@@ -224,6 +237,12 @@ def build_club_hubs(dist, templates_dir, static_dir, ds, leagues, standings_by_s
             leagues_of_team.setdefault(tv.team_id, []).append((league, code))
 
     crest = render._crest_lookup(static_dir, "../")
+
+    # Who scored, per competition. render._scorers_block takes the same
+    # {match_id: [GoalView]} the league pages are built with, so this hub shows
+    # the identical line rather than a second implementation of it.
+    goals_by_slug = {league.slug: scorers.goals_by_match(league.goals)
+                     for league in leagues if league.goals}
 
     count = 0
     for club in ds.clubs.values():
@@ -248,7 +267,8 @@ def build_club_hubs(dist, templates_dir, static_dir, ds, leagues, standings_by_s
         crest_url = crest(club.club_id) or next(
             (crest(t.legacy_code) for t, *_ in club_teams if t.legacy_code and crest(t.legacy_code)),
             None)
-        content = render_club_hub(club, club_teams, crest_url or "")
+        content = render_club_hub(club, club_teams, crest_url or "",
+                                  goals_by_slug, official_pages)
         html = _page(base, club.name, content, updated, css_ver)
         render._write(os.path.join(out_dir, f"{club.club_id}.html"), html)
         count += 1
@@ -322,6 +342,11 @@ class Appearance:
     red_card: bool
     scoreline: str        # "2-1", the player's own side first
     outcome: str          # W | D | L, or "" when the match has no score
+    # False for an unused substitute. They are held in Career.bench rather than
+    # in appearances — a bench call is not a game played — but the match still
+    # belongs on their page, so the row has to know which it is. Defaulted
+    # true: an Appearance is an appearance unless it says otherwise.
+    played: bool = True
 
     @property
     def sort_key(self):
@@ -438,6 +463,7 @@ def _club_appearances(ds):
             captain=r.captain, shirt_number=r.shirt_number, position=r.position,
             goals=goals_by.get((r.player_id, r.match_id), 0),
             assists=assists_by.get((r.player_id, r.match_id), 0),
+            played=_playable(r),
             yellow_card=r.yellow_card, yellow_red_card=r.yellow_red_card,
             red_card=r.red_card, scoreline=scoreline, outcome=outcome,
         ))
@@ -485,6 +511,7 @@ def _national_appearances(ntd):
             captain=r.captain, shirt_number=r.shirt_number, position=r.position,
             goals=goals_by.get((r.player_id, r.match_id), 0),
             assists=assists_by.get((r.player_id, r.match_id), 0),
+            played=_playable(r),
             yellow_card=r.yellow_card, yellow_red_card=r.yellow_red_card,
             red_card=r.red_card, scoreline=scoreline, outcome=outcome,
         ))
@@ -644,13 +671,19 @@ def _match_stat_row(a, show_side=False) -> str:
         if show_side else escape(a.competition)
     caption = " &middot; ".join(b for b in (escape(date), comp) if b)
 
-    role = "XI" if a.started else "SUB"
-    if a.started and a.minute_off:
-        role += f' <span class="pl-min">&darr;{escape(a.minute_off)}\'</span>'
-    elif not a.started and a.minute_on:
-        role += f' <span class="pl-min">&uarr;{escape(a.minute_on)}\'</span>'
-    if a.captain:
-        role += lineups.captain_badge(is_captain=True)
+    # An unused substitute was there and did not play, which is a different
+    # statement from "started" or "came on" and has to read as one. Their goal
+    # and assist columns are empty by construction.
+    if not a.played:
+        role = '<span class="pl-dnp" title="Named as a substitute, did not play">DNP</span>'
+    else:
+        role = "XI" if a.started else "SUB"
+        if a.started and a.minute_off:
+            role += f' <span class="pl-min">&darr;{escape(a.minute_off)}\'</span>'
+        elif not a.started and a.minute_on:
+            role += f' <span class="pl-min">&uarr;{escape(a.minute_on)}\'</span>'
+        if a.captain:
+            role += lineups.captain_badge(is_captain=True)
 
     cards = lineups.cards_html(a)
     score = (f'<span class="pl-res pl-res-{a.outcome.lower()}">'
@@ -755,7 +788,18 @@ def _bench_note(career) -> str:
 
 
 def _match_stats(career) -> str:
-    if not career.appearances:
+    """Every match on this player's record, played or not, newest first.
+
+    WHAT WAS WRONG. The table listed `appearances` only, so a player who came
+    on in one match and sat unused in another had a page showing one match and
+    no trace of the other — and the sheet they were named on links here, so the
+    reader arrives from the very match the page has decided not to mention.
+    Being an unused substitute is a fact about a career; it is just not an
+    appearance, which is what the DNP row and the untouched tiles say.
+    """
+    rows_for = sorted(career.appearances + career.bench,
+                      key=lambda a: a.sort_key, reverse=True)
+    if not rows_for:
         return ""
     head = (
         '<thead><tr>'
@@ -766,8 +810,8 @@ def _match_stats(career) -> str:
         '<th class="pl-th-ga">A</th>'
         "</tr></thead>"
     )
-    show_side = len({a.team_label for a in career.appearances}) > 1
-    rows = [_match_stat_row(a, show_side) for a in career.appearances]
+    show_side = len({a.team_label for a in rows_for}) > 1
+    rows = [_match_stat_row(a, show_side) for a in rows_for]
     shown, hidden = rows[:MATCH_ROWS_SHOWN], rows[MATCH_ROWS_SHOWN:]
     out = [
         '<h3 class="v2-sec-title">Match Stats</h3>',

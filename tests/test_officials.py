@@ -96,24 +96,28 @@ class SnapshotTest(unittest.TestCase):
 class CrewTest(unittest.TestCase):
     def test_the_crew_skips_what_nobody_entered(self):
         o = lineups.Officials(referee="H. Nkhoma")
-        self.assertEqual(o.crew, [("Referee", "H. Nkhoma")])
+        self.assertEqual(o.crew, [("Referee", [("H. Nkhoma", "")])])
 
     def test_two_assistants_share_one_label(self):
+        """One label, two people — each keeps its own id and its own link."""
         o = lineups.Officials(assistant_referee_1="J. Banda",
-                              assistant_referee_2="P. Mwale")
-        self.assertEqual(o.crew, [("Assistants", "J. Banda, P. Mwale")])
+                              assistant_referee_2="P. Mwale",
+                              assistant_referee_2_id="MW_OFF_000002")
+        self.assertEqual(o.crew, [("Assistants", [("J. Banda", ""),
+                                                  ("P. Mwale", "MW_OFF_000002")])])
 
     def test_one_assistant_is_singular(self):
         o = lineups.Officials(assistant_referee_1="J. Banda")
-        self.assertEqual(o.crew, [("Assistant", "J. Banda")])
+        self.assertEqual(o.crew, [("Assistant", [("J. Banda", "")])])
 
     def test_coaches_are_not_officials(self):
         """They render under their own side, not in the referee line."""
-        o = lineups.Officials(home_coach="E. Kafoteka")
+        o = lineups.Officials(home_coach="E. Kafoteka",
+                              home_coach_id="MW_OFF_000009")
         self.assertEqual(o.crew, [])
         self.assertFalse(o.any_officials)
-        self.assertEqual(o.coach_for(True), "E. Kafoteka")
-        self.assertEqual(o.coach_for(False), "")
+        self.assertEqual(o.coach_for(True), ("E. Kafoteka", "MW_OFF_000009"))
+        self.assertEqual(o.coach_for(False), ("", ""))
 
 
 class MarkupTest(unittest.TestCase):
@@ -201,7 +205,7 @@ class AdaptTest(unittest.TestCase):
             "M1,C1,S1,md_1,1,2026-08-01,,T1,T2,2,1,played,reporter,confirmed,"
             "H. Nkhoma,,,,E. Kafoteka,")
         self.assertEqual(view.officials.referee, "H. Nkhoma")
-        self.assertEqual(view.officials.coach_for(True), "E. Kafoteka")
+        self.assertEqual(view.officials.coach_for(True), ("E. Kafoteka", ""))
 
     def test_a_match_with_none_carries_none(self):
         """Not an empty Officials: the renderers test for None and skip."""

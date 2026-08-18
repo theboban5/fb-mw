@@ -286,6 +286,34 @@ def _goal_display_minute(g: "dataset.Goal") -> str:
 _GOAL_TYPE_DISPLAY = {"own_goal": "own goal", "penalty": "penalty"}
 
 
+def _officials_view(ds, m):
+    """The match's officials, with an identified name read from the registry.
+
+    Same rule, and the same reason, as `lineups.with_canonical_names` applies
+    to a team sheet: the column holds the name AS REPORTED ("H. Nkhoma") and
+    the id holds who that turned out to be, so one rename in /report has to
+    move every page that names them. A blank or unresolvable id keeps the
+    reported name, which is the normal state and reads as plain text.
+    """
+    def named(name, official_id):
+        return ds.official_name(official_id) or name
+
+    return lineups.Officials(
+        referee=named(m.referee, m.referee_id),
+        assistant_referee_1=named(m.assistant_referee_1, m.assistant_referee_1_id),
+        assistant_referee_2=named(m.assistant_referee_2, m.assistant_referee_2_id),
+        fourth_official=named(m.fourth_official, m.fourth_official_id),
+        home_coach=named(m.home_coach, m.home_coach_id),
+        away_coach=named(m.away_coach, m.away_coach_id),
+        referee_id=m.referee_id,
+        assistant_referee_1_id=m.assistant_referee_1_id,
+        assistant_referee_2_id=m.assistant_referee_2_id,
+        fourth_official_id=m.fourth_official_id,
+        home_coach_id=m.home_coach_id,
+        away_coach_id=m.away_coach_id,
+    )
+
+
 def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> LeagueData:
     """Build one league's renderer-ready view from the Dataset.
 
@@ -368,14 +396,7 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
             extra_time=m.extra_time,
             home_pens=m.home_pens,
             away_pens=m.away_pens,
-            officials=lineups.Officials(
-                referee=m.referee,
-                assistant_referee_1=m.assistant_referee_1,
-                assistant_referee_2=m.assistant_referee_2,
-                fourth_official=m.fourth_official,
-                home_coach=m.home_coach,
-                away_coach=m.away_coach,
-            ) if m.has_officials else None,
+            officials=_officials_view(ds, m) if m.has_officials else None,
         ))
         kept_match_ids.add(m.match_id)
 
@@ -424,14 +445,53 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
             by_side.setdefault((r.match_id, r.team_id), []).append(r)
     sheets: "dict[str, tuple]" = {}
 
+    # Who scored, per side, so a team sheet can put a ball beside the name.
+    # Keyed by player_id where there is one and by the displayed name where
+    # there is not — the same fallback `fold` uses to pair a substitution, and
+    # the same one `with_goals` reads.
+    #
+    # An own goal is filed here against the SCORER'S OWN SIDE, not the side it
+    # counted for. `goals.team_id` is the beneficiary (0001), so this flips it
+    # back: the ball belongs on the sheet the player is actually named on.
+    scored: "dict[tuple[str, str], dict]" = {}
+    team_of = {code: team_id for team_id, code in code_of.items()}
+    for g in goals:
+        m = ds.matches.get(g.match_id)
+        if m is None:
+            continue
+        team_id = team_of.get(g.team_code, g.team_code)
+        if g.is_own_goal:
+            team_id = (m.away_team_id if team_id == m.home_team_id
+                       else m.home_team_id)
+        tally = scored.setdefault((g.match_id, team_id), {})
+        # Filed under BOTH the id and the name, because either side of the
+        # join can be the unidentified one: a reporter routinely names the
+        # scorer properly and pastes the team sheet raw.
+        for key in {g.player_id, g.player_name}:
+            if not key:
+                continue
+            got, own = tally.get(key, (0, 0))
+            tally[key] = (got, own + 1) if g.is_own_goal else (got + 1, own)
+
     def _sheet(match_id, team_id):
         # Identified rows render the registry's name, not the one that was
         # typed — see lineups.with_canonical_names. It is the same rule this
         # module already applies to a goal, and it is what lets a name entered
         # off a graphic as "A. Josephy" become "Andrew Josephy" everywhere the
         # day someone learns the first name.
-        return lineups.fold(lineups.with_canonical_names(
-            by_side.get((match_id, team_id), []), ds.registry_name))
+        #
+        # with_goals comes second, and has to: it matches by name where there
+        # is no id, and both sides of that comparison must already be spelled
+        # the registry's way.
+        tally = scored.get((match_id, team_id), {})
+
+        def goals_of(player_id, player_name):
+            return tally.get(player_id) or tally.get(player_name) or (0, 0)
+
+        return lineups.fold(lineups.with_goals(
+            lineups.with_canonical_names(
+                by_side.get((match_id, team_id), []), ds.registry_name),
+            goals_of))
 
     for _i, m in kept:
         home = _sheet(m.match_id, m.home_team_id)

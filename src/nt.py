@@ -288,6 +288,12 @@ class NTLineupRow:
     yellow_card: bool
     yellow_red_card: bool
     red_card: bool
+    # Goals in THIS match, joined on from nt_goals by src/nt.py — not a column
+    # on the tab. Same field, same reason, as dataset.LineupRow.goals: the
+    # markup puts a ball beside the name and src/lineups.py renders both
+    # schemas from one implementation, so both row types have to carry it.
+    goals: int = 0
+    own_goals: int = 0
 
     @property
     def shirt_sort(self) -> "tuple[int, int, str]":
@@ -885,6 +891,36 @@ def load_team(texts: "dict[str, str]", team_code: str = SCORCHERS) -> NTTeamData
     return team_data(nt, team_code)
 
 
+def _goals_of(goals):
+    """A (player_id, player_name) -> (goals, own_goals) callback for one side.
+
+    `lineups.with_goals` takes it, and the id-then-name fallback is the same
+    one a substitution pairs by: most nt_goals rows carry a canonical player_id
+    since 0020, and the ones that do not are matched on the name they were
+    filed under.
+
+    Own goals are not counted here at all. nt_goals credits the beneficiary
+    like the league tab does, but only OUR side's rows ever reach a sheet on
+    this page — an own goal by a Malawian is filed against the opponent, whose
+    sheet this site does not hold, and an opponent's own goal belongs to a
+    player with no row here either. Passing them through would put a ball on
+    whoever happened to share a name.
+    """
+    tally: "dict[str, tuple[int, int]]" = {}
+    for g in goals:
+        if g.is_own_goal:
+            continue
+        for key in {g.player_id, g.player_name}:
+            if key:
+                got, own = tally.get(key, (0, 0))
+                tally[key] = (got + 1, own)
+
+    def goals_of(player_id, player_name):
+        return tally.get(player_id) or tally.get(player_name) or (0, 0)
+
+    return goals_of
+
+
 def team_data(nt: NTData, team_code: str = SCORCHERS,
               registry_name=None) -> NTTeamData:
     """The filtering half of load_team, for callers that already parsed.
@@ -926,9 +962,11 @@ def team_data(nt: NTData, team_code: str = SCORCHERS,
             match=m,
             our_goals=[g for g in gs if g.team_id == team_code],
             their_goals=[g for g in gs if g.team_id != team_code],
-            lineup=_lineup_for(lineups.with_canonical_names(
-                lineup_rows.get(m.match_id, []),
-                registry_name or (lambda _pid: ""))),
+            lineup=_lineup_for(lineups.with_goals(
+                lineups.with_canonical_names(
+                    lineup_rows.get(m.match_id, []),
+                    registry_name or (lambda _pid: "")),
+                _goals_of(g for g in gs if g.team_id == team_code))),
         ))
 
     fixtures = sorted((m for m in matches if m.scheduled), key=lambda m: m.sort_key)

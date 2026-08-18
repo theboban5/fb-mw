@@ -2185,37 +2185,215 @@ function section(key, title, count, inner, open) {
  *  were.
  */
 const OFFICIAL_ROLES = [
-  ["referee", "Referee"],
-  ["assistant_referee_1", "Assistant referee 1"],
-  ["assistant_referee_2", "Assistant referee 2"],
-  ["fourth_official", "Fourth official"],
+  ["referee", "Referee", "referee"],
+  ["assistant_referee_1", "Assistant referee 1", "referee"],
+  ["assistant_referee_2", "Assistant referee 2", "referee"],
+  ["fourth_official", "Fourth official", "referee"],
 ];
 const OFFICIAL_COACHES = ["home_coach", "away_coach"];
-const OFFICIAL_COLUMNS =
-  OFFICIAL_ROLES.map(([key]) => key).concat(OFFICIAL_COACHES).join(",");
+const OFFICIAL_KEYS = OFFICIAL_ROLES.map(([key]) => key).concat(OFFICIAL_COACHES);
+const OFFICIAL_COLUMNS = OFFICIAL_KEYS
+  .concat(OFFICIAL_KEYS.map((key) => `${key}_id`))
+  .join(",");
+
+/** Find a referee or a coach by whatever the reporter typed.
+ *
+ *  search_officials (0024) is search_players with a kind filter, so the same
+ *  thing is true of it: the name that gets typed first is the one off a
+ *  graphic ("H. Nkhoma"), and someone later typing "Hassan Nkhoma" has to find
+ *  that row rather than mint a second one.
+ *
+ *  Unlike searchPlayers there is no fallback query to fall back TO — before
+ *  0024 there was no table. An error is therefore just an empty list, and the
+ *  typed name still saves, which is the whole point of the id being optional.
+ */
+async function searchOfficials(term, kind) {
+  const q = term.trim().replace(FILTER_UNSAFE, " ").replace(/\s+/g, " ").trim();
+  if (q.length < 2) return [];
+  const { data, error } = await supabase.rpc("search_officials", {
+    p_term: q, p_kind: kind,
+  });
+  if (error) {
+    console.warn("[everyleague] search_officials unavailable:", error);
+    return [];
+  }
+  return data || [];
+}
+
+const officialLabel = (o) => o.known_as || o.full_name || o.official_id;
 
 /** The officials panel: six optional boxes, saved as one.
  *
  *  One save for the whole panel, not one per box, because set_match_officials
- *  writes all six columns and a blank means blank — that is what lets a
+ *  writes all twelve columns and a blank means blank — that is what lets a
  *  reporter delete a referee they mistyped. Splitting it per field would make
  *  "cleared" and "not sent" the same keystroke.
+ *
+ *  EVERY BOX CARRIES ITS LABEL ABOVE IT, not only inside it as a placeholder.
+ *  A placeholder is gone the moment the first letter is typed, and six
+ *  identical-looking boxes with nothing to tell them apart is how an assistant
+ *  ends up in the fourth official's row. The two coach boxes name their team
+ *  for the same reason.
+ *
+ *  Each box is a picker (0024): type, tap the person, and the hidden id beside
+ *  it is what turns their name on everyleague.co into a link to their page.
+ *  Tapping is optional and always was — a name with no id saves exactly as it
+ *  did before, and renders as plain text.
  */
 function officialsForm(match, officials) {
-  const box = (name, label) => `
-    <input class="rp-input" name="${name}" placeholder="${esc(label)}"
-           value="${esc(officials[name] || "")}" autocomplete="off"
-           autocapitalize="words" maxlength="80">`;
+  const box = (name, label, kind) => `
+    <label class="rp-label" for="off-${name}">${esc(label)}</label>
+    <div class="rp-pick" data-official="${name}" data-kind="${kind}">
+      <input class="rp-input" id="off-${name}" name="${name}"
+             value="${esc(officials[name] || "")}" placeholder="${esc(label)}"
+             role="combobox" aria-expanded="false" aria-autocomplete="list"
+             autocomplete="off" autocapitalize="words" maxlength="80">
+      <input type="hidden" name="${name}_id"
+             value="${esc(officials[`${name}_id`] || "")}">
+      <ul class="rp-suggest" role="listbox" data-suggest hidden></ul>
+    </div>`;
   return `
     <form data-officials-form autocomplete="off">
-      ${OFFICIAL_ROLES.map(([key, label]) => box(key, label)).join("")}
-      ${box("home_coach", `${match.home?.display_name || "Home"} head coach`)}
-      ${box("away_coach", `${match.away?.display_name || "Away"} head coach`)}
+      ${OFFICIAL_ROLES.map(([key, label, kind]) => box(key, label, kind)).join("")}
+      ${box("home_coach", `${match.home?.display_name || "Home"} head coach`, "coach")}
+      ${box("away_coach", `${match.away?.display_name || "Away"} head coach`, "coach")}
       <button class="rp-btn is-ghost" type="submit">Save officials</button>
-      <p class="rp-hint">Every box is optional and an empty one shows nothing
-        on everyleague.co — fill in whatever the graphic or the post actually
-        says. Clearing a box and saving removes that name.</p>
+      <p class="rp-hint" data-official-note>Every box is optional and an empty one
+        shows nothing on everyleague.co — fill in whatever the graphic or the post
+        actually says. Tap a name from the list and it becomes a link to that
+        person's page. Clearing a box and saving removes that name.</p>
     </form>`;
+}
+
+/** Wire the six official comboboxes.
+ *
+ *  Deliberately not wirePlayerPicker: that one knows about goals, about which
+ *  team the scorer is on, and about staging a name before the score exists.
+ *  None of that is true here, and the half of it that would have to be
+ *  disabled is more code than this whole function.
+ */
+function wireOfficialPickers(host) {
+  host.querySelectorAll("[data-official]").forEach((wrap) => {
+    const field = wrap.dataset.official;
+    const kind = wrap.dataset.kind;
+    const input = wrap.querySelector(`input[name="${field}"]`);
+    const hidden = wrap.querySelector(`input[name="${field}_id"]`);
+    const list = wrap.querySelector("[data-suggest]");
+    const note = host.querySelector("[data-official-note]");
+    if (!input || !hidden || !list) return;
+
+    let timer = null;
+    // Only the most recent search may paint: on a slow connection the answer
+    // to "Nk" can arrive after the answer to "Nkhoma".
+    let latest = 0;
+
+    const close = () => {
+      list.hidden = true;
+      list.innerHTML = "";
+      input.setAttribute("aria-expanded", "false");
+    };
+    wrap._closePicker = close;
+
+    function choose(officialId, name) {
+      hidden.value = officialId;
+      input.value = name;
+      close();
+      if (note) {
+        note.textContent = `${name} is identified — their name will link to `
+          + "their own page. Save to keep it.";
+        note.className = "rp-hint is-good";
+      }
+    }
+
+    function paint(people, term) {
+      const rows = people.map((o) => {
+        const name = officialLabel(o);
+        // Why this row is in the list: an alias hit is a spelling they used to
+        // be filed under, and saying so is what makes it trustworthy.
+        const hint = (o.matched && o.matched !== name)
+          ? `also filed as ${o.matched}`
+          : (o.known_as && o.full_name && o.known_as !== o.full_name
+              ? o.full_name : "");
+        return `<li role="option"><button type="button" class="rp-suggest-btn"
+          data-official-id="${esc(o.official_id)}" data-name="${esc(name)}">
+          <span>${esc(name)}</span>${hint ? `<em>${esc(hint)}</em>` : ""}</button></li>`;
+      });
+      const typed = term.trim();
+      const exact = people.some(
+        (o) => officialLabel(o).toLowerCase() === typed.toLowerCase());
+      if (!exact) {
+        rows.push(`<li role="option"><button type="button"
+          class="rp-suggest-btn is-new" data-create="${esc(typed)}">
+          <span>＋ Add “${esc(typed)}” as a new ${kind === "coach" ? "coach" : "referee"}</span>
+          <em>only if they are not in the list above</em></button></li>`);
+      }
+      list.innerHTML = rows.join("");
+      list.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+    }
+
+    input.addEventListener("input", () => {
+      // The typed name no longer belongs to whoever was picked.
+      hidden.value = "";
+      clearTimeout(timer);
+      const term = input.value;
+      if (term.trim().length < 2) { close(); return; }
+      timer = setTimeout(async () => {
+        const mine = ++latest;
+        const people = await searchOfficials(term, kind);
+        if (mine !== latest) return;
+        paint(people, term);
+      }, 250);
+    });
+
+    input.addEventListener("focus", () => {
+      if (!hidden.value && input.value.trim().length >= 2) {
+        input.dispatchEvent(new Event("input"));
+      }
+    });
+
+    list.addEventListener("click", async (event) => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      if (button.dataset.officialId) {
+        choose(button.dataset.officialId, button.dataset.name);
+        return;
+      }
+      const name = button.dataset.create;
+      if (!name || button.disabled) return;
+      button.disabled = true;
+      button.querySelector("span").textContent = "Adding…";
+      const { data, error } = await supabase.rpc("create_official", {
+        p_full_name: name, p_kind: kind,
+      });
+      if (error) {
+        button.disabled = false;
+        close();
+        // Rule 3: a failed lookup must never read as a failed entry.
+        if (note) {
+          note.textContent = "Could not add that name to the register — it "
+            + "will still be saved on the match as plain text.";
+          note.className = "rp-hint is-warn";
+        }
+        console.warn("[everyleague] create_official failed:", error);
+        return;
+      }
+      const created = (data || [])[0];
+      // create_official is idempotent on (name, kind), so this may be someone
+      // who already existed under a spelling the search did not surface.
+      choose(created.official_id, officialLabel(created));
+    });
+  });
+
+  // A tap anywhere outside every wrap means "not that list". The listener
+  // goes on the body wrapper, NOT on `host`: host survives every redraw while
+  // its innerHTML is replaced, so a listener added there would be added again
+  // on the next draw and again on the one after that.
+  host.querySelector("[data-detail-body]")?.addEventListener("click", (event) => {
+    host.querySelectorAll("[data-official]").forEach((wrap) => {
+      if (!wrap.contains(event.target)) wrap._closePicker?.();
+    });
+  });
 }
 
 
@@ -2269,13 +2447,17 @@ async function drawDetail(match, state, { local = false } = {}) {
         .eq("match_id", match.match_id).order("ord"),
       supabase.from("match_media").select("*")
         .eq("match_id", match.match_id).order("created_at"),
+      // The officials AND the reporter's private notes (0025), which ride
+      // along because they are columns on the same row and this is already
+      // the one query that reads them.
+      //
       // Its own query rather than six more columns on MATCH_FIELDS: that
       // constant is also the home screen's fixture list, and a phone loading
       // eighty fixtures should not be carrying eighty referees it will not
       // show. Separate also means that on a phone running this file before
       // 0023 reaches the database, the failure is an empty officials panel
       // and not a match screen with no scorers on it.
-      supabase.from("matches").select(OFFICIAL_COLUMNS)
+      supabase.from("matches").select(`${OFFICIAL_COLUMNS},notes`)
         .eq("match_id", match.match_id).limit(1),
     ]);
     state.detail = {
@@ -2404,6 +2586,19 @@ async function drawDetail(match, state, { local = false } = {}) {
         <p class="rp-hint" data-upload-note>Large photos are shrunk on the phone
           before sending, so this works on a slow connection.</p>
       </form>`, open.photo)}
+
+    ${section("notes", "Notes", officials.notes ? 1 : 0, `
+      <form data-notes-form>
+        <textarea class="rp-input rp-textarea" name="notes" rows="4"
+                  maxlength="4000" autocapitalize="sentences"
+                  placeholder="Anything you are not sure about, or want to check later"
+                  >${esc(officials.notes || "")}</textarea>
+        <button class="rp-btn is-ghost" type="submit">Save notes</button>
+        <p class="rp-hint">Only reporters see this — it is never shown on
+          everyleague.co and it is not in the public data files. Somewhere to
+          write down that the second goal might be Phiri, or that the graphic
+          lists twelve names. Clearing the box and saving deletes it.</p>
+      </form>`, open.notes)}
     </div>`;
 
   wireDetail(match, state, goals, sides);
@@ -2608,6 +2803,7 @@ function wireDetail(match, state, goals, sides) {
     ? (match.home?.display_name || id) : (match.away?.display_name || id);
 
   wirePlayerPickers(host, match);
+  wireOfficialPickers(host);
 
   // ADDING A SCORER MEANS TWO DIFFERENT THINGS, DEPENDING ON ONE FACT.
   //
@@ -2687,12 +2883,31 @@ function wireDetail(match, state, goals, sides) {
     const f = e.target;
     detailAction(f.querySelector('button[type="submit"]'), "Saving…", async () => {
       const args = { p_match_id: match.match_id };
-      OFFICIAL_ROLES.map(([key]) => key).concat(OFFICIAL_COACHES)
-        .forEach((key) => { args[`p_${key}`] = f[key].value.trim(); });
+      // Name and id together, every box, every save. A box whose name was
+      // typed and never tapped sends a blank id and saves as plain text —
+      // which is the state almost every referee on this site is in.
+      OFFICIAL_KEYS.forEach((key) => {
+        args[`p_${key}`] = f[key].value.trim();
+        args[`p_${key}_id`] = f[`${key}_id`].value.trim();
+      });
       const { error } = await supabase.rpc("set_match_officials", args);
       // A referee and a coach both render on the public site, under the
       // result, so they earn a build the same way a scorer does.
       if (!error) requestRebuild();
+      return error;
+    }, match, state);
+  });
+
+  host.querySelector("[data-notes-form]")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    detailAction(f.querySelector('button[type="submit"]'), "Saving…", async () => {
+      const { error } = await supabase.rpc("set_match_notes", {
+        p_match_id: match.match_id, p_notes: f.notes.value,
+      });
+      // NO requestRebuild. A note changes nothing on the public site, and
+      // asking CI to rebuild the world because someone wrote themselves a
+      // reminder would be the one save on this screen that does nothing twice.
       return error;
     }, match, state);
   });

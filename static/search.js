@@ -43,7 +43,10 @@
   var MAX_SUGGESTIONS = 8;
   var MAX_PER_GROUP = 50;
 
-  var TYPE_LABELS = ["League", "National", "Club", "Team", "Player"];
+  // Indexed by search-index.json's integer type. Appended to, never
+  // reordered — the index stores the number, not the word.
+  var TYPE_LABELS = ["League", "National", "Club", "Team", "Player",
+                     "Official"];
   var GROUP_LABELS = ["Competitions", "National Team", "Clubs", "Teams", "Players"];
 
   var recs = null;        // precomputed records, once loaded

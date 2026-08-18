@@ -87,12 +87,18 @@ class Lineup:
 
 @dataclass(frozen=True)
 class Officials:
-    """Everyone on a team-sheet graphic who is not a player (0023).
+    """Everyone on a team-sheet graphic who is not a player (0023, 0024).
 
-    Free text, every field optional, and blank on almost every match — the
-    same shape as a kickoff or a venue and rendered by the same rule: what is
-    known shows, what is not shows nothing at all. Nothing here resolves to an
-    entity; this site does not track referees or coaches as people.
+    Every field optional and blank on almost every match — the same shape as a
+    kickoff or a venue and rendered by the same rule: what is known shows, what
+    is not shows nothing at all.
+
+    Each name comes with an id, and the pair means exactly what
+    `lineups.player_name` + `lineups.player_id` mean: the name is what was
+    reported, the id is who that turned out to be. A blank id is the ordinary
+    case — nobody has tapped that name onto a registry row — and renders as
+    plain text with no link, which is how an unidentified player already
+    renders three lines further up the same block.
     """
     referee: str = ""
     assistant_referee_1: str = ""
@@ -100,42 +106,64 @@ class Officials:
     fourth_official: str = ""
     home_coach: str = ""
     away_coach: str = ""
+    referee_id: str = ""
+    assistant_referee_1_id: str = ""
+    assistant_referee_2_id: str = ""
+    fourth_official_id: str = ""
+    home_coach_id: str = ""
+    away_coach_id: str = ""
 
     @property
-    def crew(self) -> "list[tuple[str, str]]":
-        """(label, name) for the match officials, skipping the blanks.
+    def crew(self) -> "list[tuple[str, list]]":
+        """[(label, [(name, official_id), ...])] for the match officials.
 
-        The two assistants share a label when both are known, because that is
-        how a match-day post writes them: "Assistants: J. Banda, P. Mwale".
+        A list per label, not a joined string, because the two assistants share
+        one label and each is a different person who may have their own page.
+        The joining is the markup's job.
         """
         out = []
         if self.referee:
-            out.append(("Referee", self.referee))
-        both = [n for n in (self.assistant_referee_1, self.assistant_referee_2) if n]
+            out.append(("Referee", [(self.referee, self.referee_id)]))
+        both = [(n, i) for n, i in (
+            (self.assistant_referee_1, self.assistant_referee_1_id),
+            (self.assistant_referee_2, self.assistant_referee_2_id)) if n]
         if both:
-            out.append(("Assistant" + ("s" if len(both) > 1 else ""),
-                        ", ".join(both)))
+            out.append(("Assistant" + ("s" if len(both) > 1 else ""), both))
         if self.fourth_official:
-            out.append(("Fourth official", self.fourth_official))
+            out.append(("Fourth official",
+                        [(self.fourth_official, self.fourth_official_id)]))
         return out
 
     @property
     def any_officials(self) -> bool:
         return bool(self.crew)
 
-    def coach_for(self, home: bool) -> str:
-        return self.home_coach if home else self.away_coach
+    def coach_for(self, home: bool) -> "tuple[str, str]":
+        """(name, official_id) for one side's coach; ("", "") when unnamed."""
+        return ((self.home_coach, self.home_coach_id) if home
+                else (self.away_coach, self.away_coach_id))
 
 
-def coach_html(name) -> str:
+def _no_official_href(_official_id):
+    return ""
+
+
+def _official_html(name, official_id, official_href) -> str:
+    """One official's name, linked to their page when the id resolves."""
+    href = official_href(official_id or "")
+    return (f'<a class="el-official-link" href="{escape(href)}">{escape(name)}</a>'
+            if href else escape(name))
+
+
+def coach_html(name, official_id="", official_href=_no_official_href) -> str:
     """The coach line under one side's sheet, or "" when nobody named one."""
     if not name:
         return ""
     return (f'<p class="el-coach"><span class="el-coach-l">Head coach</span>'
-            f'{escape(name)}</p>')
+            f'{_official_html(name, official_id, official_href)}</p>')
 
 
-def officials_html(officials) -> str:
+def officials_html(officials, official_href=_no_official_href) -> str:
     """The referee line at the foot of a line-up block, or "".
 
     One paragraph rather than a table: it is three short facts on a phone, and
@@ -145,8 +173,10 @@ def officials_html(officials) -> str:
         return ""
     items = "".join(
         f'<span class="el-official"><span class="el-official-l">'
-        f'{escape(label)}</span>{escape(name)}</span>'
-        for label, name in officials.crew)
+        f'{escape(label)}</span>'
+        + ", ".join(_official_html(n, i, official_href) for n, i in people)
+        + "</span>"
+        for label, people in officials.crew)
     return f'<p class="el-officials">{items}</p>'
 
 
@@ -226,6 +256,41 @@ def with_canonical_names(rows, name_of):
     ) for r in rows]
 
 
+def with_goals(rows, goals_of):
+    """Rows again, each carrying what that player did in front of goal.
+
+    WHAT WAS MISSING. A team sheet said who played and a separate block above
+    it said who scored, and nothing joined the two — the one thing a reader
+    scanning eleven names actually looks for. A ball beside the name is how
+    every team-sheet graphic in the world says it.
+
+    `goals_of` is a callback taking (player_id, player_name) and returning
+    (goals, own_goals), so this module keeps knowing nothing about either
+    schema. The id is the join wherever there is one; the name is the fallback,
+    which is the same pairing rule `fold` uses for a substitution and is what
+    keeps a scorer nobody has identified from silently losing their ball.
+
+    CALL IT AFTER `with_canonical_names`, never before. That function rewrites
+    the reported name to the registry's, and a name-keyed lookup built from
+    goals — which resolve through the same registry — would miss every renamed
+    row if the two sides of the comparison were canonicalised at different
+    times.
+
+    Own goals are counted separately and are NOT goals. They belong to the
+    scorer's own sheet (the goals tab credits the beneficiary team, so the
+    caller does that flip) and render as their own marker: a ball on the wrong
+    end. Adding them to the tally would put a player top of a sheet for a
+    mistake, which is the same reason they have never appeared in a scorer
+    table.
+    """
+    rows = list(rows)
+    out = []
+    for r in rows:
+        goals, own = goals_of(getattr(r, "player_id", "") or "", r.player_name)
+        out.append(replace(r, goals=goals, own_goals=own) if (goals or own) else r)
+    return out
+
+
 def fold(rows) -> "Lineup | None":
     """Fold one side's rows into starters, substitutions and unused subs.
 
@@ -264,6 +329,22 @@ def cards_html(row) -> str:
         f'<span class="el-card {cls}" title="{label}" aria-label="{label}"></span>'
         for cls, label in out
     )
+
+
+def goal_badges(row) -> str:
+    """One ball per goal, beside the name. Two goals, two balls.
+
+    Counted rather than summarised ("x2") because at a glance the count IS the
+    fact, and three balls read faster than a number on a line already carrying
+    a shirt, a position and possibly a card. A hat-trick is the most this ever
+    draws in practice.
+    """
+    goals = getattr(row, "goals", 0) or 0
+    own = getattr(row, "own_goals", 0) or 0
+    ball = ('<span class="el-goal" title="Goal" aria-label="Goal"></span>')
+    og = ('<span class="el-goal el-goal-og" title="Own goal" '
+          'aria-label="Own goal"></span>')
+    return ball * goals + og * own
 
 
 def captain_badge(is_captain=False, is_vice=False) -> str:
@@ -315,7 +396,8 @@ def player_html(row, off_minute="", player_href=_no_href,
         '<li class="el-player">'
         f"{shirt}{pos}"
         f'<span class="el-player-name">{_name_html(row, player_href)}'
-        f"{captain_badge(is_captain=row.captain)}{cards_html(row)}{off}</span>"
+        f"{captain_badge(is_captain=row.captain)}{goal_badges(row)}"
+        f"{cards_html(row)}{off}</span>"
         "</li>"
     )
 
@@ -361,7 +443,7 @@ def lineup_body(lineup, player_href=_no_href) -> str:
                 '<li class="el-sub">' + minute
                 + '<span class="el-sub-text">'
                 f'<span class="el-sub-on">{_name_html(s.on, player_href)}</span>'
-                f"{off}{cards_html(s.on)}</span></li>"
+                f"{off}{goal_badges(s.on)}{cards_html(s.on)}</span></li>"
             )
         items = "".join(_sub(s) for s in lineup.substitutions)
         parts.append(
@@ -402,7 +484,8 @@ def lineup_row_html(lineup, player_href=_no_href, summary="Line-up",
 
 
 def two_sided_row_html(home, away, home_name, away_name,
-                       player_href=_no_href, colspan=3, officials=None) -> str:
+                       player_href=_no_href, colspan=3, officials=None,
+                       official_href=_no_official_href) -> str:
     """Both sides' sheets in one collapsible block, for a league result.
 
     A league match has two real teams, so unlike the national-team page — where
@@ -419,12 +502,13 @@ def two_sided_row_html(home, away, home_name, away_name,
     parts = []
     for lineup, name, is_home in ((home, home_name, True), (away, away_name, False)):
         body = lineup_body(lineup, player_href)
-        coach = coach_html(officials.coach_for(is_home)) if officials else ""
+        coach = (coach_html(*officials.coach_for(is_home),
+                            official_href=official_href) if officials else "")
         if body or coach:
             parts.append(f'<div class="el-lineup-side">'
                          f'<p class="el-lineup-side-name">{escape(name)}</p>'
                          f"{body}{coach}</div>")
-    crew = officials_html(officials)
+    crew = officials_html(officials, official_href)
     if not parts and not crew:
         return ""
     # Named for what is actually inside it. A block holding only a referee is

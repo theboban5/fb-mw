@@ -14,10 +14,11 @@ accidental row deletion.
 
 The original 13-tab Google Spreadsheet (plus seven `nt_*` national-team tabs)
 is **deprecated**: still readable with `DATASET_SOURCE=sheets` as an emergency
-fallback, no longer written to by anyone. **`lineups` has no tab in it** — it
-postdates the spreadsheet entirely — so under `DATASET_SOURCE=sheets` it reads
-as an empty tab (`dataset.SUPABASE_ONLY_TABS`) and the fallback still builds a
-whole site, minus the data it never had.
+fallback, no longer written to by anyone. **`lineups` and `officials` have no
+tab in it** — both postdate the spreadsheet entirely — so under
+`DATASET_SOURCE=sheets` they read as empty tabs
+(`dataset.SUPABASE_ONLY_TABS`) and the fallback still builds a whole site,
+minus the data it never had.
 
 Reporter-facing tables that are NOT part of the `Dataset` — `reporter_assignments`,
 `match_change_log`, `match_media`, `rebuild_state` — are invisible to the build
@@ -62,10 +63,15 @@ matches (home/away team_id, venue_id, competition_id, season_id)
 - **lineups** — one row per named player per side per match: the starting XI,
   the bench, who came on for whom, the cards and the armband. Deliberately the
   same shape as `nt_lineups`, so `src/lineups.py` folds and renders both.
+- **officials** — referees and coaches as identities (0024). `kind` is
+  `referee | coach`, and the four match-official roles share the referee kind
+  because the same person referees one match and runs the line at the next.
 - **registrations**, **reporters** — present, currently empty.
 - **aliases** — every spelling an entity has ever been filed under.
-  Written by `rename_player` and `merge_players` (0022), read by
-  `search_players` so a name a player used to answer to still finds them.
+  Written by `rename_player`/`merge_players` (0022) and their official
+  counterparts (0024), read by `search_players`/`search_officials` so a name
+  someone used to answer to still finds them. `entity_type` is `player` or
+  `official`.
 
 ## ID conventions (as built)
 
@@ -79,6 +85,11 @@ matches (home/away team_id, venue_id, competition_id, season_id)
   goals whose scorer is not yet identified. New ids continue the six-digit
   sequence — `create_player()` mints the highest plus one. The digits are a
   counter and carry no meaning; do not read anything else out of them.
+- `official_id` is `MW_OFF_000123` — the `MW_` prefix every other id in this
+  schema uses, minted by `create_official()` as the highest plus one. There is
+  no reserved "unknown" row: an unresolved official is a blank id, not a
+  pointer at a placeholder, because unlike a goal there is nothing that has to
+  be attributed to somebody.
 - `match_id` like `MW_SL_2627_001`. Opaque string everywhere.
 - **General rule: NEVER derive meaning by parsing an ID. Always join through
   the tabs.** The only sanctioned string transform is presentational
@@ -179,17 +190,33 @@ matches (home/away team_id, venue_id, competition_id, season_id)
   means "not announced" and renders *nothing* — never a placeholder time,
   and never a build failure. Where a kickoff is known it shows beside the
   date on fixtures and results alike, labelled `14:30 CAT`.
-- **Officials are six optional free-text columns on `matches`** (0023):
-  `referee`, `assistant_referee_1`, `assistant_referee_2`, `fourth_official`,
-  `home_coach`, `away_coach`. Nothing resolves them to an entity — this site
-  does not track referees or coaches as people, and an officials table would
-  mean a reporter had to resolve a name to an id before entering one. The
-  coach is on the MATCH, not on the team: clubs change coach mid-season, and a
-  column on `teams` would rewrite last season's team sheet when they do
-  (`nt_matches.coach` has said the same thing since 0001). They render inside
-  the line-up block — each coach under its own side, the referee at the foot —
-  and a match with officials but no team sheet still opens that block, titled
-  "Match officials". Blank renders nothing, as everywhere else.
+- **Officials are six name columns on `matches` and six id columns beside
+  them** (0023, 0024): `referee`, `assistant_referee_1`,
+  `assistant_referee_2`, `fourth_official`, `home_coach`, `away_coach`, each
+  with a `_id` twin. The name is what was reported, the id is who that turned
+  out to be — the identical arrangement to `lineups.player_name` +
+  `lineups.player_id`, and rendered by the identical rule: a blank id renders
+  the reported name as plain text, a resolved one renders the registry's name
+  as a link to `/officials/{official_id}.html`. The coach is on the MATCH, not
+  on the team: clubs change coach mid-season, and a column on `teams` would
+  rewrite last season's team sheet when they do (`nt_matches.coach` has said
+  the same thing since 0001). They render inside the line-up block — each
+  coach under its own side, the referee at the foot — and a match with
+  officials but no team sheet still opens that block, titled "Match
+  officials". Blank renders nothing, as everywhere else.
+- **A goal puts a ball beside its scorer on the team sheet.** One per goal, so
+  a brace is two. Joined from the `goals` tab by `player_id` where there is
+  one and by name where there is not (`lineups.with_goals`, applied AFTER
+  `with_canonical_names` so both sides of that comparison are already spelled
+  the registry's way). An own goal is marked apart and counted apart — it is
+  filed against the scorer's OWN side, because `goals.team_id` names the
+  beneficiary.
+- **`matches.notes` is never rendered** (0025). Reporter working notes: what
+  is uncertain, what to check later. It is also the one column deliberately
+  absent from `data/canonical/` — `source_ref` is a fact about the match and
+  belongs in the public audit log, whereas a note about people does not belong
+  in a public git history. Not a secret (matches has a public read policy),
+  just unpublished.
 - League display name = `competition_seasons.sponsor_name` if non-empty,
   else `competitions.name`. Team display = `teams.display_name`. Club
   display = `clubs.name`.
@@ -216,6 +243,43 @@ descending confidence: the whole term as a substring, then an alias, then the
 SURNAME with agreeing initials — so "Andrew Josephy" finds the existing
 "A. Josephy" instead of offering to create a second one. The `/report` screen
 for all of this is `#/players`.
+
+## Officials (0024)
+
+Referees and coaches went in as free text in 0023, and that migration argued
+at length that they should stay that way. They did not, for one reason: a page
+per referee is worth having, and a page needs an id. The reversal is
+deliberately the same shape as the player one, so there is one rule to learn
+rather than two.
+
+- **`officials`** — `official_id`, `full_name`, `known_as`, `kind`, `status`.
+  One table for both kinds. A referee, an assistant and a fourth official are
+  one person taking a different job on a different Saturday; `kind` only
+  separates them from coaches, who are different people doing a different
+  thing. `search_officials(term, kind)` therefore takes the kind as a required
+  argument — a referee picker that offers coaches is how the wrong sort of
+  person ends up in the wrong column.
+- **`create_official(full_name, kind)`** — idempotent on both, so two
+  reporters typing "H. Nkhoma" on two different matches get one person.
+- **`rename_official`** (any reporter, old spelling kept in `aliases`) and
+  **`merge_officials`** (admins only, because it deletes a row). Far simpler
+  than the player equivalents: an official is named on exactly six columns of
+  one table.
+- **`set_match_officials`** writes all twelve columns every time, and a blank
+  argument clears its column — the portal submits the panel as one save, so
+  "not sent" and "cleared" would otherwise be the same keystroke. An id that
+  resolves to nobody, or one with no name beside it, is silently dropped and
+  the name alone is kept.
+- **Nothing was backfilled.** Names typed before 0024 stay plain text until
+  someone opens the match in /report and taps one onto a registry row. Matching
+  those strings automatically is the merge risk 0020 wrote about, and a wrong
+  referee is a falsehood about a real person.
+- **`src/officials.py` owns the pages.** `official_page_ids` is the single
+  source of who has one — an official earns a page by being named on a match —
+  and the pages, the search index and every link under a result ask it.
+  Nothing validates the id columns: an id that resolves to nobody renders the
+  reported name and links nowhere, which is graceful degradation working, not
+  an error worth failing a build over.
 
 ## Cups (`competitions.type = cup`)
 

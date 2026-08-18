@@ -60,7 +60,16 @@ COLUMNS = {
                 # dataset.parse_matches treats an absent header as every cell
                 # blank, so an older snapshot keeps parsing without them.
                 "referee", "assistant_referee_1", "assistant_referee_2",
-                "fourth_official", "home_coach", "away_coach"),
+                "fourth_official", "home_coach", "away_coach",
+                # 0024. Who those six names turned out to be. NULL — the normal
+                # state — renders as a blank cell and reads as "not resolved".
+                #
+                # `notes` (0025) is deliberately NOT here. It is a reporter's
+                # working note about people and this snapshot is committed to a
+                # public repository; see that migration's header.
+                "referee_id", "assistant_referee_1_id",
+                "assistant_referee_2_id", "fourth_official_id",
+                "home_coach_id", "away_coach_id"),
     # reported_player_name is new: what a reporter typed when the scorer has no
     # canonical player_id yet. dataset.parse_goals ignores unknown columns, so
     # emitting it now is inert until the match page starts showing it.
@@ -80,6 +89,8 @@ COLUMNS = {
                 "shirt_number", "position", "role", "captain", "minute_on",
                 "minute_off", "replaced_player", "yellow_card",
                 "yellow_red_card", "red_card"),
+    # 0024. The referee/coach registry, alongside players.
+    "officials": ("official_id", "full_name", "known_as", "kind", "status"),
     "reporters": ("reporter_id", "name", "email", "affiliation",
                   "affiliation_id", "region", "active", "public_byline"),
     "aliases": ("alias_text", "entity_type", "entity_id", "context"),

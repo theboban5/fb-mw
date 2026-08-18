@@ -27,7 +27,7 @@ sys.path.insert(0, ROOT)
 
 import validate  # noqa: E402
 from src import (adapt, dataset, flags, hubs, matches_page, nt, nt_page,  # noqa: E402
-                 render, scorers, search, standings)
+                 officials, render, scorers, search, standings)
 
 STATIC = os.path.join(ROOT, "static")
 TEMPLATES = os.path.join(ROOT, "templates")
@@ -81,7 +81,8 @@ def _tier_label(comp: "dataset.Competition") -> str:
     return "League"
 
 
-def _build_league(ds, cs, dist_root, updated, player_pages=frozenset()):
+def _build_league(ds, cs, dist_root, updated, player_pages=frozenset(),
+                  official_pages=frozenset()):
     """Render one competition+season into dist_root/<slug>/."""
     league = adapt.league_data(ds, cs.competition_id, cs.season_id)
 
@@ -129,6 +130,7 @@ def _build_league(ds, cs, dist_root, updated, player_pages=frozenset()):
         css_prefix="../", back_link=BACK_LINK, copy_static=False,
         goals_by_match=goals_by_match, top_scorers=top_scorers,
         lineups_by_match=league.lineups, player_pages=player_pages,
+        official_pages=official_pages,
         # own_goal_total from the adapter, not the scorer rows: it includes
         # own goals by unresolved (CAF_MW_UNKNOWN) players.
         own_goal_total=league.own_goal_total,
@@ -700,12 +702,17 @@ def main(argv):
     # substitute is on the team sheet but has not PLAYED, so they earn no page
     # — and without this every bench name on every sheet is a 404.
     player_pages = hubs.player_page_ids(ds, ntd=nt_data)
+    # And the officials, for the same reason and from the same kind of
+    # function: a referee's name under a result links only where a page was
+    # written, and every one of those links is rendered before the pages are.
+    official_pages = officials.official_page_ids(ds)
 
     leagues = []
     standings_by_slug = {}
     parts = []
     for cs in adapt.current_competition_seasons(ds):
-        league, rows, n_played = _build_league(ds, cs, dist, updated, player_pages)
+        league, rows, n_played = _build_league(ds, cs, dist, updated,
+                                              player_pages, official_pages)
         leagues.append(league)
         standings_by_slug[league.slug] = rows
         parts.append(f"{league.slug}: {len(league.teams)} teams, {n_played} results")
@@ -735,9 +742,12 @@ def main(argv):
 
     # Cross-competition pages: club hubs and player pages.
     n_clubs = hubs.build_club_hubs(
-        dist, TEMPLATES, STATIC, ds, leagues, standings_by_slug, updated)
+        dist, TEMPLATES, STATIC, ds, leagues, standings_by_slug, updated,
+        official_pages=official_pages)
     n_players = hubs.build_player_pages(dist, TEMPLATES, STATIC, ds, updated,
                                         club_hub_ids=club_hub_ids, ntd=nt_data)
+    n_officials = officials.build_official_pages(
+        dist, TEMPLATES, STATIC, ds, updated)
 
     # The by-date pages, written after the club hubs they link into.
     n_day_pages, n_match_dates = matches_page.build_pages(
@@ -757,6 +767,7 @@ def main(argv):
 
     print(f"Built {dist}/  " + " | ".join(parts)
           + f" | {n_clubs} club hubs | {n_players} player pages"
+          + (f" | {n_officials} official pages" if n_officials else "")
           + f" | {nt_page.SLUG}: {len(scorchers.results)} results,"
           + f" {len(scorchers.fixtures)} fixtures"
           + f" | {matches_page.SLUG}: {n_day_pages} pages,"

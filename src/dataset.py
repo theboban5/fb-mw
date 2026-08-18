@@ -79,6 +79,10 @@ SUPABASE_ONLY_TABS = {
                 "shirt_number", "position", "role", "captain", "minute_on",
                 "minute_off", "replaced_player", "yellow_card",
                 "yellow_red_card", "red_card"),
+    # 0024. Referees and coaches as identities. Empty under the sheets
+    # fallback, which is exactly right: every match then renders the names it
+    # already holds as plain text, and nothing links anywhere.
+    "officials": ("official_id", "full_name", "known_as", "kind", "status"),
 }
 
 TABS = tuple(TAB_GIDS) + tuple(SUPABASE_ONLY_TABS)
@@ -256,6 +260,10 @@ SOURCE_TYPES = frozenset(
      "backfill", "placeholder", "unknown"}
 )
 CONFIDENCES = frozenset({"unconfirmed", "confirmed", "official"})
+# officials.kind (0024). One pool for all four match-official roles, because
+# the same person referees one match and runs the line at the next; `coach` is
+# the other kind of person on a team-sheet graphic.
+OFFICIAL_KINDS = frozenset({"referee", "coach"})
 # matches.stage vocabulary for knockout (type=cup) competitions. League rows
 # use free-form md_<n> stages instead; presentation order lives in adapt.
 # Two-legged ties carry no leg column: a reversed fixture between the same
@@ -397,6 +405,17 @@ class Match:
     fourth_official: str = ""
     home_coach: str = ""
     away_coach: str = ""
+    # Who those names turned out to be (0024). Blank is the normal state and
+    # means "nobody has resolved that name yet" — exactly what a blank
+    # lineups.player_id means, and rendered the same way: plain text, no link,
+    # no page. 0023's comment above said this site does not track referees as
+    # entities; it does now, and these are how.
+    referee_id: str = ""
+    assistant_referee_1_id: str = ""
+    assistant_referee_2_id: str = ""
+    fourth_official_id: str = ""
+    home_coach_id: str = ""
+    away_coach_id: str = ""
 
     @property
     def has_officials(self) -> bool:
@@ -542,10 +561,38 @@ class LineupRow:
     yellow_card: bool
     yellow_red_card: bool
     red_card: bool
+    # What this player did in THIS match, joined on by src/adapt.py from the
+    # goals tab (see lineups.with_goals). Not a column on the tab and never
+    # parsed from one: a goal is a row in `goals` and this is a count of them,
+    # cached on the sheet's row so the markup can put a ball beside the name
+    # without the renderer holding the whole goals tab. Zero is the answer for
+    # everyone on almost every sheet.
+    goals: int = 0
+    own_goals: int = 0
 
     @property
     def shirt_sort(self) -> "tuple[int, int, str]":
         return lineups.id_sort(self.shirt_number)
+
+
+@dataclass(frozen=True)
+class Official:
+    """A referee or a coach, as a person rather than as a string (0024).
+
+    One registry for both, because every operation on them is the same; `kind`
+    (referee | coach) is what keeps a coach out of a referee picker. The four
+    match-official roles share the `referee` kind — the same person referees
+    one match and runs the line at the next.
+    """
+    official_id: str
+    full_name: str
+    known_as: str
+    kind: str             # referee | coach
+    status: str
+
+    @property
+    def display_name(self) -> str:
+        return self.known_as or self.full_name or self.official_id
 
 
 @dataclass
@@ -566,6 +613,7 @@ class Dataset:
     reporters: "dict[str, Reporter]" = field(default_factory=dict)
     aliases: "list[Alias]" = field(default_factory=list)
     lineups: "list[LineupRow]" = field(default_factory=list)
+    officials: "dict[str, Official]" = field(default_factory=dict)
 
     def active_season(self) -> Season:
         """The single season with status=active. Never the system clock."""
@@ -601,6 +649,20 @@ class Dataset:
             return ""
         player = self.players.get(player_id)
         return player.display_name if player else ""
+
+    def official_name(self, official_id: str) -> str:
+        """The registry name for an official id, or "" when it resolves to nobody.
+
+        The `registry_name` of 0024, and it exists for the same reason: the
+        name on a match is the name AS REPORTED ("H. Nkhoma") and the id is who
+        that turned out to be, so one rename has to move every page. An id that
+        resolves to nothing is ordinary — almost every match names a referee
+        nobody has tapped onto a registry row — and keeps its reported name.
+        """
+        if not official_id:
+            return ""
+        official = self.officials.get(official_id)
+        return official.display_name if official else ""
 
 
 # ── Parsing helpers ──────────────────────────────────────────────────────────
@@ -868,6 +930,12 @@ def parse_matches(text: str) -> "dict[str, Match]":
             fourth_official=r.get("fourth_official", ""),
             home_coach=r.get("home_coach", ""),
             away_coach=r.get("away_coach", ""),
+            referee_id=r.get("referee_id", ""),
+            assistant_referee_1_id=r.get("assistant_referee_1_id", ""),
+            assistant_referee_2_id=r.get("assistant_referee_2_id", ""),
+            fourth_official_id=r.get("fourth_official_id", ""),
+            home_coach_id=r.get("home_coach_id", ""),
+            away_coach_id=r.get("away_coach_id", ""),
         ), "matches", i)
     return out
 
@@ -911,6 +979,21 @@ def parse_players(text: str) -> "dict[str, Player]":
             _date(r.get("dob", ""), "dob", "players", i),
             r.get("position", ""), r.get("nationality", ""), r.get("status", ""),
         ), "players", i)
+    return out
+
+
+def parse_officials(text: str) -> "dict[str, Official]":
+    """The officials registry (0024). Absent or empty on an older snapshot."""
+    out: "dict[str, Official]" = {}
+    required = {"official_id", "full_name", "kind"}
+    for i, r in _rows(text, "officials", required):
+        oid = _require(r, "official_id", "officials", i)
+        _put(out, oid, Official(
+            oid, r.get("full_name", ""), r.get("known_as", ""),
+            _enum(_require(r, "kind", "officials", i), OFFICIAL_KINDS,
+                  "kind", "officials", i),
+            r.get("status", ""),
+        ), "officials", i)
     return out
 
 
@@ -996,6 +1079,7 @@ _PARSERS = {
     "players": parse_players,
     "registrations": parse_registrations,
     "lineups": parse_lineups,
+    "officials": parse_officials,
     "reporters": parse_reporters,
     "aliases": parse_aliases,
 }

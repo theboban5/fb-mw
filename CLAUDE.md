@@ -84,6 +84,7 @@ src/standings.py       table computation      src/scorers.py  goal aggregation
 src/render.py          data → HTML (league, cup, club pages)
 src/lineups.py         team sheets: folding + markup, shared league/national
 src/hubs.py            club hubs + player profiles (cross-competition)
+src/officials.py       referee + coach pages (the officials registry, 0024)
 src/matches_page.py    /matches/ — every match on one date, any date
 src/nt.py, nt_page.py  national teams (the nt_* tabs, /scorchers/)
 src/search.py          the site search index
@@ -118,7 +119,12 @@ docs/                  build output, served by GitHub Pages
   and lower-league sheets arrive as names and nothing else. Anyone without one
   renders in an unlabelled group, never dropped.
 - **An unused substitute gets a page but not an appearance.** "Games played"
-  must not quietly become "games named in a squad".
+  must not quietly become "games named in a squad". Their match still shows on
+  their profile, as a DNP row — a career is not only the games you played.
+- **A referee and a coach are people now** (0024), by exactly the rule above:
+  `matches.referee` is the name as reported, `matches.referee_id` is who that
+  turned out to be, and a blank id renders plain text. Nothing was backfilled,
+  and nothing validates the id columns — an unresolvable one degrades to text.
 - **Graceful degradation is the house style.** Missing data renders *nothing* —
   never a placeholder, never a build failure. Most matches have no team sheet,
   most players no `dob`, most competitions no logo.
@@ -175,6 +181,24 @@ Team sheets and player profiles, migrations `0018`–`0021`:
   *and* it is the path that carries the id, which is what makes names clickable.
 
 Not built: the Wikipedia-style senior-career table on a profile. No data for it.
+
+Goals on the sheet, officials as people, migrations `0024`–`0025`:
+
+- A ball beside every scorer on a team sheet, one per goal (`lineups.with_goals`,
+  joined in `src/adapt.py` and `src/nt.py`). Own goals get their own marker and
+  are filed against the scorer's own side — `goals.team_id` is the beneficiary.
+- Scorers on the club hub. It had the team sheets and not the scorer block, so
+  a match there listed twenty-two names without saying who scored.
+- `officials` registry + `/officials/{id}.html`: every match a referee took,
+  or a coach's W/D/L. `create_official`, `rename_official`, `merge_officials`
+  (admin), `search_officials(term, kind)`. The portal's officials panel is six
+  labelled pickers; tapping a name is what makes it a link on the site.
+- `matches.notes` — reporter working notes, never rendered, and deliberately
+  NOT in `data/canonical/` (that directory is public; a note about people
+  should not be).
+
+Not built: an officials management screen in `/report`. `rename_official` and
+`merge_officials` exist and have no UI yet.
 
 Player identity and officials, migrations `0022`–`0023`:
 

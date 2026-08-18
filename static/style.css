@@ -1798,6 +1798,32 @@ table.nt-table {
 .el-card-r { background: #d33a3a; }
 .el-card-yr { background: linear-gradient(135deg, #f2c200 50%, #d33a3a 50%); }
 
+/* Goals: one ball per goal, drawn in CSS for the same reason the cards are —
+   no image to load on a connection this site is built for, and no emoji,
+   which every phone renders in a different colour and half of them in a
+   different size. Two goals, two balls; a hat-trick is the most this has ever
+   drawn in practice, which is why it counts rather than saying "x3". */
+.el-goal {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-left: 5px;
+  border-radius: 50%;
+  /* The dot in the middle is what makes it read as a ball rather than as a
+     bullet point — at 9px there is no room for panels, and an outline alone
+     beside a second outline reads as "o o". */
+  background: radial-gradient(circle at 50% 50%, #1a1a1a 0 1.6px, #ffffff 2.1px);
+  border: 1.5px solid #1a1a1a;
+  vertical-align: 0;
+}
+/* An own goal is a ball at the wrong end, and has to be unmistakably not a
+   goal at a glance — it is the one marker that would be a lie if it were
+   mistaken for the other. */
+.el-goal-og {
+  background: radial-gradient(circle at 50% 50%, #ffffff 0 1.6px, #d33a3a 2.1px);
+  border-color: #d33a3a;
+}
+
 .el-off { margin-left: 6px; font-size: 0.72rem; color: #d33a3a; font-weight: 700; }
 
 /* Substitutions */
@@ -1843,6 +1869,12 @@ table.nt-table {
   text-transform: uppercase;
   color: #9aa1ab;
 }
+/* A referee or a coach the reporter tapped onto the registry (0024) links to
+   their own page. One who was only typed is the same line without the link —
+   the reader is not told which, because the difference is ours and not
+   theirs. */
+.el-official-link { color: inherit; }
+.el-official-link:hover, .el-official-link:focus-visible { text-decoration: underline; }
 
 /* ─── Player profile ──────────────────────────────────
    Mobile-first and single-column: most of this site is read on a phone, so
@@ -1910,6 +1942,17 @@ table.nt-table {
 .pl-score { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pl-role { white-space: nowrap; font-size: 0.68rem; font-weight: 700; color: #9aa1ab; }
 .pl-min { font-weight: 700; }
+/* Named as a substitute and never used. Quieter than XI/SUB because it is the
+   one row in the table where nothing happened. */
+.pl-dnp { color: #b9bec6; }
+/* An official's match table names BOTH sides in one cell, where a player's
+   names only the opponent — twice the text in the same 390px. Fixed layout so
+   the fixture wraps inside its column instead of pushing the score and the
+   role off the edge of the phone. */
+.of-matches { table-layout: fixed; width: 100%; }
+.of-matches .pl-opp { white-space: normal; }
+.of-matches .pl-th-score, .of-matches .pl-score { width: 4.4rem; }
+.of-matches .pl-th-role, .of-matches .pl-role { width: 4.6rem; white-space: normal; }
 .pl-ga {
   text-align: right;
   font-variant-numeric: tabular-nums;
