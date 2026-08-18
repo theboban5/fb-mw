@@ -128,6 +128,7 @@ def _build_league(ds, cs, dist_root, updated):
         form=form, changes=changes, days=days, history=history,
         css_prefix="../", back_link=BACK_LINK, copy_static=False,
         goals_by_match=goals_by_match, top_scorers=top_scorers,
+        lineups_by_match=league.lineups,
         # own_goal_total from the adapter, not the scorer rows: it includes
         # own goals by unresolved (CAF_MW_UNKNOWN) players.
         own_goal_total=league.own_goal_total,
@@ -709,8 +710,13 @@ def main(argv):
     # of those.
     club_hub_ids = {tv.club_id for league in leagues
                     for tv in league.teams.values() if tv.club_id}
+    # Exactly the players hubs.build_player_pages will write a page for, and
+    # for the same reason club_hub_ids exists: a national-team name links to a
+    # profile only when there is one. Being NAMED in a squad does not earn a
+    # page, so without this a squad member who has not played yet is a 404.
+    player_pages = hubs.player_page_ids(ds, ntd=nt_data)
     nt_page.build_page(dist, TEMPLATES, STATIC, scorchers, ds, updated,
-                       club_hub_ids=club_hub_ids)
+                       club_hub_ids=club_hub_ids, player_page_ids=player_pages)
 
     # The by-date view (/matches/). Collected before the landing page, which
     # shows a card for the day it links at, and reused when the pages
@@ -725,7 +731,8 @@ def main(argv):
     # Cross-competition pages: club hubs and player pages.
     n_clubs = hubs.build_club_hubs(
         dist, TEMPLATES, STATIC, ds, leagues, standings_by_slug, updated)
-    n_players = hubs.build_player_pages(dist, TEMPLATES, STATIC, ds, updated)
+    n_players = hubs.build_player_pages(dist, TEMPLATES, STATIC, ds, updated,
+                                        club_hub_ids=club_hub_ids, ntd=nt_data)
 
     # The by-date pages, written after the club hubs they link into.
     n_day_pages, n_match_dates = matches_page.build_pages(
@@ -735,7 +742,7 @@ def main(argv):
     # Site search: the index every page's bar fetches, plus the /search/ page
     # the bar's form submits to. Built last because the index covers the club
     # hubs and player pages written just above.
-    n_search = search.write_index(dist, ds, leagues, scorchers=scorchers,
+    n_search = search.write_index(dist, ds, leagues, scorchers=scorchers, ntd=nt_data,
                                   hidden=HIDDEN_ON_LANDING)
     search.build_page(dist, TEMPLATES, STATIC, updated)
 

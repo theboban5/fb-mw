@@ -28,14 +28,7 @@ TODAY = "2026-08-05"
 
 
 def _load(tabs):
-    texts = {}
-    for tab in tabs:
-        path = os.path.join(CANONICAL, f"{tab}.csv")
-        if not os.path.exists(path):
-            return None
-        with open(path, encoding="utf-8") as fh:
-            texts[tab] = fh.read()
-    return texts
+    return dataset.read_snapshot(CANONICAL, tabs)
 
 
 class ClockTest(unittest.TestCase):
@@ -81,7 +74,7 @@ class WindowTest(unittest.TestCase):
 class CollectTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        texts = _load(dataset.TAB_GIDS)
+        texts = _load(dataset.TABS)
         nt_texts = _load(dataset.NT_TABS)
         if texts is None or nt_texts is None:
             raise unittest.SkipTest("data/canonical/ snapshot not present")
@@ -143,7 +136,7 @@ class BuiltPagesTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        texts = _load(dataset.TAB_GIDS)
+        texts = _load(dataset.TABS)
         nt_texts = _load(dataset.NT_TABS)
         if texts is None or nt_texts is None:
             raise unittest.SkipTest("data/canonical/ snapshot not present")

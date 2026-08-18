@@ -6,6 +6,13 @@ import hashlib
 import os
 import shutil
 
+# This module has been import-free apart from the standard library. Two
+# additions, both of them data-model facts rather than layers: `lineups` is the
+# team-sheet markup the national-team page and this one now share, and
+# `dataset` supplies the reserved unknown-player id — the one player_id that
+# must never become a link, because no page is written for it.
+from . import dataset, lineups
+
 # ── Site identity / link previews ────────────────────────────────────────────
 
 SITE_URL = "https://everyleague.co"          # matches the CNAME build.py writes
@@ -421,6 +428,17 @@ def _scorers_block(match, goals_by_match):
     )
 
 
+def _player_href(player_id: str) -> str:
+    """A player's profile, relative to a league page, or "" when unlinkable.
+
+    Same one-level-up depth as _player_link below, which is the depth every
+    page that shows a scorer or a team sheet sits at.
+    """
+    if not player_id or player_id == dataset.UNKNOWN_PLAYER_ID:
+        return ""
+    return f"../players/{player_id}.html"
+
+
 def _player_link(name, player_id):
     """Scorer name linked to its player page, or plain text without an id."""
     if player_id:
@@ -681,15 +699,19 @@ def _unconfirmed_legend(matches):
 
 def render_results(matches, teams, season="", league_name="", crest=None, league_logo="",
                    goals_by_match=None, compact=False, club_hrefs=None,
-                   md_labels=None, md_chips=None):
+                   md_labels=None, md_chips=None, lineups_by_match=None):
     # `md_labels`/`md_chips` (cup pages) override the round header and the
     # pager chip text per matchday — "SEMI-FINALS"/"SF" instead of
     # "MATCHDAY 1"/"1". Leagues never pass them.
     # `compact` (the Super League, which shows scorers) drops the DATE/VENUE
     # columns to a centred caption so the v2 table fits the 660px column without
     # horizontal scroll — which is what lets the away scorers stay on screen.
+    # `lineups_by_match` is {match_id: (home sheet, away sheet)} from
+    # adapt.league_data — absent, or empty for a match nobody has entered one
+    # for, which is still almost every match. The block simply does not render.
     crest = crest or (lambda code: None)
     club_hrefs = club_hrefs or {}
+    lineups_by_match = lineups_by_match or {}
     # Group every match by matchday — played results and not-yet-played fixtures
     # alike. A row with blank goals is a fixture (Match.played is False): it shows
     # kickoff info instead of a score, and standings/scorers already ignore it.
@@ -820,6 +842,14 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                         f'<tr class="v2-scorers-row{alt_cls}">'
                         f'<td colspan="{colspan}">{scorers_html}</td></tr>'
                     )
+                home_sheet, away_sheet = lineups_by_match.get(
+                    m.match_id, (None, None))
+                lineup_html = lineups.two_sided_row_html(
+                    home_sheet, away_sheet,
+                    teams[m.home_code].name, teams[m.away_code].name,
+                    player_href=_player_href, colspan=colspan)
+                if lineup_html:
+                    v2.append(lineup_html)
             v2.append("</tbody>")  # /v2-md-group
         v2 += ["</table>"]
         legend = _unconfirmed_legend(matches)
@@ -1318,7 +1348,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
                withdrawn=None, adjustment_reasons=None, crest_keys=None,
                competition_id="", club_hrefs=None, club_names=None,
                kind="league", md_labels=None, md_chips=None,
-               bracket_rounds=None, stage_labels=None):
+               bracket_rounds=None, stage_labels=None, lineups_by_match=None):
     os.makedirs(dist, exist_ok=True)
     base = _read(os.path.join(templates_dir, "base.html"))
 
@@ -1343,6 +1373,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
         # apart from the tidier layout.
         goals_by_match=goals_by_match, compact=True, club_hrefs=club_hrefs,
         md_labels=md_labels, md_chips=md_chips,
+        lineups_by_match=lineups_by_match,
     ))
 
     if kind == "cup":

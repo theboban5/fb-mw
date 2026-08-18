@@ -42,6 +42,10 @@ PRIMARY_KEYS = {
     "goals": ("goal_id",),
     "players": ("player_id",),
     "registrations": ("player_id", "team_id", "season_id"),
+    # One row per named player per side, so the key is the sheet plus the
+    # player. team_id is in it because a league match has two real teams and
+    # two clubs may field players who share a name.
+    "lineups": ("match_id", "team_id", "player_name"),
     "reporters": ("reporter_id",),
 }
 
@@ -130,6 +134,13 @@ def check_foreign_keys(ds):
         fk(lbl, "team_id", g.team_id, ds.teams)
         fk(lbl, "player_id", g.player_id, ds.players)
         fk(lbl, "assist_player_id", g.assist_player_id, ds.players, blank_ok=True)
+    for r in ds.lineups:
+        lbl = f"lineups {r.match_id}/{r.team_id}/{r.player_name}"
+        fk(lbl, "match_id", r.match_id, ds.matches)
+        fk(lbl, "team_id", r.team_id, ds.teams)
+        # Blank is the "nobody has identified them yet" state a reported
+        # scorer already has, so it is allowed here for the same reason.
+        fk(lbl, "player_id", r.player_id, ds.players, blank_ok=True)
     for e in ds.entries.values():
         lbl = f"entries {e.entry_id}"
         fk(lbl, "competition_id", e.competition_id, ds.competitions)
@@ -317,6 +328,64 @@ def check_cup_rules(ds):
                 f"{lbl}: stage {m.stage!r} is not a knockout stage "
                 f"({', '.join(sorted(dataset.KNOCKOUT_STAGES))})"
             )
+    return errors
+
+
+def check_lineups(ds):
+    """Check 10: a team sheet that a build can render.
+
+    The single-row rules — the role vocabulary, a sub_on carrying a minute, the
+    card states — are the database's job and 0018 does them with CHECK
+    constraints. Everything here is the CROSS-ROW half a constraint cannot see,
+    and it is the same list check_nt applies to nt_lineups plus the two rules
+    that tab cannot state: a league sheet belongs to one of the two teams that
+    actually played, and its player_id is a real players row (checked in check
+    2 above).
+
+    Why this is an ERROR and not a warning: src/lineups.py pairs a substitute
+    to the starter they replaced BY NAME. A replaced_player naming nobody
+    renders a substitution with a dangling name, and a twelfth starter renders
+    a starting XI that is not one. Both are wrong on the page rather than
+    merely untidy in the table.
+    """
+    errors = []
+    by_side = {}
+    for r in ds.lineups:
+        m = ds.matches.get(r.match_id)
+        if m is None:
+            continue                       # already reported by check 2
+        if r.team_id not in (m.home_team_id, m.away_team_id):
+            errors.append(
+                f"lineups {r.match_id}/{r.player_name}: team_id {r.team_id!r} "
+                f"did not play in this match")
+            continue
+        by_side.setdefault((r.match_id, r.team_id), []).append(r)
+
+    for (mid, tid), rows in sorted(by_side.items()):
+        names = {r.player_name for r in rows}
+        starting = [r for r in rows if r.role == "starting"]
+        if len(starting) > 11:
+            errors.append(
+                f"lineups {mid}/{tid}: {len(starting)} starting rows "
+                f"(a starting XI is 11)")
+        for r in rows:
+            # A second yellow IS a red. 0018 refuses the pair at write time;
+            # an imported row could still carry it, and would render two card
+            # markers for one dismissal.
+            if r.yellow_red_card and r.red_card:
+                errors.append(
+                    f"lineups {mid}/{r.player_name}: yellow_red_card and "
+                    f"red_card are both set (a second yellow IS a red)")
+            if r.role != "sub_on":
+                continue
+            if not r.minute_on:
+                errors.append(
+                    f"lineups {mid}/{r.player_name}: role=sub_on but "
+                    f"minute_on is blank")
+            if r.replaced_player and r.replaced_player not in names:
+                errors.append(
+                    f"lineups {mid}/{r.player_name}: replaced_player "
+                    f"{r.replaced_player!r} is not in this side's line-up")
     return errors
 
 
@@ -573,6 +642,7 @@ def validate(texts, canonical_dir=CANONICAL_DIR, allow_deletions=False,
         errors += check_goal_counts(ds)
         errors += check_dates(ds)
         errors += check_cup_rules(ds)
+        errors += check_lineups(ds)
         try:
             ds.active_season()
         except dataset.DataError as err:

@@ -7,10 +7,11 @@ goals by season and competition. Both reuse the site's existing CSS classes
 so they inherit the league pages' styling.
 """
 
+from dataclasses import dataclass
 from html import escape
 import os
 
-from . import adapt, dataset, render
+from . import adapt, dataset, lineups, render
 
 RECENT_RESULTS = 10
 
@@ -238,11 +239,412 @@ def player_goal_credits(ds):
     return credits, own_goals
 
 
-def build_player_pages(dist, templates_dir, static_dir, ds, updated):
-    """Write /players/{player_id}.html for every player with a scorer credit.
+@dataclass(frozen=True)
+class Appearance:
+    """One player in one match: what the match-stats table shows as a row.
 
-    Goals grouped by season + competition, from the goals tab. Own goals are
-    not scorer credits (shown as a separate note).
+    Display-ready on purpose. A profile mixes club football (from `Dataset`)
+    with national-team football (from `NTData`), and those two schemas share no
+    ids at all — a league match has a competition_id and two team_ids, an
+    nt_matches row has a competition NAME and an opponent NAME. Resolving both
+    to labels at the point they are read is what lets one table render them
+    side by side without knowing which it is looking at.
+    """
+    date: str
+    competition: str      # label, not an id
+    opponent: str         # label, not an id
+    team_label: str       # the side this player turned out for
+    club_id: str          # for the club-hub link; "" for a national team
+    national: bool
+    home: bool
+    started: bool
+    minute_on: str
+    minute_off: str
+    captain: bool
+    shirt_number: str
+    position: str
+    goals: int
+    assists: int
+    # Named exactly as the lineups tab names them: lineups.cards_html reads
+    # these attributes straight off the row, and a shorter name here would mean
+    # a second copy of the card markup.
+    yellow_card: bool
+    yellow_red_card: bool
+    red_card: bool
+    scoreline: str        # "2-1", the player's own side first
+    outcome: str          # W | D | L, or "" when the match has no score
+
+    @property
+    def sort_key(self):
+        # Newest first, and a match with no date sorts last rather than first:
+        # a blank date is an unscheduled fixture, not the dawn of time.
+        return (self.date != "", self.date)
+
+
+@dataclass
+class Career:
+    """Everything a profile page shows, computed once per player."""
+    appearances: "list[Appearance]"     # newest first
+    goals: int
+    assists: int
+
+    @property
+    def starts(self) -> int:
+        return sum(1 for a in self.appearances if a.started)
+
+    @property
+    def sub_apps(self) -> int:
+        return sum(1 for a in self.appearances if not a.started)
+
+    @property
+    def yellows(self) -> int:
+        return sum(1 for a in self.appearances if a.yellow_card or a.yellow_red_card)
+
+    @property
+    def reds(self) -> int:
+        return sum(1 for a in self.appearances if a.red_card or a.yellow_red_card)
+
+    @property
+    def latest(self) -> "Appearance | None":
+        """The most recent appearance FOR A CLUB, else the most recent of any.
+
+        The header names a team, and "Civil Service United" is a more useful
+        answer to "who does she play for" than "Malawi" — a national team is
+        something you are picked for, not somewhere you play.
+        """
+        club = [a for a in self.appearances if not a.national]
+        return (club or self.appearances or [None])[0]
+
+
+def _outcome(ours, theirs) -> "tuple[str, str]":
+    """("2-1", "W") from one side's perspective, or ("", "") with no score."""
+    if ours is None or theirs is None:
+        return "", ""
+    return (f"{ours}-{theirs}",
+            "W" if ours > theirs else ("D" if ours == theirs else "L"))
+
+
+def _playable(row) -> bool:
+    """An unused substitute did not play.
+
+    They are on the team sheet and they render in the match's line-up block,
+    but counting them as an appearance would make "games played" mean "games
+    named in a squad", which is a different and much less interesting number.
+    """
+    return row.role != "unused_sub"
+
+
+def _identified(player_id: str) -> bool:
+    return bool(player_id) and player_id != dataset.UNKNOWN_PLAYER_ID
+
+
+def _club_appearances(ds):
+    """player_id -> [Appearance] from `lineups`, `goals` and their assists."""
+    goals_by, assists_by = {}, {}
+    for g in ds.goals.values():
+        m = ds.matches.get(g.match_id)
+        if m is None or m.is_placeholder:
+            continue
+        if _identified(g.player_id) and not g.is_own_goal:
+            key = (g.player_id, g.match_id)
+            goals_by[key] = goals_by.get(key, 0) + 1
+        if g.assist_player_id:
+            key = (g.assist_player_id, g.match_id)
+            assists_by[key] = assists_by.get(key, 0) + 1
+
+    out = {}
+    for r in ds.lineups:
+        if not _identified(r.player_id) or not _playable(r):
+            continue
+        m = ds.matches.get(r.match_id)
+        if m is None or m.is_placeholder:
+            continue
+        home = r.team_id == m.home_team_id
+        team = ds.teams.get(r.team_id)
+        club = ds.clubs.get(team.club_id) if team else None
+        scoreline, outcome = _outcome(
+            m.home_goals if home else m.away_goals,
+            m.away_goals if home else m.home_goals)
+        opponent = ds.teams.get(m.away_team_id if home else m.home_team_id)
+        out.setdefault(r.player_id, []).append(Appearance(
+            date=m.date,
+            competition=ds.league_display_name(m.competition_id, m.season_id),
+            opponent=opponent.display_name if opponent else "",
+            team_label=(team.display_name if team else r.team_id),
+            club_id=club.club_id if club else "",
+            national=False, home=home, started=r.role == "starting",
+            minute_on=r.minute_on, minute_off=r.minute_off,
+            captain=r.captain, shirt_number=r.shirt_number, position=r.position,
+            goals=goals_by.get((r.player_id, r.match_id), 0),
+            assists=assists_by.get((r.player_id, r.match_id), 0),
+            yellow_card=r.yellow_card, yellow_red_card=r.yellow_red_card,
+            red_card=r.red_card, scoreline=scoreline, outcome=outcome,
+        ))
+    return out, goals_by, assists_by
+
+
+def _national_appearances(ntd):
+    """The same, from the nt_* tabs — our own sides only.
+
+    An opponent's rows carry ids from no registry (INT_LIB_KOSIAH), so they
+    resolve to nobody and contribute nothing. That is not a gap: this site
+    holds one match of a Liberian international's career and has no business
+    publishing a profile of them.
+    """
+    if ntd is None:
+        return {}, {}, {}
+    ours = set(ntd.nt_teams)
+    goals_by, assists_by = {}, {}
+    for g in ntd.nt_goals.values():
+        if g.team_id not in ours:
+            continue
+        if _identified(g.player_id) and not g.is_own_goal:
+            key = (g.player_id, g.match_id)
+            goals_by[key] = goals_by.get(key, 0) + 1
+        if g.assist_player_id:
+            key = (g.assist_player_id, g.match_id)
+            assists_by[key] = assists_by.get(key, 0) + 1
+
+    out = {}
+    for r in ntd.nt_lineups:
+        if r.team_id not in ours or not _identified(r.player_id) or not _playable(r):
+            continue
+        m = ntd.nt_matches.get(r.match_id)
+        if m is None:
+            continue
+        scoreline, outcome = _outcome(m.team_score, m.opponent_score)
+        team = ntd.nt_teams.get(r.team_id)
+        out.setdefault(r.player_id, []).append(Appearance(
+            date=m.date, competition=m.competition, opponent=m.opponent,
+            team_label=team.team_name if team else r.team_id,
+            club_id="", national=True, home=m.home_away == "home",
+            started=r.role == "starting",
+            minute_on=r.minute_on, minute_off=r.minute_off,
+            captain=r.captain, shirt_number=r.shirt_number, position=r.position,
+            goals=goals_by.get((r.player_id, r.match_id), 0),
+            assists=assists_by.get((r.player_id, r.match_id), 0),
+            yellow_card=r.yellow_card, yellow_red_card=r.yellow_red_card,
+            red_card=r.red_card, scoreline=scoreline, outcome=outcome,
+        ))
+    return out, goals_by, assists_by
+
+
+def player_careers(ds, ntd=None):
+    """player_id -> Career, club football and international football together.
+
+    That union is the whole point of giving the national-team tabs canonical
+    ids in 0020: before it, the same person was two unrelated strings and no
+    page could show both halves of their season.
+
+    Everything is derived from `lineups`/`goals` and their nt_ counterparts; no
+    tab is hand-maintained for it, so a profile cannot fall out of step with
+    the match pages it summarises. A goal by a player with no line-up row still
+    counts — most of this dataset predates team sheets entirely, so a scorer
+    with no sheet is the normal case rather than an error.
+    """
+    club_apps, club_goals, club_assists = _club_appearances(ds)
+    nt_apps, nt_goals, nt_assists = _national_appearances(ntd)
+
+    goals_by = {**club_goals, **nt_goals}
+    assists_by = {**club_assists, **nt_assists}
+
+    player_ids = set(club_apps) | set(nt_apps)
+    player_ids |= {pid for pid, _mid in goals_by}
+    player_ids |= {pid for pid, _mid in assists_by}
+
+    goal_totals, assist_totals = {}, {}
+    for (pid, _mid), n in goals_by.items():
+        goal_totals[pid] = goal_totals.get(pid, 0) + n
+    for (pid, _mid), n in assists_by.items():
+        assist_totals[pid] = assist_totals.get(pid, 0) + n
+
+    careers = {}
+    for player_id in player_ids:
+        appearances = club_apps.get(player_id, []) + nt_apps.get(player_id, [])
+        appearances.sort(key=lambda a: a.sort_key, reverse=True)
+        careers[player_id] = Career(
+            appearances=appearances,
+            goals=goal_totals.get(player_id, 0),
+            assists=assist_totals.get(player_id, 0),
+        )
+    return careers
+
+
+def player_page_ids(ds, credits=None, own_goals=None, careers=None, ntd=None):
+    """Exactly the set of players a page is written for.
+
+    src/search.py indexes this same set — deriving it twice is how a search
+    result ends up pointing at a 404, which is why both callers come here.
+    A player earns a page by having done something: a goal, an own goal, an
+    assist, or an appearance on a team sheet. Everyone else is a `players` row
+    with nothing to put on a page.
+    """
+    if credits is None or own_goals is None:
+        credits, own_goals = player_goal_credits(ds)
+    if careers is None:
+        careers = player_careers(ds, ntd)
+    ids = set(credits) | set(own_goals) | set(careers)
+    return {pid for pid in ids if pid in ds.players}
+
+
+# How many match-stat rows show before the rest are folded away. A <details>
+# rather than a "show more" link, so the whole career is in the page for search
+# and for a reader who taps once, without twenty seasons of table on first
+# paint. Same idea as the scorer tables' cutoff.
+MATCH_ROWS_SHOWN = 15
+
+
+def _stat_tile(value, label) -> str:
+    return (f'<div class="pl-tile"><span class="pl-tile-n">{value}</span>'
+            f'<span class="pl-tile-l">{escape(label)}</span></div>')
+
+
+def _summary_tiles(career) -> str:
+    """Apps / Starts / Goals / Assists / Cards, and only what is non-zero.
+
+    A player with no team sheet anywhere would otherwise get a row of four
+    zeroes under their name, which reads as "this player did nothing" rather
+    than "nobody has entered a line-up for these matches yet".
+    """
+    tiles = []
+    if career.appearances:
+        tiles.append(_stat_tile(len(career.appearances), "Apps"))
+        tiles.append(_stat_tile(career.starts, "Starts"))
+    if career.goals or career.appearances:
+        tiles.append(_stat_tile(career.goals, "Goals"))
+    if career.assists:
+        tiles.append(_stat_tile(career.assists, "Assists"))
+    if career.yellows:
+        tiles.append(_stat_tile(career.yellows, "Yellow"))
+    if career.reds:
+        tiles.append(_stat_tile(career.reds, "Red"))
+    if not tiles:
+        return ""
+    return f'<div class="pl-tiles">{"".join(tiles)}</div>'
+
+
+def _profile_header(player, career, ds, club_hub_ids) -> str:
+    """Name, and whatever else is actually known — never a placeholder.
+
+    players.position, .dob and .nationality are empty for every row in this
+    dataset today, so each line here has to disappear rather than render an
+    em-dash. The shirt, the position and the club come from the most recent
+    team sheet instead, which is where that information actually lives.
+    """
+    latest = career.latest
+    bits = []
+    if latest and latest.shirt_number:
+        bits.append(f'<span class="pl-shirt">#{escape(latest.shirt_number)}</span>')
+    position = (latest.position if latest and latest.position else player.position)
+    if position:
+        bits.append(f'<span class="pl-pos">{escape(position.upper())}</span>')
+
+    club_line = ""
+    if latest:
+        name = escape(latest.team_label)
+        club_line = (
+            f'<p class="pl-club"><a class="club-link" '
+            f'href="../clubs/{escape(latest.club_id)}.html">{name}</a></p>'
+            if latest.club_id and latest.club_id in club_hub_ids
+            else f'<p class="pl-club">{name}</p>')
+
+    meta = f'<p class="pl-meta">{" ".join(bits)}</p>' if bits else ""
+    return (
+        '<div class="v2-mini-banner">'
+        '<p class="v2-season">PLAYER</p>'
+        f'<h2 class="v2-mini-league">{escape(player.display_name.upper())}</h2>'
+        f"{meta}{club_line}"
+        "</div>"
+    )
+
+
+def _match_stat_row(a, show_side=False) -> str:
+    """One match on the profile: what happened, in the order it is asked about.
+
+    Deliberately not the site's results row: the question on a profile is "how
+    did THIS player do", so the opponent is one column and the player's own
+    goals, assists and cards are the rest. The competition and date share a
+    caption line above, exactly as the compact results table does, which is
+    what keeps six columns inside a phone's width.
+    """
+    date = render._format_date(a.date) if a.date else ""
+    # The side is named only when the career actually moves between sides —
+    # a club and the national team, or two clubs. On a player who has only
+    # ever turned out for one, repeating it on every row is pure noise.
+    comp = f"{escape(a.team_label)} &middot; {escape(a.competition)}" \
+        if show_side else escape(a.competition)
+    caption = " &middot; ".join(b for b in (escape(date), comp) if b)
+
+    role = "XI" if a.started else "SUB"
+    if a.started and a.minute_off:
+        role += f' <span class="pl-min">&darr;{escape(a.minute_off)}\'</span>'
+    elif not a.started and a.minute_on:
+        role += f' <span class="pl-min">&uarr;{escape(a.minute_on)}\'</span>'
+    if a.captain:
+        role += lineups.captain_badge(is_captain=True)
+
+    cards = lineups.cards_html(a)
+    score = (f'<span class="pl-res pl-res-{a.outcome.lower()}">'
+             f'{escape(a.outcome)}</span> {escape(a.scoreline)}'
+             if a.outcome else escape(a.scoreline))
+
+    return (
+        f'<tr class="pl-cap-row"><td colspan="5">'
+        f'<span class="v2-res-meta">{caption}</span></td></tr>'
+        f'<tr class="pl-match-row">'
+        f'<td class="pl-opp">{"" if a.home else "@ "}{escape(a.opponent)}</td>'
+        f'<td class="pl-score">{score}</td>'
+        f'<td class="pl-role">{role}{cards}</td>'
+        f'<td class="pl-ga">{a.goals or ""}</td>'
+        f'<td class="pl-ga">{a.assists or ""}</td>'
+        "</tr>"
+    )
+
+
+def _match_stats(career) -> str:
+    if not career.appearances:
+        return ""
+    head = (
+        '<thead><tr>'
+        '<th class="pl-th-opp">OPPONENT</th>'
+        '<th class="pl-th-score">RES</th>'
+        '<th class="pl-th-role">ROLE</th>'
+        '<th class="pl-th-ga">G</th>'
+        '<th class="pl-th-ga">A</th>'
+        "</tr></thead>"
+    )
+    show_side = len({a.team_label for a in career.appearances}) > 1
+    rows = [_match_stat_row(a, show_side) for a in career.appearances]
+    shown, hidden = rows[:MATCH_ROWS_SHOWN], rows[MATCH_ROWS_SHOWN:]
+    out = [
+        '<h3 class="v2-sec-title">Match Stats</h3>',
+        '<div class="v2-table-outer">'
+        f'<table class="v2-standings pl-matches">{head}'
+        f'<tbody>{"".join(shown)}</tbody></table></div>',
+    ]
+    if hidden:
+        out.append(
+            '<details class="pl-more">'
+            f'<summary>{len(hidden)} earlier match'
+            f'{"es" if len(hidden) != 1 else ""}</summary>'
+            '<div class="v2-table-outer">'
+            f'<table class="v2-standings pl-matches">{head}'
+            f'<tbody>{"".join(hidden)}</tbody></table></div></details>'
+        )
+    return "".join(out)
+
+
+def build_player_pages(dist, templates_dir, static_dir, ds, updated,
+                       club_hub_ids=frozenset(), ntd=None):
+    """Write /players/{player_id}.html for everyone who has done something.
+
+    Until team sheets existed a page meant a goal, so a player with 30
+    appearances and no goals had no page at all and no way to be found. The set
+    is now goals + own goals + assists + appearances — see player_page_ids,
+    which src/search.py uses for exactly the same set.
+
+    Three sections: what is known about the player, a summary of their career,
+    and the per-match table. Goals by competition stays underneath, unchanged.
     """
     base = render._read(os.path.join(templates_dir, "base.html"))
     css_ver = render.css_version(static_dir)
@@ -250,13 +652,15 @@ def build_player_pages(dist, templates_dir, static_dir, ds, updated):
     os.makedirs(out_dir, exist_ok=True)
 
     credits, own_goals = player_goal_credits(ds)
+    careers = player_careers(ds, ntd)
+    page_ids = player_page_ids(ds, credits, own_goals, careers)
+    empty_career = Career(appearances=[], goals=0, assists=0)
 
     count = 0
-    for player_id in sorted(set(credits) | set(own_goals)):
-        player = ds.players.get(player_id)
-        if player is None:
-            continue  # dangling id would already have failed validation
+    for player_id in sorted(page_ids):
+        player = ds.players[player_id]
         name = player.display_name
+        career = careers.get(player_id, empty_career)
         by_comp = credits.get(player_id, {})
 
         rows = []
@@ -288,27 +692,31 @@ def build_player_pages(dist, templates_dir, static_dir, ds, updated):
             og_note = (f'<p class="v2-res-legend">{n} own goal'
                        f'{"s" if n != 1 else ""} (not counted above).</p>')
 
-        table = (
-            '<div class="v2-table-outer">'
-            '<table class="v2-standings scorers-table">'
-            '<thead><tr><th class="scr-th-player">SEASON</th>'
-            '<th class="scr-th-team">COMPETITION</th>'
-            '<th class="scr-th-goals">GOALS</th></tr></thead>'
-            f'<tbody>{"".join(rows)}</tbody></table></div>'
-            if rows else '<p class="v2-empty">No goals recorded.</p>'
-        )
+        # This table counts LEAGUE goals only. On a player whose goals are all
+        # internationals it would otherwise read "No goals recorded" directly
+        # under a tile saying 5 — so with nothing to say, it says nothing.
+        goals_section = ""
+        if rows or own_goals.get(player_id):
+            table = (
+                '<div class="v2-table-outer">'
+                '<table class="v2-standings scorers-table">'
+                '<thead><tr><th class="scr-th-player">SEASON</th>'
+                '<th class="scr-th-team">COMPETITION</th>'
+                '<th class="scr-th-goals">GOALS</th></tr></thead>'
+                f'<tbody>{"".join(rows)}</tbody></table></div>'
+                if rows else '<p class="v2-empty">No goals recorded.</p>'
+            )
+            goals_section = ('<h3 class="v2-sec-title">Goals by Competition</h3>'
+                             + table + og_note)
 
-        content = "\n".join([
+        content = "\n".join(part for part in [
             '<div class="v2-content">',
-            '<div class="v2-mini-banner">',
-            '<p class="v2-season">PLAYER</p>',
-            f'<h2 class="v2-mini-league">{escape(name.upper())}</h2>',
+            _profile_header(player, career, ds, club_hub_ids),
+            _summary_tiles(career),
+            _match_stats(career),
+            goals_section,
             "</div>",
-            '<h3 class="v2-sec-title">Goals by Competition</h3>',
-            table,
-            og_note,
-            "</div>",
-        ])
+        ] if part)
         html = _page(base, name, content, updated, css_ver)
         render._write(os.path.join(out_dir, f"{player_id}.html"), html)
         count += 1

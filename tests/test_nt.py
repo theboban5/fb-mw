@@ -665,7 +665,7 @@ class PageTest(unittest.TestCase):
         self.assertIn("Rose Kadzere", self.html)
 
     def test_lineup_cards_and_captain(self):
-        self.assertIn("nt-card-y", self.html)
+        self.assertIn("el-card-y", self.html)
         self.assertIn('title="Captain"', self.html)
 
     def test_unused_subs_listed_separately(self):

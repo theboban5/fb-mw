@@ -21,6 +21,7 @@ src/adapt.py         ← new schema → renderer-ready per-league shapes
 src/standings.py     ← standings computation
 src/scorers.py       ← goalscorer aggregation
 src/render.py        ← data → HTML
+src/lineups.py       ← team sheets: folding + markup, shared league/national
 src/hubs.py          ← club hub + player pages (cross-competition views)
 src/matches_page.py  ← /matches/ — every match on one date, any date
 src/nt.py            ← national-team tabs (nt_*), filtered to one team
@@ -53,6 +54,35 @@ A date only has fixtures on it if the sheet's `date` column is filled in
 ahead of time: an undated match belongs to no day and appears nowhere in this
 view. Entering dates further out is what makes the forward half of the
 calendar useful.
+
+### Player profiles
+
+`/players/{player_id}.html` is one page per person, and since `0018`/`0020` it
+covers a whole career rather than a column of goals: a header (shirt, position,
+current side), a row of summary tiles, and a **match-stats table** — one row
+per match with the opponent, the result, whether they started or came on, their
+goals, their assists and their cards.
+
+Two decisions make that page possible, and both were structural rather than
+cosmetic:
+
+  * **Team sheets reach the build.** `lineups` is a `Dataset` tab, so an
+    appearance is a fact the renderer can count. Before it, "games played" had
+    nothing behind it at all.
+  * **One player identity.** National-team `player_id`s were their own
+    namespace pointing at nothing; `0020` merged our own sides into `players`,
+    so club football and international football land on the same page. An
+    opponent's id is deliberately left alone — see DATA_MODEL.md.
+
+A page is written for anyone with a goal, an own goal, an assist or an
+appearance, and **`hubs.player_page_ids` is the single source of that set**:
+`build_player_pages`, `src/search.py` and `src/nt_page.py` all ask it, because
+three modules deriving it separately is exactly how a link ends up pointing at
+a 404. Being *named in a squad* does not earn a page — a squad member who has
+not played yet renders as plain text rather than as a broken link.
+
+There is no career/transfer table yet. That needs data nothing currently
+collects.
 
 ## Local development
 
@@ -192,19 +222,27 @@ Google Sheet and are **dead** — the sheet is no longer read. Use this instead.
 ### Match detail (optional, per match)
 
 Below the result, `/report` offers collapsed sections a reporter can ignore
-entirely: goalscorers, cards, substitutions, line-ups and photos. Each saves
+entirely: goalscorers, a team sheet per side, and photos. Each saves
 independently and immediately — none of it is part of the publish, so a failed
 photo upload can never cost someone the result they already got in.
 
-**Goalscorers go through an RPC; everything else uses ordinary RLS policies.**
-That asymmetry is deliberate. `validate.py` check 5 fails the build when a
-match carries more goal rows than its score, and a failed build deploys
-nothing — so a plain INSERT policy would let a reporter add a third scorer to a
-2-1 match and silently stop the site updating for everyone.
-`submit_match_goal()` counts the existing rows under a row lock and refuses.
-Cards, substitutions, line-ups and media live in new tables that `validate.py`
-has never heard of and the renderers never read, so they cannot break a build
-and need no such gate.
+There used to be four detail sections instead of two: Goalscorers, Cards,
+Substitutions and Line-ups, each with its own free-text name box, so entering
+one substitution meant typing two names that nothing checked against the eleven
+already entered. Worse, three of the four wrote to `match_incidents` and
+`lineup_entries`, which are not part of the `Dataset` — everything typed into
+them was stored correctly and rendered nowhere at all. `0018` folded all three
+into one `lineups` tab that the build does read (see DATA_MODEL.md).
+
+**Goalscorers and team sheets go through RPCs; media uses an ordinary RLS
+policy.** That asymmetry is deliberate. `validate.py` fails the build when a
+match carries more goal rows than its score (check 5) or a side fields twelve
+starters (check 10), and a failed build deploys nothing — so a plain INSERT
+policy would let one reporter silently stop the site updating for everyone.
+`submit_match_goal()` counts the existing rows under a row lock and refuses;
+`save_lineup()` re-checks every cross-row rule before it writes anything. Media
+lives in a table `validate.py` has never heard of and the renderers never read,
+so it cannot break a build and needs no such gate.
 
 **Naming a scorer resolves to a `player_id`** (migration `0010`). The reporter
 types a few letters, the app searches `players` and shows who it found —
@@ -236,17 +274,54 @@ next build.
 > adapter now falls back to `reported_player_name` rather than dropping the
 > goal, and only a goal with *neither* an id nor a name is skipped.
 
-Line-ups take plain names, one per line, so a whole team can be pasted in.
+**The team sheet is squad-first.** A reporter covering a club covers it every
+week, so the second week should not be the first week's typing again: the
+screen lists everyone that side has already fielded or scored through, and a
+tap puts them on the sheet carrying their `player_id`, their last shirt number
+and their last position. The squad is derived from `lineups` and `goals` rather
+than maintained anywhere, so it fills itself in as sheets are saved. Typing is
+what happens when someone is genuinely new, and it runs the same
+`create_player` path the scorer picker uses.
+
+That tap is the whole design. A name on a team sheet is worth something; a name
+that resolves to a player is worth much more — it is what makes the name
+clickable under the result, what gives them a profile page, and what makes
+"games played" a number rather than a guess. The tap is *faster* than typing
+AND it is the path that carries the id.
+
+**Pasting still works**, behind a "paste a sheet instead" toggle, with the same
+`(C)` / `[Y]` / `62' for X` shorthand spelled out beside the box — a sheet that
+arrives as a screenshot in a WhatsApp group is still a sheet. Pasted names are
+matched against the squad, so anyone already known arrives linked; anyone else
+comes in as a name only and is marked as such on their row.
+
+Cards are one control with four states — none, yellow, second yellow, red —
+cycled by tapping, rather than three checkboxes that could express "yellow AND
+red AND second yellow", which is not a thing that can happen and which the
+database refuses anyway. The captain is a toggle, and setting it on one player
+takes it off whoever had it. A starter's minute off is **derived** from the
+substitution that replaced them (`0013` for the national team, `0018` for the
+league): asking a reporter to type 63 twice is how two numbers that must agree
+end up not agreeing. An explicitly typed minute off still wins, because a
+sending-off leaves at a minute no substitution records.
+
+**Assists** are recorded on the goal, beside the scorer, using the same picker
+(`0019`). An assist is a property of a goal — it says who passed for *that*
+one — so a per-player tally on the team sheet would count the same thing while
+losing which goal it belonged to. Unlike a scorer there is no reported-name
+fallback: an assist that resolves to nobody is not recorded, because there is
+nowhere to keep it.
+
 Photos are shrunk to 1600px on the phone before upload; the `match-media`
 bucket independently caps size at 5 MB and restricts MIME types, and uploads
 are authorized by reading the match id out of the object's own path — so the
 path layout is a rule, not a convention.
 
-**Not yet rendered publicly.** The site has no per-match page, so cards,
-substitutions, line-ups and photos are captured but displayed nowhere. That is
-data collection ahead of a match page, not an oversight. Goals are the
-exception: they show under the result on league and club pages and feed the
-scorer tables.
+**What reaches the site.** Goals, assists and team sheets all render: a
+Line-ups toggle under the result on league, cup and national-team pages, with
+every identified name linking to that player's profile. Photos are still
+captured and displayed nowhere — that one is data collection ahead of a match
+page, not an oversight.
 
 ### Reporter accounts
 

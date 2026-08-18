@@ -68,6 +68,8 @@ body {
 }
 
 main { max-width: var(--max); margin: 0 auto; padding: 16px 16px 40px; }
+/* Only the operations dashboard, which compares competitions side by side. */
+main.is-wide { max-width: 900px; }
 
 .rp-loading { padding: 48px 0; text-align: center; color: var(--muted); }
 .rp-spinner {
@@ -239,6 +241,9 @@ main { max-width: var(--max); margin: 0 auto; padding: 16px 16px 40px; }
 .rp-done-head { margin: 6px 0 10px; font-weight: 800; color: var(--accent); }
 .rp-done-score { font-size: 1.25rem; font-weight: 700; }
 .rp-done-status { margin-top: 4px; color: var(--muted); font-size: 0.9rem; }
+/* "Next: A v B" — the whole point of the panel when someone is working through
+   a matchday, so it is the one solid button on a washed background. */
+.rp-done .rp-btn { margin-top: 14px; }
 
 /* ─── Forms (login, change password) ─────────────────────────────────────── */
 
@@ -328,6 +333,46 @@ a { color: var(--accent); }
 
 .rp-inline { display: flex; align-items: center; gap: 6px; font-size: 0.88rem; }
 
+/* ─── The scorer picker ──────────────────────────────────────────────────────
+   A name typed into a box is a name; a name tapped in this list is a player_id,
+   which is what puts the goal in the top-scorer table. The list is absolutely
+   positioned so opening it does not shove the minute and goal-type row down
+   the screen under the reporter's thumb. */
+
+.rp-pick { position: relative; }
+
+.rp-suggest {
+  position: absolute; left: 0; right: 0; top: 100%; z-index: 5;
+  max-height: 260px; overflow-y: auto;
+  margin: 4px 0 0; padding: 0; list-style: none;
+  border: 1px solid var(--accent); border-radius: var(--radius);
+  background: var(--bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+.rp-suggest[hidden] { display: none; }
+
+.rp-suggest-btn {
+  display: block; width: 100%;
+  min-height: var(--tap); padding: 10px 12px;
+  border: 0; border-bottom: 1px solid var(--line);
+  background: none; color: var(--ink);
+  font: inherit; font-size: 0.94rem; text-align: left; cursor: pointer;
+}
+.rp-suggest li:last-child .rp-suggest-btn { border-bottom: 0; }
+.rp-suggest-btn:active { background: var(--accent-wash); }
+.rp-suggest-btn em {
+  display: block; margin-top: 2px;
+  color: var(--muted); font-size: 0.76rem; font-style: normal;
+}
+/* Creating a person is the consequential tap in this list, so it does not look
+   like the seven rows above it. */
+.rp-suggest-btn.is-new { color: var(--accent); font-weight: 600; }
+.rp-suggest-btn[disabled] { opacity: 0.55; cursor: default; }
+
+/* The line under the box that says whether the goal reached a player record. */
+.rp-hint.is-good { color: var(--accent); font-weight: 600; }
+.rp-hint.is-warn { color: var(--warn); }
+
 .rp-list { list-style: none; margin: 0 0 4px; padding: 0; }
 .rp-list:empty { display: none; }
 .rp-list li {
@@ -343,6 +388,112 @@ a { color: var(--accent); }
   font-size: 1.1rem; line-height: 1; cursor: pointer;
 }
 .rp-x:active { background: var(--danger-wash); color: var(--danger); border-color: var(--danger); }
+
+/* ─── The national-team team sheet ───────────────────────────────────────────
+   One row per player carrying the position, the role, the change and the
+   cards — because on this side of the schema a booking is a flag on the
+   player's row rather than a record of its own. Denser than anything else in
+   this app, and unavoidably so: a team sheet is 14 players wide. */
+
+/* The paste shorthand, spelled out where it is used. A reporter should never
+   have to remember it — every one of these can be set by hand on the row
+   instead — so it reads as a list of shortcuts, not a syntax to learn. */
+.rp-legend {
+  margin: 6px 0 0; padding: 0 0 0 18px;
+  color: var(--muted); font-size: 0.8rem; line-height: 1.7;
+}
+.rp-legend code {
+  padding: 1px 5px; border-radius: 4px;
+  background: var(--accent-wash); color: var(--accent);
+  font-size: 0.78rem; font-weight: 600;
+}
+
+.rp-sheet { list-style: none; margin: 12px 0 0; padding: 0; }
+.rp-sheet-row {
+  padding: 10px; margin-bottom: 8px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--row-alt);
+}
+.rp-sheet-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.rp-sheet-name { font-weight: 600; font-size: 0.95rem; }
+.rp-sheet-name b { color: var(--accent); }
+.rp-sheet-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.rp-sheet-controls .rp-input {
+  flex: 1 1 90px; min-width: 0; margin-top: 0;
+  min-height: 40px; padding: 6px 8px; font-size: 15px;
+}
+.rp-sheet-flags {
+  display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: 8px;
+  font-size: 0.8rem; color: var(--muted);
+}
+.rp-sheet-flags .rp-inline { font-size: 0.8rem; }
+
+/* The squad: tap a name to put them on the sheet.
+   A wrapping row of chips rather than a list, because a squad is 20-odd short
+   names and a list of 20 rows is three screens of scrolling on a phone. */
+.rp-squad-chips {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+}
+.rp-squad-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 38px; padding: 6px 11px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--bg); color: var(--ink);
+  font: inherit; font-size: 0.88rem; line-height: 1.2;
+  cursor: pointer;
+}
+.rp-squad-chip b {
+  color: var(--muted); font-variant-numeric: tabular-nums; font-size: 0.8rem;
+}
+.rp-squad-chip:active { background: var(--accent-wash); }
+.rp-squad-chip.is-new {
+  border-style: dashed; border-color: var(--accent); color: var(--accent);
+}
+
+/* A toggle that reads as its own state: "Captain" lit means captain, and the
+   card chip says which card it is rather than which box is ticked. Buttons,
+   not checkboxes — a 38px chip is a far easier tap than a 16px box, and this
+   screen is filled in standing at a touchline. */
+.rp-chip {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  min-height: 38px; padding: 6px 12px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--bg); color: var(--muted);
+  font: inherit; font-size: 0.82rem; font-weight: 600;
+  cursor: pointer;
+}
+.rp-chip em { font-style: normal; font-weight: 400; font-size: 0.78rem; }
+.rp-chip.is-on {
+  border-color: var(--accent); background: var(--accent);
+  color: var(--accent-ink);
+}
+.rp-card-chip.is-card-none { color: var(--muted); }
+.rp-card-chip.is-card-yellow_card {
+  border-color: #f2c200; background: #fff8dd; color: #7a5c00;
+}
+.rp-card-chip.is-card-yellow_red_card {
+  border-color: #d33a3a;
+  background: linear-gradient(135deg, #fff8dd 50%, #fdeceb 50%);
+  color: #8a2020;
+}
+.rp-card-chip.is-card-red_card {
+  border-color: #d33a3a; background: #d33a3a; color: #ffffff;
+}
+
+/* A row whose name reached no player. Not an error — the sheet saves either
+   way and the name still renders — so it is a quiet note, not a warning. */
+.rp-sheet-warn {
+  margin-left: 6px; font-style: normal;
+  font-size: 0.72rem; font-weight: 600; color: var(--muted);
+}
+.rp-sheet-shirt { flex: 0 1 72px; }
+
+/* The paste box is the fallback, so it sits closed under the squad rather than
+   above it: the common path is tapping names, and the uncommon one should not
+   be the first thing on the screen. */
+.rp-paste { margin-top: 12px; }
 
 /* ─── Home actions and filters ───────────────────────────────────────────── */
 
@@ -395,3 +546,195 @@ a { color: var(--accent); }
 /* The matchday menu holds "Quarter-final" as well as "Matchday 12", so it gets
    a row of its own rather than sharing one with Show and Date. */
 .rp-filter-wide { flex-basis: 100%; }
+
+/* ─── A fixture list, entered as a fixture list ───────────────────────────────
+   One card per match, numbered, because the reporter is copying line by line
+   off a graphic and has to be able to see which line they are on. The card
+   carries its own failure: after a partial save the lines that worked have
+   gone and the ones left are outlined in red with the reason under them, so
+   "what still needs doing" is the whole screen rather than a message about
+   it. */
+
+.rp-fixtures { list-style: none; margin: 10px 0 0; padding: 0; }
+
+.rp-fx {
+  padding: 10px 12px 12px; margin-top: 10px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--row-alt);
+}
+.rp-fx.is-bad { border-color: var(--danger); background: var(--danger-wash); }
+
+.rp-fx-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 6px;
+}
+.rp-fx-no {
+  font-size: 0.72rem; font-weight: 800; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--muted);
+}
+/* Quiet, and still a 44px target: removing a line is easy to want and easy to
+   hit by accident, so it is the least prominent thing on the card. */
+.rp-fx-drop {
+  min-height: 44px; padding: 0 4px; margin: -6px -4px -6px 0;
+  border: 0; background: none; cursor: pointer;
+  font-family: inherit; font-size: 0.8rem; color: var(--muted);
+}
+.rp-fx-drop:active { color: var(--danger); }
+
+.rp-fx .rp-select, .rp-fx .rp-input { background: var(--bg); }
+.rp-fx > .rp-input { margin-top: 8px; }
+
+/* The two team boxes are the scorer picker reused: type to narrow, tap to
+   commit a team_id. The card is deliberately left static (no position, no
+   z-index) so it never opens a stacking context — the suggestion list inside
+   it is absolutely positioned with a z-index, and confining that to one card
+   would let the NEXT card's background paint over the list. */
+.rp-fx .rp-pick + .rp-pick { margin-top: 0; }
+.rp-fx .rp-suggest { max-height: 220px; }
+.rp-fx-v {
+  display: block; margin: 4px 0; text-align: center;
+  font-size: 0.7rem; font-weight: 800; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted);
+}
+.rp-fx-error {
+  margin: 8px 0 0; color: var(--danger);
+  font-size: 0.82rem; font-weight: 600;
+}
+
+/* ─── Operations dashboard ────────────────────────────────────────────────────
+   Administrator-only. Wider than the rest of the app on purpose: the overview
+   is a comparison across competitions, which a 560px column cannot show. On a
+   phone the table collapses to one card per competition (below), so the same
+   markup serves both without a second template. */
+
+.ops-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  margin: 10px 0 16px;
+  padding-bottom: 4px;
+  /* The tab strip scrolls sideways on a phone; hide the scrollbar so it reads
+     as a strip rather than a broken layout. */
+  scrollbar-width: none;
+}
+.ops-tabs::-webkit-scrollbar { display: none; }
+.ops-tab {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ops-tab.is-on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+/* The urgent strip. Only non-zero items are rendered, so an empty strip is a
+   single "nothing urgent" chip rather than a row of zeros. */
+.ops-urgent { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.ops-urgent-item {
+  flex: 1 1 auto;
+  min-width: 132px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--warn-wash);
+  text-decoration: none;
+  color: var(--ink);
+}
+.ops-urgent-item.is-ok  { background: var(--accent-wash); }
+.ops-urgent-item.is-bad { background: var(--danger-wash); }
+.ops-urgent-n { font-size: 1.3rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.ops-urgent-l { font-size: 0.8rem; color: var(--muted); }
+
+.ops-table-wrap { overflow-x: auto; }
+.ops-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.ops-table th, .ops-table td {
+  padding: 10px 8px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+.ops-table thead th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ops-table tbody tr:nth-child(even) { background: var(--row-alt); }
+.ops-comp { display: block; font-weight: 700; }
+.ops-sub { display: block; color: var(--muted); font-size: 0.76rem; }
+.ops-n { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+.ops-zero { color: var(--line); }
+.ops-warn { color: var(--danger); font-weight: 700; }
+.ops-ok   { color: var(--accent); font-weight: 600; }
+.ops-recon { margin: 0 0 8px; }
+
+/* A backlog row. Deliberately not .rp-card: these are scanned by the dozen,
+   so they are one compact line each rather than a card with a button. */
+.ops-row {
+  display: block;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+  color: var(--ink);
+}
+.ops-row-teams { font-weight: 600; }
+.ops-row-v { color: var(--muted); font-weight: 400; }
+.ops-row-score { float: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+.ops-row-meta { display: block; color: var(--muted); font-size: 0.78rem; }
+
+.ops-list { margin: 0; padding-left: 18px; }
+.ops-list li { margin-bottom: 8px; }
+.ops-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--line);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.ops-tag.is-bad  { background: var(--danger-wash); color: var(--danger); }
+.ops-tag.is-warn { background: var(--warn-wash);   color: var(--warn); }
+
+/* Phone: the comparison table becomes one card per competition. Each cell
+   carries its own label from data-h, so nothing depends on reading a header
+   row that is no longer above it. */
+@media (max-width: 620px) {
+  .ops-table, .ops-table tbody, .ops-table tr, .ops-table td, .ops-table th {
+    display: block;
+  }
+  .ops-table thead { display: none; }
+  .ops-table tr {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+    padding: 4px 12px 8px;
+  }
+  .ops-table tbody tr:nth-child(even) { background: transparent; }
+  .ops-table th, .ops-table td { border-bottom: 0; padding: 6px 0; }
+  .ops-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    border-top: 1px solid var(--line);
+  }
+  .ops-table td::before {
+    content: attr(data-h);
+    color: var(--muted);
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .ops-table td:empty { display: none; }
+}
+
+.ops-nowrap { white-space: nowrap; }

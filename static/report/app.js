@@ -2005,12 +2005,6 @@ function wireVenue(match, names, state, lock) {
 // the publish, so a failed photo upload cannot cost someone the result they
 // already got in — the mistake the whole design is trying to avoid.
 
-const CARD_TYPES = [
-  ["yellow_card", "Yellow"],
-  ["second_yellow", "Second yellow"],
-  ["red_card", "Red"],
-];
-
 // ── Naming a scorer ──────────────────────────────────────────────────────────
 // A goal has to say WHO, and "who" on everyleague.co is a player_id: that is
 // what puts the goal in the league's top-scorer table and on the player's own
@@ -2065,6 +2059,9 @@ async function saveGoal(match, entry) {
     // Blank when the reporter typed a name without picking anyone. The goal
     // is still saved and still shown — see submit_match_goal.
     p_player_id: entry.player_id,
+    // An assist has no name column to fall back on, so it is the picked id or
+    // nothing at all. A typed name that resolved to nobody is simply dropped.
+    p_assist_player_id: entry.assist_player_id || "",
   });
   return error;
 }
@@ -2200,28 +2197,38 @@ async function drawDetail(match, state, { local = false } = {}) {
     ? (match.home?.display_name || id) : (match.away?.display_name || id);
 
   if (!local || !state.detail) {
-    const [goalsRes, incidentsRes, lineupRes, mediaRes] = await Promise.all([
-      supabase.from("goals").select("goal_id,team_id,reported_player_name,minute,player_id")
+    const [goalsRes, lineupRes, mediaRes] = await Promise.all([
+      supabase.from("goals")
+        .select("goal_id,team_id,reported_player_name,minute,player_id,assist_player_id")
         .eq("match_id", match.match_id).order("ord"),
-      supabase.from("match_incidents").select("*")
-        .eq("match_id", match.match_id).order("incident_id"),
-      supabase.from("lineup_entries").select("*")
+      supabase.from("lineups").select("*")
         .eq("match_id", match.match_id).order("ord"),
       supabase.from("match_media").select("*")
         .eq("match_id", match.match_id).order("created_at"),
     ]);
     state.detail = {
       goals: goalsRes.data || [],
-      incidents: incidentsRes.data || [],
       lineup: lineupRes.data || [],
       media: mediaRes.data || [],
     };
   }
 
-  const { goals, incidents, lineup, media } = state.detail;
-  const cards = incidents.filter((i) => i.incident_type !== "substitution");
-  const subs = incidents.filter((i) => i.incident_type === "substitution");
+  const { goals, lineup, media } = state.detail;
   const scored = match.home_goals != null;
+
+  // One team sheet per side, each with the squad that side has already
+  // fielded. Both squads are fetched together and cached, so opening the
+  // second sheet costs nothing.
+  const sides = [
+    { key: match.home_team_id, teamName: teamName(match.home_team_id) },
+    { key: match.away_team_id, teamName: teamName(match.away_team_id) },
+  ];
+  const squads = await Promise.all(sides.map((side) => clubSquad(side.key)));
+  sides.forEach((side, i) => {
+    side.squad = squads[i];
+    side.sheet = sheetState(state, side.key,
+      lineup.filter((r) => r.team_id === side.key));
+  });
 
   // A goal names its scorer twice over: reported_player_name is what someone
   // typed, and player_id is who that turned out to be. The list shows the
@@ -2251,7 +2258,7 @@ async function drawDetail(match, state, { local = false } = {}) {
   const goalForm = `
     <form data-goal-form autocomplete="off">
       ${sideButtons(match, "goal-team", pick["goal-team"])}
-      <div class="rp-pick" data-pick>
+      <div class="rp-pick" data-pick="player">
         <input class="rp-input" name="player" placeholder="Scorer's name" required
                autocomplete="off" autocapitalize="words" role="combobox"
                aria-expanded="false" aria-autocomplete="list"
@@ -2259,8 +2266,19 @@ async function drawDetail(match, state, { local = false } = {}) {
         <input type="hidden" name="player_id" value="">
         <ul class="rp-suggest" id="rp-player-list" role="listbox" data-suggest hidden></ul>
       </div>
-      <p class="rp-hint" data-pick-note>Start typing and pick the player, so the
+      <p class="rp-hint" data-pick-note="player">Start typing and pick the player, so the
         goal counts towards their record and the league's top scorers.</p>
+      <div class="rp-pick" data-pick="assist">
+        <input class="rp-input" name="assist" placeholder="Assisted by (optional)"
+               autocomplete="off" autocapitalize="words" role="combobox"
+               aria-expanded="false" aria-autocomplete="list"
+               aria-controls="rp-assist-list">
+        <input type="hidden" name="assist_id" value="">
+        <ul class="rp-suggest" id="rp-assist-list" role="listbox" data-suggest hidden></ul>
+      </div>
+      <p class="rp-hint" data-pick-note="assist">Leave blank if nobody set it up,
+        or if you are not sure who did. An assist has to be picked from the list
+        — there is nowhere to keep a name that matches no player.</p>
       <div class="rp-row">
         <input class="rp-input" name="minute" placeholder="Min" inputmode="numeric">
         <select class="rp-input" name="type">
@@ -2277,70 +2295,23 @@ async function drawDetail(match, state, { local = false } = {}) {
         : "Add them now and they publish together with the score — one button, one go."}</p>
     </form>`;
 
+  // Everything is inside one wrapper, and the delegated listener below goes on
+  // THAT rather than on `host`. `host` survives every redraw while its
+  // innerHTML is replaced, so a listener added to it would be added again on
+  // the next draw — and one of these handlers splices a staged scorer out of
+  // local state, which a duplicate would do twice. Redrawing is now what
+  // happens on every tap of a squad name, so this stopped being theoretical.
   host.innerHTML = `
+    <div data-detail-body>
     <h2 class="rp-field-head">Match detail <span class="rp-optional">optional</span></h2>
 
     ${section("goals", "Goalscorers",
       goals.length + (state.pendingGoals || []).length,
       `<ul class="rp-list">${goalList}${stagedList}</ul>${goalForm}`, open.goals)}
 
-    ${section("cards", "Cards", cards.length, `
-      <ul class="rp-list">${cards.map((c) => `
-        <li><span>${esc(c.player_name)}
-          <em>${esc(teamName(c.team_id))} · ${esc(
-            (CARD_TYPES.find((t) => t[0] === c.incident_type) || [, c.incident_type])[1])}
-          ${c.minute ? " · " + esc(c.minute) + "'" : ""}</em></span>
-          <button class="rp-x" type="button" data-del-incident="${c.incident_id}"
-                  aria-label="Remove card">&times;</button></li>`).join("")}</ul>
-      <form data-card-form>
-        ${sideButtons(match, "card-team", pick["card-team"])}
-        <input class="rp-input" name="player" placeholder="Player's name" required
-               autocomplete="off" autocapitalize="words">
-        <div class="rp-row">
-          <select class="rp-input" name="type">
-            ${CARD_TYPES.map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}
-          </select>
-          <input class="rp-input" name="minute" placeholder="Min" inputmode="numeric">
-        </div>
-        <button class="rp-btn is-ghost" type="submit">Add card</button>
-      </form>`, open.cards)}
-
-    ${section("subs", "Substitutions", subs.length, `
-      <ul class="rp-list">${subs.map((s) => `
-        <li><span>${esc(s.player_name)} <em>for ${esc(s.secondary_player_name)} ·
-          ${esc(teamName(s.team_id))}${s.minute ? " · " + esc(s.minute) + "'" : ""}</em></span>
-          <button class="rp-x" type="button" data-del-incident="${s.incident_id}"
-                  aria-label="Remove substitution">&times;</button></li>`).join("")}</ul>
-      <form data-sub-form>
-        ${sideButtons(match, "sub-team", pick["sub-team"])}
-        <input class="rp-input" name="on" placeholder="Player coming on" required
-               autocomplete="off" autocapitalize="words">
-        <input class="rp-input" name="off" placeholder="Player going off" required
-               autocomplete="off" autocapitalize="words">
-        <input class="rp-input" name="minute" placeholder="Min" inputmode="numeric">
-        <button class="rp-btn is-ghost" type="submit">Add substitution</button>
-      </form>`, open.subs)}
-
-    ${section("lineup", "Line-ups", lineup.length, `
-      <p class="rp-hint">One name per line. Paste a whole team in at once —
-        no need to type them into separate boxes.</p>
-      <form data-lineup-form>
-        ${sideButtons(match, "lineup-team", pick["lineup-team"])}
-        <div class="rp-row">
-          <label class="rp-inline"><input type="radio" name="role" value="starter" checked>
-            <span>Starting XI</span></label>
-          <label class="rp-inline"><input type="radio" name="role" value="substitute">
-            <span>Substitutes</span></label>
-        </div>
-        <textarea class="rp-input rp-textarea" name="names" rows="6"
-                  placeholder="Yamikani Phiri&#10;Chikondi Banda&#10;..."></textarea>
-        <button class="rp-btn is-ghost" type="submit">Save line-up</button>
-      </form>
-      <ul class="rp-list">${lineup.map((l) => `
-        <li><span>${esc(l.player_name)}
-          <em>${esc(teamName(l.team_id))} · ${l.role === "starter" ? "XI" : "sub"}</em></span>
-          <button class="rp-x" type="button" data-del-lineup="${l.id}"
-                  aria-label="Remove ${esc(l.player_name)}">&times;</button></li>`).join("")}</ul>`, open.lineup)}
+    ${sides.map((side) => section(
+      `sheet-${side.key}`, `${side.teamName} team sheet`, side.sheet.rows.length,
+      sheetHtml(side), open[`sheet-${side.key}`])).join("")}
 
     ${section("photo", "Photos", media.length, `
       <ul class="rp-list">${media.map((m) => `
@@ -2356,9 +2327,9 @@ async function drawDetail(match, state, { local = false } = {}) {
         <p class="rp-hint" data-upload-note>Large photos are shrunk on the phone
           before sending, so this works on a slow connection.</p>
       </form>`, open.photo)}
-  `;
+    </div>`;
 
-  wireDetail(match, state, goals);
+  wireDetail(match, state, goals, sides);
 }
 
 /** Run an action with a button locked, then redraw. Never throws at the caller. */
@@ -2380,20 +2351,36 @@ async function detailAction(button, busyLabel, fn, match, state) {
   }
 }
 
+/** Wire every player combobox on the screen.
+ *
+ *  There is more than one now: the scorer, and beside it whoever assisted. A
+ *  wrap names its own fields through data-pick="<name>", so the two cannot
+ *  read each other's input, and each carries its own note element. */
+function wirePlayerPickers(host, match) {
+  host.querySelectorAll("[data-pick]").forEach((wrap) => wirePlayerPicker(wrap, host, match));
+  // A tap anywhere outside EVERY wrap means "not that list". One listener for
+  // the screen rather than one per picker (see start()).
+  dismissPicker = (event) => {
+    host.querySelectorAll("[data-pick]").forEach((wrap) => {
+      if (!wrap.contains(event.target)) wrap._closePicker?.();
+    });
+  };
+}
+
 /** The scorer combobox: search as you type, tap to identify, or add a player.
  *
  *  The hidden player_id field is the output. Everything else here exists to
  *  fill it in, and to be honest on screen about whether it is filled — a
  *  reporter should never have to guess whether the goal they just entered
  *  reached the scorer table. */
-function wirePlayerPicker(host, match) {
-  const wrap = host.querySelector("[data-pick]");
-  if (!wrap) return;
-
-  const input = wrap.querySelector('input[name="player"]');
-  const hidden = wrap.querySelector('input[name="player_id"]');
+function wirePlayerPicker(wrap, host, match) {
+  const field = wrap.dataset.pick || "player";
+  const input = wrap.querySelector(`input[name="${field}"]`);
+  const hidden = wrap.querySelector(`input[name="${field}_id"]`);
   const list = wrap.querySelector("[data-suggest]");
-  const note = host.querySelector("[data-pick-note]");
+  const note = wrap.parentElement.querySelector(`[data-pick-note="${field}"]`)
+    || host.querySelector("[data-pick-note]");
+  if (!input || !hidden || !list || !note) return;
   const defaultNote = note.textContent;
 
   let timer = null;
@@ -2420,6 +2407,9 @@ function wirePlayerPicker(host, match) {
     setNote(`${name} is identified — this goal counts towards their record.`,
             "good");
   }
+
+  // Read by the one document listener wirePlayerPickers installs.
+  wrap._closePicker = close;
 
   function render(players, term, known) {
     const rows = players.map((p) => {
@@ -2518,14 +2508,9 @@ function wirePlayerPicker(host, match) {
     choose(created.player_id, playerLabel(created));
   });
 
-  // A tap anywhere else means "not that list". Handed to the single listener
-  // installed in start() rather than adding one per redraw: the detail block
-  // is rebuilt after every save, and a listener per rebuild would pile up
-  // holding a detached form each time.
-  dismissPicker = (event) => { if (!wrap.contains(event.target)) close(); };
 }
 
-function wireDetail(match, state, goals) {
+function wireDetail(match, state, goals, sides) {
   const host = view.querySelector("[data-detail]");
   const pick = (name) =>
     host.querySelector(`input[name="${name}"]:checked`)?.value;
@@ -2533,7 +2518,7 @@ function wireDetail(match, state, goals) {
   const teamName = (id) => id === match.home_team_id
     ? (match.home?.display_name || id) : (match.away?.display_name || id);
 
-  wirePlayerPicker(host, match);
+  wirePlayerPickers(host, match);
 
   // ADDING A SCORER MEANS TWO DIFFERENT THINGS, DEPENDING ON ONE FACT.
   //
@@ -2568,6 +2553,7 @@ function wireDetail(match, state, goals) {
       team_id: teamId,
       player_name: playerName,
       player_id: f.player_id.value,
+      assist_player_id: f.assist_id.value,
       minute: f.minute.value.trim(),
       goal_type: f.type.value,
     };
@@ -2593,57 +2579,19 @@ function wireDetail(match, state, goals) {
     }, match, state);
   });
 
-  host.querySelector("[data-card-form]")?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const f = e.target;
-    detailAction(f.querySelector("button"), "Adding…", async () => {
-      const { error } = await supabase.from("match_incidents").insert({
-        match_id: match.match_id, team_id: pick("card-team"),
-        incident_type: f.type.value, player_name: f.player.value.trim(),
-        minute: f.minute.value.trim(), reported_by: reporterId,
-      });
-      return error;
-    }, match, state);
-  });
-
-  host.querySelector("[data-sub-form]")?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const f = e.target;
-    detailAction(f.querySelector("button"), "Adding…", async () => {
-      const { error } = await supabase.from("match_incidents").insert({
-        match_id: match.match_id, team_id: pick("sub-team"),
-        incident_type: "substitution",
-        // Documented convention: player_name is ON, secondary is OFF.
-        player_name: f.on.value.trim(),
-        secondary_player_name: f.off.value.trim(),
-        minute: f.minute.value.trim(), reported_by: reporterId,
-      });
-      return error;
-    }, match, state);
-  });
-
-  host.querySelector("[data-lineup-form]")?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const f = e.target;
-    const team = pick("lineup-team");
-    const role = host.querySelector('input[name="role"]:checked').value;
-    const names = f.names.value.split("\n")
-      .map((n) => n.trim()).filter(Boolean);
-    if (!names.length) { flash("Add at least one name.", "warn"); return; }
-    detailAction(f.querySelector("button"), "Saving…", async () => {
-      // Replace this side's rows for this role rather than appending, so
-      // fixing a typo means editing the list and saving again.
-      await supabase.from("lineup_entries").delete()
-        .eq("match_id", match.match_id).eq("team_id", team).eq("role", role);
-      const { error } = await supabase.from("lineup_entries").insert(
-        names.map((player_name, i) => ({
-          match_id: match.match_id, team_id: team, player_name,
-          role, ord: i + 1, reported_by: reporterId,
-        })));
-      if (!error) f.names.value = "";
-      return error;
-    }, match, state);
-  });
+  wireSheets(host, (sides || []).map((side) => ({
+    key: side.key, teamName: side.teamName, sheet: side.sheet, squad: side.squad,
+    save: async (rows) => (await supabase.rpc("save_lineup", {
+      p_match_id: match.match_id, p_team_id: side.key, p_rows: rows,
+    })).error,
+    saved: () => {
+      // Re-read after a save: save_lineup derives each starter's minute_off
+      // from the substitutions, so what came back is not quite what went up.
+      state.detail = null;
+      delete state.sheets[side.key];
+      drawDetail(match, state);
+    },
+  })), () => drawDetail(match, state, { local: true }));
 
   host.querySelector("[data-photo-form]")?.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -2675,7 +2623,7 @@ function wireDetail(match, state, goals) {
     }, match, state);
   });
 
-  host.addEventListener("click", (e) => {
+  host.querySelector("[data-detail-body]")?.addEventListener("click", (e) => {
     // A staged scorer has never been saved, so removing it is a splice, not a
     // request. Handled before the others because it must not fall through to
     // detailAction, which would try to redraw against a network call.
@@ -2687,8 +2635,6 @@ function wireDetail(match, state, goals) {
       return;
     }
     const goal = e.target.closest("[data-del-goal]");
-    const incident = e.target.closest("[data-del-incident]");
-    const line = e.target.closest("[data-del-lineup]");
     const photo = e.target.closest("[data-del-media]");
     if (goal) {
       detailAction(goal, "…", async () => {
@@ -2699,14 +2645,6 @@ function wireDetail(match, state, goals) {
         if (!error) requestRebuild();
         return error;
       }, match, state);
-    } else if (incident) {
-      detailAction(incident, "…", async () =>
-        (await supabase.from("match_incidents").delete()
-          .eq("incident_id", incident.dataset.delIncident)).error, match, state);
-    } else if (line) {
-      detailAction(line, "…", async () =>
-        (await supabase.from("lineup_entries").delete()
-          .eq("id", line.dataset.delLineup)).error, match, state);
     } else if (photo) {
       detailAction(photo, "…", async () => {
         await supabase.storage.from("match-media").remove([photo.dataset.path]);
@@ -3259,6 +3197,480 @@ function drawNTMatch(match, state) {
   refresh();
 }
 
+// ── The team sheet ───────────────────────────────────────────────────────────
+//
+// One screen for the XI, the bench, the changes, the cards and the armband,
+// because that is how a team sheet is written, how it is stored, and how it is
+// read back on everyleague.co. It replaced four separate accordions on the
+// league screen — Cards, Substitutions, Line-ups, each with its own free-text
+// name box — where entering one substitution meant typing two names that
+// nothing checked against the eleven already entered.
+//
+// SQUAD-FIRST, PASTE AS A FALLBACK. A reporter covering a club covers it every
+// week, so the second week should not be the first week's typing again. The
+// squad is everyone that club has already fielded or scored through: tap a
+// name and it joins the sheet carrying its player_id, its last shirt number
+// and its last position. Typing is what happens when someone is genuinely new.
+//
+// WHY THE player_id MATTERS SO MUCH HERE. A name on a team sheet is worth
+// something; a name that resolves to a player is worth much more — it is what
+// makes the name clickable on the results page, what gives them a profile, and
+// what makes "games played" a number rather than a guess. The tap is the whole
+// design: it is faster than typing AND it is the path that carries the id.
+
+const SHEET_ROLES = [
+  ["starting", "Starting XI"],
+  ["sub_on", "Came on"],
+  ["unused_sub", "Bench"],
+];
+const SHEET_POSITIONS = ["", "GK", "DF", "MF", "FW"];
+
+// One control, four states, cycled by tapping. Three checkboxes could express
+// "yellow AND red AND second yellow", which is not a thing that can happen —
+// and the database refuses it — so the control cannot offer it.
+const CARD_STATES = [
+  { key: "", label: "No card", short: "—" },
+  { key: "yellow_card", label: "Yellow card", short: "Y" },
+  { key: "yellow_red_card", label: "Second yellow", short: "YR" },
+  { key: "red_card", label: "Red card", short: "R" },
+];
+
+const cardStateOf = (row) => row.red_card ? "red_card"
+  : row.yellow_red_card ? "yellow_red_card"
+  : row.yellow_card ? "yellow_card" : "";
+
+function setCardState(row, key) {
+  row.yellow_card = key === "yellow_card";
+  row.yellow_red_card = key === "yellow_red_card";
+  row.red_card = key === "red_card";
+}
+
+const STARTING_XI = 11;
+
+function blankSheetRow(player = {}) {
+  return {
+    player_name: player.name || "", player_id: player.player_id || "",
+    shirt_number: player.shirt_number || "", position: player.position || "",
+    role: "starting", captain: false,
+    minute_on: "", minute_off: "", replaced_player: "",
+    yellow_card: false, yellow_red_card: false, red_card: false,
+  };
+}
+
+/** Everyone this side has already fielded or scored through.
+ *
+ *  Deliberately derived rather than maintained: there is no squad-registration
+ *  screen for club football, and asking for one before team sheets exist would
+ *  be asking reporters to enter the same names twice. The list grows by itself
+ *  as sheets are saved, which means week two is taps and week one is typing.
+ *  A failure returns an empty list — the paste box still works, so a squad
+ *  that cannot load costs convenience, never the entry. */
+function clubSquad(teamId) {
+  return once(`squad:${teamId}`, async () => {
+    const [sheets, goals] = await Promise.all([
+      supabase.from("lineups")
+        .select("player_id,player_name,shirt_number,position,ord")
+        .eq("team_id", teamId).order("ord", { ascending: false }).limit(300),
+      supabase.from("goals").select("player_id")
+        .eq("team_id", teamId).neq("player_id", UNKNOWN_PLAYER).limit(300),
+    ]);
+    const by = new Map();
+    // Most recent first, so the FIRST row seen for a player is their latest
+    // shirt and position — which is the one worth pre-filling.
+    (sheets.data || []).forEach((r) => {
+      const key = r.player_id || `name:${r.player_name.toLowerCase()}`;
+      if (!by.has(key)) {
+        by.set(key, {
+          player_id: r.player_id || "", name: r.player_name,
+          shirt_number: r.shirt_number || "", position: r.position || "",
+        });
+      }
+    });
+    // A scorer who has never been on a sheet is still someone this club has
+    // played, so they belong in the list — with no shirt and no position,
+    // because nothing here knows them.
+    const missing = [...new Set((goals.data || []).map((g) => g.player_id))]
+      .filter((id) => !by.has(id));
+    if (missing.length) {
+      const { data } = await supabase.from("players")
+        .select("player_id,full_name,known_as").in("player_id", missing);
+      (data || []).forEach((p) => by.set(p.player_id, {
+        player_id: p.player_id, name: playerLabel(p),
+        shirt_number: "", position: "",
+      }));
+    }
+    return [...by.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }).catch(() => []);
+}
+
+/** The same, for a national team: the latest squad announcement plus anyone
+ *  who has appeared in a line-up since. */
+function nationalSquad(teamCode) {
+  return once(`ntsquad:${teamCode}`, async () => {
+    const [squads, sheets] = await Promise.all([
+      supabase.from("nt_squads")
+        .select("player_id,player_name,shirt_number,position,announcement_date")
+        .eq("team_id", teamCode).limit(300),
+      supabase.from("nt_lineups")
+        .select("player_id,player_name,shirt_number,position,ord")
+        .eq("team_id", teamCode).order("ord", { ascending: false }).limit(300),
+    ]);
+    const rows = squads.data || [];
+    // The current squad is the row group sharing the most recent
+    // announcement_date — the same rule src/nt.py applies when it renders one.
+    const latest = rows.reduce(
+      (best, r) => (r.announcement_date || "") > best ? r.announcement_date : best, "");
+    const by = new Map();
+    const put = (r) => {
+      const key = r.player_id || `name:${r.player_name.toLowerCase()}`;
+      if (!by.has(key)) {
+        by.set(key, {
+          player_id: r.player_id || "", name: r.player_name,
+          shirt_number: r.shirt_number || "", position: r.position || "",
+        });
+      }
+    };
+    rows.filter((r) => (r.announcement_date || "") === latest).forEach(put);
+    (sheets.data || []).forEach(put);
+    return [...by.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }).catch(() => []);
+}
+
+/** The mutable sheet for one side, created on first sight from what is saved. */
+function sheetState(state, key, saved) {
+  state.sheets = state.sheets || {};
+  if (!state.sheets[key]) {
+    state.sheets[key] = { rows: (saved || []).map((r) => ({ ...r })), filter: "" };
+  }
+  return state.sheets[key];
+}
+
+const onSheet = (sheet, entry) => sheet.rows.some((r) =>
+  (entry.player_id && r.player_id === entry.player_id)
+  || r.player_name.toLowerCase() === entry.name.toLowerCase());
+
+function squadListHtml(sheet, squad, key) {
+  const term = sheet.filter.trim().toLowerCase();
+  const free = squad.filter((p) => !onSheet(sheet, p));
+  const shown = term ? free.filter((p) => p.name.toLowerCase().includes(term)) : free;
+
+  const chips = shown.slice(0, 40).map((p) => `
+    <button type="button" class="rp-squad-chip" data-squad-add="${esc(p.player_id)}"
+            data-squad-name="${esc(p.name)}" data-sheet-key="${esc(key)}">
+      ${p.shirt_number ? `<b>${esc(p.shirt_number)}</b>` : ""}${esc(p.name)}
+    </button>`).join("");
+
+  // Offered only once the filter is a plausible name and matches nobody, so a
+  // reporter part-way through typing a name that IS in the list is never
+  // invited to create a second copy of that person.
+  const canCreate = term.length >= 2
+    && !shown.some((p) => p.name.toLowerCase() === term);
+  const create = canCreate ? `
+    <button type="button" class="rp-squad-chip is-new"
+            data-squad-create="${esc(sheet.filter.trim())}"
+            data-sheet-key="${esc(key)}">
+      ＋ Add “${esc(sheet.filter.trim())}”
+    </button>` : "";
+
+  if (!chips && !create) {
+    return `<p class="rp-hint">${squad.length
+      ? "Everyone already on the sheet."
+      : "No squad on file yet — type the names below, or paste the sheet."}</p>`;
+  }
+  return `<div class="rp-squad-chips">${chips}${create}</div>`;
+}
+
+function sheetRowHtml(sheet, row, i, key) {
+  const state = cardStateOf(row);
+  const card = CARD_STATES.find((c) => c.key === state);
+  const others = sheet.rows.filter((_o, j) => j !== i);
+  return `
+    <li class="rp-sheet-row" data-sheet-row="${i}">
+      <div class="rp-sheet-head">
+        <span class="rp-sheet-name">${row.shirt_number ? esc(row.shirt_number) + ". " : ""}${esc(row.player_name)}
+          ${row.player_id ? "" : '<em class="rp-sheet-warn" title="Not linked to a player — they will show as plain text">name only</em>'}
+        </span>
+        <button class="rp-x" type="button" data-sheet-del="${i}" data-sheet-key="${esc(key)}"
+                aria-label="Remove ${esc(row.player_name)}">&times;</button>
+      </div>
+      <div class="rp-sheet-controls">
+        <select class="rp-input" data-sheet-field="role" data-sheet-i="${i}" data-sheet-key="${esc(key)}">
+          ${SHEET_ROLES.map(([v, l]) => `<option value="${v}"${
+            row.role === v ? " selected" : ""}>${l}</option>`).join("")}
+        </select>
+        <select class="rp-input" data-sheet-field="position" data-sheet-i="${i}" data-sheet-key="${esc(key)}">
+          ${SHEET_POSITIONS.map((p) => `<option value="${p}"${
+            row.position === p ? " selected" : ""}>${p || "—"}</option>`).join("")}
+        </select>
+        <input class="rp-input rp-sheet-shirt" data-sheet-field="shirt_number"
+               data-sheet-i="${i}" data-sheet-key="${esc(key)}" inputmode="numeric"
+               placeholder="No." value="${esc(row.shirt_number || "")}">
+        ${row.role === "sub_on" ? `
+          <input class="rp-input" data-sheet-field="minute_on" data-sheet-i="${i}"
+                 data-sheet-key="${esc(key)}" value="${esc(row.minute_on || "")}"
+                 placeholder="On'" inputmode="numeric">
+          <select class="rp-input" data-sheet-field="replaced_player"
+                  data-sheet-i="${i}" data-sheet-key="${esc(key)}">
+            <option value="">for…</option>
+            ${others.map((o) => `
+              <option value="${esc(o.player_name)}"${
+                row.replaced_player === o.player_name ? " selected" : ""}>
+              ${esc(o.player_name)}</option>`).join("")}
+          </select>` : ""}
+        ${row.role === "starting" ? `
+          <input class="rp-input" data-sheet-field="minute_off" data-sheet-i="${i}"
+                 data-sheet-key="${esc(key)}" value="${esc(row.minute_off || "")}"
+                 placeholder="${esc(offMinuteFor(sheet.rows, row) || "Off'")}"
+                 title="Only needed when no substitution says it — a sending-off, or coming off unreplaced"
+                 inputmode="numeric">` : ""}
+      </div>
+      <div class="rp-sheet-flags">
+        <button type="button" class="rp-chip${row.captain ? " is-on" : ""}"
+                data-sheet-captain="${i}" data-sheet-key="${esc(key)}"
+                aria-pressed="${row.captain}">Captain</button>
+        <button type="button" class="rp-chip rp-card-chip is-card-${state || "none"}"
+                data-sheet-card="${i}" data-sheet-key="${esc(key)}"
+                title="Tap to change: none, yellow, second yellow, red">
+          ${esc(card.short)} <em>${esc(card.label)}</em>
+        </button>
+      </div>
+    </li>`;
+}
+
+/** One side's whole team sheet, ready to drop into a section body. */
+function sheetHtml({ key, teamName, sheet, squad }) {
+  const starters = sheet.rows.filter((r) => r.role === "starting").length;
+  const unlinked = sheet.rows.filter((r) => !r.player_id).length;
+
+  return `
+    <div class="rp-sheet-block" data-sheet-block="${esc(key)}">
+      <p class="rp-hint" style="margin-top:0"><b>Tap a name to put them on the
+        sheet.</b> They arrive in the XI until there are ${STARTING_XI}, then on the
+        bench — change any of it below.</p>
+      <input class="rp-input" data-sheet-filter data-sheet-key="${esc(key)}"
+             placeholder="Find or add a player" autocomplete="off"
+             autocapitalize="words" value="${esc(sheet.filter)}">
+      <div data-squad-list>${squadListHtml(sheet, squad, key)}</div>
+
+      <details class="rp-sec rp-paste" data-sec="paste-${esc(key)}">
+        <summary>Paste a sheet instead</summary>
+        <div class="rp-sec-body">
+          <textarea class="rp-input rp-textarea" data-sheet-paste
+                    data-sheet-key="${esc(key)}" rows="7"
+                    placeholder="1 Mercy Sikelo GK (C)&#10;5 Sabina Thom MF [Y]&#10;Subs:&#10;14 Rachel Kundananji 62' for Sabina Thom"></textarea>
+          <p class="rp-hint">One player per line. Everything except the name is
+            optional:</p>
+          <ul class="rp-legend">
+            <li><code>10</code> leading number — shirt</li>
+            <li><code>GK DF MF FW</code> — position</li>
+            <li><code>(C)</code> — captain</li>
+            <li><code>[Y]</code> <code>[YR]</code> <code>[R]</code> — yellow, second
+              yellow, red</li>
+            <li><code>Subs:</code> — a heading; everyone under it is a substitute
+              until the next heading</li>
+            <li><code>62'</code> and <code>for Sabina Thom</code> — came on, and for
+              whom</li>
+          </ul>
+          <p class="rp-hint">Pasted names are matched against the squad above.
+            Anyone who matches nobody comes in as a name only — tap them in the
+            list above afterwards to link them.</p>
+          <button class="rp-btn is-ghost" type="button" data-sheet-paste-add
+                  data-sheet-key="${esc(key)}">Add these players</button>
+        </div>
+      </details>
+
+      ${sheet.rows.length ? `
+        <p class="rp-hint ${starters > STARTING_XI ? "is-warn" : ""}" style="margin-top:14px">
+          ${starters} in the starting XI${starters > STARTING_XI ? " — that is too many" : ""}${
+            unlinked ? `, ${unlinked} not linked to a player` : ""}.</p>
+        <ul class="rp-sheet">${sheet.rows.map((r, i) => sheetRowHtml(sheet, r, i, key)).join("")}</ul>
+        <button class="rp-btn" type="button" data-sheet-save data-sheet-key="${esc(key)}">
+          Save ${esc(teamName)}’s sheet</button>`
+        : '<p class="rp-hint" style="margin-top:14px">Nobody on the sheet yet.</p>'}
+    </div>`;
+}
+
+/** Wire every sheet on the screen. `sheets` is [{key, teamName, sheet, squad,
+ *  save, saved}].
+ *
+ *  Listeners go on each sheet's own block, NOT on the detail host. The host
+ *  survives every redraw while its innerHTML is replaced, so a listener added
+ *  there would be added again on the next draw and again on the one after —
+ *  and unlike the network handlers around it these mutate local state, so a
+ *  duplicate would splice two rows out for one tap. A block is rebuilt with
+ *  the HTML, which takes its listeners with it. */
+function wireSheets(host, sheets, redraw) {
+  sheets.forEach((ctx) => {
+    const root = host.querySelector(`[data-sheet-block="${CSS.escape(ctx.key)}"]`);
+    if (root) wireSheet(root, ctx, redraw);
+  });
+}
+
+function wireSheet(root, ctx, redraw) {
+  const { sheet, squad } = ctx;
+
+  // The filter repaints only the chip list, never the whole block: redrawing
+  // the block would take the focus out of the box being typed into, which on a
+  // phone also closes the keyboard.
+  root.addEventListener("input", (e) => {
+    const box = e.target.closest("[data-sheet-filter]");
+    if (!box) return;
+    sheet.filter = box.value;
+    const list = root.querySelector("[data-squad-list]");
+    if (list) list.innerHTML = squadListHtml(sheet, squad, ctx.key);
+  });
+
+  /** Put someone on the sheet: the XI fills first, then the bench, so nobody
+   *  has to set a role for the ordinary case of eleven and then seven. */
+  function put(row) {
+    if (sheet.rows.filter((r) => r.role === "starting").length >= STARTING_XI) {
+      row.role = "unused_sub";
+    }
+    sheet.rows.push(row);
+    sheet.filter = "";
+    redraw();
+  }
+
+  root.addEventListener("click", async (e) => {
+    const add = e.target.closest("[data-squad-add]");
+    if (add) {
+      const id = add.dataset.squadAdd;
+      const known = squad.find((p) => (id && p.player_id === id)
+        || p.name === add.dataset.squadName);
+      put(blankSheetRow({
+        player_id: id, name: add.dataset.squadName,
+        shirt_number: known?.shirt_number || "", position: known?.position || "",
+      }));
+      return;
+    }
+
+    const create = e.target.closest("[data-squad-create]");
+    if (create) {
+      if (create.disabled) return;
+      const name = create.dataset.squadCreate;
+      create.disabled = true;
+      create.textContent = "Adding…";
+      const { data, error } = await supabase.rpc("create_player", { p_full_name: name });
+      const made = (data || [])[0];
+      if (error || !made) {
+        // Rule 3 again: a lookup that fails must not cost the entry. The name
+        // goes on the sheet unlinked, and can be linked later.
+        console.warn("[everyleague] create_player failed:", error);
+        flash("Could not add that player — the name goes on the sheet unlinked.",
+              "warn");
+      }
+      // create_player is idempotent on the name, so a player created here may
+      // be one who already existed; either way they belong in the squad now.
+      if (made && !squad.some((p) => p.player_id === made.player_id)) {
+        squad.push({ player_id: made.player_id, name: playerLabel(made),
+                     shirt_number: "", position: "" });
+      }
+      put(blankSheetRow({
+        player_id: made ? made.player_id : "",
+        name: made ? playerLabel(made) : name,
+      }));
+      return;
+    }
+
+    const drop = e.target.closest("[data-sheet-del]");
+    if (drop) {
+      sheet.rows.splice(Number(drop.dataset.sheetDel), 1);
+      redraw();
+      return;
+    }
+
+    const cap = e.target.closest("[data-sheet-captain]");
+    if (cap) {
+      const row = sheet.rows[Number(cap.dataset.sheetCaptain)];
+      if (!row) return;
+      // One armband per side: giving it to someone takes it off whoever had it.
+      const on = !row.captain;
+      sheet.rows.forEach((r) => { r.captain = false; });
+      row.captain = on;
+      redraw();
+      return;
+    }
+
+    const card = e.target.closest("[data-sheet-card]");
+    if (card) {
+      const row = sheet.rows[Number(card.dataset.sheetCard)];
+      if (!row) return;
+      const next = (CARD_STATES.findIndex((c) => c.key === cardStateOf(row)) + 1)
+        % CARD_STATES.length;
+      setCardState(row, CARD_STATES[next].key);
+      redraw();
+      return;
+    }
+
+    const paste = e.target.closest("[data-sheet-paste-add]");
+    if (paste) {
+      const box = root.querySelector("[data-sheet-paste]");
+      const added = parseTeamSheet(box?.value || "");
+      if (!added.length) { flash("Type at least one name.", "warn"); return; }
+      const seen = new Set(sheet.rows.map((r) => r.player_name.toLowerCase()));
+      added.forEach((row) => {
+        if (seen.has(row.player_name.toLowerCase())) return;
+        // A pasted name that matches somebody already known arrives LINKED.
+        // That is the whole difference between a sheet of text and a sheet of
+        // players, and it costs the reporter nothing.
+        const hit = squad.find(
+          (p) => p.name.toLowerCase() === row.player_name.toLowerCase());
+        if (hit) {
+          row.player_id = hit.player_id;
+          row.shirt_number = row.shirt_number || hit.shirt_number;
+          row.position = row.position || hit.position;
+        }
+        // A pasted line could carry both [YR] and [R]; the control below
+        // cannot express that and the database refuses it, so it is collapsed
+        // to the single most severe card here rather than rejected on save.
+        setCardState(row, cardStateOf(row));
+        sheet.rows.push(row);
+        seen.add(row.player_name.toLowerCase());
+      });
+      if (box) box.value = "";
+      redraw();
+      return;
+    }
+
+    const save = e.target.closest("[data-sheet-save]");
+    if (save) {
+      if (save.disabled) return;
+      clearFlash();
+      save.disabled = true;
+      const label = save.textContent;
+      save.textContent = "Saving…";
+      const error = await ctx.save(sheet.rows.map((r) => ({
+        player_name: r.player_name, player_id: r.player_id || "",
+        shirt_number: r.shirt_number || "", position: r.position || "",
+        role: r.role || "starting", captain: Boolean(r.captain),
+        minute_on: r.minute_on || "", minute_off: r.minute_off || "",
+        replaced_player: r.replaced_player || "",
+        yellow_card: Boolean(r.yellow_card),
+        yellow_red_card: Boolean(r.yellow_red_card),
+        red_card: Boolean(r.red_card),
+      })));
+      save.disabled = false;
+      save.textContent = label;
+      // Rule 1: the sheet stays in state on failure, so nothing typed is lost.
+      if (error) { flash(humanError(error), "error"); return; }
+      flash("Team sheet saved.", "ok");
+      requestRebuild();
+      ctx.saved?.();
+    }
+  });
+
+  root.addEventListener("change", (e) => {
+    const field = e.target.dataset?.sheetField;
+    if (!field) return;
+    const row = sheet.rows[Number(e.target.dataset.sheetI)];
+    if (!row) return;
+    row[field] = e.target.value;
+    // The role decides which controls a row shows, and the shirt shows in the
+    // row's own heading, so both redraw.
+    if (field === "role" || field === "shirt_number") redraw();
+  });
+}
+
 // ── Scorers and the team sheet ───────────────────────────────────────────────
 
 async function drawNTDetail(match, state, { local = false } = {}) {
@@ -3283,10 +3695,10 @@ async function drawNTDetail(match, state, { local = false } = {}) {
   const { goals, lineup } = state.ntDetail;
   // The team sheet is edited as a whole, so it lives in state once loaded and
   // is only re-read from the database after a save.
-  if (!state.sheet) {
-    state.sheet = lineup.filter((r) => r.team_id === match.team_code)
-      .map((r) => ({ ...r }));
-  }
+  const sheetKey = match.team_code;
+  const sheet = sheetState(state, sheetKey,
+    lineup.filter((r) => r.team_id === match.team_code));
+  const squad = await nationalSquad(match.team_code);
 
   const scored = match.team_score != null;
   const sideName = (id) => id === match.team_code ? state.teamName : match.opponent;
@@ -3321,98 +3733,24 @@ async function drawNTDetail(match, state, { local = false } = {}) {
     : `<p class="rp-hint">Publish the score first — a scorer needs a goal to
          belong to.</p>`;
 
-  const sheetRows = state.sheet.map((r, i) => `
-    <li class="rp-sheet-row" data-sheet-row="${i}">
-      <div class="rp-sheet-head">
-        <span class="rp-sheet-name">${r.shirt_number ? esc(r.shirt_number) + ". " : ""}${esc(r.player_name)}
-          ${r.captain ? '<b title="Captain">(C)</b>' : ""}</span>
-        <button class="rp-x" type="button" data-sheet-del="${i}"
-                aria-label="Remove ${esc(r.player_name)}">&times;</button>
-      </div>
-      <div class="rp-sheet-controls">
-        <select class="rp-input" data-sheet-field="role" data-sheet-i="${i}">
-          ${NT_ROLES.map(([v, l]) => `<option value="${v}"${
-            r.role === v ? " selected" : ""}>${l}</option>`).join("")}
-        </select>
-        <select class="rp-input" data-sheet-field="position" data-sheet-i="${i}">
-          ${NT_POSITIONS.map((p) => `<option value="${p}"${
-            r.position === p ? " selected" : ""}>${p || "—"}</option>`).join("")}
-        </select>
-        ${r.role === "sub_on" ? `
-          <input class="rp-input" data-sheet-field="minute_on" data-sheet-i="${i}"
-                 value="${esc(r.minute_on || "")}" placeholder="On'" inputmode="numeric">
-          <select class="rp-input" data-sheet-field="replaced_player" data-sheet-i="${i}">
-            <option value="">for…</option>
-            ${state.sheet.filter((o, j) => j !== i).map((o) => `
-              <option value="${esc(o.player_name)}"${
-                r.replaced_player === o.player_name ? " selected" : ""}>
-              ${esc(o.player_name)}</option>`).join("")}
-          </select>` : ""}
-        ${r.role === "starting" ? `
-          <input class="rp-input" data-sheet-field="minute_off" data-sheet-i="${i}"
-                 value="${esc(r.minute_off || "")}"
-                 placeholder="${esc(offMinuteFor(state.sheet, r) || "Off'")}"
-                 title="Only needed when no substitution says it — a sending-off, or coming off unreplaced"
-                 inputmode="numeric">` : ""}
-      </div>
-      <div class="rp-sheet-flags">
-        <label class="rp-inline"><input type="checkbox" data-sheet-field="captain"
-          data-sheet-i="${i}" ${r.captain ? "checked" : ""}><span>C</span></label>
-        <label class="rp-inline"><input type="checkbox" data-sheet-field="yellow_card"
-          data-sheet-i="${i}" ${r.yellow_card ? "checked" : ""}><span>Yellow</span></label>
-        <label class="rp-inline"><input type="checkbox" data-sheet-field="yellow_red_card"
-          data-sheet-i="${i}" ${r.yellow_red_card ? "checked" : ""}><span>2nd yellow</span></label>
-        <label class="rp-inline"><input type="checkbox" data-sheet-field="red_card"
-          data-sheet-i="${i}" ${r.red_card ? "checked" : ""}><span>Red</span></label>
-      </div>
-    </li>`).join("");
-
-  const starters = state.sheet.filter((r) => r.role === "starting").length;
-
+  // One wrapper, so the delegated listener below is rebuilt with the markup
+  // rather than added again to a host that outlives it. See drawDetail.
   host.innerHTML = `
+    <div data-detail-body>
     <h2 class="rp-field-head">Match detail <span class="rp-optional">optional</span></h2>
 
     ${section("ntgoals", "Goalscorers", goals.length,
       `<ul class="rp-list">${goalList}</ul>${goalForm}`, open.ntgoals)}
 
-    ${section("ntsheet", "Team sheet", state.sheet.length, `
-      <p class="rp-hint" style="margin-top:0"><b>Step 1 — paste the names.</b>
-        The XI, the bench, the changes and the cards are one sheet here: that is
-        how they are stored, and how a team sheet reads.</p>
-      <textarea class="rp-input rp-textarea" data-sheet-paste rows="7"
-                placeholder="1 Mercy Sikelo GK (C)&#10;5 Sabina Thom MF [Y]&#10;Subs:&#10;14 Rachel Kundananji 62' for Sabina Thom"></textarea>
-      <p class="rp-hint">One player per line. Everything below is optional and
-        can be set by hand afterwards instead:</p>
-      <ul class="rp-legend">
-        <li><code>10</code> leading number — shirt</li>
-        <li><code>GK DF MF FW</code> — position</li>
-        <li><code>(C)</code> — captain</li>
-        <li><code>[Y]</code> <code>[YR]</code> <code>[R]</code> — yellow, second
-          yellow, red</li>
-        <li><code>Subs:</code> — a heading; everyone under it is a substitute
-          until the next heading</li>
-        <li><code>62'</code> and <code>for Sabina Thom</code> — came on, and for
-          whom</li>
-      </ul>
-      <button class="rp-btn is-ghost" type="button" data-sheet-add>Add these players</button>
-      ${state.sheet.length ? `
-        <p class="rp-hint" style="margin-top:16px"><b>Step 2 — check each row.</b>
-          Role, position, cards and substitutions are all editable below.</p>
-        <p class="rp-hint ${starters > 11 ? "is-warn" : ""}">
-          ${starters} in the starting XI${starters > 11 ? " — that is too many" : ""}.</p>`
-        : `<p class="rp-hint" style="margin-top:16px">Once they are added, every
-             player gets a row here for their role, cards and substitution.</p>`}
-      <ul class="rp-sheet">${sheetRows}</ul>
-      ${state.sheet.length
-        ? '<button class="rp-btn" type="button" data-sheet-save>Save team sheet</button>'
-        : ""}
-    `, open.ntsheet)}
-  `;
+    ${section("ntsheet", "Team sheet", sheet.rows.length,
+      sheetHtml({ key: sheetKey, teamName: state.teamName, sheet, squad }),
+      open.ntsheet)}
+    </div>`;
 
-  wireNTDetail(match, state);
+  wireNTDetail(match, state, { sheetKey, sheet, squad });
 }
 
-function wireNTDetail(match, state) {
+function wireNTDetail(match, state, { sheetKey, sheet, squad }) {
   const host = view.querySelector("[data-nt-detail]");
   if (!host) return;
 
@@ -3445,77 +3783,34 @@ function wireNTDetail(match, state) {
     })();
   });
 
-  host.addEventListener("click", async (e) => {
+  host.querySelector("[data-detail-body]")?.addEventListener("click", async (e) => {
     const del = e.target.closest("[data-nt-del-goal]");
-    if (del) {
-      if (del.disabled) return;
-      del.disabled = true;
-      const { error } = await supabase.rpc("delete_nt_goal",
-        { p_goal_id: del.dataset.ntDelGoal });
-      del.disabled = false;
-      if (error) { flash(humanError(error), "error"); return; }
-      requestRebuild();
-      state.ntDetail = null;
-      await drawNTDetail(match, state);
-      return;
-    }
-    const drop = e.target.closest("[data-sheet-del]");
-    if (drop) {
-      state.sheet.splice(Number(drop.dataset.sheetDel), 1);
-      drawNTDetail(match, state, { local: true });
-    }
-  });
-
-  host.querySelector("[data-sheet-add]")?.addEventListener("click", () => {
-    const box = host.querySelector("[data-sheet-paste]");
-    const added = parseTeamSheet(box.value);
-    if (!added.length) { flash("Type at least one name.", "warn"); return; }
-    const seen = new Set(state.sheet.map((r) => r.player_name.toLowerCase()));
-    added.forEach((row) => {
-      if (!seen.has(row.player_name.toLowerCase())) state.sheet.push(row);
-    });
-    box.value = "";
-    drawNTDetail(match, state, { local: true });
-  });
-
-  host.addEventListener("change", (e) => {
-    const field = e.target.dataset?.sheetField;
-    if (!field) return;
-    const row = state.sheet[Number(e.target.dataset.sheetI)];
-    if (!row) return;
-    row[field] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
-    // The role decides which controls a row shows, so that one redraws.
-    if (field === "role") drawNTDetail(match, state, { local: true });
-  });
-
-  host.querySelector("[data-sheet-save]")?.addEventListener("click", async (e) => {
-    const button = e.target;
-    if (button.disabled) return;
-    clearFlash();
-    button.disabled = true; button.textContent = "Saving…";
-    const { error } = await supabase.rpc("save_nt_lineup", {
-      p_match_id: match.match_id,
-      p_team_id: match.team_code,
-      p_rows: state.sheet.map((r) => ({
-        player_name: r.player_name, player_id: r.player_id || "",
-        shirt_number: r.shirt_number || "", position: r.position || "",
-        role: r.role || "starting", captain: Boolean(r.captain),
-        minute_on: r.minute_on || "", minute_off: r.minute_off || "",
-        replaced_player: r.replaced_player || "",
-        yellow_card: Boolean(r.yellow_card),
-        yellow_red_card: Boolean(r.yellow_red_card),
-        red_card: Boolean(r.red_card),
-      })),
-    });
-    button.disabled = false; button.textContent = "Save team sheet";
-    // Rule 1: the sheet stays in state on failure, so nothing typed is lost.
+    if (!del || del.disabled) return;
+    del.disabled = true;
+    const { error } = await supabase.rpc("delete_nt_goal",
+      { p_goal_id: del.dataset.ntDelGoal });
+    del.disabled = false;
     if (error) { flash(humanError(error), "error"); return; }
-    flash("Team sheet saved.", "ok");
     requestRebuild();
     state.ntDetail = null;
-    state.sheet = null;
     await drawNTDetail(match, state);
   });
+
+  wireSheets(host, [{
+    key: sheetKey, teamName: state.teamName, sheet, squad,
+    save: async (rows) => (await supabase.rpc("save_nt_lineup", {
+      p_match_id: match.match_id,
+      p_team_id: match.team_code,
+      p_rows: rows,
+    })).error,
+    saved: () => {
+      // Re-read after a save: save_nt_lineup derives each starter's minute_off
+      // from the substitutions, so what came back is not quite what went up.
+      state.ntDetail = null;
+      delete state.sheets[sheetKey];
+      drawNTDetail(match, state);
+    },
+  }], () => drawNTDetail(match, state, { local: true }));
 }
 
 /** "10 Tabitha Chawinga FW" -> {shirt_number, player_name, position}.

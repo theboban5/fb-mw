@@ -125,13 +125,9 @@ class SnapshotTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        texts = {}
-        for tab in dataset.TAB_GIDS:
-            path = os.path.join(CANONICAL, f"{tab}.csv")
-            if not os.path.exists(path):
-                raise unittest.SkipTest("data/canonical/ snapshot not present")
-            with open(path, encoding="utf-8") as fh:
-                texts[tab] = fh.read()
+        texts = dataset.read_snapshot(CANONICAL)
+        if texts is None:
+            raise unittest.SkipTest("data/canonical/ snapshot not present")
         cls.ds = dataset.parse_all(texts)
 
     def test_every_adapted_match_carries_the_sheets_kickoff(self):

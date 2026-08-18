@@ -50,9 +50,13 @@ def _round_trip(tab):
 
     Exactly the path a row takes through Postgres, minus Postgres itself.
     """
+    path = os.path.join(CANONICAL, f"{tab}.csv")
+    # A Supabase-only tab may not be in the snapshot yet. Its emitted header is
+    # still worth asserting on, and an empty tab round-trips to itself.
+    if not os.path.exists(path) and tab in dataset.SUPABASE_ONLY_TABS:
+        return source_supabase.tab_csv(tab, [])
     spec = import_canonical.SPEC_BY_TABLE[tab]
-    rows = import_canonical.read_rows(
-        os.path.join(CANONICAL, f"{tab}.csv"), spec, artifacts=[])
+    rows = import_canonical.read_rows(path, spec, artifacts=[])
     return source_supabase.tab_csv(tab, rows)
 
 
@@ -81,11 +85,14 @@ class RoundTripTest(unittest.TestCase):
     """The parsed result must be identical, tab by tab, row for row."""
 
     def test_league_tabs_parse_identically(self):
+        # A Supabase-only tab may not be in the snapshot yet; read_snapshot
+        # gives it a header-only CSV, which is what an empty tab looks like on
+        # both sides of the round trip.
+        texts = dataset.read_snapshot(CANONICAL)
+        self.assertIsNotNone(texts, "data/canonical/ snapshot not present")
         for tab in dataset.TABS:
             with self.subTest(tab=tab):
-                with open(os.path.join(CANONICAL, f"{tab}.csv"),
-                          encoding="utf-8") as fh:
-                    before = dataset._PARSERS[tab](_strip_formulas(fh.read()))
+                before = dataset._PARSERS[tab](_strip_formulas(texts[tab]))
                 after = dataset._PARSERS[tab](_round_trip(tab))
                 self.assertEqual(before, after)
 

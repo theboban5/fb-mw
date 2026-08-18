@@ -14,12 +14,21 @@ accidental row deletion.
 
 The original 13-tab Google Spreadsheet (plus seven `nt_*` national-team tabs)
 is **deprecated**: still readable with `DATASET_SOURCE=sheets` as an emergency
-fallback, no longer written to by anyone.
+fallback, no longer written to by anyone. **`lineups` has no tab in it** — it
+postdates the spreadsheet entirely — so under `DATASET_SOURCE=sheets` it reads
+as an empty tab (`dataset.SUPABASE_ONLY_TABS`) and the fallback still builds a
+whole site, minus the data it never had.
 
 Reporter-facing tables that are NOT part of the `Dataset` — `reporter_assignments`,
-`match_change_log`, `match_incidents`, `lineup_entries`, `match_media`,
-`rebuild_state` — are invisible to the build by design. They carry no rules
-below and cannot affect a rendered page.
+`match_change_log`, `match_media`, `rebuild_state` — are invisible to the build
+by design. They carry no rules below and cannot affect a rendered page.
+
+`match_incidents` and `lineup_entries` are **deprecated** (0018). They were in
+that list too, which is precisely what was wrong with them: cards,
+substitutions and line-ups typed into `/report` were stored correctly and then
+rendered nowhere at all. All three are now columns on the `lineups` tab, which
+IS part of the `Dataset`. Both tables were empty when they were retired, so
+nothing was migrated; they are left in place and must not be written to.
 
 ## Entity model
 
@@ -30,7 +39,8 @@ clubs ──< teams ──< entries >── competition_seasons >── competit
                        │
 matches (home/away team_id, venue_id, competition_id, season_id)
    │
-goals (match_id, team_id, player_id, assist_player_id) >── players
+   ├── goals   (match_id, team_id, player_id, assist_player_id) >── players
+   └── lineups (match_id, team_id, player_id)                   >── players
 ```
 
 - **clubs** — the institution (Nyasa Big Bullets). One row per club.
@@ -49,6 +59,9 @@ goals (match_id, team_id, player_id, assist_player_id) >── players
   `points_adjustment` (can be negative) + `adjustment_reason`, and `status`
   (blank/active | withdrawn | expelled).
 - **venues**, **matches**, **goals**, **players** — as named.
+- **lineups** — one row per named player per side per match: the starting XI,
+  the bench, who came on for whom, the cards and the armband. Deliberately the
+  same shape as `nt_lineups`, so `src/lineups.py` folds and renders both.
 - **registrations**, **reporters**, **aliases** — present, currently empty.
 
 ## ID conventions (as built)
@@ -90,6 +103,11 @@ goals (match_id, team_id, player_id, assist_player_id) >── players
   not erase the link).
 - `confidence`: unconfirmed | confirmed | official
 - `goals.goal_type`: (blank) | open_play | penalty | free_kick | header | own_goal
+- `lineups.role` / `nt_lineups.role`: starting | sub_on | unused_sub
+- `lineups.position`: (blank) | GK | DF | MF | FW. Optional on the league tab
+  and required on `nt_lineups`: a league sheet routinely arrives as eleven
+  names off a Facebook photo with no positions at all, and half a team sheet
+  still reads.
 - `teams.gender`: m | w ; `teams.age_group`: senior | u20 | u19 | u17 | u16 | u15
   (case-insensitive in the sheet, normalized to lowercase) ;
   `teams.squad_level`: 1–4
@@ -120,6 +138,19 @@ goals (match_id, team_id, player_id, assist_player_id) >── players
     before — there is nothing to show.
   Setting a real `player_id` later promotes the goal to the canonical
   rankings and a player page at the next build.
+- **A line-up renders only where `lineups` has rows for that match** — the same
+  graceful degradation `nt_lineups` already had. Almost every match has none,
+  and a match with no sheet renders exactly as it always did.
+- **An unused substitute is not an appearance.** They are on the team sheet and
+  they render in the match's line-up block, but a profile does not count them:
+  otherwise "games played" would mean "games named in a squad".
+- **A `lineups` row with a blank `player_id`** is a name nobody has identified
+  yet — the same state a reported scorer sits in. It renders as plain text
+  rather than a link, and earns its player no page and no appearance. Setting a
+  real `player_id` later promotes it at the next build.
+- **`assist_player_id` is an id or nothing.** Unlike a scorer there is no
+  reported-name column to fall back on, so an assist nobody can name is simply
+  not recorded. Own goals never carry one.
 - Only `status=played` matches count for standings; `awarded` matches count
   with their recorded score (and show `awarded_note`).
 - Dates are strict `YYYY-MM-DD`; a blank match date is allowed (fixture not
@@ -217,16 +248,25 @@ Rules that differ from the league schema, and why:
   announced". It renders beside the date on the next-match panel and on the
   landing card — "1 Aug 2026 · 20:00 CAT · Neutral" — and is simply left out
   when blank, so no row has to be filled in for the pages to build.
-- **National-team `player_id`s are their own namespace** (`MW_W_001`,
-  `W_INT_NI_002`) and are absent from the `players` tab, so scorer names come
-  from `nt_goals.player_name` — the opposite of the league rule. There are no
-  links to `/players/` pages.
+- **Our own sides' `player_id`s are canonical `players` rows** (0020). They
+  were their own namespace (`MW_W_001`) pointing at nothing until team sheets
+  became clickable, at which point the same person had to be the same person in
+  both halves of the site — a profile shows club football and international
+  football together, and could not have done while these were two unrelated
+  strings. **An opponent's `player_id` is still their own thing**
+  (`W_INT_NI_002`, `INT_LIB_KOSIAH`), resolves to no registry, and renders as
+  plain text: this site holds one match of a Liberian international's career
+  and has no business publishing a profile of them.
+- **Scorer names still come from `nt_goals.player_name`**, not from
+  `players` — the opposite of the league rule, and unchanged. It is the only
+  column every row of that tab has, because the opponents' rows are in it too.
 - **`nt_squads.domestic_team_id` is the only join back into the league data**
   (`-> teams.team_id`, for the club-hub link). It is blank for foreign-based
   players — expected, not an error.
 - **A line-up section renders only when `nt_lineups` has rows for that
   match**, the same graceful degradation as scorers on club pages. Most
-  matches have none.
+  matches have none. The markup is shared with the league results table
+  (`src/lineups.py`); only the link target differs.
 - **The results list is always from Malawi's perspective** (Malawi in the
   left column whatever `home_away` says) so the scorer columns stay aligned
   with the sides above them; home/away/neutral moves into the caption.
@@ -242,7 +282,8 @@ Rules that differ from the league schema, and why:
 
 1. No duplicate or blank primary keys in any tab.
 2. Every FK resolves (teams→clubs; matches→teams/venues/competitions/seasons;
-   goals→matches/teams/players; entries and competition_seasons→their refs).
+   goals→matches/teams/players; lineups→matches/teams/players, with a blank
+   `player_id` allowed; entries and competition_seasons→their refs).
 3. Every match participant has an entries row for that competition+season.
 4. `home_team_id != away_team_id`; played/awarded ⟹ both goals present;
    scheduled ⟹ goals blank; one-sided scores always fail.
@@ -267,3 +308,11 @@ Rules that differ from the league schema, and why:
    `team_code` does not resolve must carry a `team_name` (it is a rival's
    line), and every group must hold at least one row for a team in `nt_teams`
    — otherwise that group belongs to no page and would never render.
+10. **Line-ups**: the same cross-row rules as check 9, on the league tab —
+    at most 11 starters per match AND side, every `sub_on` row carries a
+    `minute_on`, and its `replaced_player` names someone on that same side's
+    sheet. Plus the one rule `nt_lineups` cannot state: a sheet's `team_id`
+    must be one of the two teams that actually played. All ERRORs, because
+    `src/lineups.py` pairs a substitute to the starter they replaced BY NAME
+    — a `replaced_player` naming nobody renders a dangling name, and a twelfth
+    starter renders a starting XI that is not one.

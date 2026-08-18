@@ -68,6 +68,13 @@ COLUMNS = {
                 "nationality", "status"),
     "registrations": ("player_id", "team_id", "season_id", "shirt_number",
                       "from_date", "to_date"),
+    # 0018. The one tab with no counterpart in the spreadsheet — it postdates
+    # it — so dataset.SUPABASE_ONLY_TABS holds the same header for the sheets
+    # fallback to emit empty. Keep the two in step.
+    "lineups": ("match_id", "team_id", "player_name", "player_id",
+                "shirt_number", "position", "role", "captain", "minute_on",
+                "minute_off", "replaced_player", "yellow_card",
+                "yellow_red_card", "red_card"),
     "reporters": ("reporter_id", "name", "email", "affiliation",
                   "affiliation_id", "region", "active", "public_byline"),
     "aliases": ("alias_text", "entity_type", "entity_id", "context"),

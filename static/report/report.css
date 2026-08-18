@@ -430,6 +430,71 @@ a { color: var(--accent); }
 }
 .rp-sheet-flags .rp-inline { font-size: 0.8rem; }
 
+/* The squad: tap a name to put them on the sheet.
+   A wrapping row of chips rather than a list, because a squad is 20-odd short
+   names and a list of 20 rows is three screens of scrolling on a phone. */
+.rp-squad-chips {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+}
+.rp-squad-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 38px; padding: 6px 11px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--bg); color: var(--ink);
+  font: inherit; font-size: 0.88rem; line-height: 1.2;
+  cursor: pointer;
+}
+.rp-squad-chip b {
+  color: var(--muted); font-variant-numeric: tabular-nums; font-size: 0.8rem;
+}
+.rp-squad-chip:active { background: var(--accent-wash); }
+.rp-squad-chip.is-new {
+  border-style: dashed; border-color: var(--accent); color: var(--accent);
+}
+
+/* A toggle that reads as its own state: "Captain" lit means captain, and the
+   card chip says which card it is rather than which box is ticked. Buttons,
+   not checkboxes — a 38px chip is a far easier tap than a 16px box, and this
+   screen is filled in standing at a touchline. */
+.rp-chip {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  min-height: 38px; padding: 6px 12px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--bg); color: var(--muted);
+  font: inherit; font-size: 0.82rem; font-weight: 600;
+  cursor: pointer;
+}
+.rp-chip em { font-style: normal; font-weight: 400; font-size: 0.78rem; }
+.rp-chip.is-on {
+  border-color: var(--accent); background: var(--accent);
+  color: var(--accent-ink);
+}
+.rp-card-chip.is-card-none { color: var(--muted); }
+.rp-card-chip.is-card-yellow_card {
+  border-color: #f2c200; background: #fff8dd; color: #7a5c00;
+}
+.rp-card-chip.is-card-yellow_red_card {
+  border-color: #d33a3a;
+  background: linear-gradient(135deg, #fff8dd 50%, #fdeceb 50%);
+  color: #8a2020;
+}
+.rp-card-chip.is-card-red_card {
+  border-color: #d33a3a; background: #d33a3a; color: #ffffff;
+}
+
+/* A row whose name reached no player. Not an error — the sheet saves either
+   way and the name still renders — so it is a quiet note, not a warning. */
+.rp-sheet-warn {
+  margin-left: 6px; font-style: normal;
+  font-size: 0.72rem; font-weight: 600; color: var(--muted);
+}
+.rp-sheet-shirt { flex: 0 1 72px; }
+
+/* The paste box is the fallback, so it sits closed under the squad rather than
+   above it: the common path is tapping names, and the uncommon one should not
+   be the first thing on the screen. */
+.rp-paste { margin-top: 12px; }
+
 /* ─── Home actions and filters ───────────────────────────────────────────── */
 
 /* Add fixture / New league / Refresh. Laid out as a row that wraps rather
