@@ -479,3 +479,49 @@ a { color: var(--accent); }
 /* The matchday menu holds "Quarter-final" as well as "Matchday 12", so it gets
    a row of its own rather than sharing one with Show and Date. */
 .rp-filter-wide { flex-basis: 100%; }
+
+/* ─── A fixture list, entered as a fixture list ───────────────────────────────
+   One card per match, numbered, because the reporter is copying line by line
+   off a graphic and has to be able to see which line they are on. The card
+   carries its own failure: after a partial save the lines that worked have
+   gone and the ones left are outlined in red with the reason under them, so
+   "what still needs doing" is the whole screen rather than a message about
+   it. */
+
+.rp-fixtures { list-style: none; margin: 10px 0 0; padding: 0; }
+
+.rp-fx {
+  padding: 10px 12px 12px; margin-top: 10px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--row-alt);
+}
+.rp-fx.is-bad { border-color: var(--danger); background: var(--danger-wash); }
+
+.rp-fx-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 6px;
+}
+.rp-fx-no {
+  font-size: 0.72rem; font-weight: 800; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--muted);
+}
+/* Quiet, and still a 44px target: removing a line is easy to want and easy to
+   hit by accident, so it is the least prominent thing on the card. */
+.rp-fx-drop {
+  min-height: 44px; padding: 0 4px; margin: -6px -4px -6px 0;
+  border: 0; background: none; cursor: pointer;
+  font-family: inherit; font-size: 0.8rem; color: var(--muted);
+}
+.rp-fx-drop:active { color: var(--danger); }
+
+.rp-fx .rp-select, .rp-fx .rp-input { background: var(--bg); }
+.rp-fx > .rp-input { margin-top: 8px; }
+.rp-fx-v {
+  display: block; margin: 4px 0; text-align: center;
+  font-size: 0.7rem; font-weight: 800; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted);
+}
+.rp-fx-error {
+  margin: 8px 0 0; color: var(--danger);
+  font-size: 0.82rem; font-weight: 600;
+}

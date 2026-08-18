@@ -9,7 +9,7 @@
  *   #/            the reporter's fixtures, bucketed and filterable
  *   #/login       email + password (no signup — accounts are made by CLI)
  *   #/m/<uuid>    one match, the reporting screen. This is the WhatsApp link.
- *   #/add         add a fixture to a competition you cover
+ *   #/add         add a whole fixture list to a competition you cover
  *   #/league/new  create a competition and its teams (administrators only)
  *   #/account     who am I, change password, sign out
  *
@@ -143,6 +143,11 @@ function humanError(error) {
       || message.includes("no active season")
       || message.includes("outside the")
       || message.includes("both teams are required")
+      // ...and the whole-list rules from 0014, which are about the SUBMISSION
+      // rather than about any one fixture in it.
+      || message.includes("at least one fixture")
+      || message.includes("a list of fixtures")
+      || message.includes("in two goes")
       || message.includes("gender must be")
       || message.includes("type must be")
       // ...and the scorer-identity rules from 0010, phrased the same way.
@@ -679,7 +684,7 @@ async function renderHome(params) {
   const hasNT = (await ntTeams().catch(() => [])).length > 0;
   const actions = `
     <div class="rp-actions">
-      ${canAdd ? '<a class="rp-btn is-ghost" href="#/add">＋ Add fixture</a>' : ""}
+      ${canAdd ? '<a class="rp-btn is-ghost" href="#/add">＋ Add fixtures</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/league/new">＋ New league</a>' : ""}
       ${hasNT ? '<a class="rp-btn is-ghost" href="#/nt">National teams</a>' : ""}
       <button class="rp-btn is-quiet" type="button" data-refresh>Refresh</button>
@@ -719,15 +724,30 @@ function firstName() {
   return name.split(" ")[0] || "there";
 }
 
-// ── Adding a fixture ─────────────────────────────────────────────────────────
+// ── Adding fixtures ──────────────────────────────────────────────────────────
 // A result can only be reported against a fixture that exists, so a reporter
 // who covers a league nobody has entered a fixture list for cannot do anything
 // at all. This is that missing step.
 //
+// A WHOLE LIST, NOT ONE FIXTURE. A fixture list does not arrive as a fixture.
+// It arrives as one Facebook graphic: a week, seven matches, two dates, one
+// kick-off time repeated seven times, and a ground printed under every
+// pairing. Entering them one at a time meant seven round trips on a phone with
+// one bar of signal, each able to fail on its own and leave the week half
+// entered with nothing saying how far the reporter had got. So the form is the
+// shape of the picture — the things the whole graphic shares said once at the
+// top, a numbered line per match, and one button.
+//
+// PART OF IT FAILING MUST NOT COST THE REST. create_fixtures answers per line:
+// the lines that saved leave the form and appear under "Added just now", and
+// the lines that did not stay exactly as typed with the reason on them. That
+// is rule 1 of this app — entered data is never destroyed by a failure — at
+// the scale of a list rather than a field.
+//
 // The form deliberately offers ONLY teams entered in the chosen competition
 // this season. That is validate.py check 3, which fails the whole build if it
 // is broken — so rather than let it be typed wrong and rejected, the wrong
-// answer is not offered. create_fixture checks it again anyway; the client is
+// answer is not offered. create_fixtures checks it again anyway; the client is
 // not the boundary.
 
 const CUP_ROUNDS = [
@@ -739,6 +759,16 @@ const CUP_ROUNDS = [
   { value: "final", label: "Final" },
   { value: "3p", label: "Third-place play-off" },
 ];
+
+// Three lines to start with. Enough that the screen reads as a list rather
+// than as a single form with an odd button under it, few enough that a
+// reporter adding one midweek fixture is not looking at a wall.
+const START_ROWS = 3;
+
+// What create_fixtures accepts in one call. Nothing in Malawi plays a round
+// this big; it is there so a malformed or replayed submission cannot sit on a
+// connection inserting for minutes.
+const MAX_ROWS = 60;
 
 /** The competitions this account may enter data for. An admin may use any;
  *  everyone else gets exactly their assignments. */
@@ -765,12 +795,38 @@ function activeSeason() {
   });
 }
 
+/** Every ground already in the database, for the suggestion list under each
+ *  venue box. resolve_venue matches a typed name exactly (after case and
+ *  punctuation), and mints a new venue when it does not match — so picking the
+ *  name that is already there is what keeps one ground from acquiring two ids.
+ *  This list is that prevention; the resolver is only the fallback. */
+function venueNames() {
+  return once("venues", async () => {
+    const { data } = await supabase.from("venues").select("name").order("name");
+    return (data || []).map((v) => v.name).filter(Boolean);
+  });
+}
+
+const blankRow = () => ({ home: "", away: "", date: "", kickoff: "", venue: "", error: "" });
+
+/** A per-line failure comes back as the sentence create_fixtures raised, not
+ *  as a PostgREST error object — but they are the same sentences, raised by
+ *  the same rules, so humanError already knows every one of them. */
+const rowError = (message) => humanError({ message: message || "" });
+
 async function renderAddFixture(params) {
   h('<div class="rp-loading"><span class="rp-spinner"></span><p>Loading…</p></div>');
 
-  let competitions, season;
+  let competitions, season, venues;
   try {
-    [competitions, season] = await Promise.all([entryCompetitions(), activeSeason()]);
+    [competitions, season, venues] = await Promise.all([
+      entryCompetitions(),
+      activeSeason(),
+      // The ground list is a convenience, not a requirement: a reporter can
+      // still type one. Losing the whole screen because it did not load would
+      // be a worse trade than losing the suggestions.
+      venueNames().catch(() => []),
+    ]);
   } catch (error) {
     h('<p class="rp-empty">Could not load your competitions.</p>'
       + '<a class="rp-btn is-ghost" href="#/">Back to my matches</a>');
@@ -798,6 +854,13 @@ async function renderAddFixture(params) {
     competition: competitions.find((c) => c.competition_id === wanted)
                  || competitions[0],
     teams: null,
+    // Shared by every line, because the graphic shares them.
+    matchday: "",
+    stage: "",
+    date: "",
+    kickoff: "",
+    source: "",
+    rows: Array.from({ length: START_ROWS }, blankRow),
     busy: false,
     added: [],
   };
@@ -820,16 +883,72 @@ async function renderAddFixture(params) {
     drawAddFixture();
   }
 
+  const teamName = (id) =>
+    (state.teams || []).find((t) => t.id === id)?.name || id;
+
+  /** Read the form back into state.
+   *
+   *  The alternative — a listener per field writing through on every keystroke
+   *  — buys nothing here and costs a re-render argument on a slow phone. This
+   *  runs before anything that redraws (adding a line, removing one, changing
+   *  competition, submitting), which is the only time state and DOM can
+   *  disagree in a way that matters. */
+  function syncFromDom() {
+    const form = view.querySelector("[data-fixtures]");
+    if (!form) return;
+    const value = (selector) => form.querySelector(selector)?.value ?? "";
+    state.matchday = value("[data-matchday]");
+    state.stage = value("[data-stage]");
+    state.date = value("[data-all-date]");
+    state.kickoff = value("[data-all-kickoff]");
+    state.source = value("[data-source]");
+    form.querySelectorAll("[data-row]").forEach((el) => {
+      const row = state.rows[Number(el.dataset.row)];
+      if (row) row[el.dataset.field] = el.value;
+    });
+  }
+
   function drawAddFixture() {
+    const isCup = state.competition.type === "cup";
+
     const compOptions = competitions.map((c) => `
       <option value="${esc(c.competition_id)}"${
         c.competition_id === state.competition.competition_id ? " selected" : ""}>
         ${esc(c.label)}</option>`).join("");
 
-    const teamOptions = () => (state.teams || []).map((t) => `
-      <option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
+    const teamOptions = (chosen) => (state.teams || []).map((t) => `
+      <option value="${esc(t.id)}"${t.id === chosen ? " selected" : ""}>
+        ${esc(t.name)}</option>`).join("");
 
-    const isCup = state.competition.type === "cup";
+    const line = (row, i) => `
+      <li class="rp-fx${row.error ? " is-bad" : ""}">
+        <div class="rp-fx-head">
+          <span class="rp-fx-no">Match ${i + 1}</span>
+          ${state.rows.length > 1
+            ? `<button class="rp-fx-drop" type="button" data-drop="${i}">Remove</button>`
+            : ""}
+        </div>
+        <select class="rp-select" data-row="${i}" data-field="home"
+                aria-label="Home team, match ${i + 1}">
+          <option value="">Home team…</option>${teamOptions(row.home)}</select>
+        <span class="rp-fx-v">v</span>
+        <select class="rp-select" data-row="${i}" data-field="away"
+                aria-label="Away team, match ${i + 1}">
+          <option value="">Away team…</option>${teamOptions(row.away)}</select>
+        <div class="rp-row">
+          <input class="rp-input rp-date" type="date" data-row="${i}" data-field="date"
+                 value="${esc(row.date)}" aria-label="Date, match ${i + 1}">
+          <input class="rp-input rp-date" type="time" data-row="${i}" data-field="kickoff"
+                 value="${esc(row.kickoff)}" aria-label="Kick-off, match ${i + 1}">
+        </div>
+        <input class="rp-input" type="text" list="rp-venues" maxlength="120"
+               data-row="${i}" data-field="venue" value="${esc(row.venue)}"
+               placeholder="Ground" autocapitalize="words" autocorrect="off"
+               aria-label="Ground, match ${i + 1}">
+        ${row.error ? `<p class="rp-fx-error">${esc(row.error)}</p>` : ""}
+      </li>`;
+
+    const count = state.rows.filter((r) => r.home && r.away).length;
 
     const body = state.teams === null
       ? '<div class="rp-loading"><span class="rp-spinner"></span><p>Loading teams…</p></div>'
@@ -838,36 +957,46 @@ async function renderAddFixture(params) {
              two teams entered for ${esc(season.label)}, so it cannot hold a
              fixture yet.</p>`
         : `
-      <label class="rp-label" for="home-team">Home team</label>
-      <select class="rp-select" id="home-team" name="home" required>
-        <option value="">Choose…</option>${teamOptions()}</select>
-
-      <label class="rp-label" for="away-team">Away team</label>
-      <select class="rp-select" id="away-team" name="away" required>
-        <option value="">Choose…</option>${teamOptions()}</select>
-
-      <label class="rp-label" for="fx-date">Date</label>
-      <input class="rp-input" id="fx-date" name="date" type="date">
-      <p class="rp-hint">Leave blank if the day is not fixed yet.</p>
-
-      <label class="rp-label" for="fx-kickoff">Kick-off</label>
-      <input class="rp-input" id="fx-kickoff" name="kickoff" type="time"
-             placeholder="15:00">
-      <p class="rp-hint">Malawi time. Leave blank if not announced.</p>
-
       ${isCup ? `
         <label class="rp-label" for="fx-stage">Round</label>
-        <select class="rp-select" id="fx-stage" name="stage" required>
+        <select class="rp-select" id="fx-stage" data-stage>
           <option value="">Choose…</option>
-          ${CUP_ROUNDS.map((r) => `<option value="${r.value}">${esc(r.label)}</option>`).join("")}
-        </select>`
+          ${CUP_ROUNDS.map((r) => `<option value="${r.value}"${
+            r.value === state.stage ? " selected" : ""}>${esc(r.label)}</option>`).join("")}
+        </select>
+        <p class="rp-hint">The round every match below is in.</p>`
       : `
         <label class="rp-label" for="fx-matchday">Matchday</label>
-        <input class="rp-input" id="fx-matchday" name="matchday" type="number"
-               min="1" step="1" inputmode="numeric">
-        <p class="rp-hint">Optional.</p>`}
+        <input class="rp-input" id="fx-matchday" type="number" data-matchday
+               min="1" step="1" inputmode="numeric" value="${esc(state.matchday)}">
+        <p class="rp-hint">Optional, and applies to every match below — a
+          fixture list is published a week at a time.</p>`}
 
-      <button class="rp-btn" type="submit" data-submit>Add fixture</button>`;
+      <h2 class="rp-field-head">Applies to every match</h2>
+      <div class="rp-row">
+        <input class="rp-input rp-date" type="date" data-all-date
+               value="${esc(state.date)}" aria-label="Date for every match">
+        <input class="rp-input rp-date" type="time" data-all-kickoff
+               value="${esc(state.kickoff)}" aria-label="Kick-off for every match">
+      </div>
+      <p class="rp-hint">Filled into the lines below. Change any line that is
+        different — a list spread over two days is normal.</p>
+
+      <label class="rp-label" for="fx-source">Where is this from?</label>
+      <input class="rp-input" id="fx-source" type="text" data-source maxlength="500"
+             value="${esc(state.source)}" placeholder="Facebook link, or how you know"
+             autocapitalize="sentences" autocorrect="off" spellcheck="false">
+      <p class="rp-hint">Optional, never shown publicly, and recorded against
+        every match added — it is there so a fixture can be checked later.</p>
+
+      <h2 class="rp-field-head">The fixtures</h2>
+      <ol class="rp-fixtures">${state.rows.map(line).join("")}</ol>
+      <button class="rp-btn is-ghost" type="button" data-more>＋ Add another</button>
+
+      <div class="rp-publish">
+        <button class="rp-btn" type="submit" data-submit>${
+          count ? `Add ${count} fixture${count === 1 ? "" : "s"}` : "Add fixtures"}</button>
+      </div>`;
 
     const addedList = state.added.length ? `
       <h2 class="rp-field-head">Added just now</h2>
@@ -877,82 +1006,218 @@ async function renderAddFixture(params) {
             <span class="rp-team">${esc(m.homeName)}</span><span></span>
             <span class="rp-team">${esc(m.awayName)}</span><span></span>
           </div>
-          <p class="rp-card-meta">${esc(formatDate(m.date))}</p>
+          <p class="rp-card-meta">${[formatDate(m.date), formatKickoff(m.kickoff),
+                                     m.venue].filter(Boolean).map(esc).join(" · ")}</p>
           <a class="rp-btn is-ghost" href="#/m/${esc(m.public_id)}">Report this match</a>
         </article>`).join("")}` : "";
 
     h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
-       <h1 class="rp-login-head">Add a fixture</h1>
+       <h1 class="rp-login-head">Add fixtures</h1>
        <p class="rp-login-sub">${esc(season.label)} season.</p>
-       <form class="rp-form" data-fixture>
+       <form class="rp-form" data-fixtures autocomplete="off">
          <label class="rp-label" for="fx-comp">Competition</label>
-         <select class="rp-select" id="fx-comp" name="competition">${compOptions}</select>
+         <select class="rp-select" id="fx-comp" data-comp>${compOptions}</select>
          ${body}
        </form>
+       <datalist id="rp-venues">${
+         venues.map((n) => `<option value="${esc(n)}"></option>`).join("")}</datalist>
        ${addedList}`);
 
-    view.querySelector("#fx-comp").addEventListener("change", (event) => {
+    wire(isCup);
+  }
+
+  function wire(isCup) {
+    const form = view.querySelector("[data-fixtures]");
+
+    form.querySelector("[data-comp]").addEventListener("change", (event) => {
+      syncFromDom();
       state.competition = competitions.find(
         (c) => c.competition_id === event.target.value) || competitions[0];
+      // A round chosen for a cup means nothing in a league and vice versa, and
+      // the teams on every line belong to the competition that was showing
+      // when they were picked — carrying either across would offer a fixture
+      // that validate.py check 3 exists to refuse.
+      state.stage = "";
+      state.rows.forEach((row) => { row.home = ""; row.away = ""; row.error = ""; });
       loadTeams();
     });
 
-    const form = view.querySelector("[data-fixture]");
+    form.querySelector("[data-more]")?.addEventListener("click", () => {
+      syncFromDom();
+      // The same ceiling create_fixtures enforces, said before the reporter
+      // has typed a line that would be refused.
+      if (state.rows.length >= MAX_ROWS) {
+        flash(`${MAX_ROWS} matches is the most in one go — add these, then`
+              + " start the next lot.", "warn");
+        return;
+      }
+      const row = blankRow();
+      // A new line starts where the list said it would, so adding the seventh
+      // match of a Saturday is one pair of taps rather than four.
+      row.date = state.date;
+      row.kickoff = state.kickoff;
+      state.rows.push(row);
+      drawAddFixture();
+      view.querySelector(`[data-row="${state.rows.length - 1}"]`)?.focus();
+    });
+
+    form.querySelectorAll("[data-drop]").forEach((button) => {
+      button.addEventListener("click", () => {
+        syncFromDom();
+        state.rows.splice(Number(button.dataset.drop), 1);
+        drawAddFixture();
+      });
+    });
+
+    // Changing "applies to every match" fills the lines that were following it
+    // — the empty ones, and the ones still showing the previous shared value.
+    // A line the reporter has already made different is left alone, because
+    // the day that differs is the thing they went out of their way to say.
+    const spread = (field, el) => el?.addEventListener("change", () => {
+      const previous = state[field];
+      syncFromDom();
+      const next = state[field];
+      state.rows.forEach((row) => {
+        if (!row[field] || row[field] === previous) row[field] = next;
+      });
+      drawAddFixture();
+    });
+    spread("date", form.querySelector("[data-all-date]"));
+    spread("kickoff", form.querySelector("[data-all-kickoff]"));
+
+    // The button counts what will be sent, so "Add 7 fixtures" is a statement
+    // about the screen rather than a label.
     const button = form.querySelector("[data-submit]");
     if (!button) return;
+    form.addEventListener("change", (event) => {
+      if (!event.target.matches('[data-field="home"], [data-field="away"]')) return;
+      syncFromDom();
+      const n = state.rows.filter((r) => r.home && r.away).length;
+      button.textContent = n ? `Add ${n} fixture${n === 1 ? "" : "s"}` : "Add fixtures";
+    });
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (state.busy) return;                  // rule 2: never submit twice
       clearFlash();
+      syncFromDom();
 
-      if (form.home.value && form.home.value === form.away.value) {
-        flash("A team cannot play itself — pick two different teams.", "error");
+      // Asked first, because it is one control and it applies to all of them:
+      // sending seven cup fixtures with no round would fail seven times over
+      // for a reason that is nothing to do with any of the seven lines.
+      if (isCup && !state.stage) {
+        flash("Choose the round these matches are in.", "warn");
         return;
       }
 
+      // What is worth sending, and what is wrong before the network is
+      // involved. A line with neither team is a spare line, not a mistake —
+      // there are three on an empty form and nobody has to delete them.
+      const sending = [];
+      state.rows.forEach((row) => {
+        row.error = "";
+        if (!row.home && !row.away) return;
+        if (!row.home || !row.away) { row.error = "Pick both teams."; return; }
+        if (row.home === row.away) { row.error = "A team cannot play itself."; return; }
+        sending.push(row);
+      });
+
+      if (!sending.length) {
+        drawAddFixture();
+        flash(state.rows.some((r) => r.error)
+          ? "Some lines are not finished — see below."
+          : "Fill in at least one match.", "warn");
+        return;
+      }
       state.busy = true;
       button.disabled = true;
-      button.textContent = "Adding…";
+      button.textContent = `Adding ${sending.length}…`;
 
-      const payload = {
+      const { data, error } = await supabase.rpc("create_fixtures", {
         p_competition_id: state.competition.competition_id,
-        p_home_team_id: form.home.value,
-        p_away_team_id: form.away.value,
-        p_date: form.date.value || null,
-        // <input type="time"> yields HH:MM, which is what the column's own
-        // constraint accepts.
-        p_kickoff: form.kickoff.value || "",
-      };
-      if (isCup) payload.p_stage = form.stage.value;
-      else if (form.matchday.value) payload.p_matchday = Number(form.matchday.value);
-
-      const { data, error } = await supabase.rpc("create_fixture", payload);
+        p_source_ref: state.source.trim(),
+        p_fixtures: sending.map((row) => {
+          const fixture = {
+            home: row.home, away: row.away,
+            date: row.date, kickoff: row.kickoff, venue: row.venue.trim(),
+          };
+          if (isCup) fixture.stage = state.stage;
+          else if (state.matchday) fixture.matchday = state.matchday;
+          return fixture;
+        }),
+      });
 
       state.busy = false;
       button.disabled = false;
-      button.textContent = "Add fixture";
 
       if (error) {
-        // Rule 1: the form is untouched, so nothing typed is lost.
+        // The call itself failed, so nothing was written and nothing typed is
+        // lost — the form is redrawn exactly as it stands.
+        drawAddFixture();
         flash(humanError(error), "error");
         return;
       }
 
-      const row = (data || [])[0];
-      const teamName = (id) => state.teams.find((t) => t.id === id)?.name || id;
-      state.added.unshift({
-        public_id: row?.public_id,
-        homeName: teamName(payload.p_home_team_id),
-        awayName: teamName(payload.p_away_team_id),
-        date: payload.p_date,
+      // One result per line sent, in order, saying which. A line that saved
+      // leaves the form; a line that did not keeps everything on it and gains
+      // the reason, which is the only state worth being in after a partial
+      // success.
+      const results = new Map((data || []).map((r) => [r.idx, r]));
+      let saved = 0;
+      sending.forEach((row, i) => {
+        const result = results.get(i + 1);
+        if (result?.ok) {
+          saved += 1;
+          state.added.unshift({
+            public_id: result.public_id,
+            homeName: teamName(row.home), awayName: teamName(row.away),
+            date: row.date, kickoff: row.kickoff, venue: row.venue.trim(),
+          });
+          // A ground typed on this screen joins the suggestion list for the
+          // rest of it. The second half of a fixture list often repeats a
+          // ground from the first, and re-typing it slightly differently is
+          // precisely how one place ends up with two venue_ids.
+          const ground = row.venue.trim();
+          if (ground && !venues.some((n) => n.toLowerCase() === ground.toLowerCase())) {
+            venues.push(ground);
+            venues.sort((a, b) => a.localeCompare(b));
+          }
+          row.done = true;
+        } else {
+          row.error = result ? rowError(result.message)
+                             : "That line was not saved — please try it again.";
+        }
       });
-      // The home screen is now out of date in a way the reporter can see.
-      invalidateHome();
-      flash("Fixture added.", "ok");
-      // A fixture list is entered a matchday at a time, so the form comes back
-      // empty and ready rather than navigating away after one.
+      state.rows = state.rows.filter((row) => !row.done);
+      const failed = state.rows.filter((row) => row.error).length;
+
+      if (saved) {
+        // The home screen is now out of date in a way the reporter can see,
+        // and so is the published fixture list.
+        invalidateHome();
+        requestRebuild();
+      }
+      // Everything landed: come back empty and ready for the next graphic,
+      // keeping the competition, matchday and source — which is what the
+      // second week of a fixture list shares with the first.
+      if (!state.rows.length) {
+        state.rows = Array.from({ length: START_ROWS }, () => {
+          const row = blankRow();
+          row.date = state.date;
+          row.kickoff = state.kickoff;
+          return row;
+        });
+      }
+
       drawAddFixture();
+      if (saved && !failed) {
+        flash(`${saved} fixture${saved === 1 ? "" : "s"} added.`, "ok");
+      } else if (saved) {
+        flash(`${saved} added. ${failed} still ${failed === 1 ? "needs" : "need"}`
+              + " attention below.", "warn", 9000);
+      } else {
+        flash("Nothing was added — see the lines below.", "error");
+      }
     });
   }
 
@@ -1109,9 +1374,13 @@ async function renderMatch(publicId, params) {
     return;
   }
 
-  const [{ data: allowed }, names] = await Promise.all([
+  const [{ data: allowed }, names, venues] = await Promise.all([
     supabase.rpc("can_report_match", { p_match_id: match.match_id }),
     competitionNames(),
+    // For the ground box in "Change date or ground". A convenience, never a
+    // requirement — the name can still be typed — so a failure here must not
+    // cost the reporter the screen they came for.
+    venueNames().catch(() => []),
   ]);
 
   if (!allowed) {
@@ -1140,6 +1409,7 @@ async function renderMatch(publicId, params) {
     busy: false,
     back,
     from: params?.get("from") || "",
+    venues,
     // Which of the collapsed sections were open, so a redraw does not shut
     // them. See drawDetail.
     open: {},
@@ -1246,10 +1516,10 @@ function drawMatch(match, names, state) {
       <p class="rp-publish-note" data-note></p>
     </div>
 
-    ${section("reschedule", "Change date", 0, `
-      <p class="rp-hint" style="margin-top:0">The fixture list said one day and
-        it was played on another? Change it here. This saves on its own — it is
-        not part of publishing the score.</p>
+    ${section("reschedule", "Change date or ground", 0, `
+      <p class="rp-hint" style="margin-top:0">The fixture list said one thing
+        and it happened another way? Change it here. Each of these saves on its
+        own — neither is part of publishing the score.</p>
       <label class="rp-label" for="rs-date">Date</label>
       <input class="rp-input" id="rs-date" type="date" data-rs-date
              value="${esc(match.date || "")}">
@@ -1259,6 +1529,17 @@ function drawMatch(match, names, state) {
              value="${esc((match.kickoff || "").slice(0, 5))}">
       <p class="rp-hint">Malawi time.</p>
       <button class="rp-btn is-ghost" type="button" data-rs-save>Save new date</button>
+
+      <label class="rp-label" for="rs-venue">Ground</label>
+      <input class="rp-input" id="rs-venue" type="text" list="rp-venues"
+             maxlength="120" data-rs-venue value="${esc(match.venue?.name || "")}"
+             placeholder="Ground" autocapitalize="words" autocorrect="off">
+      <p class="rp-hint">Pick one that is already there where you can — a
+        ground typed a second way becomes a second ground. Clear the box if it
+        is no longer settled.</p>
+      <button class="rp-btn is-ghost" type="button" data-rs-venue-save>Save ground</button>
+      <datalist id="rp-venues">${
+        (state.venues || []).map((n) => `<option value="${esc(n)}"></option>`).join("")}</datalist>
     `, state.open?.reschedule)}
 
     <div data-detail></div>
@@ -1418,10 +1699,16 @@ function wireReschedule(match, names, state) {
   const save = view.querySelector("[data-rs-save]");
   if (!dateEl || !save) return;
 
-  let busy = false;
+  // One lock for both buttons in this section. They write different columns
+  // through different RPCs, but they share a screen: either save redraws the
+  // whole match, so letting the second start while the first is in flight
+  // would wipe what is typed in the other box.
+  const lock = { busy: false };
+
+  wireVenue(match, names, state, lock);
 
   save.addEventListener("click", async () => {
-    if (busy) return;                          // rule 2: never submit twice
+    if (lock.busy) return;                     // rule 2: never submit twice
     clearFlash();
 
     const date = dateEl.value || null;
@@ -1437,7 +1724,7 @@ function wireReschedule(match, names, state) {
       return;
     }
 
-    busy = true;
+    lock.busy = true;
     save.disabled = true;
     save.textContent = "Saving…";
 
@@ -1447,7 +1734,7 @@ function wireReschedule(match, names, state) {
       p_kickoff: kickoff,
     });
 
-    busy = false;
+    lock.busy = false;
     save.disabled = false;
     save.textContent = "Save new date";
 
@@ -1469,6 +1756,78 @@ function wireReschedule(match, names, state) {
     drawMatch(match, names, state);
     // Only a published result is live on the site; moving an unplayed fixture
     // still changes the fixture list, so both are worth a rebuild.
+    requestRebuild();
+  });
+}
+
+
+/** Moving a fixture to another ground.
+ *
+ *  Its own button and its own RPC, next to the date rather than merged with
+ *  it. set_match_venue writes venue_id and nothing else, for the same reason
+ *  reschedule_match writes date and kickoff and nothing else: two narrow doors
+ *  are what make either of them safe to put in front of a reporter. One button
+ *  saving both would also mean one failure that could have half happened, and
+ *  a screen that cannot say which half.
+ *
+ *  The name typed here is resolved server-side, so what comes back may not be
+ *  what was typed — "likuni ground" matches the Likuni Ground already in the
+ *  database and the canonical spelling wins. That is the answer worth showing,
+ *  so the box is redrawn from the response rather than left as typed. */
+function wireVenue(match, names, state, lock) {
+  const venueEl = view.querySelector("[data-rs-venue]");
+  const save = view.querySelector("[data-rs-venue-save]");
+  if (!venueEl || !save) return;
+
+  save.addEventListener("click", async () => {
+    if (lock.busy) return;                     // rule 2: never submit twice
+    clearFlash();
+
+    const typed = venueEl.value.trim();
+    const current = match.venue?.name || "";
+    if (typed.toLowerCase() === current.toLowerCase()) {
+      flash(typed ? "That is already the ground." : "No ground is set.", "warn");
+      return;
+    }
+
+    lock.busy = true;
+    save.disabled = true;
+    save.textContent = "Saving…";
+
+    const { data, error } = await supabase.rpc("set_match_venue", {
+      p_match_id: match.match_id,
+      p_venue_name: typed,
+    });
+
+    lock.busy = false;
+    save.disabled = false;
+    save.textContent = "Save ground";
+
+    if (error) {
+      // Rule 1: the box is untouched, so nothing typed is lost.
+      flash(humanError(error), "error");
+      return;
+    }
+
+    const row = (data || [])[0];
+    match.venue_id = row?.venue_id ?? null;
+    // MATCH_FIELDS joins the name in as `venue`, and the rest of the screen
+    // reads it from there — the header meta line above the score included. It
+    // has to be patched to match, or the change lands in the database and the
+    // screen goes on showing the old ground.
+    match.venue = row?.venue_name ? { name: row.venue_name } : null;
+    if (match.venue && !(state.venues || []).some(
+          (n) => n.toLowerCase() === match.venue.name.toLowerCase())) {
+      state.venues = (state.venues || []).concat(match.venue.name)
+        .sort((a, b) => a.localeCompare(b));
+    }
+
+    // The ground is printed on the site's fixture list and on the home
+    // screen's cards, so both are now out of date.
+    invalidateHome();
+    flash(match.venue ? `Ground set to ${match.venue.name}.`
+                      : "Ground removed.", "ok");
+    drawMatch(match, names, state);
     requestRebuild();
   });
 }

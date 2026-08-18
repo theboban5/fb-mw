@@ -109,6 +109,8 @@ The whole migration, done and verified:
 | Debounce gap | `0011_consume_rebuild_pending.sql` + the Rebuild follow-up workflow |
 | Match detail | `0007_match_detail.sql` — scorers, cards, subs, line-ups, photos |
 | Entry | `0008`/`0009` — `create_fixture`, `create_league`, `reschedule_match` |
+| Fixture lists | `0014_fixture_batch.sql` — `create_fixtures`, `resolve_venue`, a whole week in one submission |
+| Grounds | `0015_match_venue.sql` — `set_match_venue`, the third narrow door beside `reschedule_match` |
 | Scorer identity | `0010_scorer_players.sql` — `create_player`, scorers resolve to a `player_id` |
 | Cutover | CI reads Supabase; the spreadsheet is deprecated |
 
@@ -285,7 +287,7 @@ the ordinary static tree copy. No framework, no bundler, no build step.
 /report/#/              today · awaiting result · upcoming · recently reported
 /report/#/login         email + password (no public signup)
 /report/#/m/<public-id> the reporting screen — this is the WhatsApp link
-/report/#/add           add a fixture to a competition you cover
+/report/#/add           add a whole fixture list to a competition you cover
 /report/#/league/new    create a competition and its teams (admin only)
 /report/#/account       change password, sign out
 ```
@@ -354,7 +356,9 @@ close that, at two different levels of privilege:
 | | who | what it does |
 |---|---|---|
 | `create_fixture` | any reporter, for a competition they are assigned to | one scheduled fixture |
+| `create_fixtures` | the same | a whole fixture list, one call, reported line by line |
 | `reschedule_match` | any reporter who may report that match | moves it — `date` and `kickoff`, nothing else |
+| `set_match_venue` | the same | moves it to another ground — `venue_id`, nothing else |
 | `create_league` | **admin only** | a competition, its season row, and a club + team + entry per pasted name |
 
 **Why creating a league is admin-only and adding a fixture is not.** It is not
@@ -388,6 +392,75 @@ message names the actual bounds ("outside the 2026/27 season (01 Apr 2026 to
 The fixture form goes further and simply *does not offer* a team that is not
 entered in the chosen competition, so the commonest way to break check 3 is
 unreachable. The RPC checks it anyway; the client is not the boundary.
+
+### A fixture list is not a fixture
+
+A fixture list does not arrive as a fixture. It arrives as one Facebook
+graphic: a week, seven matches, two dates, one kick-off time repeated seven
+times, and a ground printed under every pairing. `0008` took them one at a
+time, with no field for the ground and no field for the graphic itself, which
+cost three things:
+
+* **seven round trips** on a phone with one bar of signal, each able to fail on
+  its own and leave the week half entered with nothing saying how far the
+  reporter got;
+* **`matches.venue_id` was NULL** for every fixture entered from the portal,
+  while the sheet-imported rows around it had a ground — the same column,
+  populated for the old data and not the new;
+* **`matches.source_ref` was blank until a result landed.** "Where did this
+  fixture come from?" is the same question as "where did this score come
+  from?", and it had no answer for the weeks in between.
+
+`0014` adds `create_fixtures`, and `/report/#/add` is now the shape of the
+picture: the competition, the matchday, the date, the kick-off and the source
+said **once** at the top, a numbered line per match underneath, and one button.
+
+**It is deliberately not all-or-nothing.** Each line runs in its own exception
+block and the function returns a row per input row — `idx`, `ok`, and the
+sentence it raised. One duplicate pairing (the commonest mistake, because the
+reporter is copying from a picture) would otherwise throw away six correct
+fixtures and the typing that produced them, which is exactly what rule 1 of the
+portal exists to prevent. The lines that saved leave the form and appear under
+"Added just now"; the lines that did not stay as typed with the reason on them,
+so what is left on screen *is* the list of what still needs doing.
+
+**A reporter may mint a venue, and may not mint a club.** `resolve_venue` takes
+the ground as a NAME — "Mkanda Primary School" is on the graphic and was not in
+the 77-row table — matches it against the existing venues on case, punctuation
+and spacing, and creates one when it does not match. That is the opposite of
+the `create_league` rule two paragraphs up, and the difference is what the id
+*means*: a `club_id` is an identity, and a second one for the same club splits
+its history across the site permanently; a `venue_id` is a label on a place,
+referenced by `matches.venue_id` and nothing else, where a duplicate is an
+afternoon's tidying. The matching is exact on purpose — stripping
+"Ground"/"Stadium" to match harder would merge Mchinji Stadium, Mchinji Mini
+Stadium and Mchinji Community Ground, which are three different places. The
+form offers every existing ground as an autocomplete list instead, which is
+where near-duplicates are actually prevented.
+
+A ground given as "TBA", "To be announced" or "Unknown" resolves to **no venue
+at all**. That is already what a NULL `venue_id` means, and writing it down as
+a place called "TBA" would put it on the site as if it were one.
+
+**Changing a ground after the fact** is `set_match_venue` (`0015`), and it is a
+third narrow door rather than a wider one. A fixture list announces a ground
+weeks ahead and then the pitch is waterlogged, or the graphic said "TO BE
+ANNOUNCED" and the announcement came later. `submit_match_report` still refuses
+to touch `venue_id` and `reschedule_match` still writes `date` and `kickoff`
+only — that narrow-update guarantee is what makes either of them safe to put in
+front of a reporter, and widening one for the sake of a single column would
+give it away. So the ground gets its own function, its own button under
+**Change date or ground** on the match screen, and its own entry in
+`match_change_log` — which records the venue *name* beside the id, because a
+log line reading `MW_LIKUNI → MW_MKANDA` needs a join to mean anything and the
+point of the log is that it does not.
+
+The rules themselves did not move. `insert_fixture` is the body of `0009`'s
+`create_fixture` lifted into one internal function that both the single and the
+batch path call, for the same reason `assert_date_in_season` exists: a
+validate.py check enforced on one write path and not the other is a build that
+fails on rows entered the other way.
+
 
 `create_league` takes the team list as pasted text, one name per line. Names
 are de-duplicated case-insensitively, **a club already in the database is
@@ -482,10 +555,10 @@ RLS_LIVE=1 python3 -m unittest tests.test_reporting_live tests.test_entry_live
 
 24 tests covering authorization, validation, the narrow-update guarantee (that
 publishing cannot alter teams, competition, season, date, kickoff, venue or
-`public_id`) and the audit trail, plus 45 in `test_entry_live` covering
-`create_fixture`, `create_league`, `reschedule_match` and `source_ref`. They
-build their own throwaway fixtures in a real competition — no test ever
-rewrites a genuine scoreline.
+`public_id`) and the audit trail, plus 76 in `test_entry_live` covering
+`create_fixture`, `create_fixtures`, `create_league`, `reschedule_match`,
+`set_match_venue`, venue resolution and `source_ref`. They build their own throwaway fixtures in
+a real competition — no test ever rewrites a genuine scoreline.
 
 Test dates come from `live_support.season_dates()` rather than from literals,
 because check 6 now refuses anything outside the season: a hardcoded 2031 is
