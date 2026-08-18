@@ -156,3 +156,6 @@ MW_KAKA_MU16,MW_KAKA,m,u16,1,Kaka Young Soccer,,active
 MW_NEWLANDS_MU16,MW_NEWLANDS,m,u16,1,Newlands,,active
 MW_SM_MU16,MW_SM,m,u16,1,Soche Madrid,,active
 MW_CCS_MU16,MW_CCS,m,u16,1,CC Stars,,active
+MW_APOS_M1,MW_APOS,m,senior,4,Apostle Hulhda FC,,active
+MW_DYER_M1,MW_DYER,m,senior,4,Dyeratu FC,,active
+MW_ERGO_M1,MW_ERGO,m,senior,4,Ergo FC,,active
