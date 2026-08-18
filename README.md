@@ -81,6 +81,15 @@ three modules deriving it separately is exactly how a link ends up pointing at
 a 404. Being *named in a squad* does not earn a page — a squad member who has
 not played yet renders as plain text rather than as a broken link.
 
+**Getting back out, and sideways.** Every route to a profile goes through a
+team sheet, and the thing a reader wants next is almost always another name on
+that same sheet. So the back link goes *back* — `history.back()` when the
+referrer is this site, falling back to the home page for anyone arriving from
+a search result, a shared link or with JavaScript off, for whom "Back" would be
+a lie. Under the match table, **Switch Player** lists the rest of that squad,
+one tap each: everyone with a page who has appeared for the same side, bench
+included.
+
 There is no career/transfer table yet. That needs data nothing currently
 collects.
 
@@ -142,6 +151,8 @@ The whole migration, done and verified:
 | Fixture lists | `0014_fixture_batch.sql` — `create_fixtures`, `resolve_venue`, a whole week in one submission |
 | Grounds | `0015_match_venue.sql` — `set_match_venue`, the third narrow door beside `reschedule_match` |
 | Scorer identity | `0010_scorer_players.sql` — `create_player`, scorers resolve to a `player_id` |
+| Player identity | `0022_player_identity.sql` — `rename_player`, `merge_players`, surname-aware `search_players` |
+| Officials | `0023_match_officials.sql` — `set_match_officials`; referee, assistants, fourth official, both coaches |
 | Cutover | CI reads Supabase; the spreadsheet is deprecated |
 
 The workflow this replaced:
@@ -293,7 +304,21 @@ AND it is the path that carries the id.
 `(C)` / `[Y]` / `62' for X` shorthand spelled out beside the box — a sheet that
 arrives as a screenshot in a WhatsApp group is still a sheet. Pasted names are
 matched against the squad, so anyone already known arrives linked; anyone else
-comes in as a name only and is marked as such on their row.
+comes in as a name only and is marked as such on their row — and can be linked
+afterwards from that row, without deleting it and losing the shirt, position,
+card and substitution attached to it.
+
+**A short name is safe to enter.** A Malawian team-sheet graphic gives an
+initial and a surname ("4. A. Josephy") and that is what goes in, because the
+alternative is not entering the line-up at all. Since `0022` the id is the
+person and the name is a label on it: the site renders an identified row's name
+from `players`, so correcting the spelling later moves every team sheet, scorer
+line, profile and search record with it. The `#/players` screen is where that
+correction happens — search, rename (any reporter; the old spelling is kept as
+an alias), or merge two ids that turned out to be one person (admins only, since
+it deletes a row). The picker itself matches surname-with-initial, so typing
+"Andrew Josephy" finds the existing "A. Josephy" rather than offering to make a
+second one.
 
 Cards are one control with four states — none, yellow, second yellow, red —
 cycled by tapping, rather than three checkboxes that could express "yellow AND
@@ -311,6 +336,13 @@ one — so a per-player tally on the team sheet would count the same thing while
 losing which goal it belonged to. Unlike a scorer there is no reported-name
 fallback: an assist that resolves to nobody is not recorded, because there is
 nowhere to keep it.
+
+**Officials and coaches** (`0023`) are six optional free-text boxes saved as
+one panel: referee, two assistants, fourth official, and a head coach per side.
+Nothing resolves them to an entity — this site does not track referees as
+people — and a blank box means blank, which is how a mistyped name gets
+removed. They render inside the line-up block on the site: each coach under its
+own side, where the graphic puts it, and the referee at the foot.
 
 Photos are shrunk to 1600px on the phone before upload; the `match-media`
 bucket independently caps size at 5 MB and restricts MIME types, and uploads

@@ -714,7 +714,7 @@ def main(argv):
     # the landing page, which needs its current competition for the card meta.
     # Parsed once here because the daily match pages need every nt team's
     # matches, not just the one team nt_page renders.
-    scorchers = nt.team_data(nt_data)
+    scorchers = nt.team_data(nt_data, registry_name=ds.registry_name)
     # Club hubs exist for every club with a team in a built league — the same
     # set hubs.build_club_hubs writes — so squad club links only point at one
     # of those.

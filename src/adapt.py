@@ -140,6 +140,11 @@ class MatchView:
     extra_time: bool = False
     home_pens: "int | None" = None
     away_pens: "int | None" = None
+    # `lineups.Officials`, or None when nobody entered any — which is almost
+    # every match. Carried on the match rather than beside the team sheets
+    # because a match can name a referee with no sheet entered at all, and the
+    # renderers that draw a result row already have this object in hand.
+    officials: object = None
 
     @property
     def played(self) -> bool:
@@ -363,6 +368,14 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
             extra_time=m.extra_time,
             home_pens=m.home_pens,
             away_pens=m.away_pens,
+            officials=lineups.Officials(
+                referee=m.referee,
+                assistant_referee_1=m.assistant_referee_1,
+                assistant_referee_2=m.assistant_referee_2,
+                fourth_official=m.fourth_official,
+                home_coach=m.home_coach,
+                away_coach=m.away_coach,
+            ) if m.has_officials else None,
         ))
         kept_match_ids.add(m.match_id)
 
@@ -410,9 +423,19 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
         if r.match_id in kept_match_ids:
             by_side.setdefault((r.match_id, r.team_id), []).append(r)
     sheets: "dict[str, tuple]" = {}
+
+    def _sheet(match_id, team_id):
+        # Identified rows render the registry's name, not the one that was
+        # typed — see lineups.with_canonical_names. It is the same rule this
+        # module already applies to a goal, and it is what lets a name entered
+        # off a graphic as "A. Josephy" become "Andrew Josephy" everywhere the
+        # day someone learns the first name.
+        return lineups.fold(lineups.with_canonical_names(
+            by_side.get((match_id, team_id), []), ds.registry_name))
+
     for _i, m in kept:
-        home = lineups.fold(by_side.get((m.match_id, m.home_team_id), []))
-        away = lineups.fold(by_side.get((m.match_id, m.away_team_id), []))
+        home = _sheet(m.match_id, m.home_team_id)
+        away = _sheet(m.match_id, m.away_team_id)
         if home or away:
             sheets[m.match_id] = (home, away)
 

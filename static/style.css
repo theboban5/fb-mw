@@ -1718,12 +1718,15 @@ table.nt-table {
   color: #555;
 }
 .el-lineup-title-quiet { color: #9aa1ab; }
-.el-pos-title {
-  margin: 8px 0 2px;
+/* The position sits ON the line, beside the shirt, rather than as a heading
+   over a group of players — see src/lineups.py. Fixed width so the names line
+   up in one column whether or not a given player's position is known, and
+   quiet, because it is a label on the name and not the name. */
+.el-pos-tag {
+  flex: 0 0 1.55rem;
   font-size: 0.6rem;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.05em;
   color: #9aa1ab;
 }
 
@@ -1811,6 +1814,35 @@ table.nt-table {
 .el-sub-for { color: #9aa1ab; }
 .el-sub-off { color: #666; }
 .el-unused { margin: 0; font-size: 0.74rem; color: #888; line-height: 1.5; }
+
+/* Officials (0023). The coach sits at the foot of the side it belongs to,
+   which is where a team-sheet graphic puts it; the referee sits at the foot of
+   the whole block, because he belongs to neither side. Both are one line of
+   label + name, never a table: three short facts do not earn two columns on a
+   360px screen. */
+.el-coach {
+  margin: 10px 0 0;
+  font-size: 0.74rem;
+  color: #666;
+}
+.el-officials {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 14px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid #e4e4e4;
+  font-size: 0.74rem;
+  color: #666;
+}
+.el-coach-l, .el-official-l {
+  margin-right: 6px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #9aa1ab;
+}
 
 /* ─── Player profile ──────────────────────────────────
    Mobile-first and single-column: most of this site is read on a phone, so
@@ -1907,6 +1939,42 @@ table.nt-table {
   cursor: pointer;
 }
 
+/* Switch player. A wrapping list of tap targets rather than a select: the
+   whole squad is readable at a glance, and every name is one tap away instead
+   of two. Each link is at least 34px tall for a thumb. */
+.pl-switch-team {
+  margin: 0 0 8px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.pl-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pl-switch-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid #e4e4e4;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1c1c1c;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.pl-switch-link:hover { border-color: #0b6b3a; }
+.pl-switch-shirt {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: 0.7rem;
+  color: #0b6b3a;
+}
+
 /* Squad. The note sits on the page background rather than in a white card, so
    it takes --muted (which flips with the colour scheme) not a fixed grey. */
 .nt-squad-note { margin: 0 0 10px; font-size: 0.74rem; color: var(--muted); }
@@ -1929,20 +1997,17 @@ table.nt-table {
 .nt-squad-players .nt-player { padding: 5px 0; border-bottom: 1px solid #f0f0f0; }
 .nt-squad-players .nt-player:last-child { border-bottom: 0; }
 
-/* From 560px the line-up groups and squad cards sit side by side. */
+/* From 560px the squad cards sit side by side. The starting XI does NOT: it is
+   one ordered list now, keepers first, each name tagged with its own position,
+   and splitting one list of eleven into two columns of five and six only makes
+   the reader work out which one continues where.
+
+   The two sides of a league match stay stacked at every width for the same
+   family of reason: the results table lives in a 660px column, so side by side
+   would give each about 310px, which is narrower than the names in them. */
 @media (min-width: 560px) {
-  .el-lineup-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0 20px;
-  }
   .nt-squad { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 }
-/* The two sides of a league match STAY STACKED at every width. The results
-   table lives in a 660px column, so putting them side by side would give each
-   ~310px and then split that again into GK/DF/MF/FW columns — four columns of
-   ~150px, which is narrower than the names in them. One side at a time, each
-   using the grid above, is the readable answer on a phone and on a desktop. */
 
 
 /* ─── Landing: today's matches card ──────────────────── */

@@ -386,6 +386,24 @@ class Match:
     extra_time: bool = False
     home_pens: "int | None" = None
     away_pens: "int | None" = None
+    # Officials (0023). Free text as reported, blank on almost every row, and
+    # rendered only where present — this site does not track referees or
+    # coaches as entities, so there is nothing to resolve them against. The
+    # coach is on the MATCH rather than on the team: clubs change coach, and a
+    # column on teams would rewrite last season's team sheet when they do.
+    referee: str = ""
+    assistant_referee_1: str = ""
+    assistant_referee_2: str = ""
+    fourth_official: str = ""
+    home_coach: str = ""
+    away_coach: str = ""
+
+    @property
+    def has_officials(self) -> bool:
+        """Is there anything to render? Blank is the answer on most matches."""
+        return any((self.referee, self.assistant_referee_1,
+                    self.assistant_referee_2, self.fourth_official,
+                    self.home_coach, self.away_coach))
 
     @property
     def is_placeholder(self) -> bool:
@@ -568,6 +586,21 @@ class Dataset:
 
     def player_display_name(self, player_id: str) -> str:
         return self.players[player_id].display_name
+
+    def registry_name(self, player_id: str) -> str:
+        """The canonical name for an id, or "" when it resolves to nobody.
+
+        The tolerant counterpart of `player_display_name`, and the callback
+        `lineups.with_canonical_names` takes. Three things resolve to nobody
+        and all three are ordinary: a blank id (nobody has identified that name
+        yet), CAF_MW_UNKNOWN (the reserved row, which has no name to give), and
+        an id from another namespace — an opponent's national-team id belongs
+        to no registry and never will. Each keeps whatever name was reported.
+        """
+        if not player_id or player_id == UNKNOWN_PLAYER_ID:
+            return ""
+        player = self.players.get(player_id)
+        return player.display_name if player else ""
 
 
 # ── Parsing helpers ──────────────────────────────────────────────────────────
@@ -826,6 +859,15 @@ def parse_matches(text: str) -> "dict[str, Match]":
                   "confidence", "matches", i),
             r.get("verified_by", ""), r.get("verified_at", ""),
             extra_time=(et in ("1", "true")), home_pens=hp, away_pens=ap,
+            # Officials, all optional and all newer than the last snapshot —
+            # same rule as extra_time/pens above: an absent header reads as
+            # every cell blank rather than as a parse error.
+            referee=r.get("referee", ""),
+            assistant_referee_1=r.get("assistant_referee_1", ""),
+            assistant_referee_2=r.get("assistant_referee_2", ""),
+            fourth_official=r.get("fourth_official", ""),
+            home_coach=r.get("home_coach", ""),
+            away_coach=r.get("away_coach", ""),
         ), "matches", i)
     return out
 

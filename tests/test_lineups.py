@@ -393,5 +393,190 @@ class CareerTest(unittest.TestCase):
         self.assertEqual(hubs._outcome(None, None), ("", ""))
 
 
+class CanonicalNameTest(unittest.TestCase):
+    """The name on a sheet is a label on an id, and a label can be repainted.
+
+    This is what makes it safe to enter "A. Josephy" off a Facebook graphic on
+    the night: the id is the person, and correcting the players row later moves
+    every team sheet with it. Without this the profile would say "Andrew
+    Josephy" while the line-up it was linked from still said "A. Josephy".
+    """
+
+    NAMES = {"P1": "Andrew Josephy", "P12": "Saulos Moyo Banda"}
+
+    def name_of(self, player_id):
+        return self.NAMES.get(player_id, "")
+
+    def test_an_identified_row_takes_the_registry_name(self):
+        rows_in = dataset.parse_lineups(
+            rows("M1,T_HOME,A. Josephy,P1,4,MF,starting,,,,,,,"))
+        out = lineups.with_canonical_names(rows_in, self.name_of)
+        self.assertEqual(out[0].player_name, "Andrew Josephy")
+
+    def test_an_unidentified_row_keeps_what_was_typed(self):
+        """A blank id is "nobody has identified them yet", not an error."""
+        rows_in = dataset.parse_lineups(
+            rows("M1,T_HOME,A. Josephy,,4,MF,starting,,,,,,,"))
+        out = lineups.with_canonical_names(rows_in, self.name_of)
+        self.assertEqual(out[0].player_name, "A. Josephy")
+
+    def test_an_id_from_another_namespace_keeps_its_name(self):
+        """An opponent's national-team id resolves to no registry, ever."""
+        rows_in = dataset.parse_lineups(
+            rows("M1,T_HOME,Mass Kosiah,INT_LIB_KOSIAH,9,FW,starting,,,,,,,"))
+        out = lineups.with_canonical_names(rows_in, self.name_of)
+        self.assertEqual(out[0].player_name, "Mass Kosiah")
+
+    def test_a_substitution_still_pairs_after_a_rename(self):
+        """replaced_player is matched BY NAME, so it has to move too."""
+        rows_in = dataset.parse_lineups(rows(
+            "M1,T_HOME,A. Josephy,P1,4,MF,starting,,,63,,,,",
+            "M1,T_HOME,S. Moyo,P12,12,FW,sub_on,,63,,A. Josephy,,,",
+        ))
+        lineup = lineups.fold(lineups.with_canonical_names(rows_in, self.name_of))
+        sub = lineup.substitutions[0]
+        self.assertEqual(sub.on.player_name, "Saulos Moyo Banda")
+        self.assertIsNotNone(sub.off)
+        self.assertEqual(sub.off_name, "Andrew Josephy")
+
+    def test_nothing_to_rename_returns_the_rows_untouched(self):
+        rows_in = dataset.parse_lineups(SIDE)
+        self.assertEqual(
+            lineups.with_canonical_names(rows_in, lambda _pid: ""), rows_in)
+
+    def test_the_registry_lookup_ignores_the_reserved_row(self):
+        ds = dataset.Dataset()
+        ds.players["CAF_MW_000001"] = dataset.Player(
+            "CAF_MW_000001", "Andrew Josephy", "", "", "", "", "active")
+        ds.players[dataset.UNKNOWN_PLAYER_ID] = dataset.Player(
+            dataset.UNKNOWN_PLAYER_ID, "Unknown", "", "", "", "", "")
+        self.assertEqual(ds.registry_name("CAF_MW_000001"), "Andrew Josephy")
+        self.assertEqual(ds.registry_name(dataset.UNKNOWN_PLAYER_ID), "")
+        self.assertEqual(ds.registry_name(""), "")
+        self.assertEqual(ds.registry_name("CAF_MW_999999"), "")
+
+
+class PositionTagTest(unittest.TestCase):
+    """The position labels one player, not everyone under a heading.
+
+    It used to be a heading over a group, which on the sheets this site
+    actually gets said the wrong thing: position is optional, so a graphic
+    naming only the keeper rendered "Goalkeepers" and then all eleven names,
+    ten of them under a heading that did not describe them.
+    """
+
+    def test_the_position_sits_beside_the_name(self):
+        html = lineups.lineup_row_html(lineups.fold(dataset.parse_lineups(SIDE)))
+        self.assertIn('<span class="el-pos-tag">GK</span>', html)
+        self.assertIn('<span class="el-pos-tag">FW</span>', html)
+        # And no heading anywhere.
+        self.assertNotIn("el-pos-title", html)
+        self.assertNotIn("Goalkeepers", html)
+
+    def test_a_sheet_with_no_positions_reserves_no_column(self):
+        """An empty tag on every row would indent eleven names for nothing."""
+        lineup = lineups.fold(dataset.parse_lineups(rows(*[
+            f"M1,T_HOME,Player {c},P{i},,,starting,,,,,,,"
+            for i, c in enumerate("ABCDEFGHIJK")])))
+        html = lineups.lineup_row_html(lineup)
+        self.assertNotIn("el-pos-tag", html)
+        for c in "ABCDEFGHIJK":
+            self.assertIn(f"Player {c}", html)
+
+    def test_a_positionless_player_keeps_the_column_aligned(self):
+        lineup = lineups.fold(dataset.parse_lineups(rows(
+            "M1,T_HOME,Keeper,P1,1,GK,starting,,,,,,,",
+            "M1,T_HOME,Nobody Knows,P2,2,,starting,,,,,,,")))
+        html = lineups.lineup_row_html(lineup)
+        self.assertIn('<span class="el-pos-tag">GK</span>', html)
+        # Empty, not absent: the names stay in one column.
+        self.assertIn('<span class="el-pos-tag"></span>', html)
+        self.assertIn("Nobody Knows", html)
+
+    def test_one_list_in_reading_order(self):
+        lineup = lineups.fold(dataset.parse_lineups(rows(
+            "M1,T_HOME,Striker,P1,9,FW,starting,,,,,,,",
+            "M1,T_HOME,Nobody Knows,P2,20,,starting,,,,,,,",
+            "M1,T_HOME,Keeper,P3,1,GK,starting,,,,,,,",
+            "M1,T_HOME,Stopper,P4,4,DF,starting,,,,,,,")))
+        html = lineups.lineup_row_html(lineup)
+        order = [html.index(n) for n in
+                 ("Keeper", "Stopper", "Striker", "Nobody Knows")]
+        self.assertEqual(order, sorted(order))
+        # One list, not four.
+        self.assertEqual(html.count('<ul class="el-players">'), 1)
+
+
+class SwitchPlayerTest(unittest.TestCase):
+    """Team-mates, one tap away — the thing every route to a profile wants next."""
+
+    def appearance(self, team_id="T_HOME", shirt="7", date="2026-08-01"):
+        return hubs.Appearance(
+            date=date, competition="Super League", opponent="Someone",
+            team_label="Blue Eagles", club_id="MW_BE", team_id=team_id,
+            national=False, home=True, started=True, minute_on="",
+            minute_off="", captain=False, shirt_number=shirt, position="MF",
+            goals=0, assists=0, yellow_card=False, yellow_red_card=False,
+            red_card=False, scoreline="2-1", outcome="W")
+
+    def careers(self):
+        return {
+            "P1": hubs.Career(appearances=[self.appearance()], goals=0, assists=0),
+            "P2": hubs.Career(appearances=[self.appearance(shirt="9")],
+                              goals=0, assists=0),
+            # Named and never used: still in the squad, still has a page.
+            "P3": hubs.Career(appearances=[], goals=0, assists=0,
+                              bench=[self.appearance(shirt="14")]),
+            # Another club entirely.
+            "P4": hubs.Career(appearances=[self.appearance(team_id="T_AWAY")],
+                              goals=0, assists=0),
+        }
+
+    def ds_with(self, *ids):
+        ds = dataset.Dataset()
+        for i, pid in enumerate(ids, start=1):
+            ds.players[pid] = dataset.Player(
+                pid, f"Player {i}", "", "", "", "", "active")
+        return ds
+
+    def test_a_squad_is_everyone_with_a_page(self):
+        squads = hubs.squads_by_team(self.careers(), {"P1", "P2", "P3", "P4"})
+        self.assertEqual({pid for pid, _shirt in squads["T_HOME"]},
+                         {"P1", "P2", "P3"})
+        self.assertEqual({pid for pid, _shirt in squads["T_AWAY"]}, {"P4"})
+
+    def test_a_player_with_no_page_is_never_listed(self):
+        """A name here that has no page written for it is a 404."""
+        squads = hubs.squads_by_team(self.careers(), {"P1", "P2"})
+        self.assertEqual({pid for pid, _shirt in squads["T_HOME"]}, {"P1", "P2"})
+
+    def test_the_block_lists_the_others_and_not_the_player(self):
+        careers = self.careers()
+        squads = hubs.squads_by_team(careers, {"P1", "P2", "P3", "P4"})
+        html = hubs._switch_player(
+            "P1", careers["P1"], squads, self.ds_with("P1", "P2", "P3"))
+        self.assertIn("Switch Player", html)
+        self.assertIn('href="P2.html"', html)
+        self.assertIn('href="P3.html"', html)
+        self.assertNotIn('href="P1.html"', html)
+        self.assertNotIn('href="P4.html"', html)
+
+    def test_a_squad_of_one_renders_nothing(self):
+        careers = self.careers()
+        squads = hubs.squads_by_team(careers, {"P4"})
+        self.assertEqual(
+            hubs._switch_player("P4", careers["P4"], squads,
+                                self.ds_with("P4")), "")
+
+    def test_a_player_with_no_side_at_all_renders_nothing(self):
+        empty = hubs.Career(appearances=[], goals=0, assists=0)
+        self.assertEqual(hubs._switch_player("P9", empty, {}, dataset.Dataset()), "")
+
+    def test_the_back_link_falls_back_to_the_home_page(self):
+        """No JavaScript, or arriving from Facebook: the href is the answer."""
+        self.assertIn('href="../"', hubs.PLAYER_BACK)
+        self.assertIn("history.back()", hubs.PLAYER_BACK)
+
+
 if __name__ == "__main__":
     unittest.main()

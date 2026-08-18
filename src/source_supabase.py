@@ -55,7 +55,12 @@ COLUMNS = {
                 "home_goals", "away_goals", "status", "awarded_note",
                 "source_type", "source_ref", "reported_by", "reported_at",
                 "confidence", "verified_by", "verified_at", "extra_time",
-                "home_pens", "away_pens"),
+                "home_pens", "away_pens",
+                # 0023. Free text, as reported, and blank on almost every row.
+                # dataset.parse_matches treats an absent header as every cell
+                # blank, so an older snapshot keeps parsing without them.
+                "referee", "assistant_referee_1", "assistant_referee_2",
+                "fourth_official", "home_coach", "away_coach"),
     # reported_player_name is new: what a reporter typed when the scorer has no
     # canonical player_id yet. dataset.parse_goals ignores unknown columns, so
     # emitting it now is inert until the match page starts showing it.

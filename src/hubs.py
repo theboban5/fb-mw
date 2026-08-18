@@ -17,8 +17,39 @@ RECENT_RESULTS = 10
 
 HOME_BACK = '<a href="../" class="back-link">&#x2190; All Leagues</a>'
 
+# The back link on a player page, which is the one page on this site nobody
+# arrives at from the top.
+#
+# WHAT WAS WRONG. A profile is reached by tapping a name on a team sheet, and
+# the only way out of it was "All Leagues" — the home page. Someone comparing
+# three players in one line-up had to walk back in through the competition, the
+# results tab, the right matchday and the right match, three times. The browser
+# already knew the answer; the page just refused to offer it.
+#
+# So the link goes back when there is somewhere to go back TO, and to the home
+# page otherwise. The href is the home page either way, which is what a reader
+# with no JavaScript gets, what a crawler follows, and what someone who landed
+# here from a shared link or a search result gets — for them there is no
+# previous page on this site and "Back" would be a lie.
+#
+# The referrer test is deliberately same-origin only: arriving from Facebook or
+# Google, history.back() would leave the site entirely.
+PLAYER_BACK = (
+    '<a href="../" class="back-link" data-player-back>&#x2190; All Leagues</a>'
+    "<script>(function(){"
+    "var a=document.querySelector('[data-player-back]');"
+    "if(!a)return;"
+    "var r=document.referrer;"
+    "if(!r||r.indexOf(location.origin+'/')!==0)return;"
+    "if(r.split('#')[0]===location.href.split('#')[0])return;"
+    "a.innerHTML='\\u2190 Back';"
+    "a.addEventListener('click',function(e){e.preventDefault();history.back();});"
+    "})();</script>"
+)
 
-def _page(base, title, content, updated, css_ver, header_logo=""):
+
+def _page(base, title, content, updated, css_ver, header_logo="",
+          back=HOME_BACK):
     return (
         # A hub belongs to no single competition, so there is no second half to
         # the <title> — just the club or player name.
@@ -31,7 +62,7 @@ def _page(base, title, content, updated, css_ver, header_logo=""):
         .replace("{{CONTENT}}", content)
         .replace("{{CSS_PREFIX}}", "../")
         .replace("{{CSS_VER}}", css_ver)
-        .replace("{{BACK_LINK}}", HOME_BACK)
+        .replace("{{BACK_LINK}}", back)
         .replace("{{FOOTER}}", render.footer(updated))
         .replace("{{SOCIAL}}", render.social_meta(title))
     )
@@ -67,7 +98,8 @@ def _club_result_row(m, league):
         f'<td class="v2-res-away">{away}</td></tr>'
         + lineups.two_sided_row_html(
             home_sheet, away_sheet, home_name, away_name,
-            player_href=render.player_href_for("../"))
+            player_href=render.player_href_for("../"),
+            officials=m.officials)
     )
 
 
@@ -267,6 +299,11 @@ class Appearance:
     opponent: str         # label, not an id
     team_label: str       # the side this player turned out for
     club_id: str          # for the club-hub link; "" for a national team
+    # The side, as an id. `club_id` cannot stand in for it: a club's men's and
+    # women's teams share one club_id, and "the other players in this squad"
+    # must not mix them. A national team uses its own team_code — a different
+    # namespace, which is exactly why grouping by this string is safe.
+    team_id: str
     national: bool
     home: bool
     started: bool
@@ -395,7 +432,7 @@ def _club_appearances(ds):
             competition=ds.league_display_name(m.competition_id, m.season_id),
             opponent=opponent.display_name if opponent else "",
             team_label=(team.display_name if team else r.team_id),
-            club_id=club.club_id if club else "",
+            club_id=club.club_id if club else "", team_id=r.team_id,
             national=False, home=home, started=r.role == "starting",
             minute_on=r.minute_on, minute_off=r.minute_off,
             captain=r.captain, shirt_number=r.shirt_number, position=r.position,
@@ -442,7 +479,7 @@ def _national_appearances(ntd):
         into.setdefault(r.player_id, []).append(Appearance(
             date=m.date, competition=m.competition, opponent=m.opponent,
             team_label=team.team_name if team else r.team_id,
-            club_id="", national=True, home=m.home_away == "home",
+            club_id="", team_id=r.team_id, national=True, home=m.home_away == "home",
             started=r.role == "starting",
             minute_on=r.minute_on, minute_off=r.minute_off,
             captain=r.captain, shirt_number=r.shirt_number, position=r.position,
@@ -633,6 +670,77 @@ def _match_stat_row(a, show_side=False) -> str:
     )
 
 
+SWITCH_PLAYER_MAX = 30
+
+
+def squads_by_team(careers, page_ids):
+    """team_id -> [(name, player_id, shirt)] for everyone who has a page.
+
+    Derived from the careers already computed rather than from `lineups`
+    directly, for the reason the whole player-page set is derived from one
+    function: a name listed here that has no page written for it is a 404, and
+    the only defence against that is asking the same question the page writer
+    asked. Bench rows count — an unused substitute is not an appearance, but
+    they are in the squad, they have a page, and a reader flicking through a
+    team sheet expects to find them.
+
+    The shirt is the one from their most recent match for THAT side, which is
+    also the one their own profile header shows.
+    """
+    best: "dict[tuple[str, str], tuple]" = {}
+    for player_id, career in careers.items():
+        if player_id not in page_ids:
+            continue
+        for a in career.appearances + career.bench:
+            if not a.team_id:
+                continue
+            key = (a.team_id, player_id)
+            if key not in best or a.sort_key > best[key][0]:
+                best[key] = (a.sort_key, a.shirt_number)
+    out: "dict[str, list]" = {}
+    for (team_id, player_id), (_key, shirt) in best.items():
+        out.setdefault(team_id, []).append((player_id, shirt))
+    return out
+
+
+def _switch_player(player_id, career, squads, ds) -> str:
+    """The other players in this player's squad, one tap away.
+
+    WHAT WAS WRONG. Every route to a profile goes through a team sheet, and the
+    thing a reader wants next is almost always another name on that same sheet
+    — who else played, who scored, who came on. Getting there meant leaving the
+    profile and finding the match again.
+
+    One squad, not all of them: the side from `career.latest`, which is the
+    same side the header names. A player who has moved club still reaches the
+    old squad through the match-stats table below, and listing every squad
+    they have ever been in would bury the current one.
+    """
+    latest = career.latest
+    if latest is None:
+        return ""
+    mates = [(pid, shirt) for pid, shirt in squads.get(latest.team_id, [])
+             if pid != player_id]
+    if not mates:
+        return ""
+
+    def _name(pid):
+        player = ds.players.get(pid)
+        return player.display_name if player else pid
+
+    mates.sort(key=lambda pair: _name(pair[0]).lower())
+    links = "".join(
+        f'<a class="pl-switch-link" href="{escape(pid)}.html">'
+        + (f'<span class="pl-switch-shirt">{escape(shirt)}</span>' if shirt else "")
+        + f"{escape(_name(pid))}</a>"
+        for pid, shirt in mates[:SWITCH_PLAYER_MAX])
+    return (
+        '<h3 class="v2-sec-title">Switch Player</h3>'
+        f'<p class="pl-switch-team">{escape(latest.team_label)}</p>'
+        f'<div class="pl-switch">{links}</div>'
+    )
+
+
 def _bench_note(career) -> str:
     """The one line a bench-only page has to say.
 
@@ -699,6 +807,7 @@ def build_player_pages(dist, templates_dir, static_dir, ds, updated,
     credits, own_goals = player_goal_credits(ds)
     careers = player_careers(ds, ntd)
     page_ids = player_page_ids(ds, credits, own_goals, careers)
+    squads = squads_by_team(careers, page_ids)
     empty_career = Career(appearances=[], goals=0, assists=0)
 
     count = 0
@@ -761,9 +870,10 @@ def build_player_pages(dist, templates_dir, static_dir, ds, updated,
             _bench_note(career),
             _match_stats(career),
             goals_section,
+            _switch_player(player_id, career, squads, ds),
             "</div>",
         ] if part)
-        html = _page(base, name, content, updated, css_ver)
+        html = _page(base, name, content, updated, css_ver, back=PLAYER_BACK)
         render._write(os.path.join(out_dir, f"{player_id}.html"), html)
         count += 1
     return count

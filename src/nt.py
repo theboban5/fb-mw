@@ -885,8 +885,18 @@ def load_team(texts: "dict[str, str]", team_code: str = SCORCHERS) -> NTTeamData
     return team_data(nt, team_code)
 
 
-def team_data(nt: NTData, team_code: str = SCORCHERS) -> NTTeamData:
-    """The filtering half of load_team, for callers that already parsed."""
+def team_data(nt: NTData, team_code: str = SCORCHERS,
+              registry_name=None) -> NTTeamData:
+    """The filtering half of load_team, for callers that already parsed.
+
+    `registry_name` is `dataset.Dataset.registry_name` when the caller has a
+    parsed league dataset in hand (build.py always does). It is what makes a
+    team sheet show the name the players registry holds rather than the one
+    that was typed into it — see lineups.with_canonical_names. Optional, and
+    the tests that load the nt_* tabs alone leave it out: without it a sheet
+    renders exactly what it always did, which is the right answer for a caller
+    that has no registry to resolve against.
+    """
     team = nt.nt_teams.get(team_code)
     if team is None:
         raise DataError(f"nt_teams has no row for {team_code!r}")
@@ -916,7 +926,9 @@ def team_data(nt: NTData, team_code: str = SCORCHERS) -> NTTeamData:
             match=m,
             our_goals=[g for g in gs if g.team_id == team_code],
             their_goals=[g for g in gs if g.team_id != team_code],
-            lineup=_lineup_for(lineup_rows.get(m.match_id, [])),
+            lineup=_lineup_for(lineups.with_canonical_names(
+                lineup_rows.get(m.match_id, []),
+                registry_name or (lambda _pid: ""))),
         ))
 
     fixtures = sorted((m for m in matches if m.scheduled), key=lambda m: m.sort_key)

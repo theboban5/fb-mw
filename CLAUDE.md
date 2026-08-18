@@ -105,6 +105,12 @@ docs/                  build output, served by GitHub Pages
 - **Own goals never appear in scorer tables** but do count in the Own Goals total.
 - **A blank `player_id` means "not identified yet"**, renders as plain text, and
   earns no page. `CAF_MW_UNKNOWN` is the reserved id and must never become a link.
+- **A name is a label on an id.** Wherever a row has a resolvable `player_id`,
+  the name that renders comes from `players`, never from the row's own
+  `player_id`-adjacent name column — goals always worked this way, team sheets
+  do since 0022. It is what makes entering "A. Josephy" off a graphic safe:
+  one rename moves every page. Fix names through `#/players` in the portal
+  (`rename_player`, or `merge_players` for a duplicate), never by hand.
 - **`hubs.player_page_ids` is the single source of which players get a page.**
   The pages, the search index, the national-team page and every team sheet's
   links all ask it. Deriving that set anywhere else is how a link 404s.
@@ -169,3 +175,17 @@ Team sheets and player profiles, migrations `0018`–`0021`:
   *and* it is the path that carries the id, which is what makes names clickable.
 
 Not built: the Wikipedia-style senior-career table on a profile. No data for it.
+
+Player identity and officials, migrations `0022`–`0023`:
+
+- `rename_player` / `merge_players` / `search_players`, and the `#/players`
+  screen in the portal. Renaming is any reporter's; merging is admin-only,
+  because it deletes a row. Old spellings live on in `aliases`, which is what
+  the surname-aware search reads.
+- Team sheets resolve an identified row's name through `players`
+  (`lineups.with_canonical_names`), so a rename reaches every sheet.
+- Officials: six free-text columns on `matches` (referee, two assistants,
+  fourth official, both coaches) written by `set_match_officials`, rendered
+  inside the line-up block.
+- Player profiles: a back link that goes BACK (not home) when the referrer is
+  this site, and a "Switch player" list of the rest of that squad.

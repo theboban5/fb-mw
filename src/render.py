@@ -863,7 +863,7 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                     home_sheet, away_sheet,
                     teams[m.home_code].name, teams[m.away_code].name,
                     player_href=player_href_for("../", player_pages),
-                    colspan=colspan)
+                    colspan=colspan, officials=m.officials)
                 if lineup_html:
                     v2.append(lineup_html)
             v2.append("</tbody>")  # /v2-md-group
@@ -1094,7 +1094,8 @@ def _club_match_rows(m, teams, crest, goals_by_match, show_scorers,
     out.append(lineups.two_sided_row_html(
         home_sheet, away_sheet,
         teams[m.home_code].name, teams[m.away_code].name,
-        player_href=player_href_for("../../", player_pages)))
+        player_href=player_href_for("../../", player_pages),
+        officials=m.officials))
     return "".join(out)
 
 

@@ -20,16 +20,16 @@ Two halves:
     substitutions and unused subs, pairing a `sub_on` row to the starter it
     replaced by name (that is all either tab offers);
   * **the markup** — `lineup_row_html()` renders the collapsible block that
-    sits under a result. A grouped list by position, never a pitch diagram: it
-    has to work in one column on a phone, which is where most of this site is
-    read.
+    sits under a result. One list in position order with each name tagged
+    GK/DF/MF/FW, never a pitch diagram: it has to work in one column on a
+    phone, which is where most of this site is read.
 
 `player_href` is the one thing the two callers differ on, so it is a callback:
 give it a `player_id` and it returns a URL or "". A row whose id does not
 resolve renders as plain text, exactly as an unidentified scorer already does.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from html import escape
 
 # Squad/line-up position vocabulary, in the order a team sheet is always read.
@@ -85,6 +85,71 @@ class Lineup:
         return group_by_position(self.starting)
 
 
+@dataclass(frozen=True)
+class Officials:
+    """Everyone on a team-sheet graphic who is not a player (0023).
+
+    Free text, every field optional, and blank on almost every match — the
+    same shape as a kickoff or a venue and rendered by the same rule: what is
+    known shows, what is not shows nothing at all. Nothing here resolves to an
+    entity; this site does not track referees or coaches as people.
+    """
+    referee: str = ""
+    assistant_referee_1: str = ""
+    assistant_referee_2: str = ""
+    fourth_official: str = ""
+    home_coach: str = ""
+    away_coach: str = ""
+
+    @property
+    def crew(self) -> "list[tuple[str, str]]":
+        """(label, name) for the match officials, skipping the blanks.
+
+        The two assistants share a label when both are known, because that is
+        how a match-day post writes them: "Assistants: J. Banda, P. Mwale".
+        """
+        out = []
+        if self.referee:
+            out.append(("Referee", self.referee))
+        both = [n for n in (self.assistant_referee_1, self.assistant_referee_2) if n]
+        if both:
+            out.append(("Assistant" + ("s" if len(both) > 1 else ""),
+                        ", ".join(both)))
+        if self.fourth_official:
+            out.append(("Fourth official", self.fourth_official))
+        return out
+
+    @property
+    def any_officials(self) -> bool:
+        return bool(self.crew)
+
+    def coach_for(self, home: bool) -> str:
+        return self.home_coach if home else self.away_coach
+
+
+def coach_html(name) -> str:
+    """The coach line under one side's sheet, or "" when nobody named one."""
+    if not name:
+        return ""
+    return (f'<p class="el-coach"><span class="el-coach-l">Head coach</span>'
+            f'{escape(name)}</p>')
+
+
+def officials_html(officials) -> str:
+    """The referee line at the foot of a line-up block, or "".
+
+    One paragraph rather than a table: it is three short facts on a phone, and
+    a two-column table of three rows would be wider than the sheet above it.
+    """
+    if officials is None or not officials.any_officials:
+        return ""
+    items = "".join(
+        f'<span class="el-official"><span class="el-official-l">'
+        f'{escape(label)}</span>{escape(name)}</span>'
+        for label, name in officials.crew)
+    return f'<p class="el-officials">{items}</p>'
+
+
 def group_by_position(rows):
     """[(label, rows)] in GK -> DF -> MF -> FW order, by shirt within.
 
@@ -112,6 +177,53 @@ def group_by_position(rows):
     if rest:
         out.append(("", rest))
     return out
+
+
+def with_canonical_names(rows, name_of):
+    """Rows again, with an identified player's name read from the registry.
+
+    THE NAME ON A TEAM SHEET IS A LABEL ON AN ID, NOT A FACT ABOUT THE MATCH.
+    `player_name` holds the name AS REPORTED, and what gets reported is
+    whatever the graphic said — Malawian team-sheet graphics say "4. A.
+    Josephy", first initial and surname, because that is what fits on the
+    picture of a pitch. Rendering that column meant the site could never learn
+    the first name: correcting `players` fixed the profile, the scorer table
+    and the search index, and left every team sheet still saying "A. Josephy",
+    so a player's own page disagreed with the line-up it was linked from.
+
+    So an identified row renders the registry's name, exactly as a goal has
+    since the schema was written ("goals.player_name is ignored entirely"),
+    and the reported spelling stays in the database as the archive of what was
+    actually typed. One rename now moves every page that names them.
+
+    A row whose id resolves to nothing keeps what it has, which covers both
+    cases that matter: a blank id (nobody has identified them yet) and an
+    opponent's national-team id, which belongs to no registry and never will.
+
+    `name_of` is a callback taking a player_id and returning a name or "" —
+    the same shape as `player_href`, and for the same reason: the league
+    schema and the nt_* schema resolve ids differently and neither belongs in
+    this module.
+
+    `replaced_player` moves with it. A substitution pairs BY NAME against this
+    same side's `player_name` (that is all either tab records), so renaming one
+    side of that comparison and not the other would unpair every substitution
+    the first time anyone corrected a spelling. Both are rewritten through the
+    same map, or neither is.
+    """
+    rows = list(rows)
+    renames = {}
+    for r in rows:
+        name = name_of(getattr(r, "player_id", "") or "")
+        if name and name != r.player_name:
+            renames[r.player_name] = name
+    if not renames:
+        return rows
+    return [replace(
+        r,
+        player_name=renames.get(r.player_name, r.player_name),
+        replaced_player=renames.get(r.replaced_player, r.replaced_player),
+    ) for r in rows]
 
 
 def fold(rows) -> "Lineup | None":
@@ -174,14 +286,34 @@ def _name_html(row, player_href) -> str:
     return f'<a class="el-player-link" href="{escape(href)}">{name}</a>' if href else name
 
 
-def player_html(row, off_minute="", player_href=_no_href) -> str:
+def player_html(row, off_minute="", player_href=_no_href,
+                show_position=False) -> str:
+    """One player on a team sheet: shirt, position, name, badges.
+
+    THE POSITION IS A TAG ON THE LINE, NOT A HEADING OVER A GROUP. It used to
+    be a heading, and on the sheets this site actually gets that read as a
+    statement about the wrong people: position is optional here, so a graphic
+    naming only the keeper produced "Goalkeepers" followed by all eleven names,
+    the other ten sitting under a heading that did not describe them. A tag
+    beside each name says exactly as much as is known about that one player and
+    nothing at all about the next.
+
+    `show_position` reserves the column, and is false when NOBODY on the sheet
+    has a position — which is the common case outside the top flight. An empty
+    column indented every name by a tag that was never coming.
+    """
     shirt = (f'<span class="el-shirt">{escape(row.shirt_number)}</span>'
              if row.shirt_number else '<span class="el-shirt"></span>')
+    # Rendered empty rather than omitted for the rows that have no position, so
+    # the names stay in one column instead of stepping in and out.
+    pos = (f'<span class="el-pos-tag">'
+           f'{escape(row.position) if row.position in POSITION_LABELS else ""}'
+           "</span>") if show_position else ""
     off = (f'<span class="el-off">&darr; {escape(off_minute)}\'</span>'
            if off_minute else "")
     return (
         '<li class="el-player">'
-        f"{shirt}"
+        f"{shirt}{pos}"
         f'<span class="el-player-name">{_name_html(row, player_href)}'
         f"{captain_badge(is_captain=row.captain)}{cards_html(row)}{off}</span>"
         "</li>"
@@ -195,20 +327,18 @@ def lineup_body(lineup, player_href=_no_href) -> str:
     parts = []
 
     if lineup.starting:
-        blocks = []
-        for label, rows in lineup.starting_by_position():
-            players = "".join(
-                player_html(r, off_minute=r.minute_off, player_href=player_href)
-                for r in rows)
-            title = (f'<p class="el-pos-title">{escape(label)}</p>'
-                     if label else "")
-            blocks.append(
-                f'<div class="el-pos-block">{title}'
-                f'<ul class="el-players">{players}</ul></div>'
-            )
+        # One list, in reading order — keepers, defenders, midfield, attack,
+        # then anyone whose position nobody recorded. `starting_by_position`
+        # still does the ordering; only the headings it used to draw are gone
+        # (see player_html).
+        show_position = any(r.position in POSITION_LABELS for r in lineup.starting)
+        players = "".join(
+            player_html(r, off_minute=r.minute_off, player_href=player_href,
+                        show_position=show_position)
+            for _label, rows in lineup.starting_by_position() for r in rows)
         parts.append(
             '<p class="el-lineup-title">Starting XI</p>'
-            f'<div class="el-lineup-grid">{"".join(blocks)}</div>'
+            f'<ul class="el-players">{players}</ul>'
         )
 
     if lineup.substitutions:
@@ -272,27 +402,39 @@ def lineup_row_html(lineup, player_href=_no_href, summary="Line-up",
 
 
 def two_sided_row_html(home, away, home_name, away_name,
-                       player_href=_no_href, colspan=3) -> str:
+                       player_href=_no_href, colspan=3, officials=None) -> str:
     """Both sides' sheets in one collapsible block, for a league result.
 
     A league match has two real teams, so unlike the national-team page — where
     only our own rows are ever held — the block is titled per side. A match
     with only one side entered renders that side alone rather than nothing,
     because half a team sheet is still worth reading.
+
+    `officials` (0023) rides in the same block: each side's coach under its
+    sheet, where the graphic puts it, and the referee at the foot. A match with
+    officials and NO sheet at all still opens the block — that is a real state
+    (the result post named the referee, the line-up photo never appeared) and
+    the alternative is throwing away the only thing anyone entered.
     """
     parts = []
-    for lineup, name in ((home, home_name), (away, away_name)):
+    for lineup, name, is_home in ((home, home_name, True), (away, away_name, False)):
         body = lineup_body(lineup, player_href)
-        if body:
+        coach = coach_html(officials.coach_for(is_home)) if officials else ""
+        if body or coach:
             parts.append(f'<div class="el-lineup-side">'
                          f'<p class="el-lineup-side-name">{escape(name)}</p>'
-                         f"{body}</div>")
-    if not parts:
+                         f"{body}{coach}</div>")
+    crew = officials_html(officials)
+    if not parts and not crew:
         return ""
+    # Named for what is actually inside it. A block holding only a referee is
+    # not a line-up, and calling it one would read as a broken feature.
+    summary = "Line-ups" if parts else "Match officials"
     return (
         f'<tr class="el-lineup-row"><td colspan="{colspan}">'
         '<details class="el-lineup">'
-        '<summary class="el-lineup-summary">Line-ups</summary>'
-        f'<div class="el-lineup-body el-lineup-two">{"".join(parts)}</div>'
+        f'<summary class="el-lineup-summary">{summary}</summary>'
+        '<div class="el-lineup-body el-lineup-two">'
+        f'{"".join(parts)}{crew}</div>'
         "</details></td></tr>"
     )

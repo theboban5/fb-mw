@@ -62,7 +62,10 @@ matches (home/away team_id, venue_id, competition_id, season_id)
 - **lineups** — one row per named player per side per match: the starting XI,
   the bench, who came on for whom, the cards and the armband. Deliberately the
   same shape as `nt_lineups`, so `src/lineups.py` folds and renders both.
-- **registrations**, **reporters**, **aliases** — present, currently empty.
+- **registrations**, **reporters** — present, currently empty.
+- **aliases** — every spelling an entity has ever been filed under.
+  Written by `rename_player` and `merge_players` (0022), read by
+  `search_players` so a name a player used to answer to still finds them.
 
 ## ID conventions (as built)
 
@@ -127,6 +130,17 @@ matches (home/away team_id, venue_id, competition_id, season_id)
 - **`source_type=placeholder` matches render nowhere** — not in standings,
   results, scorer charts, or stats. They parse without error. (Known-fake
   seed rows pending deletion.)
+- **A name is a label on an id, and the id is the person.** Wherever a row
+  carries a resolvable `player_id`, the name that renders comes from
+  `players` — not from the row. That was always true of `goals`; since 0022 it
+  is true of `lineups` and `nt_lineups` too (`lineups.with_canonical_names`,
+  applied in `src/adapt.py` and `nt.team_data`). It is what makes a team sheet
+  entered off a Facebook graphic as "4. A. Josephy" safe: correcting the
+  `players` row later moves every team sheet, scorer line, profile and search
+  record with it, at the next build. `player_name` and `reported_player_name`
+  stay in the database as the archive of what was actually typed.
+  `replaced_player` is remapped through the same table, because a substitution
+  pairs BY NAME and renaming one side of that comparison would unpair it.
 - **`goals.player_name` (denormalized) is ignored entirely**; names resolve
   via `player_id` → players.
 - **Own goals (`goal_type=own_goal`) never appear in scorer tables.** In this
@@ -165,9 +179,43 @@ matches (home/away team_id, venue_id, competition_id, season_id)
   means "not announced" and renders *nothing* — never a placeholder time,
   and never a build failure. Where a kickoff is known it shows beside the
   date on fixtures and results alike, labelled `14:30 CAT`.
+- **Officials are six optional free-text columns on `matches`** (0023):
+  `referee`, `assistant_referee_1`, `assistant_referee_2`, `fourth_official`,
+  `home_coach`, `away_coach`. Nothing resolves them to an entity — this site
+  does not track referees or coaches as people, and an officials table would
+  mean a reporter had to resolve a name to an id before entering one. The
+  coach is on the MATCH, not on the team: clubs change coach mid-season, and a
+  column on `teams` would rewrite last season's team sheet when they do
+  (`nt_matches.coach` has said the same thing since 0001). They render inside
+  the line-up block — each coach under its own side, the referee at the foot —
+  and a match with officials but no team sheet still opens that block, titled
+  "Match officials". Blank renders nothing, as everywhere else.
 - League display name = `competition_seasons.sponsor_name` if non-empty,
   else `competitions.name`. Team display = `teams.display_name`. Club
   display = `clubs.name`.
+
+## Player identity (0022)
+
+A team-sheet graphic gives an initial and a surname — "4. A. Josephy" — and
+that is what gets entered, because the alternative is not entering the line-up
+at all. Three things make that safe:
+
+- **The id is the person; the name is a label on it.** See the rendering rule
+  above. Correcting `players.full_name` moves every page that names them.
+- **`rename_player(player_id, full_name, known_as)`** — any active reporter.
+  The previous spelling is kept in `aliases`, and renaming INTO a name another
+  player already answers to is refused, naming the id to merge with instead
+  (that collision is exactly what 0021 was written by hand to repair).
+- **`merge_players(loser, winner)`** — **admins only**, because it deletes a
+  row and repoints eight columns across seven tables. It refuses when both ids
+  sit on the same team sheet: repointing would leave one person listed twice
+  in one match, and which row is real is a judgement no function can make.
+
+`search_players(term)` backs the reporter portal's picker and matches, in
+descending confidence: the whole term as a substring, then an alias, then the
+SURNAME with agreeing initials — so "Andrew Josephy" finds the existing
+"A. Josephy" instead of offering to create a second one. The `/report` screen
+for all of this is `#/players`.
 
 ## Cups (`competitions.type = cup`)
 

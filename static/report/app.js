@@ -2031,10 +2031,30 @@ let dismissPicker = null;
  *  where a mis-escaped one costs a 400. */
 const FILTER_UNSAFE = /[(),"\\*]/g;
 
+/** Find a player by whatever the reporter typed.
+ *
+ *  Through search_players (0022), which matches a substring, then an alias,
+ *  then the surname with agreeing initials — so a sheet entered off a graphic
+ *  as "A. Josephy" is found by someone typing "Andrew Josephy", instead of
+ *  being invisible and inviting them to create a second Josephy. Duplicates
+ *  are what this whole picker exists to avoid.
+ *
+ *  The ilike query it replaces is kept as a fallback, for one deployment-shaped
+ *  reason: a migration is a separate deploy from git (see CLAUDE.md), so this
+ *  file can reach a phone minutes before the function exists in the database.
+ *  Falling back means those minutes cost recall, not the feature.
+ */
 async function searchPlayers(term) {
   const q = term.trim().replace(FILTER_UNSAFE, " ").replace(/\s+/g, " ").trim();
   // One letter matches most of the database and is not a search.
   if (q.length < 2) return [];
+  const { data, error } = await supabase.rpc("search_players", { p_term: q });
+  if (!error) return data || [];
+  console.warn("[everyleague] search_players unavailable:", error);
+  return await searchPlayersByName(q);
+}
+
+async function searchPlayersByName(q) {
   const like = `*${q}*`;
   const { data, error } = await supabase.from("players")
     .select("player_id,full_name,known_as")
@@ -2155,6 +2175,50 @@ function section(key, title, count, inner, open) {
   </details>`;
 }
 
+/** Everyone on a team-sheet graphic who is not a player (0023).
+ *
+ *  The coaches are held apart from the four officials because their labels
+ *  name the two teams, which this list cannot know — and because the count on
+ *  the section header deliberately does NOT include them: a coach is the thing
+ *  a reporter copying a graphic will always have, so counting it would make
+ *  every match look like its officials were entered when only the coaches
+ *  were.
+ */
+const OFFICIAL_ROLES = [
+  ["referee", "Referee"],
+  ["assistant_referee_1", "Assistant referee 1"],
+  ["assistant_referee_2", "Assistant referee 2"],
+  ["fourth_official", "Fourth official"],
+];
+const OFFICIAL_COACHES = ["home_coach", "away_coach"];
+const OFFICIAL_COLUMNS =
+  OFFICIAL_ROLES.map(([key]) => key).concat(OFFICIAL_COACHES).join(",");
+
+/** The officials panel: six optional boxes, saved as one.
+ *
+ *  One save for the whole panel, not one per box, because set_match_officials
+ *  writes all six columns and a blank means blank — that is what lets a
+ *  reporter delete a referee they mistyped. Splitting it per field would make
+ *  "cleared" and "not sent" the same keystroke.
+ */
+function officialsForm(match, officials) {
+  const box = (name, label) => `
+    <input class="rp-input" name="${name}" placeholder="${esc(label)}"
+           value="${esc(officials[name] || "")}" autocomplete="off"
+           autocapitalize="words" maxlength="80">`;
+  return `
+    <form data-officials-form autocomplete="off">
+      ${OFFICIAL_ROLES.map(([key, label]) => box(key, label)).join("")}
+      ${box("home_coach", `${match.home?.display_name || "Home"} head coach`)}
+      ${box("away_coach", `${match.away?.display_name || "Away"} head coach`)}
+      <button class="rp-btn is-ghost" type="submit">Save officials</button>
+      <p class="rp-hint">Every box is optional and an empty one shows nothing
+        on everyleague.co — fill in whatever the graphic or the post actually
+        says. Clearing a box and saving removes that name.</p>
+    </form>`;
+}
+
+
 /** Remember which sections are open and which side each form is set to.
  *
  *  Every save redraws the whole detail block from fresh data, which is what
@@ -2197,7 +2261,7 @@ async function drawDetail(match, state, { local = false } = {}) {
     ? (match.home?.display_name || id) : (match.away?.display_name || id);
 
   if (!local || !state.detail) {
-    const [goalsRes, lineupRes, mediaRes] = await Promise.all([
+    const [goalsRes, lineupRes, mediaRes, officialsRes] = await Promise.all([
       supabase.from("goals")
         .select("goal_id,team_id,reported_player_name,minute,player_id,assist_player_id")
         .eq("match_id", match.match_id).order("ord"),
@@ -2205,15 +2269,24 @@ async function drawDetail(match, state, { local = false } = {}) {
         .eq("match_id", match.match_id).order("ord"),
       supabase.from("match_media").select("*")
         .eq("match_id", match.match_id).order("created_at"),
+      // Its own query rather than six more columns on MATCH_FIELDS: that
+      // constant is also the home screen's fixture list, and a phone loading
+      // eighty fixtures should not be carrying eighty referees it will not
+      // show. Separate also means that on a phone running this file before
+      // 0023 reaches the database, the failure is an empty officials panel
+      // and not a match screen with no scorers on it.
+      supabase.from("matches").select(OFFICIAL_COLUMNS)
+        .eq("match_id", match.match_id).limit(1),
     ]);
     state.detail = {
       goals: goalsRes.data || [],
       lineup: lineupRes.data || [],
       media: mediaRes.data || [],
+      officials: (officialsRes.data || [])[0] || {},
     };
   }
 
-  const { goals, lineup, media } = state.detail;
+  const { goals, lineup, media, officials } = state.detail;
   const scored = match.home_goals != null;
 
   // One team sheet per side, each with the squad that side has already
@@ -2313,6 +2386,10 @@ async function drawDetail(match, state, { local = false } = {}) {
       `sheet-${side.key}`, `${side.teamName} team sheet`, side.sheet.rows.length,
       sheetHtml(side), open[`sheet-${side.key}`])).join("")}
 
+    ${section("officials", "Officials and coaches",
+      OFFICIAL_ROLES.filter(([key]) => officials[key]).length,
+      officialsForm(match, officials), open.officials)}
+
     ${section("photo", "Photos", media.length, `
       <ul class="rp-list">${media.map((m) => `
         <li><span>${esc(m.caption || "Photo")}
@@ -2404,8 +2481,15 @@ function wirePlayerPicker(wrap, host, match) {
     hidden.value = playerId;
     input.value = name;
     close();
-    setNote(`${name} is identified — this goal counts towards their record.`,
-            "good");
+    // Which record. Both boxes on this form resolve a name to a player and
+    // both said "this goal counts towards their record", so picking an
+    // assister told the reporter their goal tally had gone up — the one thing
+    // an assist is not. The note is the only feedback either box gives, so it
+    // has to be about the field it belongs to.
+    setNote(field === "assist"
+      ? `${name} is identified — the assist counts towards their record.`
+      : `${name} is identified — this goal counts towards their record.`,
+      "good");
   }
 
   // Read by the one document listener wirePlayerPickers installs.
@@ -2415,12 +2499,17 @@ function wirePlayerPicker(wrap, host, match) {
     const rows = players.map((p) => {
       const name = playerLabel(p);
       const teamId = known[p.player_id];
+      // Why this row is in the list, in descending order of usefulness.
+      // `matched` comes back from search_players when the hit was on an ALIAS
+      // — a spelling this player used to be filed under — and saying so is
+      // what makes a surname match trustworthy instead of surprising.
       const hint = teamId
         ? `has scored for ${teamId === match.home_team_id
             ? (match.home?.display_name || "the home team")
             : (match.away?.display_name || "the away team")}`
-        : (p.known_as && p.full_name && p.known_as !== p.full_name
-            ? p.full_name : "");
+        : (p.matched && p.matched !== name ? `also filed as ${p.matched}`
+          : (p.known_as && p.full_name && p.known_as !== p.full_name
+              ? p.full_name : ""));
       return `<li role="option"><button type="button" class="rp-suggest-btn"
         data-player="${esc(p.player_id)}" data-name="${esc(name)}">
         <span>${esc(name)}</span>${hint ? `<em>${esc(hint)}</em>` : ""}</button></li>`;
@@ -2593,6 +2682,21 @@ function wireDetail(match, state, goals, sides) {
     },
   })), () => drawDetail(match, state, { local: true }));
 
+  host.querySelector("[data-officials-form]")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    detailAction(f.querySelector('button[type="submit"]'), "Saving…", async () => {
+      const args = { p_match_id: match.match_id };
+      OFFICIAL_ROLES.map(([key]) => key).concat(OFFICIAL_COACHES)
+        .forEach((key) => { args[`p_${key}`] = f[key].value.trim(); });
+      const { error } = await supabase.rpc("set_match_officials", args);
+      // A referee and a coach both render on the public site, under the
+      // result, so they earn a build the same way a scorer does.
+      if (!error) requestRebuild();
+      return error;
+    }, match, state);
+  });
+
   host.querySelector("[data-photo-form]")?.addEventListener("submit", (e) => {
     e.preventDefault();
     const f = e.target;
@@ -2728,6 +2832,12 @@ async function renderAccount() {
       <button class="rp-btn" type="submit" data-submit>Change password</button>
     </form>
 
+    <h2 class="rp-field-head">Players</h2>
+    <p class="rp-hint">Fix a name that was entered short — "A. Josephy" off a
+      graphic, before anyone knew the first name — or merge two ids that turned
+      out to be one person.</p>
+    <a class="rp-btn is-ghost" href="#/players">Find a player</a>
+
     <div class="rp-btn-row" style="margin-top:24px">
       <a class="rp-btn is-ghost" href="#/">My matches</a>
       <button class="rp-btn is-quiet" type="button" data-signout>Sign out</button>
@@ -2753,6 +2863,283 @@ async function renderAccount() {
 
   view.querySelector("[data-signout]").onclick = signOut;
 }
+
+// ── Players ──────────────────────────────────────────────────────────────────
+// THE SCREEN THAT MAKES A SHORT NAME SAFE TO ENTER.
+//
+// A team-sheet graphic gives an initial and a surname — "4. A. Josephy" — and
+// that is what goes into the sheet, because the alternative is not entering
+// the line-up at all. The id minted for that name is the person; the name is a
+// label on it, and the site renders the label from the players row wherever an
+// id resolves (see src/lineups.py). So the first name turning up later is not
+// a problem, PROVIDED there is somewhere to say so. This is that somewhere.
+//
+// Two operations, and the split in who may run them is deliberate:
+//
+//   * Rename — any reporter. It is the other half of create_player, which
+//     they already have, and it is reversible.
+//   * Merge  — admins only. It deletes a row and repoints history across
+//     seven tables, and nothing in this portal can undo it.
+
+const PLAYER_SEARCH_MIN = 2;
+
+async function renderPlayers(params) {
+  const term = params.get("q") || "";
+  h(`
+    <h1 class="rp-login-head">Players</h1>
+    <p class="rp-login-sub">Correct a name, or merge two ids that turned out to
+      be one person. A rename reaches every team sheet, scorer line and profile
+      at the next build.</p>
+    <form class="rp-form" data-player-search autocomplete="off">
+      <input class="rp-input" name="q" value="${esc(term)}" autocomplete="off"
+             autocapitalize="words" placeholder="Search by name">
+    </form>
+    <div data-player-results></div>
+    <div class="rp-btn-row" style="margin-top:24px">
+      <a class="rp-btn is-ghost" href="#/">My matches</a>
+    </div>
+  `);
+
+  const form = view.querySelector("[data-player-search]");
+  const input = form.querySelector('input[name="q"]');
+  let timer = null;
+  // Only the most recent search may paint — the same rule the scorer picker
+  // follows, and for the same reason: a list that rewinds under a moving
+  // finger is worse than no list.
+  let latest = 0;
+
+  async function run() {
+    const q = input.value.trim();
+    // The URL carries the term so a back button, or a reload after a rename,
+    // comes back to the same list rather than to an empty box.
+    history.replaceState(null, "",
+      `#/players${q ? "?q=" + encodeURIComponent(q) : ""}`);
+    const host = view.querySelector("[data-player-results]");
+    if (q.length < PLAYER_SEARCH_MIN) {
+      host.innerHTML = '<p class="rp-hint">Type at least two letters.</p>';
+      return;
+    }
+    const mine = ++latest;
+    let players;
+    try {
+      players = await searchPlayers(q);
+    } catch (error) {
+      if (mine !== latest) return;
+      host.innerHTML = "";
+      flash(humanError(error), "error");
+      return;
+    }
+    if (mine !== latest) return;
+    if (!players.length) {
+      host.innerHTML = `<p class="rp-empty">Nobody found for
+        “${esc(q)}”. Players are created from the match screen, never here.</p>`;
+      return;
+    }
+    host.innerHTML = players.map(playerCard).join("");
+    wirePlayerCards(host, run);
+  }
+
+  form.addEventListener("submit", (e) => { e.preventDefault(); run(); });
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(run, 250);
+  });
+  // A tap anywhere outside a merge box means "not that list" — one listener
+  // for the screen rather than one per card, the same arrangement the scorer
+  // pickers use. route() clears it on the way out.
+  dismissPicker = (event) => {
+    view.querySelectorAll("[data-merge]").forEach((wrap) => {
+      if (!wrap.contains(event.target)) wrap._closeMerge?.();
+    });
+  };
+  run();
+}
+
+function playerCard(p) {
+  const name = playerLabel(p);
+  const alias = p.matched && p.matched !== name
+    ? `<p class="rp-hint">Also filed as “${esc(p.matched)}”.</p>` : "";
+  return `
+    <details class="rp-sec" data-player-card data-player-id="${esc(p.player_id)}"
+             data-player-name="${esc(name)}">
+      <summary>${esc(name)}<span class="rp-sec-count">${esc(p.player_id.replace(/^CAF_MW_/, ""))}</span></summary>
+      <div class="rp-sec-body">
+        ${alias}
+        <p class="rp-hint" data-player-activity>Counting what is attached…</p>
+
+        <h2 class="rp-field-head">Name</h2>
+        <form data-rename-form autocomplete="off">
+          <input class="rp-input" name="full_name" value="${esc(p.full_name || "")}"
+                 autocapitalize="words" maxlength="80" required
+                 placeholder="Full name">
+          <input class="rp-input" name="known_as" value="${esc(p.known_as || "")}"
+                 autocapitalize="words" maxlength="80"
+                 placeholder="Known as (optional)">
+          <button class="rp-btn is-ghost" type="submit">Save name</button>
+          <p class="rp-hint">The old spelling is kept, so this player is still
+            found by searching for it.</p>
+        </form>
+
+        ${context.isAdmin ? `
+        <h2 class="rp-field-head">Merge</h2>
+        <div class="rp-pick" data-merge>
+          <input class="rp-input" name="merge" placeholder="Merge THIS player into…"
+                 autocomplete="off" autocapitalize="words">
+          <ul class="rp-suggest" data-suggest hidden></ul>
+        </div>
+        <p class="rp-hint" data-merge-note>Everything ${esc(name)} is named on
+          moves to the player you pick, and ${esc(name)} is deleted. This cannot
+          be undone here.</p>` : ""}
+      </div>
+    </details>`;
+}
+
+/** Wire every player card on the screen. `redraw` re-runs the search. */
+function wirePlayerCards(host, redraw) {
+  host.querySelectorAll("[data-player-card]").forEach((card) => {
+    const playerId = card.dataset.playerId;
+    const name = card.dataset.playerName;
+
+    // What is attached, fetched only when the card is opened: it is two
+    // queries per player and the answer only matters to someone deciding which
+    // of two duplicates should survive.
+    card.addEventListener("toggle", () => {
+      if (!card.open || card._counted) return;
+      card._counted = true;
+      playerActivity(playerId).then((text) => {
+        const el = card.querySelector("[data-player-activity]");
+        if (el) el.textContent = text;
+      });
+    });
+
+    card.querySelector("[data-rename-form]")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const button = f.querySelector('button[type="submit"]');
+      if (button.disabled) return;
+      button.disabled = true;
+      button.textContent = "Saving…";
+      supabase.rpc("rename_player", {
+        p_player_id: playerId,
+        p_full_name: f.full_name.value.trim(),
+        p_known_as: f.known_as.value.trim(),
+      }).then(({ error }) => {
+        button.disabled = false;
+        button.textContent = "Save name";
+        if (error) { flash(humanError(error), "error"); return; }
+        // A name is on every page this player appears on, so correcting one is
+        // a change to the published site, exactly as a scorer is.
+        requestRebuild();
+        flash("Name saved.", "ok");
+        redraw();
+      });
+    });
+
+    const merge = card.querySelector("[data-merge]");
+    if (merge) wireMergePicker(merge, playerId, name, redraw);
+  });
+}
+
+/** goals + team sheets attached to a player, as one readable line. */
+async function playerActivity(playerId) {
+  try {
+    const [goals, sheets] = await Promise.all([
+      supabase.from("goals").select("goal_id", { count: "exact", head: true })
+        .eq("player_id", playerId),
+      supabase.from("lineups").select("match_id", { count: "exact", head: true })
+        .eq("player_id", playerId),
+    ]);
+    const g = goals.count || 0;
+    const s = sheets.count || 0;
+    if (!g && !s) return "Nothing attached to this id yet.";
+    return `${g} goal${g === 1 ? "" : "s"} · ${s} team sheet${s === 1 ? "" : "s"}.`;
+  } catch (err) {
+    // A count that will not load costs information, never the screen.
+    return "";
+  }
+}
+
+/** The "merge into…" box on one card.
+ *
+ *  Two taps, never a browser dialog: the first tap names what is about to
+ *  happen in the button itself, the second does it. A confirm() would block
+ *  every other event on the page while it sits there, and this portal is
+ *  written for a phone on a bad connection where that reads as a freeze.
+ */
+function wireMergePicker(wrap, loserId, loserName, redraw) {
+  const input = wrap.querySelector('input[name="merge"]');
+  const list = wrap.querySelector("[data-suggest]");
+  const note = wrap.parentElement.querySelector("[data-merge-note]");
+  let timer = null;
+  let latest = 0;
+  let armed = "";
+
+  const close = () => { list.hidden = true; list.innerHTML = ""; armed = ""; };
+  // Read by the one document listener renderPlayers installs.
+  wrap._closeMerge = close;
+
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    const term = input.value.trim();
+    if (term.length < PLAYER_SEARCH_MIN) { close(); return; }
+    timer = setTimeout(async () => {
+      const mine = ++latest;
+      let players;
+      try {
+        players = await searchPlayers(term);
+      } catch (error) {
+        if (mine !== latest) return;
+        close();
+        flash(humanError(error), "error");
+        return;
+      }
+      if (mine !== latest) return;
+      const rows = players
+        .filter((p) => p.player_id !== loserId)
+        .map((p) => `<li role="option"><button type="button" class="rp-suggest-btn"
+          data-winner="${esc(p.player_id)}" data-winner-name="${esc(playerLabel(p))}">
+          <span>${esc(playerLabel(p))}</span>
+          <em>keep this one</em></button></li>`);
+      list.innerHTML = rows.length ? rows.join("")
+        : '<li><button type="button" class="rp-suggest-btn" disabled><span>Nobody else found</span></button></li>';
+      list.hidden = false;
+    }, 250);
+  });
+
+  list.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-winner]");
+    if (!button || button.disabled) return;
+    const winnerId = button.dataset.winner;
+    const winnerName = button.dataset.winnerName;
+
+    if (armed !== winnerId) {
+      armed = winnerId;
+      button.querySelector("span").textContent =
+        `Tap again: delete ${loserName}, keep ${winnerName}`;
+      button.classList.add("is-new");
+      return;
+    }
+
+    button.disabled = true;
+    button.querySelector("span").textContent = "Merging…";
+    const { error } = await supabase.rpc("merge_players", {
+      p_loser: loserId, p_winner: winnerId,
+    });
+    if (error) {
+      button.disabled = false;
+      close();
+      flash(humanError(error), "error");
+      return;
+    }
+    requestRebuild();
+    close();
+    input.value = "";
+    if (note) note.textContent = `Merged into ${winnerName}.`;
+    flash(`Merged ${loserName} into ${winnerName}.`, "ok");
+    redraw();
+  });
+}
+
 
 async function signOut() {
   await supabase.auth.signOut();
@@ -3340,7 +3727,11 @@ function nationalSquad(teamCode) {
 function sheetState(state, key, saved) {
   state.sheets = state.sheets || {};
   if (!state.sheets[key]) {
-    state.sheets[key] = { rows: (saved || []).map((r) => ({ ...r })), filter: "" };
+    // `linking` is the index of the row whose "link to a player" box is open,
+    // or null. One at a time: it is a repair, not a step in normal entry.
+    state.sheets[key] = {
+      rows: (saved || []).map((r) => ({ ...r })), filter: "", linking: null,
+    };
   }
   return state.sheets[key];
 }
@@ -3384,6 +3775,13 @@ function sheetRowHtml(sheet, row, i, key) {
   const state = cardStateOf(row);
   const card = CARD_STATES.find((c) => c.key === state);
   const others = sheet.rows.filter((_o, j) => j !== i);
+  // AN UNLINKED ROW HAS TO BE FIXABLE WITHOUT DELETING IT. A pasted sheet
+  // arrives with every name that matched nobody carrying no player_id, and
+  // until this button existed the only way to give one an id was to remove the
+  // row and add the person again — losing their shirt, position, card and
+  // whatever substitution named them. One row at a time, opened by tapping,
+  // because the whole point is that most rows do not need it.
+  const linking = sheet.linking === i;
   return `
     <li class="rp-sheet-row" data-sheet-row="${i}">
       <div class="rp-sheet-head">
@@ -3433,7 +3831,23 @@ function sheetRowHtml(sheet, row, i, key) {
                 title="Tap to change: none, yellow, second yellow, red">
           ${esc(card.short)} <em>${esc(card.label)}</em>
         </button>
+        ${row.player_id ? "" : `
+          <button type="button" class="rp-chip${linking ? " is-on" : ""}"
+                  data-sheet-link="${i}" data-sheet-key="${esc(key)}">
+            ${linking ? "Cancel" : "Link to a player"}</button>`}
       </div>
+      ${linking ? `
+        <div class="rp-pick" data-sheet-picker="${i}">
+          <input class="rp-input" data-sheet-link-input data-sheet-i="${i}"
+                 data-sheet-key="${esc(key)}" autocomplete="off"
+                 autocapitalize="words"
+                 value="${esc(row.player_name)}"
+                 placeholder="Who is this?">
+          <ul class="rp-suggest" data-sheet-link-list hidden></ul>
+        </div>
+        <p class="rp-hint">Linking keeps the sheet exactly as it is and adds the
+          id behind it — the name on everyleague.co then comes from the player,
+          so correcting it later corrects every match they are in.</p>` : ""}
     </li>`;
 }
 
@@ -3482,7 +3896,8 @@ function sheetHtml({ key, teamName, sheet, squad }) {
       ${sheet.rows.length ? `
         <p class="rp-hint ${starters > STARTING_XI ? "is-warn" : ""}" style="margin-top:14px">
           ${starters} in the starting XI${starters > STARTING_XI ? " — that is too many" : ""}${
-            unlinked ? `, ${unlinked} not linked to a player` : ""}.</p>
+            unlinked ? `, ${unlinked} not linked to a player — tap “Link to a
+              player” on their row` : ""}.</p>
         <ul class="rp-sheet">${sheet.rows.map((r, i) => sheetRowHtml(sheet, r, i, key)).join("")}</ul>
         <button class="rp-btn" type="button" data-sheet-save data-sheet-key="${esc(key)}">
           Save ${esc(teamName)}’s sheet</button>`
@@ -3514,11 +3929,83 @@ function wireSheet(root, ctx, redraw) {
   // phone also closes the keyboard.
   root.addEventListener("input", (e) => {
     const box = e.target.closest("[data-sheet-filter]");
-    if (!box) return;
-    sheet.filter = box.value;
-    const list = root.querySelector("[data-squad-list]");
-    if (list) list.innerHTML = squadListHtml(sheet, squad, ctx.key);
+    if (box) {
+      sheet.filter = box.value;
+      const list = root.querySelector("[data-squad-list]");
+      if (list) list.innerHTML = squadListHtml(sheet, squad, ctx.key);
+      return;
+    }
+    const link = e.target.closest("[data-sheet-link-input]");
+    if (link) paintLinkSuggestions(link);
   });
+
+  // Searching from a "link to a player" box. Only the list repaints, never the
+  // block — a redraw here would take the focus out of the box being typed into
+  // and shut the keyboard, the same reason the squad filter repaints in place.
+  let linkTimer = null;
+  let linkLatest = 0;
+  function paintLinkSuggestions(input) {
+    clearTimeout(linkTimer);
+    const list = input.parentElement.querySelector("[data-sheet-link-list]");
+    if (!list) return;
+    const term = input.value.trim();
+    if (term.length < 2) { list.hidden = true; list.innerHTML = ""; return; }
+    linkTimer = setTimeout(async () => {
+      const mine = ++linkLatest;
+      let players;
+      try {
+        players = await searchPlayers(term);
+      } catch (err) {
+        if (mine !== linkLatest) return;
+        // Rule 3: a failed lookup costs the link, never the row. The name is
+        // already on the sheet and still saves.
+        list.hidden = true;
+        list.innerHTML = "";
+        flash("Could not search players just now — the name still saves.", "warn");
+        return;
+      }
+      if (mine !== linkLatest) return;
+      const rows = players.map((p) => `<li role="option"><button type="button"
+        class="rp-suggest-btn" data-sheet-link-pick="${esc(p.player_id)}"
+        data-link-name="${esc(playerLabel(p))}">
+        <span>${esc(playerLabel(p))}</span>${p.matched && p.matched !== playerLabel(p)
+          ? `<em>also filed as ${esc(p.matched)}</em>` : ""}</button></li>`);
+      const exact = players.some(
+        (p) => playerLabel(p).toLowerCase() === term.toLowerCase());
+      if (!exact) {
+        rows.push(`<li role="option"><button type="button"
+          class="rp-suggest-btn is-new" data-sheet-link-create="${esc(term)}">
+          <span>＋ Add “${esc(term)}” as a new player</span>
+          <em>only if they are not in the list above</em></button></li>`);
+      }
+      list.innerHTML = rows.join("");
+      list.hidden = false;
+    }, 250);
+  }
+
+  /** Give an existing row an id, and the registry's spelling with it.
+   *
+   *  Anyone this row was named BY moves with it. A substitution stores
+   *  `replaced_player` as a NAME — that is all the schema records — so
+   *  renaming the starter and not the sub_on row that named them would leave a
+   *  dangling name, which save_lineup and validate.py both reject. Same rule
+   *  the renderer follows (lineups.with_canonical_names), same reason.
+   */
+  function link(row, playerId, name) {
+    const was = row.player_name;
+    row.player_id = playerId;
+    row.player_name = name;
+    if (was !== name) {
+      sheet.rows.forEach((r) => {
+        if (r.replaced_player === was) r.replaced_player = name;
+      });
+    }
+    if (!squad.some((p) => p.player_id === playerId)) {
+      squad.push({ player_id: playerId, name, shirt_number: "", position: "" });
+    }
+    sheet.linking = null;
+    redraw();
+  }
 
   /** Put someone on the sheet: the XI fills first, then the bench, so nobody
    *  has to set a role for the ordinary case of eleven and then seven. */
@@ -3528,6 +4015,10 @@ function wireSheet(root, ctx, redraw) {
     }
     sheet.rows.push(row);
     sheet.filter = "";
+    // `linking` is an index into rows, so anything that changes the list has
+    // to close it rather than leave it pointing at whoever moved into that
+    // slot. See sheetRowHtml.
+    sheet.linking = null;
     redraw();
   }
 
@@ -3572,9 +4063,47 @@ function wireSheet(root, ctx, redraw) {
       return;
     }
 
+    const openLink = e.target.closest("[data-sheet-link]");
+    if (openLink) {
+      const i = Number(openLink.dataset.sheetLink);
+      sheet.linking = sheet.linking === i ? null : i;
+      redraw();
+      return;
+    }
+
+    const pick = e.target.closest("[data-sheet-link-pick]");
+    if (pick) {
+      const row = sheet.rows[sheet.linking];
+      if (row) link(row, pick.dataset.sheetLinkPick, pick.dataset.linkName);
+      return;
+    }
+
+    const linkNew = e.target.closest("[data-sheet-link-create]");
+    if (linkNew) {
+      if (linkNew.disabled) return;
+      const row = sheet.rows[sheet.linking];
+      if (!row) return;
+      const name = linkNew.dataset.sheetLinkCreate;
+      linkNew.disabled = true;
+      linkNew.querySelector("span").textContent = "Adding…";
+      const { data, error } = await supabase.rpc("create_player",
+        { p_full_name: name });
+      const made = (data || [])[0];
+      if (error || !made) {
+        linkNew.disabled = false;
+        console.warn("[everyleague] create_player failed:", error);
+        flash("Could not add that player — the name stays on the sheet unlinked.",
+              "warn");
+        return;
+      }
+      link(row, made.player_id, playerLabel(made));
+      return;
+    }
+
     const drop = e.target.closest("[data-sheet-del]");
     if (drop) {
       sheet.rows.splice(Number(drop.dataset.sheetDel), 1);
+      sheet.linking = null;
       redraw();
       return;
     }
@@ -4782,6 +5311,7 @@ async function route() {
   if (path === "/add") return renderAddFixture(params);
   if (path === "/league/new") return renderNewLeague();
   if (path === "/account") return renderAccount();
+  if (path === "/players") return renderPlayers(params);
   if (path === "/login") { location.hash = "#/"; return; }
   return renderHome(params);
 }
