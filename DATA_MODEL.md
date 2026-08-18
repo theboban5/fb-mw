@@ -104,10 +104,14 @@ matches (home/away team_id, venue_id, competition_id, season_id)
 - `confidence`: unconfirmed | confirmed | official
 - `goals.goal_type`: (blank) | open_play | penalty | free_kick | header | own_goal
 - `lineups.role` / `nt_lineups.role`: starting | sub_on | unused_sub
-- `lineups.position`: (blank) | GK | DF | MF | FW. Optional on the league tab
-  and required on `nt_lineups`: a league sheet routinely arrives as eleven
-  names off a Facebook photo with no positions at all, and half a team sheet
-  still reads.
+- `lineups.position` / `nt_lineups.position` / `nt_squads.position`:
+  (blank) | GK | DF | MF | FW. **Optional on all three, and blank is a real
+  answer** — outside the top flight, youth football especially, a line-up
+  arrives as a list of names and nothing else, and in a flexible side the
+  position someone started in is not a fact anyone recorded. A sheet with no
+  positions renders as a plain list under the Starting XI heading; a sheet with
+  some renders those in GK/DF/MF/FW order with the rest in an unlabelled group
+  beneath. Nobody is ever dropped for having no position.
 - `teams.gender`: m | w ; `teams.age_group`: senior | u20 | u19 | u17 | u16 | u15
   (case-insensitive in the sheet, normalized to lowercase) ;
   `teams.squad_level`: 1–4

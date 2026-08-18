@@ -86,13 +86,31 @@ class Lineup:
 
 
 def group_by_position(rows):
-    """Group squad/line-up rows GK -> DF -> MF -> FW, by shirt number within."""
+    """[(label, rows)] in GK -> DF -> MF -> FW order, by shirt within.
+
+    **A row with no position is not dropped.** It ends up in a trailing group
+    with a BLANK label, which the markup renders as a plain list under no
+    heading. Position is optional on the league tab — a sheet routinely arrives
+    as eleven names off a photo — and grouping only by position meant a whole
+    starting XI could vanish under its own "Starting XI" heading, which is
+    exactly what happened to the first league sheet ever entered.
+
+    Sorting is by shirt number alone, and Python's sort is stable, so a sheet
+    with no shirts keeps the order it was entered in — which is the order the
+    team sheet itself was written in, and better than alphabetical. Adding
+    player_name as a tiebreak (as this once did) threw that away for precisely
+    the sheets that have nothing else to order by.
+    """
     out = []
     for pos in POSITIONS:
         group = sorted((r for r in rows if r.position == pos),
-                       key=lambda r: (r.shirt_sort, r.player_name))
+                       key=lambda r: r.shirt_sort)
         if group:
             out.append((POSITION_LABELS[pos], group))
+    rest = sorted((r for r in rows if r.position not in POSITION_LABELS),
+                  key=lambda r: r.shirt_sort)
+    if rest:
+        out.append(("", rest))
     return out
 
 
@@ -182,9 +200,10 @@ def lineup_body(lineup, player_href=_no_href) -> str:
             players = "".join(
                 player_html(r, off_minute=r.minute_off, player_href=player_href)
                 for r in rows)
+            title = (f'<p class="el-pos-title">{escape(label)}</p>'
+                     if label else "")
             blocks.append(
-                f'<div class="el-pos-block">'
-                f'<p class="el-pos-title">{escape(label)}</p>'
+                f'<div class="el-pos-block">{title}'
                 f'<ul class="el-players">{players}</ul></div>'
             )
         parts.append(
@@ -193,19 +212,28 @@ def lineup_body(lineup, player_href=_no_href) -> str:
         )
 
     if lineup.substitutions:
-        items = "".join(
-            '<li class="el-sub">'
-            + (f'<span class="el-sub-min">{escape(s.minute)}\'</span>'
-               if s.minute else '<span class="el-sub-min"></span>')
-            + f'<span class="el-sub-text">'
-            f'<span class="el-sub-on">{_name_html(s.on, player_href)}</span>'
-            f'<span class="el-sub-for"> for </span>'
-            f'<span class="el-sub-off">'
-            + (_name_html(s.off, player_href) if s.off else escape(s.off_name))
-            + "</span>"
-            f"{cards_html(s.on)}</span></li>"
-            for s in lineup.substitutions
-        )
+        def _sub(s):
+            minute = (f'<span class="el-sub-min">{escape(s.minute)}\'</span>'
+                      if s.minute else '<span class="el-sub-min"></span>')
+            # A substitution nobody was named for renders as the arrival alone.
+            # "Felix Dumakude for" with nothing after it reads as a truncated
+            # page rather than as a fact that was never recorded — and a
+            # reporter naming three replacements out of four is the normal case.
+            if s.off is not None or s.off_name:
+                off = (f'<span class="el-sub-for"> for </span>'
+                       f'<span class="el-sub-off">'
+                       + (_name_html(s.off, player_href) if s.off
+                          else escape(s.off_name))
+                       + "</span>")
+            else:
+                off = ""
+            return (
+                '<li class="el-sub">' + minute
+                + '<span class="el-sub-text">'
+                f'<span class="el-sub-on">{_name_html(s.on, player_href)}</span>'
+                f"{off}{cards_html(s.on)}</span></li>"
+            )
+        items = "".join(_sub(s) for s in lineup.substitutions)
         parts.append(
             '<p class="el-lineup-title">Substitutions</p>'
             f'<ul class="el-subs">{items}</ul>'

@@ -570,6 +570,15 @@ def parse_nt_goals(text: str) -> "dict[str, NTGoal]":
     return out
 
 
+# Position is OPTIONAL on both team-sheet tabs, and blank is a real answer.
+# Outside the top flight — youth football especially — a line-up arrives as a
+# list of names and nothing else, and in a flexible side the position a player
+# started in is not a fact anyone recorded. Requiring it here was also a trap:
+# both /report screens offer a blank position, save_nt_lineup and save_nt_squad
+# accept it, and the build then died on `blank position` — one reporter leaving
+# a dropdown alone could have stopped every future deploy.
+_POSITION_OR_BLANK = _POSITION_SET | {""}
+
 def parse_nt_squads(text: str) -> "list[NTSquadPlayer]":
     """A list, not a dict: (squad_id, player) is the key, one row per player."""
     out: "list[NTSquadPlayer]" = []
@@ -584,7 +593,7 @@ def parse_nt_squads(text: str) -> "list[NTSquadPlayer]":
             r.get("competition_context", ""),
             _require(r, "player_name", "nt_squads", i),
             r.get("player_id", ""),
-            _enum(_require(r, "position", "nt_squads", i), _POSITION_SET,
+            _enum(r.get("position", ""), _POSITION_OR_BLANK,
                   "position", "nt_squads", i).upper(),
             r.get("shirt_number", ""), r.get("club", ""),
             r.get("domestic_team_id", ""), r.get("club_country", ""),
@@ -602,7 +611,7 @@ def parse_nt_lineups(text: str) -> "list[NTLineupRow]":
             _require(r, "team_id", "nt_lineups", i),
             _require(r, "player_name", "nt_lineups", i),
             r.get("player_id", ""), r.get("shirt_number", ""),
-            _enum(_require(r, "position", "nt_lineups", i), _POSITION_SET,
+            _enum(r.get("position", ""), _POSITION_OR_BLANK,
                   "position", "nt_lineups", i).upper(),
             _enum(_require(r, "role", "nt_lineups", i), NT_ROLES,
                   "role", "nt_lineups", i),

@@ -143,6 +143,56 @@ class FoldTest(unittest.TestCase):
         self.assertEqual(len(lineup.substitutions), 1)
         self.assertEqual(lineup.substitutions[0].off_name, "Nobody At All")
 
+    def test_a_sheet_with_no_positions_still_renders_its_eleven(self):
+        """The bug the first real league sheet hit.
+
+        Position is optional on this tab, and grouping ONLY by position meant a
+        whole starting XI disappeared under its own "Starting XI" heading.
+        """
+        lineup = lineups.fold(dataset.parse_lineups(*[rows(*[
+            f"M1,T_HOME,Player {c},P{i},,,starting,,,,,,,"
+            for i, c in enumerate("KJIHGFEDCBA")])]))
+        groups = lineup.starting_by_position()
+        self.assertEqual([label for label, _rs in groups], [""])
+        self.assertEqual(len(groups[0][1]), 11)
+        html = lineups.lineup_row_html(lineup)
+        for c in "KJIHGFEDCBA":
+            self.assertIn(f"Player {c}", html)
+        # A blank label renders no heading, not an empty one.
+        self.assertNotIn("el-pos-title", html)
+
+    def test_a_positionless_player_joins_a_positioned_sheet(self):
+        lineup = lineups.fold(dataset.parse_lineups(rows(
+            "M1,T_HOME,Keeper,P1,1,GK,starting,,,,,,,",
+            "M1,T_HOME,Nobody Knows,P2,2,,starting,,,,,,,")))
+        groups = lineup.starting_by_position()
+        self.assertEqual([label for label, _rs in groups], ["Goalkeepers", ""])
+        self.assertIn("Nobody Knows", lineups.lineup_row_html(lineup))
+
+    def test_no_shirts_keeps_the_order_the_sheet_was_entered_in(self):
+        """Alphabetical would be wrong: a team sheet is written keeper-first."""
+        lineup = lineups.fold(dataset.parse_lineups(rows(
+            "M1,T_HOME,Zebedee Keeper,P1,,,starting,,,,,,,",
+            "M1,T_HOME,Andrew Striker,P2,,,starting,,,,,,,")))
+        names = [r.player_name for _l, rs in lineup.starting_by_position() for r in rs]
+        self.assertEqual(names, ["Zebedee Keeper", "Andrew Striker"])
+
+    def test_shirt_numbers_still_order_a_sheet_that_has_them(self):
+        lineup = lineups.fold(dataset.parse_lineups(rows(
+            "M1,T_HOME,Number Nine,P9,9,FW,starting,,,,,,,",
+            "M1,T_HOME,Number Seven,P7,7,FW,starting,,,,,,,")))
+        names = [r.player_name for _l, rs in lineup.starting_by_position() for r in rs]
+        self.assertEqual(names, ["Number Seven", "Number Nine"])
+
+    def test_a_substitution_with_nobody_named_drops_the_dangling_for(self):
+        """A reporter naming three replacements out of four is normal."""
+        lineup = lineups.fold(dataset.parse_lineups(rows(
+            "M1,T_HOME,Came On,P1,,,sub_on,,87,,,,,")))
+        html = lineups.lineup_row_html(lineup)
+        self.assertIn("Came On", html)
+        self.assertNotIn("el-sub-for", html)
+        self.assertNotIn(" for ", html)
+
     def test_positions_group_in_reading_order(self):
         labels = [label for label, _rs in self.lineup.starting_by_position()]
         self.assertEqual(labels, ["Goalkeepers", "Defenders", "Midfielders",
@@ -262,6 +312,41 @@ class ValidatorTest(unittest.TestCase):
             {"lineups": text}, keys={"lineups": validate.PRIMARY_KEYS["lineups"]}))
 
 
+class OptionalPositionTest(unittest.TestCase):
+    """Position is optional on every team-sheet tab, league and national.
+
+    Both /report screens offer a blank position, and both save RPCs accept it.
+    Requiring it in a parser therefore meant one reporter leaving a dropdown
+    alone could stop every future build.
+    """
+
+    HEAD = ("match_id,team_id,player_name,player_id,shirt_number,position,role,"
+            "captain,minute_on,minute_off,replaced_player,yellow_card,"
+            "yellow_red_card,red_card\n")
+
+    def test_league_tab_accepts_a_blank_position(self):
+        self.assertEqual(
+            dataset.parse_lineups(rows("M1,T,No Position,P1,,,starting,,,,,,,"))[0].position,
+            "")
+
+    def test_national_lineup_tab_accepts_a_blank_position(self):
+        row = nt.parse_nt_lineups(
+            self.HEAD + "36,MW_W,No Position,P1,1,,starting,,,,,,,\n")[0]
+        self.assertEqual(row.position, "")
+
+    def test_national_squad_tab_accepts_a_blank_position(self):
+        head = ("squad_id,competition,match_id_range,team_id,announcement_date,"
+                "competition_context,player_name,player_id,position,shirt_number,"
+                "club,domestic_team_id,club_country,notes,coach\n")
+        row = nt.parse_nt_squads(head + "1,WAFCON,,MW_W,2026-07-11,,No Position,P1,,,,,,,\n")[0]
+        self.assertEqual(row.position, "")
+
+    def test_a_wrong_position_is_still_rejected(self):
+        with self.assertRaises(DataError):
+            nt.parse_nt_lineups(
+                self.HEAD + "36,MW_W,Bad,P1,1,SWEEPER,starting,,,,,,,\n")
+
+
 class SnapshotTest(unittest.TestCase):
     """The tab is optional everywhere: almost every match has no sheet."""
 
@@ -284,6 +369,17 @@ class CareerTest(unittest.TestCase):
         self.assertTrue(hubs._playable(
             dataset.parse_lineups(
                 rows("M1,T,X,P1,1,GK,starting,,,,,,,"))[0]))
+
+    def test_an_unused_substitute_is_still_clickable(self):
+        """They get a page — their name is a link on the team sheet — but the
+        match counts as bench, never as an appearance."""
+        career = hubs.Career(appearances=[], goals=0, assists=0, bench=[object()])
+        self.assertEqual(len(career.appearances), 0)
+        self.assertEqual(len(career.bench), 1)
+        self.assertIn("without coming on", hubs._bench_note(career))
+        # And a player who HAS played gets no such note.
+        played = hubs.Career(appearances=[object()], goals=0, assists=0, bench=[object()])
+        self.assertEqual(hubs._bench_note(played), "")
 
     def test_an_unidentified_row_earns_nobody_anything(self):
         self.assertFalse(hubs._identified(""))

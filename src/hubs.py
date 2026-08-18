@@ -7,7 +7,7 @@ goals by season and competition. Both reuse the site's existing CSS classes
 so they inherit the league pages' styling.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from html import escape
 import os
 
@@ -40,15 +40,24 @@ def _page(base, title, content, updated, css_ver, header_logo=""):
 # ── Club hubs ────────────────────────────────────────────────────────────────
 
 def _club_result_row(m, league):
-    """One compact result row from the club's perspective, with league tag."""
-    home = escape(league.teams[m.home_code].name if m.home_code in league.teams else m.home_code)
-    away = escape(league.teams[m.away_code].name if m.away_code in league.teams else m.away_code)
+    """One compact result row from the club's perspective, with league tag.
+
+    Carries the line-up toggle too. This hub is where someone following one
+    club actually lands — it is the page a club's own supporters share — so a
+    team sheet that renders on the competition's Matches tab and not here reads
+    as the feature being broken rather than as being somewhere else.
+    """
+    home_name = league.teams[m.home_code].name if m.home_code in league.teams else m.home_code
+    away_name = league.teams[m.away_code].name if m.away_code in league.teams else m.away_code
+    home = escape(home_name)
+    away = escape(away_name)
     score_cell, fix_cls = render._score_cell(m)
     date = escape(render._format_date(m.date))
     # Same order as every other match caption on the site: date, kickoff, then
     # the competition in place of the results table's venue.
     bits = [b for b in (date, escape(m.kickoff_label), escape(league.league_name)) if b]
     meta = " &middot; ".join(bits)
+    home_sheet, away_sheet = league.lineups.get(m.match_id, (None, None))
     return (
         f'<tr class="v2-res-meta-row"><td colspan="3">'
         f'<span class="v2-res-meta">{meta}</span></td></tr>'
@@ -56,6 +65,9 @@ def _club_result_row(m, league):
         f'<td class="v2-res-home">{home}</td>'
         f'{score_cell}'
         f'<td class="v2-res-away">{away}</td></tr>'
+        + lineups.two_sided_row_html(
+            home_sheet, away_sheet, home_name, away_name,
+            player_href=render.player_href_for("../"))
     )
 
 
@@ -283,10 +295,18 @@ class Appearance:
 
 @dataclass
 class Career:
-    """Everything a profile page shows, computed once per player."""
+    """Everything a profile page shows, computed once per player.
+
+    `appearances` is matches PLAYED. `bench` is matches they were named in and
+    did not play — kept apart rather than merged, because "games played" must
+    not quietly become "games named in a squad", and kept at all rather than
+    dropped, because a bench name is still a real player with a real id and
+    their name is clickable on the team sheet.
+    """
     appearances: "list[Appearance]"     # newest first
     goals: int
     assists: int
+    bench: "list[Appearance]" = field(default_factory=list)
 
     @property
     def starts(self) -> int:
@@ -310,10 +330,12 @@ class Career:
 
         The header names a team, and "Civil Service United" is a more useful
         answer to "who does she play for" than "Malawi" — a national team is
-        something you are picked for, not somewhere you play.
+        something you are picked for, not somewhere you play. A player who has
+        only ever been an unused substitute falls through to `bench`, so their
+        page still says which club named them.
         """
         club = [a for a in self.appearances if not a.national]
-        return (club or self.appearances or [None])[0]
+        return (club or self.appearances or self.bench or [None])[0]
 
 
 def _outcome(ours, theirs) -> "tuple[str, str]":
@@ -325,11 +347,12 @@ def _outcome(ours, theirs) -> "tuple[str, str]":
 
 
 def _playable(row) -> bool:
-    """An unused substitute did not play.
+    """Did they actually play? An unused substitute did not.
 
-    They are on the team sheet and they render in the match's line-up block,
-    but counting them as an appearance would make "games played" mean "games
-    named in a squad", which is a different and much less interesting number.
+    They still get a page — their name is clickable on the team sheet and a
+    real player should have somewhere to click TO — but they are counted
+    separately, because letting them into "games played" would make it mean
+    "games named in a squad", a different and much less interesting number.
     """
     return row.role != "unused_sub"
 
@@ -352,9 +375,9 @@ def _club_appearances(ds):
             key = (g.assist_player_id, g.match_id)
             assists_by[key] = assists_by.get(key, 0) + 1
 
-    out = {}
+    out, bench = {}, {}
     for r in ds.lineups:
-        if not _identified(r.player_id) or not _playable(r):
+        if not _identified(r.player_id):
             continue
         m = ds.matches.get(r.match_id)
         if m is None or m.is_placeholder:
@@ -366,7 +389,8 @@ def _club_appearances(ds):
             m.home_goals if home else m.away_goals,
             m.away_goals if home else m.home_goals)
         opponent = ds.teams.get(m.away_team_id if home else m.home_team_id)
-        out.setdefault(r.player_id, []).append(Appearance(
+        into = out if _playable(r) else bench
+        into.setdefault(r.player_id, []).append(Appearance(
             date=m.date,
             competition=ds.league_display_name(m.competition_id, m.season_id),
             opponent=opponent.display_name if opponent else "",
@@ -380,7 +404,7 @@ def _club_appearances(ds):
             yellow_card=r.yellow_card, yellow_red_card=r.yellow_red_card,
             red_card=r.red_card, scoreline=scoreline, outcome=outcome,
         ))
-    return out, goals_by, assists_by
+    return out, bench, goals_by, assists_by
 
 
 def _national_appearances(ntd):
@@ -392,7 +416,7 @@ def _national_appearances(ntd):
     publishing a profile of them.
     """
     if ntd is None:
-        return {}, {}, {}
+        return {}, {}, {}, {}
     ours = set(ntd.nt_teams)
     goals_by, assists_by = {}, {}
     for g in ntd.nt_goals.values():
@@ -405,16 +429,17 @@ def _national_appearances(ntd):
             key = (g.assist_player_id, g.match_id)
             assists_by[key] = assists_by.get(key, 0) + 1
 
-    out = {}
+    out, bench = {}, {}
     for r in ntd.nt_lineups:
-        if r.team_id not in ours or not _identified(r.player_id) or not _playable(r):
+        if r.team_id not in ours or not _identified(r.player_id):
             continue
         m = ntd.nt_matches.get(r.match_id)
         if m is None:
             continue
         scoreline, outcome = _outcome(m.team_score, m.opponent_score)
         team = ntd.nt_teams.get(r.team_id)
-        out.setdefault(r.player_id, []).append(Appearance(
+        into = out if _playable(r) else bench
+        into.setdefault(r.player_id, []).append(Appearance(
             date=m.date, competition=m.competition, opponent=m.opponent,
             team_label=team.team_name if team else r.team_id,
             club_id="", national=True, home=m.home_away == "home",
@@ -426,7 +451,7 @@ def _national_appearances(ntd):
             yellow_card=r.yellow_card, yellow_red_card=r.yellow_red_card,
             red_card=r.red_card, scoreline=scoreline, outcome=outcome,
         ))
-    return out, goals_by, assists_by
+    return out, bench, goals_by, assists_by
 
 
 def player_careers(ds, ntd=None):
@@ -442,13 +467,13 @@ def player_careers(ds, ntd=None):
     counts — most of this dataset predates team sheets entirely, so a scorer
     with no sheet is the normal case rather than an error.
     """
-    club_apps, club_goals, club_assists = _club_appearances(ds)
-    nt_apps, nt_goals, nt_assists = _national_appearances(ntd)
+    club_apps, club_bench, club_goals, club_assists = _club_appearances(ds)
+    nt_apps, nt_bench, nt_goals, nt_assists = _national_appearances(ntd)
 
     goals_by = {**club_goals, **nt_goals}
     assists_by = {**club_assists, **nt_assists}
 
-    player_ids = set(club_apps) | set(nt_apps)
+    player_ids = set(club_apps) | set(nt_apps) | set(club_bench) | set(nt_bench)
     player_ids |= {pid for pid, _mid in goals_by}
     player_ids |= {pid for pid, _mid in assists_by}
 
@@ -462,10 +487,13 @@ def player_careers(ds, ntd=None):
     for player_id in player_ids:
         appearances = club_apps.get(player_id, []) + nt_apps.get(player_id, [])
         appearances.sort(key=lambda a: a.sort_key, reverse=True)
+        bench = club_bench.get(player_id, []) + nt_bench.get(player_id, [])
+        bench.sort(key=lambda a: a.sort_key, reverse=True)
         careers[player_id] = Career(
             appearances=appearances,
             goals=goal_totals.get(player_id, 0),
             assists=assist_totals.get(player_id, 0),
+            bench=bench,
         )
     return careers
 
@@ -510,6 +538,10 @@ def _summary_tiles(career) -> str:
     if career.appearances:
         tiles.append(_stat_tile(len(career.appearances), "Apps"))
         tiles.append(_stat_tile(career.starts, "Starts"))
+    elif career.bench:
+        # Named and not used. Worth a tile of its own rather than a zero under
+        # "Apps", which would read as a player who turned out and did nothing.
+        tiles.append(_stat_tile(len(career.bench), "On the bench"))
     if career.goals or career.appearances:
         tiles.append(_stat_tile(career.goals, "Goals"))
     if career.assists:
@@ -599,6 +631,19 @@ def _match_stat_row(a, show_side=False) -> str:
         f'<td class="pl-ga">{a.assists or ""}</td>'
         "</tr>"
     )
+
+
+def _bench_note(career) -> str:
+    """The one line a bench-only page has to say.
+
+    Their name is clickable on the team sheet, so they need a page; a page with
+    a name and nothing else reads as broken. This says what is actually true.
+    """
+    if career.appearances or not career.bench:
+        return ""
+    n = len(career.bench)
+    return (f'<p class="v2-res-legend">Named as a substitute in {n} match'
+            f'{"es" if n != 1 else ""} without coming on. No appearances yet.</p>')
 
 
 def _match_stats(career) -> str:
@@ -713,6 +758,7 @@ def build_player_pages(dist, templates_dir, static_dir, ds, updated,
             '<div class="v2-content">',
             _profile_header(player, career, ds, club_hub_ids),
             _summary_tiles(career),
+            _bench_note(career),
             _match_stats(career),
             goals_section,
             "</div>",

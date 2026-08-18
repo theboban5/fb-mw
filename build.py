@@ -81,7 +81,7 @@ def _tier_label(comp: "dataset.Competition") -> str:
     return "League"
 
 
-def _build_league(ds, cs, dist_root, updated):
+def _build_league(ds, cs, dist_root, updated, player_pages=frozenset()):
     """Render one competition+season into dist_root/<slug>/."""
     league = adapt.league_data(ds, cs.competition_id, cs.season_id)
 
@@ -128,7 +128,7 @@ def _build_league(ds, cs, dist_root, updated):
         form=form, changes=changes, days=days, history=history,
         css_prefix="../", back_link=BACK_LINK, copy_static=False,
         goals_by_match=goals_by_match, top_scorers=top_scorers,
-        lineups_by_match=league.lineups,
+        lineups_by_match=league.lineups, player_pages=player_pages,
         # own_goal_total from the adapter, not the scorer rows: it includes
         # own goals by unresolved (CAF_MW_UNKNOWN) players.
         own_goal_total=league.own_goal_total,
@@ -690,11 +690,22 @@ def main(argv):
     # artifact deploy would otherwise drop it (see repo history).
     render._write(os.path.join(dist, "CNAME"), "everyleague.co\n")
 
+    # Parsed here rather than beside the national-team page it feeds, because
+    # player_page_ids needs it and the leagues below need THAT: a team sheet
+    # links a name only when a page was written for it, and a league renders
+    # before any of those pages exist.
+    nt_data = nt.parse_all(nt_texts)
+    # Exactly the players hubs.build_player_pages will write a page for, and
+    # for the same reason club_hub_ids exists further down: an unused
+    # substitute is on the team sheet but has not PLAYED, so they earn no page
+    # — and without this every bench name on every sheet is a 404.
+    player_pages = hubs.player_page_ids(ds, ntd=nt_data)
+
     leagues = []
     standings_by_slug = {}
     parts = []
     for cs in adapt.current_competition_seasons(ds):
-        league, rows, n_played = _build_league(ds, cs, dist, updated)
+        league, rows, n_played = _build_league(ds, cs, dist, updated, player_pages)
         leagues.append(league)
         standings_by_slug[league.slug] = rows
         parts.append(f"{league.slug}: {len(league.teams)} teams, {n_played} results")
@@ -703,18 +714,12 @@ def main(argv):
     # the landing page, which needs its current competition for the card meta.
     # Parsed once here because the daily match pages need every nt team's
     # matches, not just the one team nt_page renders.
-    nt_data = nt.parse_all(nt_texts)
     scorchers = nt.team_data(nt_data)
     # Club hubs exist for every club with a team in a built league — the same
     # set hubs.build_club_hubs writes — so squad club links only point at one
     # of those.
     club_hub_ids = {tv.club_id for league in leagues
                     for tv in league.teams.values() if tv.club_id}
-    # Exactly the players hubs.build_player_pages will write a page for, and
-    # for the same reason club_hub_ids exists: a national-team name links to a
-    # profile only when there is one. Being NAMED in a squad does not earn a
-    # page, so without this a squad member who has not played yet is a 404.
-    player_pages = hubs.player_page_ids(ds, ntd=nt_data)
     nt_page.build_page(dist, TEMPLATES, STATIC, scorchers, ds, updated,
                        club_hub_ids=club_hub_ids, player_page_ids=player_pages)
 
