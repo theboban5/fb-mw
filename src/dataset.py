@@ -217,7 +217,9 @@ KNOCKOUT_STAGES = frozenset({"r64", "r32", "r16", "qf", "sf", "final", "3p"})
 # "" = ordinary goal with no recorded type; the sheet leaves the cell blank.
 GOAL_TYPES = frozenset({"", "open_play", "penalty", "free_kick", "header", "own_goal"})
 GENDERS = frozenset({"m", "w"})
-AGE_GROUPS = frozenset({"senior", "u20", "u19", "u17", "u16", "u15"})
+AGE_GROUPS = frozenset({
+    "senior", "u20", "u19", "u17", "u16", "u15", "u14", "u13", "u12", "u11", "u10",
+})
 SQUAD_LEVELS = frozenset({1, 2, 3, 4})
 
 
