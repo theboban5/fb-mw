@@ -22,7 +22,7 @@ Conventions preserved deliberately:
 
 from dataclasses import dataclass, field
 
-from . import dataset, standings
+from . import dataset, lineups, standings
 
 # competition_id -> live URL slug. These URLs are public and must not change.
 # A competition not listed here gets the same derivation the originals used:
@@ -205,6 +205,8 @@ class GoalView:
     minute: str          # display string, "" when unknown
     goal_type: str = ""  # "" normal, "penalty", or "own goal"
     player_id: str = ""  # for scorer-table links to /players/{player_id}.html
+    assist_name: str = ""      # "" when nobody was credited
+    assist_player_id: str = ""
 
     @property
     def is_own_goal(self) -> bool:
@@ -234,6 +236,10 @@ class GoalView:
             label += " (P)"
         elif self.is_own_goal:
             label += " (OG)"
+        # An own goal has no assist worth naming — the credit would read as if
+        # the defender had been set up by a team-mate.
+        if self.assist_name and not self.is_own_goal:
+            label += f" ({self.assist_name})"
         return label
 
 
@@ -259,6 +265,10 @@ class LeagueData:
     kind: str = "league"                    # competitions.type: league | cup
     # Cup only: derived matchday -> stage code, for round headers/pager chips.
     stage_of_matchday: "dict[int, str]" = field(default_factory=dict)
+    # match_id -> (home sheet, away sheet), either side None when nobody has
+    # entered one. Oriented here rather than in the renderer because this is
+    # the module that knows team_id, and the renderer only knows legacy codes.
+    lineups: "dict[str, tuple]" = field(default_factory=dict)
 
 
 def _goal_display_minute(g: "dataset.Goal") -> str:
@@ -384,7 +394,27 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
             minute=_goal_display_minute(g),
             goal_type=_GOAL_TYPE_DISPLAY.get(g.goal_type, ""),
             player_id="" if unresolved else g.player_id,
+            # An assist is only ever a canonical id — there is no "reported
+            # assist name" column to fall back on, so an unresolved one is
+            # simply not shown.
+            assist_name=(ds.player_display_name(g.assist_player_id)
+                         if g.assist_player_id in ds.players else ""),
+            assist_player_id=(g.assist_player_id
+                              if g.assist_player_id in ds.players else ""),
         ))
+
+    # Team sheets, folded per side and oriented to the match's home/away.
+    # `lineups.fold` is the same function the national-team page uses.
+    by_side: "dict[tuple[str, str], list]" = {}
+    for r in ds.lineups:
+        if r.match_id in kept_match_ids:
+            by_side.setdefault((r.match_id, r.team_id), []).append(r)
+    sheets: "dict[str, tuple]" = {}
+    for _i, m in kept:
+        home = lineups.fold(by_side.get((m.match_id, m.home_team_id), []))
+        away = lineups.fold(by_side.get((m.match_id, m.away_team_id), []))
+        if home or away:
+            sheets[m.match_id] = (home, away)
 
     return LeagueData(
         competition_id=competition_id,
@@ -405,6 +435,7 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
         relegation_places=cs.relegation_places or 0,
         kind="cup" if is_cup else "league",
         stage_of_matchday={n: s for s, n in cup_md.items()},
+        lineups=sheets,
     )
 
 

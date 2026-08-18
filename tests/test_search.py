@@ -22,14 +22,7 @@ CANONICAL = os.path.join(ROOT, "data", "canonical")
 
 def _load_canonical():
     """The committed snapshot, parsed. Skips the suite if it is not there."""
-    texts = {}
-    for tab in dataset.TAB_GIDS:
-        path = os.path.join(CANONICAL, f"{tab}.csv")
-        if not os.path.exists(path):
-            return None
-        with open(path, encoding="utf-8") as fh:
-            texts[tab] = fh.read()
-    return texts
+    return dataset.read_snapshot(CANONICAL)
 
 
 class NormaliseTest(unittest.TestCase):
@@ -136,12 +129,23 @@ class IndexContentTest(unittest.TestCase):
 
     def test_player_records_match_the_pages_hubs_writes(self):
         # The single most important invariant: hubs.build_player_pages and
-        # search.py must agree on exactly which players get a page.
-        credits, own = hubs.player_goal_credits(self.ds)
-        expected = {p for p in set(credits) | set(own) if p in self.ds.players}
+        # search.py must agree on exactly which players get a page. Both now
+        # ask hubs.player_page_ids, so this asserts they both still ask it.
+        expected = hubs.player_page_ids(self.ds)
         indexed = {r[2][len("players/"):-len(".html")]
                    for r in self.by_type[search.T_PLAYER]}
         self.assertEqual(indexed, expected)
+
+    def test_an_appearance_alone_earns_a_page(self):
+        """Before team sheets a page meant a goal, so a player with thirty
+        appearances and none had no page and no way to be found."""
+        credits, own = hubs.player_goal_credits(self.ds)
+        scorers = {p for p in set(credits) | set(own) if p in self.ds.players}
+        played = {pid for pid, career in hubs.player_careers(self.ds).items()
+                  if career.appearances}
+        self.assertTrue(played <= hubs.player_page_ids(self.ds))
+        # And a scorer still earns one whether or not anyone entered a sheet.
+        self.assertTrue(scorers <= hubs.player_page_ids(self.ds))
 
     def test_unknown_player_is_never_indexed(self):
         self.assertNotIn(

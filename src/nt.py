@@ -25,31 +25,24 @@ rivals: `NTGroup` carries their rows too, and they are exactly the rows with no
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 
-from . import dataset
-from .dataset import DataError, _enum, _opt_int, _put, _require, _rows
+from . import dataset, lineups
+from .dataset import (DataError, _enum, _flag, _opt_int, _put, _require,
+                      _rows)
 
 # The women's senior side — the team this site currently builds a page for.
 SCORCHERS = "MW_W"
 
-# Squad/lineup position vocabulary, in the order squads are always listed.
-POSITIONS = ("GK", "DF", "MF", "FW")
-POSITION_LABELS = {
-    "GK": "Goalkeepers",
-    "DF": "Defenders",
-    "MF": "Midfielders",
-    "FW": "Forwards",
-}
-
-# _enum lowercases before comparing, so the position check needs a lowercase
-# vocabulary; parsed values are upper-cased straight back to GK/DF/MF/FW.
-_POSITION_SET = frozenset(p.lower() for p in POSITIONS)
+# The squad/line-up vocabulary is shared with the league tab — see src/lineups.py.
+POSITIONS = lineups.POSITIONS
+POSITION_LABELS = lineups.POSITION_LABELS
+_POSITION_SET = lineups.POSITION_SET
 
 NT_MATCH_STATUSES = frozenset({"scheduled", "played", "awarded"})
 # What a knockout slot can be filled by: the winner or the loser of another
 # tie ("winner:WAFCON26_QF1"). Losers feed exactly one thing, the third-place
 # play-off, but they feed it the same way.
 FEED_KINDS = frozenset({"winner", "loser"})
-NT_ROLES = frozenset({"starting", "sub_on", "unused_sub"})
+NT_ROLES = lineups.ROLES
 # Already the display vocabulary in this tab ("own goal", not "own_goal" as in
 # the league goals tab); the underscore form is accepted so either spelling works.
 NT_GOAL_TYPES = frozenset({"", "penalty", "own goal", "own_goal"})
@@ -90,15 +83,6 @@ def _nt_time(value: str, label: str, tab: str, i: int) -> str:
     raise DataError(f"{tab} row {i}: {label} {value!r} is not 24-hour HH:MM")
 
 
-def _flag(value: str, label: str, tab: str, i: int) -> bool:
-    """A Sheets checkbox column: blank | 0/1 | FALSE/TRUE."""
-    v = value.strip().lower()
-    if v not in ("", "0", "1", "false", "true"):
-        raise DataError(
-            f"{tab} row {i}: {label} {value!r} must be blank, 0/1 or TRUE/FALSE")
-    return v in ("1", "true")
-
-
 def parse_feed(value: str) -> "tuple[str, str] | None":
     """"winner:WAFCON26_QF1" -> ("winner", "WAFCON26_QF1"); blank -> None."""
     kind, _, tie_id = value.partition(":")
@@ -115,12 +99,7 @@ def _feed(value: str, label: str, tab: str, i: int) -> str:
     return value.strip()
 
 
-def _id_sort(value: str) -> "tuple[int, int, str]":
-    """Sort ids numerically when they are numbers, else lexically."""
-    try:
-        return (0, int(value), "")
-    except ValueError:
-        return (1, 0, value)
+_id_sort = lineups.id_sort
 
 
 # ── Records ──────────────────────────────────────────────────────────────────
@@ -219,6 +198,7 @@ class NTGoal:
     period: str
     goal_type: str       # "" | penalty | own goal
     source_ref: str
+    assist_player_id: str = ""   # canonical players id, or "" (0019/0020)
 
     @property
     def is_penalty(self) -> bool:
@@ -572,8 +552,10 @@ def parse_nt_goals(text: str) -> "dict[str, NTGoal]":
     required = {"goal_id", "match_id", "team_id", "player_name", "minute"}
     for i, r in _rows(text, "nt_goals", required):
         gid = _require(r, "goal_id", "nt_goals", i)
-        # Unlike the league goals tab, player_name IS the display name here:
-        # national-team player_ids are not in the players tab.
+        # player_name is still the display name here. Since 0020 our own
+        # sides also carry a canonical players id, but an opponent's scorer
+        # never will — their id belongs to no registry — so the name remains
+        # the only thing every row of this tab can be rendered from.
         _put(out, gid, NTGoal(
             gid, _require(r, "match_id", "nt_goals", i),
             _require(r, "team_id", "nt_goals", i),
@@ -583,6 +565,7 @@ def parse_nt_goals(text: str) -> "dict[str, NTGoal]":
             _enum(r.get("goal_type", ""), NT_GOAL_TYPES,
                   "goal_type", "nt_goals", i).replace("_", " "),
             r.get("source_ref", ""),
+            r.get("assist_player_id", ""),
         ), "nt_goals", i)
     return out
 
@@ -733,31 +716,10 @@ def parse_all(texts: "dict[str, str]") -> NTData:
 
 # ── One team's view ──────────────────────────────────────────────────────────
 
-@dataclass(frozen=True)
-class NTSubstitution:
-    on: NTLineupRow
-    off: "NTLineupRow | None"    # None when the replaced player has no row
-    minute: str
-
-    @property
-    def off_name(self) -> str:
-        return self.off.player_name if self.off else self.on.replaced_player
-
-
-@dataclass
-class NTLineup:
-    """One match's line-up, from our team's rows only."""
-    starting: "list[NTLineupRow]"
-    substitutions: "list[NTSubstitution]"
-    unused: "list[NTLineupRow]"
-
-    @property
-    def any_rows(self) -> bool:
-        return bool(self.starting or self.substitutions or self.unused)
-
-    def starting_by_position(self) -> "list[tuple[str, list[NTLineupRow]]]":
-        """[(label, rows)] in GK/DF/MF/FW order; empty groups omitted."""
-        return _group_by_position(self.starting)
+# Folding a team sheet is identical for both schemas, so both names point at
+# src/lineups.py rather than at a second copy of it.
+NTSubstitution = lineups.Substitution
+NTLineup = lineups.Lineup
 
 
 @dataclass
@@ -871,38 +833,10 @@ class NTTeamData:
         return [m for m in self.fixtures if m.competition == competition]
 
 
-def _group_by_position(rows):
-    """Group squad/line-up rows GK -> DF -> MF -> FW, by shirt number within."""
-    out = []
-    for pos in POSITIONS:
-        group = sorted((r for r in rows if r.position == pos),
-                       key=lambda r: (r.shirt_sort, r.player_name))
-        if group:
-            out.append((POSITION_LABELS[pos], group))
-    return out
+_group_by_position = lineups.group_by_position
 
 
-def _lineup_for(rows: "list[NTLineupRow]") -> "NTLineup | None":
-    """Fold one match's rows into starters, substitutions and unused subs.
-
-    `replaced_player` is a name, so a substitution pairs by name against the
-    same match's rows (that is all the tab offers). A sub_on row whose name
-    does not match anything still renders — with the raw name and no minute
-    from the other side — rather than being dropped.
-    """
-    if not rows:
-        return None
-    by_name = {r.player_name: r for r in rows}
-    starting = [r for r in rows if r.role == "starting"]
-    unused = [r for r in rows if r.role == "unused_sub"]
-    subs = []
-    for r in sorted((r for r in rows if r.role == "sub_on"),
-                    key=lambda r: (_id_sort(r.minute_on), r.player_name)):
-        off = by_name.get(r.replaced_player) if r.replaced_player else None
-        minute = r.minute_on or (off.minute_off if off else "")
-        subs.append(NTSubstitution(on=r, off=off, minute=minute))
-    lineup = NTLineup(starting=starting, substitutions=subs, unused=unused)
-    return lineup if lineup.any_rows else None
+_lineup_for = lineups.fold
 
 
 def _current_squad(rows: "list[NTSquadPlayer]") -> "NTSquad | None":

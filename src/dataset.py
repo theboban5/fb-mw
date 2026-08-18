@@ -34,6 +34,8 @@ import time
 import urllib.error
 import urllib.request
 
+from . import lineups
+
 
 class DataError(Exception):
     """A problem with the source data that must stop the build loudly."""
@@ -68,7 +70,18 @@ TAB_GIDS = {
     "aliases": 1570860122,
 }
 
-TABS = tuple(TAB_GIDS)
+# Tabs with no gid above: they postdate the spreadsheet and exist only in
+# Postgres. Under DATASET_SOURCE=sheets — the deprecated emergency fallback —
+# they resolve to a header-only CSV rather than a failed fetch, so the fallback
+# still builds a whole site, minus the data it never had.
+SUPABASE_ONLY_TABS = {
+    "lineups": ("match_id", "team_id", "player_name", "player_id",
+                "shirt_number", "position", "role", "captain", "minute_on",
+                "minute_off", "replaced_player", "yellow_card",
+                "yellow_red_card", "red_card"),
+}
+
+TABS = tuple(TAB_GIDS) + tuple(SUPABASE_ONLY_TABS)
 
 # The national-team tabs, same spreadsheet. They are a separate schema with
 # their own ids (nt_teams.team_code, not teams.team_id) and are parsed by
@@ -119,14 +132,27 @@ FETCH_ATTEMPTS = 8
 FETCH_RETRY_PAUSE = 0.5     # seconds
 
 
+def empty_csv(tab: str) -> str:
+    """A header-only CSV for a tab that has no rows to offer from this source."""
+    return ",".join(SUPABASE_ONLY_TABS[tab]) + "\n"
+
+
 def fetch_tab(tab: str) -> str:
     """Return the raw CSV text of one tab (network, or DATASET_LOCAL_DIR)."""
-    if tab not in _ALL_GIDS:
+    if tab not in _ALL_GIDS and tab not in SUPABASE_ONLY_TABS:
         raise DataError(f"unknown tab {tab!r}")
     local = os.environ.get("DATASET_LOCAL_DIR")
     if local:
-        with open(os.path.join(local, f"{tab}.csv"), encoding="utf-8") as fh:
+        path = os.path.join(local, f"{tab}.csv")
+        # A snapshot taken before a Supabase-only tab existed simply has no
+        # file for it. That is an empty tab, not a broken build — the same
+        # answer the sheets fallback gives.
+        if tab in SUPABASE_ONLY_TABS and not os.path.exists(path):
+            return empty_csv(tab)
+        with open(path, encoding="utf-8") as fh:
             return fh.read()
+    if tab in SUPABASE_ONLY_TABS:
+        return empty_csv(tab)
     req = urllib.request.Request(tab_url(tab), headers={"User-Agent": "fb-mw-build"})
     for attempt in range(1, FETCH_ATTEMPTS + 1):
         try:
@@ -187,6 +213,27 @@ def _fetch_many(tabs: "tuple[str, ...]") -> "dict[str, str]":
     # random stalls (see FETCH_TIMEOUT above), which Postgres does not have.
     with concurrent.futures.ThreadPoolExecutor(FETCH_WORKERS) as pool:
         return dict(zip(tabs, pool.map(fetch_tab, tabs)))
+
+
+def read_snapshot(directory, tabs=None) -> "dict[str, str] | None":
+    """A snapshot directory as {tab: csv_text}, or None if a tab is missing.
+
+    The same rule fetch_tab applies to DATASET_LOCAL_DIR, exposed for callers
+    that read a directory directly (the tests, and anything comparing two
+    snapshots): a Supabase-only tab absent from a snapshot taken before it
+    existed is an EMPTY tab, not a missing one.
+    """
+    out = {}
+    for tab in (tabs or TABS):
+        path = os.path.join(directory, f"{tab}.csv")
+        if not os.path.exists(path):
+            if tab in SUPABASE_ONLY_TABS:
+                out[tab] = empty_csv(tab)
+                continue
+            return None
+        with open(path, encoding="utf-8") as fh:
+            out[tab] = fh.read()
+    return out
 
 
 def fetch_all() -> "dict[str, str]":
@@ -453,6 +500,36 @@ class Alias:
     context: str
 
 
+@dataclass(frozen=True)
+class LineupRow:
+    """One named player on one side's team sheet for one match.
+
+    Deliberately the same shape as nt.NTLineupRow, so src/lineups.py can fold
+    and render both. Two columns differ in meaning rather than in name:
+    `team_id` here is always a real teams row (a league match has two), and
+    `player_id` is a canonical players id or "" when nobody has identified them
+    yet — the same state an unresolved scorer sits in.
+    """
+    match_id: str
+    team_id: str
+    player_name: str      # as reported
+    player_id: str        # "" when not identified
+    shirt_number: str
+    position: str         # GK | DF | MF | FW, or ""
+    role: str             # starting | sub_on | unused_sub
+    captain: bool
+    minute_on: str
+    minute_off: str
+    replaced_player: str  # a NAME — a team sheet is written and read by name
+    yellow_card: bool
+    yellow_red_card: bool
+    red_card: bool
+
+    @property
+    def shirt_sort(self) -> "tuple[int, int, str]":
+        return lineups.id_sort(self.shirt_number)
+
+
 @dataclass
 class Dataset:
     """Every tab, parsed and keyed by primary key (insertion order preserved)."""
@@ -470,6 +547,7 @@ class Dataset:
     registrations: "list[Registration]" = field(default_factory=list)
     reporters: "dict[str, Reporter]" = field(default_factory=dict)
     aliases: "list[Alias]" = field(default_factory=list)
+    lineups: "list[LineupRow]" = field(default_factory=list)
 
     def active_season(self) -> Season:
         """The single season with status=active. Never the system clock."""
@@ -552,6 +630,15 @@ def _stage(value: str) -> str:
 def _source_type(value, tab, i):
     """Blank source_type is common in the sheet; it means 'unknown'."""
     return _enum(value or "unknown", SOURCE_TYPES, "source_type", tab, i)
+
+
+def _flag(value: str, label: str, tab: str, i: int) -> bool:
+    """A Sheets checkbox column: blank | 0/1 | FALSE/TRUE."""
+    v = value.strip().lower()
+    if v not in ("", "0", "1", "false", "true"):
+        raise DataError(
+            f"{tab} row {i}: {label} {value!r} must be blank, 0/1 or TRUE/FALSE")
+    return v in ("1", "true")
 
 
 def _enum(value, allowed, label, tab, i):
@@ -785,6 +872,34 @@ def parse_players(text: str) -> "dict[str, Player]":
     return out
 
 
+def parse_lineups(text: str) -> "list[LineupRow]":
+    """The league team-sheet tab. A list, not a dict: the key is three columns
+    and every reader wants the rows grouped rather than looked up one by one."""
+    out: "list[LineupRow]" = []
+    required = {"match_id", "team_id", "player_name", "role"}
+    for i, r in _rows(text, "lineups", required):
+        out.append(LineupRow(
+            _require(r, "match_id", "lineups", i),
+            _require(r, "team_id", "lineups", i),
+            _require(r, "player_name", "lineups", i),
+            r.get("player_id", ""), r.get("shirt_number", ""),
+            # Position is optional here where it is required on the NT tab: a
+            # league sheet often arrives as eleven names off a Facebook photo
+            # with no positions at all, and half a team sheet still reads.
+            _enum(r.get("position", ""), lineups.POSITION_SET | {""},
+                  "position", "lineups", i).upper(),
+            _enum(_require(r, "role", "lineups", i), lineups.ROLES,
+                  "role", "lineups", i),
+            _flag(r.get("captain", ""), "captain", "lineups", i),
+            r.get("minute_on", ""), r.get("minute_off", ""),
+            r.get("replaced_player", ""),
+            _flag(r.get("yellow_card", ""), "yellow_card", "lineups", i),
+            _flag(r.get("yellow_red_card", ""), "yellow_red_card", "lineups", i),
+            _flag(r.get("red_card", ""), "red_card", "lineups", i),
+        ))
+    return out
+
+
 def parse_registrations(text: str) -> "list[Registration]":
     out: "list[Registration]" = []
     required = {"player_id", "team_id", "season_id"}
@@ -838,6 +953,7 @@ _PARSERS = {
     "goals": parse_goals,
     "players": parse_players,
     "registrations": parse_registrations,
+    "lineups": parse_lineups,
     "reporters": parse_reporters,
     "aliases": parse_aliases,
 }

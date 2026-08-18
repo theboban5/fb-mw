@@ -1685,17 +1685,22 @@ table.nt-table {
 /* Line-up block under a result. It reads as a drawer hanging off the bottom of
    its match: no divider above it (see the .v2-scorers-row rule below), and a
    heavier divider below, so the stronger line is always the one between two
-   matches rather than the one between a match and its own line-up. */
-.nt-lineup-row td {
+   matches rather than the one between a match and its own line-up.
+
+   The el- prefix is deliberate: this block renders under a league result and
+   under a national-team one from the same code (src/lineups.py), so it stopped
+   being nt- when it stopped being national-team-only. The squad list further
+   down is still nt-, because that page is. */
+.el-lineup-row td {
   padding: 0 10px 12px;
   background: #fafafa;
   border-bottom: 2px solid #d4d4d4;
 }
 /* Drop the scorers' divider only when a line-up follows, so the two rows join
    into one block. A match with no line-up keeps its normal 1px rule. */
-.v2-scorers-row:has(+ .nt-lineup-row) td { border-bottom: none; }
-.nt-lineup { font-size: 0.8rem; color: #1c1c1c; }
-.nt-lineup-summary {
+.v2-scorers-row:has(+ .el-lineup-row) td { border-bottom: none; }
+.el-lineup { font-size: 0.8rem; color: #1c1c1c; }
+.el-lineup-summary {
   padding: 8px 0;
   font-size: 0.64rem;
   font-weight: 800;
@@ -1704,7 +1709,7 @@ table.nt-table {
   color: #0b6b3a;
   cursor: pointer;
 }
-.nt-lineup-title {
+.el-lineup-title {
   margin: 10px 0 6px;
   font-size: 0.62rem;
   font-weight: 800;
@@ -1712,8 +1717,8 @@ table.nt-table {
   text-transform: uppercase;
   color: #555;
 }
-.nt-lineup-title-quiet { color: #9aa1ab; }
-.nt-pos-title {
+.el-lineup-title-quiet { color: #9aa1ab; }
+.el-pos-title {
   margin: 8px 0 2px;
   font-size: 0.6rem;
   font-weight: 700;
@@ -1722,15 +1727,29 @@ table.nt-table {
   color: #9aa1ab;
 }
 
+/* A league match has two sides to show, so each is headed and separated. The
+   national-team page passes only ours and never renders these. */
+.el-lineup-side + .el-lineup-side {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #e4e4e4;
+}
+.el-lineup-side-name {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #1c1c1c;
+}
+
 /* Player lists (line-up + squad) */
-.nt-players { list-style: none; margin: 0; padding: 0; }
-.nt-player {
+.nt-players, .el-players { list-style: none; margin: 0; padding: 0; }
+.nt-player, .el-player {
   display: flex;
   align-items: baseline;
   gap: 8px;
   padding: 3px 0;
 }
-.nt-shirt {
+.nt-shirt, .el-shirt {
   flex: 0 0 1.6rem;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -1738,13 +1757,18 @@ table.nt-table {
   color: #9aa1ab;
   font-size: 0.76rem;
 }
-.nt-player-name { font-weight: 600; }
+.nt-player-name, .el-player-name { font-weight: 600; }
 .nt-player-main { display: flex; flex-direction: column; min-width: 0; }
 .nt-club { font-size: 0.74rem; color: #666; }
 .nt-club-country { color: #9aa1ab; }
 
+/* Every name on a team sheet is a link now. Underlined only on hover: eleven
+   underlines in a column reads as a list of links rather than as a team. */
+.el-player-link { color: inherit; text-decoration: none; }
+.el-player-link:hover, .el-player-link:focus-visible { text-decoration: underline; }
+
 /* Captain / vice-captain badge */
-.nt-cap {
+.nt-cap, .el-cap {
   display: inline-block;
   margin-left: 5px;
   padding: 0 4px;
@@ -1756,10 +1780,10 @@ table.nt-table {
   letter-spacing: 0.04em;
   vertical-align: 1px;
 }
-.nt-cap-vice { background: #9aa1ab; }
+.nt-cap-vice, .el-cap-vice { background: #9aa1ab; }
 
 /* Cards: drawn in CSS, no images to load */
-.nt-card {
+.el-card {
   display: inline-block;
   width: 8px;
   height: 11px;
@@ -1767,26 +1791,121 @@ table.nt-table {
   border-radius: 1.5px;
   vertical-align: -1px;
 }
-.nt-card-y { background: #f2c200; }
-.nt-card-r { background: #d33a3a; }
-.nt-card-yr { background: linear-gradient(135deg, #f2c200 50%, #d33a3a 50%); }
+.el-card-y { background: #f2c200; }
+.el-card-r { background: #d33a3a; }
+.el-card-yr { background: linear-gradient(135deg, #f2c200 50%, #d33a3a 50%); }
 
-.nt-off { margin-left: 6px; font-size: 0.72rem; color: #d33a3a; font-weight: 700; }
+.el-off { margin-left: 6px; font-size: 0.72rem; color: #d33a3a; font-weight: 700; }
 
 /* Substitutions */
-.nt-subs { list-style: none; margin: 0; padding: 0; }
-.nt-sub { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; }
-.nt-sub-min {
+.el-subs { list-style: none; margin: 0; padding: 0; }
+.el-sub { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; }
+.el-sub-min {
   flex: 0 0 2.2rem;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   color: #0b6b3a;
   font-size: 0.76rem;
 }
-.nt-sub-on { font-weight: 700; }
-.nt-sub-for { color: #9aa1ab; }
-.nt-sub-off { color: #666; }
-.nt-unused { margin: 0; font-size: 0.74rem; color: #888; line-height: 1.5; }
+.el-sub-on { font-weight: 700; }
+.el-sub-for { color: #9aa1ab; }
+.el-sub-off { color: #666; }
+.el-unused { margin: 0; font-size: 0.74rem; color: #888; line-height: 1.5; }
+
+/* ─── Player profile ──────────────────────────────────
+   Mobile-first and single-column: most of this site is read on a phone, so
+   the header, the tiles and the match table are all sized to fit ~360px
+   without horizontal scroll. The match table's wide half (competition and
+   date) moves to a caption row above each result, exactly as the compact
+   results table does — same trick, same reason. */
+.pl-meta {
+  margin: 6px 0 0;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.74rem;
+}
+.pl-shirt {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  color: #0b6b3a;
+}
+.pl-pos { font-weight: 700; letter-spacing: 0.06em; color: #9aa1ab; }
+.pl-club { margin: 4px 0 0; font-size: 0.82rem; font-weight: 600; }
+
+/* Summary tiles. They wrap rather than scroll: a row that scrolls sideways
+   hides the number on the end, and these are the page's headline figures. */
+.pl-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 4px;
+}
+.pl-tile {
+  flex: 1 1 4.2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 6px;
+  border: 1px solid #e4e4e4;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #1c1c1c;
+}
+.pl-tile-n {
+  font-size: 1.25rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.pl-tile-l {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9aa1ab;
+}
+
+/* Match stats */
+.pl-matches { font-size: 0.8rem; }
+.pl-cap-row td { padding-bottom: 0; border-bottom: none; }
+.pl-match-row td { vertical-align: baseline; }
+.pl-th-opp { text-align: left; }
+.pl-th-score, .pl-th-role { text-align: left; }
+.pl-th-ga { text-align: right; width: 1.6rem; }
+.pl-opp { font-weight: 600; }
+.pl-score { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pl-role { white-space: nowrap; font-size: 0.68rem; font-weight: 700; color: #9aa1ab; }
+.pl-min { font-weight: 700; }
+.pl-ga {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+/* W/D/L reads as a chip, so a career skims as a colour pattern down the
+   column before any of the numbers are read. */
+.pl-res {
+  display: inline-block;
+  min-width: 1.05rem;
+  margin-right: 3px;
+  border-radius: 3px;
+  text-align: center;
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: #ffffff;
+  vertical-align: 1px;
+}
+.pl-res-w { background: #0b6b3a; }
+.pl-res-d { background: #9aa1ab; }
+.pl-res-l { background: #d33a3a; }
+.pl-more > summary {
+  padding: 10px 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #0b6b3a;
+  cursor: pointer;
+}
 
 /* Squad. The note sits on the page background rather than in a white card, so
    it takes --muted (which flips with the colour scheme) not a fixed grey. */
@@ -1812,13 +1931,18 @@ table.nt-table {
 
 /* From 560px the line-up groups and squad cards sit side by side. */
 @media (min-width: 560px) {
-  .nt-lineup-grid {
+  .el-lineup-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0 20px;
   }
   .nt-squad { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 }
+/* The two sides of a league match STAY STACKED at every width. The results
+   table lives in a 660px column, so putting them side by side would give each
+   ~310px and then split that again into GK/DF/MF/FW columns — four columns of
+   ~150px, which is narrower than the names in them. One side at a time, each
+   using the grid above, is the readable answer on a phone and on a desktop. */
 
 
 /* ─── Landing: today's matches card ──────────────────── */

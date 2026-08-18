@@ -35,7 +35,7 @@ single team needs no matchday pager.
 from html import escape
 import os
 
-from . import adapt, flags, render
+from . import adapt, flags, lineups, render
 
 # Editorial name, matching the landing-page card this page replaces. The data's
 # own `nt_teams.team_name` ("Malawi (Women's)") shows above it as the eyebrow.
@@ -134,28 +134,26 @@ def _more_link(href: str, label: str) -> str:
             f"{escape(label)} &rarr;</a></p>")
 
 
-def _cards(row) -> str:
-    """Card markers for one player: yellow, second yellow, straight red."""
-    out = []
-    if row.yellow_card and not row.yellow_red_card:
-        out.append(("nt-card-y", "Yellow card"))
-    if row.yellow_red_card:
-        out.append(("nt-card-yr", "Second yellow card"))
-    if row.red_card:
-        out.append(("nt-card-r", "Red card"))
-    return "".join(
-        f'<span class="nt-card {cls}" title="{label}" aria-label="{label}"></span>'
-        for cls, label in out
-    )
+_captain_badge = lineups.captain_badge
 
 
-def _captain_badge(is_captain=False, is_vice=False) -> str:
-    if is_captain:
-        return '<span class="nt-cap" title="Captain" aria-label="Captain">C</span>'
-    if is_vice:
-        return ('<span class="nt-cap nt-cap-vice" title="Vice-captain" '
-                'aria-label="Vice-captain">VC</span>')
-    return ""
+def _player_href_for(page_ids):
+    """A profile link, but ONLY for a player a page was actually written for.
+
+    Every id in these tabs was its own MW_W_### namespace until 0020 merged
+    them into `players`, and an opponent's scorer still carries an id from no
+    registry at all (INT_LIB_KOSIAH). Beyond that, being NAMED in a squad
+    announcement does not earn a page — hubs.player_page_ids wants a goal, an
+    assist or an appearance — so a squad member who has not played yet would
+    otherwise link straight to a 404. The set is passed in for the same reason
+    club_hub_ids is: this module must not guess which pages exist.
+    """
+    page_ids = frozenset(page_ids or ())
+
+    def href(player_id: str) -> str:
+        return (f"../players/{player_id}.html"
+                if player_id and player_id in page_ids else "")
+    return href
 
 
 # ── 1. Header ────────────────────────────────────────────────────────────────
@@ -405,92 +403,24 @@ def _scorers_row(result) -> str:
     )
 
 
-def _lineup_player(row, off_minute="") -> str:
-    shirt = (f'<span class="nt-shirt">{escape(row.shirt_number)}</span>'
-             if row.shirt_number else '<span class="nt-shirt"></span>')
-    off = (f'<span class="nt-off">&darr; {escape(off_minute)}\'</span>'
-           if off_minute else "")
-    return (
-        '<li class="nt-player">'
-        f"{shirt}"
-        f'<span class="nt-player-name">{escape(row.player_name)}'
-        f"{_captain_badge(is_captain=row.captain)}{_cards(row)}{off}</span>"
-        "</li>"
-    )
-
-
-def _lineup_row(lineup) -> str:
+def _lineup_row(lineup, player_href) -> str:
     """The collapsible line-up block under a result, or "" when there is none.
 
-    Open by default: on the matches that do have this data it is the point of
-    the page. A grouped list by position, never a pitch diagram — it has to
-    work in one column on a phone.
+    The markup is shared with the league results table — see src/lineups.py.
     """
-    if lineup is None:
-        return ""
-    parts = []
-
-    if lineup.starting:
-        blocks = []
-        for label, rows in lineup.starting_by_position():
-            players = "".join(
-                _lineup_player(r, off_minute=r.minute_off) for r in rows)
-            blocks.append(
-                f'<div class="nt-pos-block">'
-                f'<p class="nt-pos-title">{escape(label)}</p>'
-                f'<ul class="nt-players">{players}</ul></div>'
-            )
-        parts.append(
-            '<p class="nt-lineup-title">Starting XI</p>'
-            f'<div class="nt-lineup-grid">{"".join(blocks)}</div>'
-        )
-
-    if lineup.substitutions:
-        items = "".join(
-            '<li class="nt-sub">'
-            + (f'<span class="nt-sub-min">{escape(s.minute)}\'</span>'
-               if s.minute else '<span class="nt-sub-min"></span>')
-            + f'<span class="nt-sub-text">'
-            f'<span class="nt-sub-on">{escape(s.on.player_name)}</span>'
-            f'<span class="nt-sub-for"> for </span>'
-            f'<span class="nt-sub-off">{escape(s.off_name)}</span>'
-            f"{_cards(s.on)}</span></li>"
-            for s in lineup.substitutions
-        )
-        parts.append(
-            '<p class="nt-lineup-title">Substitutions</p>'
-            f'<ul class="nt-subs">{items}</ul>'
-        )
-
-    if lineup.unused:
-        names = ", ".join(
-            escape(r.player_name)
-            + (f" ({escape(r.shirt_number)})" if r.shirt_number else "")
-            for r in sorted(lineup.unused, key=lambda r: (r.shirt_sort, r.player_name))
-        )
-        parts.append(
-            '<p class="nt-lineup-title nt-lineup-title-quiet">Unused substitutes</p>'
-            f'<p class="nt-unused">{names}</p>'
-        )
-
-    if not parts:
-        return ""
-    return (
-        '<tr class="nt-lineup-row"><td colspan="3">'
-        '<details class="nt-lineup">'
-        '<summary class="nt-lineup-summary">Line-up</summary>'
-        f'<div class="nt-lineup-body">{"".join(parts)}</div>'
-        "</details></td></tr>"
-    )
+    return lineups.lineup_row_html(lineup, player_href=player_href)
 
 
 def _results(results, fl, title="Recent Results", empty="No results yet.",
-             more=None) -> str:
+             more=None, player_href=None) -> str:
+    player_href = player_href or _player_href_for(())
     head = f'<h3 class="v2-sec-title">{escape(title)}</h3>'
     if not results:
         return head + f'<p class="v2-empty">{escape(empty)}</p>'
     body = "".join(
-        _match_rows(r.match, fl, extra_rows=(_scorers_row(r), _lineup_row(r.lineup)))
+        _match_rows(r.match, fl,
+                    extra_rows=(_scorers_row(r),
+                                _lineup_row(r.lineup, player_href)))
         for r in results
     )
     return head + _results_table(body) + (more or "")
@@ -528,7 +458,14 @@ def _club_cell(player, ds, club_hub_ids) -> str:
     return f'<span class="nt-club">{label}</span>'
 
 
-def _squad(squad, ds, club_hub_ids) -> str:
+def _squad_name(player, player_href) -> str:
+    """A squad member's name, linked to their profile when one was written."""
+    href = player_href(getattr(player, "player_id", "") or "")
+    return (f'<a class="el-player-link" href="{escape(href)}">'
+            f"{escape(player.player_name)}</a>") if href else escape(player.player_name)
+
+
+def _squad(squad, ds, club_hub_ids, player_href) -> str:
     title = '<h3 class="v2-sec-title">Current Squad</h3>'
     if squad is None or not squad.players:
         return title + '<p class="v2-empty">No squad announced yet.</p>'
@@ -545,7 +482,7 @@ def _squad(squad, ds, club_hub_ids) -> str:
             + (f'<span class="nt-shirt">{escape(p.shirt_number)}</span>'
                if p.shirt_number else '<span class="nt-shirt"></span>')
             + '<span class="nt-player-main">'
-            f'<span class="nt-player-name">{escape(p.player_name)}'
+            f'<span class="nt-player-name">{_squad_name(p, player_href)}'
             f"{_captain_badge(p.is_captain, p.is_vice_captain)}</span>"
             f"{_club_cell(p, ds, club_hub_ids)}"
             "</span></li>"
@@ -569,7 +506,7 @@ def _page(parts) -> str:
     return "\n".join(x for x in ['<div class="v2-content">', *parts, "</div>"] if x)
 
 
-def render_home(team_data, fl, flag_url="") -> str:
+def render_home(team_data, fl, flag_url="", player_href=None) -> str:
     """The tournament the team is in right now — and nothing else.
 
     With a tournament on (WAFCON, qualifiers, a COSAFA), the sections below the
@@ -584,7 +521,8 @@ def render_home(team_data, fl, flag_url="") -> str:
         result_block = _results(
             results, fl, title=f"{competition} Results",
             empty=f"No {competition} matches played yet.",
-            more=_more_link("results.html", "All results"))
+            more=_more_link("results.html", "All results"),
+            player_href=player_href)
         fixture_block = _fixtures(
             fixtures, fl, title=f"{competition} Fixtures",
             empty=f"No {competition} matches left to play.",
@@ -592,7 +530,8 @@ def render_home(team_data, fl, flag_url="") -> str:
     else:
         result_block = _results(
             team_data.results[:HOME_FALLBACK_LIMIT], fl,
-            more=_more_link("results.html", "All results"))
+            more=_more_link("results.html", "All results"),
+            player_href=player_href)
         fixture_block = _fixtures(
             team_data.fixtures[:HOME_FALLBACK_LIMIT], fl,
             more=_more_link("fixtures.html", "All fixtures"))
@@ -607,10 +546,11 @@ def render_home(team_data, fl, flag_url="") -> str:
     ])
 
 
-def render_results(team_data, fl, flag_url="") -> str:
+def render_results(team_data, fl, flag_url="", player_href=None) -> str:
     return _page([
         _header(team_data, flag_url),
-        _results(team_data.results, fl, title="All Results"),
+        _results(team_data.results, fl, title="All Results",
+                 player_href=player_href),
     ])
 
 
@@ -621,15 +561,17 @@ def render_fixtures(team_data, fl, flag_url="") -> str:
     ])
 
 
-def render_squad(team_data, fl, ds, club_hub_ids=(), flag_url="") -> str:
+def render_squad(team_data, fl, ds, club_hub_ids=(), flag_url="",
+                 player_href=None) -> str:
     return _page([
         _header(team_data, flag_url),
-        _squad(team_data.squad, ds, club_hub_ids),
+        _squad(team_data.squad, ds, club_hub_ids,
+               player_href or _player_href_for(())),
     ])
 
 
 def build_page(dist, templates_dir, static_dir, team_data, ds, updated,
-               club_hub_ids=()):
+               club_hub_ids=(), player_page_ids=()):
     """Write dist/scorchers/*.html. Returns the number of pages written."""
     out_dir = os.path.join(dist, SLUG)
     os.makedirs(out_dir, exist_ok=True)
@@ -641,13 +583,16 @@ def build_page(dist, templates_dir, static_dir, team_data, ds, updated,
     flag_url = ("../" + FLAG_FILE
                 if os.path.exists(os.path.join(static_dir, FLAG_FILE)) else "")
     fl = flags.Flags(static_dir, prefix="../")
+    player_href = _player_href_for(player_page_ids)
 
     pages = {
-        "index.html": render_home(team_data, fl, flag_url=flag_url),
-        "results.html": render_results(team_data, fl, flag_url=flag_url),
+        "index.html": render_home(team_data, fl, flag_url=flag_url,
+                                  player_href=player_href),
+        "results.html": render_results(team_data, fl, flag_url=flag_url,
+                                       player_href=player_href),
         "fixtures.html": render_fixtures(team_data, fl, flag_url=flag_url),
         "squad.html": render_squad(team_data, fl, ds, club_hub_ids,
-                                   flag_url=flag_url),
+                                   flag_url=flag_url, player_href=player_href),
     }
     header_logo = (f'<img class="site-logo" src="{escape(flag_url)}" alt="">'
                    if flag_url else "")

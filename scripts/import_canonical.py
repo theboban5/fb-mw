@@ -100,6 +100,12 @@ SPECS = [
          defaults={"source_type": "unknown", "confidence": "unconfirmed"}),
     Spec("registrations", "player_id,team_id,season_id",
          dates=("from_date", "to_date")),
+    # After matches, teams and players: it references all three. player_id is
+    # nullable because blank means "nobody has identified them yet" — the same
+    # state goals.assist_player_id sits in.
+    Spec("lineups", "match_id,team_id,player_name",
+         bools=("captain", "yellow_card", "yellow_red_card", "red_card"),
+         nullable=("player_id", "reported_by"), lower=("role",)),
     # No natural key: a duplicate alias_text is legal, so rows are replaced
     # wholesale rather than upserted (see _load).
     Spec("aliases", None),

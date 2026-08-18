@@ -177,13 +177,17 @@ def _club_competitions(ds, leagues):
     return out
 
 
-def build_index(ds, leagues, scorchers=None, hidden=()) -> list:
+def build_index(ds, leagues, scorchers=None, hidden=(), ntd=None) -> list:
     """The list of index rows. Pure — writes nothing, so tests can inspect it.
 
     `hidden` is build.HIDDEN_ON_LANDING: competitions whose pages exist but
     which nothing links to. Search follows that editorial call — the
     competition and its squad pages stay out of the index — but the clubs
     entered in them keep their hubs, which are written unconditionally.
+
+    `ntd` is the parsed nt_* tabs. It is here for one reason: a player whose
+    only football in this database is for Malawi has a page, so they must have
+    an index row, and hubs.player_page_ids cannot know about them without it.
     """
     aliases = _alias_map(ds)
     hidden = set(hidden)
@@ -264,13 +268,22 @@ def build_index(ds, leagues, scorchers=None, hidden=()) -> list:
 
     # ── Players ─────────────────────────────────────────────────────────────
     credits, own_goals = hubs.player_goal_credits(ds)
+    careers = hubs.player_careers(ds, ntd)
     stats = _player_stats(ds, credits)
-    for player_id in sorted(set(credits) | set(own_goals)):
-        player = ds.players.get(player_id)
-        if player is None:
-            continue
+    # The same set hubs.build_player_pages writes, from the same function:
+    # indexing a player with no page is how a search result 404s.
+    for player_id in sorted(hubs.player_page_ids(ds, credits, own_goals, careers)):
+        player = ds.players[player_id]
         goals, club_name = stats.get(player_id, (0, ""))
-        bits = [f"{goals} goal{'' if goals == 1 else 's'}" if goals else "Player"]
+        apps = len(careers[player_id].appearances) if player_id in careers else 0
+        # A goal is the more interesting fact, so it leads; a player with none
+        # gets their appearance count rather than the bare word "Player".
+        if goals:
+            bits = [f"{goals} goal{'' if goals == 1 else 's'}"]
+        elif apps:
+            bits = [f"{apps} appearance{'' if apps == 1 else 's'}"]
+        else:
+            bits = ["Player"]
         if club_name:
             bits.append(club_name)
         add(
@@ -290,9 +303,9 @@ def build_index(ds, leagues, scorchers=None, hidden=()) -> list:
     return rows
 
 
-def write_index(dist, ds, leagues, scorchers=None, hidden=()) -> int:
+def write_index(dist, ds, leagues, scorchers=None, hidden=(), ntd=None) -> int:
     """Write dist/search-index.json. Returns the number of records."""
-    rows = build_index(ds, leagues, scorchers=scorchers, hidden=hidden)
+    rows = build_index(ds, leagues, scorchers=scorchers, hidden=hidden, ntd=ntd)
     payload = {"v": 1, "types": list(TYPES), "docs": rows}
     render._write(
         os.path.join(dist, "search-index.json"),
