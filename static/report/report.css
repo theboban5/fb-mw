@@ -516,6 +516,14 @@ a { color: var(--accent); }
 
 .rp-fx .rp-select, .rp-fx .rp-input { background: var(--bg); }
 .rp-fx > .rp-input { margin-top: 8px; }
+
+/* The two team boxes are the scorer picker reused: type to narrow, tap to
+   commit a team_id. The card is deliberately left static (no position, no
+   z-index) so it never opens a stacking context — the suggestion list inside
+   it is absolutely positioned with a z-index, and confining that to one card
+   would let the NEXT card's background paint over the list. */
+.rp-fx .rp-pick + .rp-pick { margin-top: 0; }
+.rp-fx .rp-suggest { max-height: 220px; }
 .rp-fx-v {
   display: block; margin: 4px 0; text-align: center;
   font-size: 0.7rem; font-weight: 800; letter-spacing: 0.12em;

@@ -807,7 +807,14 @@ function venueNames() {
   });
 }
 
-const blankRow = () => ({ home: "", away: "", date: "", kickoff: "", venue: "", error: "" });
+// `home`/`away` are team_ids — the answer. `homeText`/`awayText` are what is
+// half-typed in the box beside them, kept because adding or removing a line
+// redraws every other line, and a name someone was in the middle of typing
+// must survive that (rule 1).
+const blankRow = () => ({
+  home: "", away: "", homeText: "", awayText: "",
+  date: "", kickoff: "", venue: "", error: "",
+});
 
 /** A per-line failure comes back as the sentence create_fixtures raised, not
  *  as a PostgREST error object — but they are the same sentences, raised by
@@ -902,9 +909,16 @@ async function renderAddFixture(params) {
     state.date = value("[data-all-date]");
     state.kickoff = value("[data-all-kickoff]");
     state.source = value("[data-source]");
-    form.querySelectorAll("[data-row]").forEach((el) => {
+    // [data-field] rather than [data-row]: a team picker carries BOTH a
+    // visible box holding a name and a hidden input holding the team_id, and
+    // only the second is the answer. The visible one has no data-field.
+    form.querySelectorAll("[data-field]").forEach((el) => {
       const row = state.rows[Number(el.dataset.row)];
       if (row) row[el.dataset.field] = el.value;
+    });
+    form.querySelectorAll("[data-text]").forEach((el) => {
+      const row = state.rows[Number(el.dataset.row)];
+      if (row) row[`${el.dataset.text}Text`] = el.value;
     });
   }
 
@@ -916,9 +930,27 @@ async function renderAddFixture(params) {
         c.competition_id === state.competition.competition_id ? " selected" : ""}>
         ${esc(c.label)}</option>`).join("");
 
-    const teamOptions = (chosen) => (state.teams || []).map((t) => `
-      <option value="${esc(t.id)}"${t.id === chosen ? " selected" : ""}>
-        ${esc(t.name)}</option>`).join("");
+    /** A team box: type to narrow, tap to commit.
+     *
+     *  The scorer picker's pattern, and simpler — the teams are already in
+     *  memory, so filtering is a string match rather than a search, and there
+     *  is no "add a new one". A team not entered in this competition is
+     *  exactly what validate.py check 3 refuses, so it is never offered; the
+     *  box can only ever produce a team_id that is already legal here.
+     *
+     *  Two inputs, as in the scorer picker: what the reporter reads is a
+     *  NAME, and what is submitted is the hidden id beside it. */
+    const picker = (row, i, side, label) => `
+      <div class="rp-pick" data-pick="${i}:${side}">
+        <input class="rp-input" type="text" data-row="${i}" data-text="${side}"
+               value="${esc(row[side] ? teamName(row[side]) : row[`${side}Text`] || "")}"
+               placeholder="${esc(label)}" role="combobox" aria-expanded="false"
+               aria-autocomplete="list" autocomplete="off" autocorrect="off"
+               autocapitalize="words" aria-label="${esc(label)}, match ${i + 1}">
+        <input type="hidden" data-row="${i}" data-field="${side}"
+               value="${esc(row[side])}">
+        <ul class="rp-suggest" role="listbox" data-suggest hidden></ul>
+      </div>`;
 
     const line = (row, i) => `
       <li class="rp-fx${row.error ? " is-bad" : ""}">
@@ -928,13 +960,9 @@ async function renderAddFixture(params) {
             ? `<button class="rp-fx-drop" type="button" data-drop="${i}">Remove</button>`
             : ""}
         </div>
-        <select class="rp-select" data-row="${i}" data-field="home"
-                aria-label="Home team, match ${i + 1}">
-          <option value="">Home team…</option>${teamOptions(row.home)}</select>
+        ${picker(row, i, "home", "Home team")}
         <span class="rp-fx-v">v</span>
-        <select class="rp-select" data-row="${i}" data-field="away"
-                aria-label="Away team, match ${i + 1}">
-          <option value="">Away team…</option>${teamOptions(row.away)}</select>
+        ${picker(row, i, "away", "Away team")}
         <div class="rp-row">
           <input class="rp-input rp-date" type="date" data-row="${i}" data-field="date"
                  value="${esc(row.date)}" aria-label="Date, match ${i + 1}">
@@ -990,6 +1018,8 @@ async function renderAddFixture(params) {
         every match added — it is there so a fixture can be checked later.</p>
 
       <h2 class="rp-field-head">The fixtures</h2>
+      <p class="rp-hint" style="margin-top:0">Start typing a team and tap it
+        from the list. Only teams entered in this competition are offered.</p>
       <ol class="rp-fixtures">${state.rows.map(line).join("")}</ol>
       <button class="rp-btn is-ghost" type="button" data-more>＋ Add another</button>
 
@@ -1038,7 +1068,10 @@ async function renderAddFixture(params) {
       // when they were picked — carrying either across would offer a fixture
       // that validate.py check 3 exists to refuse.
       state.stage = "";
-      state.rows.forEach((row) => { row.home = ""; row.away = ""; row.error = ""; });
+      state.rows.forEach((row) => {
+        row.home = ""; row.away = ""; row.homeText = ""; row.awayText = "";
+        row.error = "";
+      });
       loadTeams();
     });
 
@@ -1089,11 +1122,112 @@ async function renderAddFixture(params) {
     // about the screen rather than a label.
     const button = form.querySelector("[data-submit]");
     if (!button) return;
-    form.addEventListener("change", (event) => {
-      if (!event.target.matches('[data-field="home"], [data-field="away"]')) return;
-      syncFromDom();
+    const countLines = () => {
       const n = state.rows.filter((r) => r.home && r.away).length;
       button.textContent = n ? `Add ${n} fixture${n === 1 ? "" : "s"}` : "Add fixtures";
+    };
+
+    // ── The team pickers ─────────────────────────────────────────────────────
+    // Delegated to the form rather than bound per box: there are two per line
+    // and the whole list is redrawn whenever a line is added or removed, so
+    // per-box listeners would be re-attached on every redraw and hold detached
+    // nodes. The form is replaced with them, so these die at the right time.
+
+    let blurTimer = null;
+
+    const closeLists = () => {
+      form.querySelectorAll("[data-suggest]").forEach((ul) => {
+        if (ul.hidden) return;
+        ul.hidden = true;
+        ul.innerHTML = "";
+        ul.parentElement.querySelector("[data-text]")
+          ?.setAttribute("aria-expanded", "false");
+      });
+    };
+
+    function openList(wrap, term) {
+      const [index, side] = wrap.dataset.pick.split(":");
+      const row = state.rows[Number(index)];
+      const opposite = side === "home" ? row?.away : row?.home;
+      const needle = term.trim().toLowerCase();
+      const matches = (state.teams || []).filter(
+        (t) => !needle || t.name.toLowerCase().includes(needle));
+      const list = wrap.querySelector("[data-suggest]");
+
+      list.innerHTML = matches.length
+        ? matches.map((t) => `
+            <li role="option"><button type="button" class="rp-suggest-btn"
+              data-team="${esc(t.id)}" data-name="${esc(t.name)}"${
+                t.id === opposite ? " disabled" : ""}>
+              <span>${esc(t.name)}</span>${t.id === opposite
+                ? "<em>already the other side of this match</em>" : ""}
+            </button></li>`).join("")
+        // Not a dead end, and not phrased as one: the reason a name is absent
+        // is almost always that the team is not entered in this competition
+        // this season, which is a thing an administrator fixes.
+        : `<li><button type="button" class="rp-suggest-btn" disabled>
+             <span>No team here matches that</span>
+             <em>only teams entered in ${esc(state.competition.label)} this
+                 season can be given a fixture</em></button></li>`;
+      list.hidden = false;
+      wrap.querySelector("[data-text]").setAttribute("aria-expanded", "true");
+    }
+
+    // Focusing a box shows everything, so it is still one tap to browse the
+    // list the way the old dropdown worked. Typing narrows it.
+    form.addEventListener("focusin", (event) => {
+      if (event.target.closest("[data-suggest]")) return;
+      clearTimeout(blurTimer);
+      closeLists();
+      const input = event.target.closest("[data-text]");
+      if (input) openList(input.parentElement, "");
+    });
+
+    // Belt and braces for the same hazard: keeping the press from moving focus
+    // at all means the box never blurs and the list is still there when the
+    // click arrives. The deferred close above is the fallback for touch.
+    form.addEventListener("mousedown", (event) => {
+      if (event.target.closest("[data-suggest]")) event.preventDefault();
+    });
+
+    form.addEventListener("input", (event) => {
+      const input = event.target.closest("[data-text]");
+      if (!input) return;
+      // The typed name no longer belongs to whoever was picked.
+      input.parentElement.querySelector("[data-field]").value = "";
+      syncFromDom();
+      countLines();
+      openList(input.parentElement, input.value);
+    });
+
+    // The tap that chooses an option lands just after the blur it causes, so
+    // closing is deferred rather than immediate.
+    form.addEventListener("focusout", (event) => {
+      if (!event.target.closest("[data-text]")) return;
+      clearTimeout(blurTimer);
+      blurTimer = setTimeout(closeLists, 180);
+    });
+
+    form.addEventListener("click", (event) => {
+      const option = event.target.closest(".rp-suggest-btn");
+      if (!option || option.disabled || !option.dataset.team) return;
+      const wrap = option.closest("[data-pick]");
+      wrap.querySelector("[data-field]").value = option.dataset.team;
+      wrap.querySelector("[data-text]").value = option.dataset.name;
+      clearTimeout(blurTimer);
+      closeLists();
+      syncFromDom();
+      countLines();
+    });
+
+    form.addEventListener("keydown", (event) => {
+      const input = event.target.closest("[data-text]");
+      if (!input || event.key !== "Enter") return;
+      // Enter inside a picker means "the one at the top of the list", never
+      // "submit the other six fixtures".
+      event.preventDefault();
+      input.parentElement
+        .querySelector(".rp-suggest-btn[data-team]:not([disabled])")?.click();
     });
 
     form.addEventListener("submit", async (event) => {
@@ -1101,6 +1235,22 @@ async function renderAddFixture(params) {
       if (state.busy) return;                  // rule 2: never submit twice
       clearFlash();
       syncFromDom();
+      closeLists();
+
+      // A name typed in full and never tapped is still an answer. The picker
+      // is a convenience, not a checkpoint, so an exact match (bar case and
+      // spacing) resolves itself rather than being refused for the sake of a
+      // gesture the reporter did not know was required.
+      state.rows.forEach((row) => {
+        ["home", "away"].forEach((side) => {
+          if (row[side]) return;
+          const typed = (row[`${side}Text`] || "").trim().toLowerCase();
+          if (!typed) return;
+          const hit = (state.teams || []).find(
+            (t) => t.name.trim().toLowerCase() === typed);
+          if (hit) row[side] = hit.id;
+        });
+      });
 
       // Asked first, because it is one control and it applies to all of them:
       // sending seven cup fixtures with no round would fail seven times over
@@ -1116,8 +1266,18 @@ async function renderAddFixture(params) {
       const sending = [];
       state.rows.forEach((row) => {
         row.error = "";
-        if (!row.home && !row.away) return;
-        if (!row.home || !row.away) { row.error = "Pick both teams."; return; }
+        const started = row.home || row.away || row.homeText || row.awayText;
+        if (!started) return;
+        if (!row.home || !row.away) {
+          // Distinguishes "you left it blank" from "what you typed is not a
+          // team here", which are different mistakes with different fixes.
+          const unmatched = (!row.home && row.homeText)
+                         || (!row.away && row.awayText);
+          row.error = unmatched
+            ? "Pick both teams from the list — type a few letters and tap one."
+            : "Pick both teams.";
+          return;
+        }
         if (row.home === row.away) { row.error = "A team cannot play itself."; return; }
         sending.push(row);
       });
