@@ -4565,35 +4565,53 @@ function sheetRowHtml(sheet, row, i, key) {
                 aria-label="Remove ${esc(row.player_name)}">&times;</button>
       </div>
       <div class="rp-sheet-controls">
-        <select class="rp-input" data-sheet-field="role" data-sheet-i="${i}" data-sheet-key="${esc(key)}">
-          ${SHEET_ROLES.map(([v, l]) => `<option value="${v}"${
-            row.role === v ? " selected" : ""}>${l}</option>`).join("")}
-        </select>
-        <select class="rp-input" data-sheet-field="position" data-sheet-i="${i}" data-sheet-key="${esc(key)}">
-          ${SHEET_POSITIONS.map((p) => `<option value="${p}"${
-            row.position === p ? " selected" : ""}>${p || "—"}</option>`).join("")}
-        </select>
-        <input class="rp-input rp-sheet-shirt" data-sheet-field="shirt_number"
-               data-sheet-i="${i}" data-sheet-key="${esc(key)}" inputmode="numeric"
-               placeholder="No." value="${esc(row.shirt_number || "")}">
+        <label class="rp-sheet-field">
+          <span class="rp-sheet-field-label">Role</span>
+          <select class="rp-input" data-sheet-field="role" data-sheet-i="${i}" data-sheet-key="${esc(key)}">
+            ${SHEET_ROLES.map(([v, l]) => `<option value="${v}"${
+              row.role === v ? " selected" : ""}>${l}</option>`).join("")}
+          </select>
+        </label>
+        <label class="rp-sheet-field">
+          <span class="rp-sheet-field-label">Position</span>
+          <select class="rp-input" data-sheet-field="position" data-sheet-i="${i}" data-sheet-key="${esc(key)}">
+            ${SHEET_POSITIONS.map((p) => `<option value="${p}"${
+              row.position === p ? " selected" : ""}>${p || "—"}</option>`).join("")}
+          </select>
+        </label>
+        <label class="rp-sheet-field">
+          <span class="rp-sheet-field-label">Shirt</span>
+          <input class="rp-input" data-sheet-field="shirt_number"
+                 data-sheet-i="${i}" data-sheet-key="${esc(key)}" inputmode="numeric"
+                 value="${esc(row.shirt_number || "")}">
+        </label>
         ${row.role === "sub_on" ? `
-          <input class="rp-input" data-sheet-field="minute_on" data-sheet-i="${i}"
-                 data-sheet-key="${esc(key)}" value="${esc(row.minute_on || "")}"
-                 placeholder="On'" inputmode="numeric">
-          <select class="rp-input" data-sheet-field="replaced_player"
-                  data-sheet-i="${i}" data-sheet-key="${esc(key)}">
-            <option value="">for…</option>
-            ${others.map((o) => `
-              <option value="${esc(o.player_name)}"${
-                row.replaced_player === o.player_name ? " selected" : ""}>
-              ${esc(o.player_name)}</option>`).join("")}
-          </select>` : ""}
+          <label class="rp-sheet-field">
+            <span class="rp-sheet-field-label">On (min)</span>
+            <input class="rp-input" data-sheet-field="minute_on" data-sheet-i="${i}"
+                   data-sheet-key="${esc(key)}" value="${esc(row.minute_on || "")}"
+                   inputmode="numeric">
+          </label>
+          <label class="rp-sheet-field rp-sheet-field-wide">
+            <span class="rp-sheet-field-label">Replaced</span>
+            <select class="rp-input" data-sheet-field="replaced_player"
+                    data-sheet-i="${i}" data-sheet-key="${esc(key)}">
+              <option value="">nobody named</option>
+              ${others.map((o) => `
+                <option value="${esc(o.player_name)}"${
+                  row.replaced_player === o.player_name ? " selected" : ""}>
+                ${esc(o.player_name)}</option>`).join("")}
+            </select>
+          </label>` : ""}
         ${row.role === "starting" ? `
-          <input class="rp-input" data-sheet-field="minute_off" data-sheet-i="${i}"
-                 data-sheet-key="${esc(key)}" value="${esc(row.minute_off || "")}"
-                 placeholder="${esc(offMinuteFor(sheet.rows, row) || "Off'")}"
-                 title="Only needed when no substitution says it — a sending-off, or coming off unreplaced"
-                 inputmode="numeric">` : ""}
+          <label class="rp-sheet-field">
+            <span class="rp-sheet-field-label">Off (min)</span>
+            <input class="rp-input" data-sheet-field="minute_off" data-sheet-i="${i}"
+                   data-sheet-key="${esc(key)}" value="${esc(row.minute_off || "")}"
+                   placeholder="${esc(offMinuteFor(sheet.rows, row) || "")}"
+                   title="Only needed when no substitution says it — a sending-off, or coming off unreplaced"
+                   inputmode="numeric">
+          </label>` : ""}
       </div>
       <div class="rp-sheet-flags">
         <button type="button" class="rp-chip${row.captain ? " is-on" : ""}"

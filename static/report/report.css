@@ -438,9 +438,34 @@ a { color: var(--accent); }
 }
 .rp-sheet-name { font-weight: 600; font-size: 0.95rem; }
 .rp-sheet-name b { color: var(--accent); }
-.rp-sheet-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+/* EVERY CELL SAYS WHAT IT IS, EVEN WHEN FULL. These were four bare boxes that
+   named themselves with a placeholder, so the moment a reporter typed a number
+   the caption went with it: a row reading "7" then "63" gave no way to tell the
+   shirt from the minute apart from their order, and the minute a player came
+   off is exactly the cell you go back to check. The caption is now a label
+   above the control, which survives being filled in — the same arrangement the
+   home filter bar already uses. It costs ~16px a row; a sheet is 20 rows and
+   that is a fair price for never having to count columns. */
+/* A GRID, NOT A WRAPPING ROW. Four boxes of different natural widths wrapped
+   into 3 + 1, and the one left on its own stretched to the full width — so the
+   minute a player came off, the narrowest thing on the row, was drawn as the
+   widest. Two equal columns put the same field in the same place on every row
+   instead, which is what makes a column of twenty rows scannable.
+
+   Two at every width, with no wider breakpoint: main is capped at --max
+   (560px), so the row is never more than about 500px however big the screen
+   is, and four columns of 120px cut "Starting XI" off mid-word. */
+.rp-sheet-controls {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;
+}
+.rp-sheet-field { min-width: 0; }
+.rp-sheet-field-label {
+  display: block; margin-bottom: 3px;
+  font-size: 0.67rem; font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--muted); white-space: nowrap;
+}
 .rp-sheet-controls .rp-input {
-  flex: 1 1 90px; min-width: 0; margin-top: 0;
+  width: 100%; min-width: 0; margin-top: 0;
   min-height: 40px; padding: 6px 8px; font-size: 15px;
 }
 .rp-sheet-flags {
@@ -515,7 +540,9 @@ a { color: var(--accent); }
   margin-left: 6px; font-style: normal;
   font-size: 0.72rem; font-weight: 600; color: var(--muted);
 }
-.rp-sheet-shirt { flex: 0 1 72px; }
+/* "Replaced" holds a full name, so it spans the grid rather than truncating
+   one to fit a column. */
+.rp-sheet-field-wide { grid-column: 1 / -1; }
 
 /* The paste box is the fallback, so it sits closed under the squad rather than
    above it: the common path is tapping names, and the uncommon one should not
