@@ -1044,6 +1044,16 @@ Notes worth having in mind:
 - **The photo is shrunk on the phone before it is sent**, and again at build
   time on the way into `docs/trending/`, so the homepage serves it from
   everyleague.co rather than from Supabase.
+- **Fill in the photo credit on anything that is not your own picture.** It
+  renders small under the card as "Photo: …", and only when the card has a
+  photo. It is a different field from the photo description: the description
+  is read aloud to somebody who cannot see the image and should not carry a
+  byline. Removing a photo clears its credit with it.
+- **The carousel rotates every 5 seconds** and wraps back to the first card.
+  A swipe, a dot tap or a key holds it for 15 seconds so a reader gets to
+  finish the card they chose; a mouse resting on it, or focus inside it, holds
+  it for as long as that lasts; it never starts at all under the reader's
+  reduced-motion setting, and stops while the tab is in the background.
 - **Photos are never deleted**, because duplicating a card copies its path and
   two cards can share one object. Removing a photo from a card unhooks it; the
   bytes stay in the bucket.

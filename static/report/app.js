@@ -3523,7 +3523,7 @@ const TRENDING_STATUS_WORD = {
 async function loadTrending() {
   const { data, error } = await supabase.from("trending")
     .select("card_id,status,eyebrow,headline,body,link_url,link_label," +
-            "image_path,image_alt,sort_order,published_at,updated_at")
+            "image_path,image_alt,image_credit,sort_order,published_at,updated_at")
     .order("sort_order", { ascending: true })
     .order("card_id", { ascending: true });
   if (error) throw error;
@@ -3570,6 +3570,9 @@ function trendingPreview(card) {
         ${card.body ? `<span class="rp-trend-copy">${esc(card.body)}</span>` : ""}
         ${card.link_url
           ? `<span class="rp-trend-cta">${esc(card.link_label || "Read more")} &rarr;</span>`
+          : ""}
+        ${card.image_path && card.image_credit
+          ? `<span class="rp-trend-credit">Photo: ${esc(card.image_credit)}</span>`
           : ""}
       </div>
     </div>`;
@@ -3641,12 +3644,23 @@ function trendingFields(card, labels) {
     ${c.image_path ? `
       <button class="rp-btn is-quiet" type="button" data-drop-photo>Remove photo</button>` : ""}
 
+    <label class="rp-label" for="tr-credit-${esc(c.card_id || "new")}">Photo credit</label>
+    <input class="rp-input" id="tr-credit-${esc(c.card_id || "new")}" name="image_credit"
+           maxlength="80" autocapitalize="words" autocomplete="off"
+           value="${esc(c.image_credit || "")}" placeholder="FAM Media">
+    <p class="rp-hint">Whose photo it is — a club, an association, a
+      photographer. It renders small under the card as “Photo: …”, and only
+      when the card has a photo. Worth filling in on anything that is not your
+      own picture.</p>
+
     <label class="rp-label" for="tr-alt-${esc(c.card_id || "new")}">Photo description</label>
     <input class="rp-input" id="tr-alt-${esc(c.card_id || "new")}" name="image_alt"
            maxlength="140" autocapitalize="sentences" autocomplete="off"
            value="${esc(c.image_alt || "")}" placeholder="Optional">
-    <p class="rp-hint">Read aloud to somebody who cannot see the photo. Leave it
-      blank when the headline beside it already says the same thing.</p>`;
+    <p class="rp-hint">Read aloud to somebody who cannot see the photo — so it
+      describes the picture and carries no byline, which is what the credit
+      above is for. Leave it blank when the headline already says the same
+      thing.</p>`;
 }
 
 function trendingCard(card, index, total, labels) {
@@ -3811,6 +3825,7 @@ async function trendingArgs(form, cardId, note) {
     p_link_label: form.link_label.value.trim(),
     p_image_path: imagePath,
     p_image_alt: form.image_alt.value.trim(),
+    p_image_credit: form.image_credit.value.trim(),
   };
 }
 
@@ -3902,12 +3917,16 @@ function wireTrending(tab) {
     form.querySelector("[data-drop-photo]")?.addEventListener("click", (e) => {
       form.image_path.value = "";
       form.photo.value = "";
+      // The credit goes with the photo it credits. The site already drops an
+      // orphaned one, so leaving it would be invisible — right up until a NEW
+      // photo went on this card and inherited somebody else's byline.
+      form.image_credit.value = "";
       e.target.remove();
       const preview = form.closest(".rp-sec-body")?.querySelector("[data-trend-preview] img");
       if (preview) preview.replaceWith(
         Object.assign(document.createElement("div"),
           { className: "rp-trend-noimg", textContent: "No photo" }));
-      flash("Photo removed here — save the card to make it stick.", "warn");
+      flash("Photo and credit removed here — save the card to make it stick.", "warn");
     });
   });
 

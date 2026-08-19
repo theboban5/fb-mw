@@ -957,3 +957,10 @@ a { color: var(--accent); }
   font-weight: 700;
   line-height: 1;
 }
+
+/* The photo credit in the preview: the same quiet last line the card has. */
+.rp-trend-credit {
+  font-size: 0.68rem;
+  color: var(--muted);
+  opacity: 0.85;
+}

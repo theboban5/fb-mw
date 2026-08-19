@@ -183,8 +183,14 @@ The homepage carousel, migration `0030` — a lite CMS for the front page:
   the two never stack — two features above the fold is how neither gets read.
 - **The carousel needs no JavaScript.** A scroll-snap flex row IS a phone
   carousel; the inlined script only adds the dots (shipped `hidden`, so they
-  are never buttons that do nothing) and an auto-advance that stops for good
-  the first time a reader touches the track.
+  are never buttons that do nothing) and the auto-advance: 5s a card, wrapping
+  at the end. Input HOLDS it for 15s rather than stopping it for good — a
+  reader who swiped once and then sat still should get the rest of the cards.
+  A mouse resting on it holds it too, guarded on `pointerType`, because on a
+  phone `pointerenter` fires on a tap and `pointerleave` may never come.
+- **`image_credit` (0031) is not `image_alt`.** One says whose photo it is and
+  renders small under the card; the other is read aloud to someone who cannot
+  see it and must not carry a byline. A credit with no photo renders nothing.
 - Photos live in a `trending-media` bucket; `build.py` pulls each live card's
   photo local and shrinks it, so the homepage depends on no second origin. A
   failed download falls back to the bucket URL; an offline build renders text.

@@ -62,7 +62,21 @@ def _media(card, images):
     )
 
 
-def _body(card):
+def _credit(card, media):
+    """"Photo: FAM Media", or "" — and "" whenever there is no photo.
+
+    A credit with no image to credit is nonsense, so it is dropped HERE rather
+    than asked of whoever wrote the card: they may well clear a photo from a
+    card months after typing its credit, and the site should not then thank
+    somebody for a picture nobody can see.
+    """
+    if not (media and card.image_credit):
+        return ""
+    return (f'<span class="el-trend-credit">Photo: '
+            f'{escape(card.image_credit)}</span>')
+
+
+def _body(card, media=""):
     parts = []
     if card.eyebrow:
         parts.append(
@@ -76,6 +90,10 @@ def _body(card):
             f'<span class="el-trend-cta">{label}'
             ' <span class="el-trend-arrow" aria-hidden="true">&#x2192;</span>'
             "</span>")
+    # Last, and smallest. It is an obligation to the photographer, not part of
+    # the story — putting it above the words would make the card read as being
+    # about the picture.
+    parts.append(_credit(card, media))
     return f'<span class="el-trend-body">{"".join(parts)}</span>'
 
 
@@ -91,7 +109,7 @@ def card_html(card, images, index, total):
     slide be a slide and the card still be a link.
     """
     media = _media(card, images)
-    inner = media + _body(card)
+    inner = media + _body(card, media)
     # Every slide is the height of the tallest one — a carousel whose cards
     # change height shoves the whole page up and down on every swipe. That
     # leaves a photo-less card with space under its headline, so `is-plain`
@@ -147,11 +165,25 @@ def carousel(cards, images=None):
 # in the markup until it runs, so they are never buttons that do nothing) and
 # an auto-advance.
 #
-# The auto-advance stops for good the first time the reader touches the track.
-# Somebody who has swiped has chosen a card, and yanking it away from them two
-# seconds later is the single most irritating thing a carousel does. It also
-# never starts under prefers-reduced-motion, and pauses with the tab hidden so
-# a backgrounded tab is not silently scrolling for an hour.
+# THE ROTATION HOLDS RATHER THAN STOPS. It used to stop for good the first
+# time anyone touched the track, on the reasoning that somebody who has swiped
+# has chosen a card. Half right: yanking a card away from someone two seconds
+# after they picked it is the single most irritating thing a carousel does —
+# but a reader who swiped once, read it, and then sat still should get the
+# rest of the cards rather than a carousel that quietly died. So a swipe, a
+# dot tap, a wheel or a key HOLDS the rotation for RESUME_MS from the last
+# input, and it picks up again from wherever they left it.
+#
+# Four things stop it moving outright, and each is somebody saying "not now":
+#   * prefers-reduced-motion — then it never starts, and dot taps jump rather
+#     than glide. A reader who asked the system for less motion asked for all
+#     of it.
+#   * the tab being in the background, so a forgotten tab is not silently
+#     scrolling for an hour.
+#   * a MOUSE resting over the carousel, or focus inside it — the pointerType
+#     test matters: on a phone, pointerenter fires on a tap and the matching
+#     pointerleave may never come, which would freeze the carousel for good.
+#   * any input in the last RESUME_MS, per the paragraph above.
 #
 # Written as ES5-flavoured plain script for the same reason the tab switcher
 # above it is: it is inlined into index.html and must parse on whatever
@@ -164,6 +196,13 @@ CAROUSEL_JS = """
   var dotBox=root.querySelector('[data-trend-dots]');
   var cards=track?track.querySelectorAll('.el-trend-slide'):[];
   if(!track||cards.length<2) return;
+  // Five seconds a card, and it wraps — the last one hands back to the first.
+  // Long enough to read a headline and the first line under it, short enough
+  // that somebody who lands on the page and does nothing sees all three.
+  var STEP_MS=5000;
+  // How long an input holds it. Comfortably longer than STEP_MS, so a reader
+  // who swipes to a card gets to finish it before anything else moves.
+  var RESUME_MS=15000;
   var dots=[];
   if(dotBox){
     dotBox.hidden=false;
@@ -196,7 +235,7 @@ CAROUSEL_JS = """
   }
   for(var d=0;d<dots.length;d++){
     (function(n){
-      dots[n].addEventListener('click',function(){ stop(); show(n,!calm); mark(n); });
+      dots[n].addEventListener('click',function(){ hold(); show(n,!calm); mark(n); });
     })(d);
   }
   // Which card is nearest the middle of the viewport wins. Reading the scroll
@@ -216,23 +255,34 @@ CAROUSEL_JS = """
     },90);
   },{passive:true});
 
-  var timer=null;
-  function stop(){ if(timer){ clearInterval(timer); timer=null; } }
-  if(calm) return;
-  function play(){
-    stop();
-    timer=setInterval(function(){
-      if(document.hidden) return;
-      var next=(current+1)%cards.length;
-      show(next,true); mark(next);
-    },7000);
+  // `until` is the clock the whole hold runs on: one number, checked on each
+  // tick, rather than a timer that has to be cancelled and rebuilt on every
+  // one of a swipe's many events.
+  var until=0, resting=false;
+  function hold(){ until=Date.now()+RESUME_MS; }
+  function tick(){
+    if(document.hidden||resting||Date.now()<until) return;
+    var next=(current+1)%cards.length;
+    show(next,true); mark(next);
   }
-  // A tap, a swipe or a keyboard focus inside the carousel ends the rotation
-  // permanently — see the note above.
+  // Any real input holds it. NOT the track's scroll event — show() scrolls the
+  // track itself, so listening there would make the carousel hold itself off
+  // the moment it advanced once, and it would never move again.
   ['pointerdown','touchstart','keydown','wheel'].forEach(function(ev){
-    root.addEventListener(ev,stop,{passive:true,once:true});
+    root.addEventListener(ev,hold,{passive:true});
   });
-  root.addEventListener('focusin',stop,{once:true});
-  play();
+  // A mouse resting on the card, or focus inside it, means somebody is
+  // reading. Guarded on pointerType: see the note above about phones, where
+  // pointerenter fires on a tap and pointerleave may never arrive.
+  root.addEventListener('pointerenter',function(e){
+    if(!e.pointerType||e.pointerType==='mouse') resting=true;
+  });
+  root.addEventListener('pointerleave',function(e){
+    if(!e.pointerType||e.pointerType==='mouse') resting=false;
+  });
+  root.addEventListener('focusin',function(){ resting=true; });
+  root.addEventListener('focusout',function(){ resting=false; });
+  if(calm) return;
+  setInterval(tick,STEP_MS);
 })();
 """

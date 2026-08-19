@@ -32,19 +32,38 @@ import validate  # noqa: E402
 from src import dataset, trending  # noqa: E402
 
 HEADER = ("card_id,status,eyebrow,headline,body,link_url,link_label,"
-          "image_path,image_alt,sort_order,published_at\n")
+          "image_path,image_alt,image_credit,sort_order,published_at\n")
+
+# The tab as it stood before 0031 added image_credit. Every snapshot in
+# data/canonical/ taken before that migration looks like this, and must still
+# parse — an absent column reads as every cell blank.
+HEADER_0030 = ("card_id,status,eyebrow,headline,body,link_url,link_label,"
+               "image_path,image_alt,sort_order,published_at\n")
 
 
-def parse(*rows):
-    return dataset.parse_trending(HEADER + "".join(r + "\n" for r in rows))
+def parse(*rows, header=HEADER):
+    return dataset.parse_trending(header + "".join(r + "\n" for r in rows))
+
+
+def row(header=HEADER, **cells):
+    """One CSV line, every unnamed column blank.
+
+    Written from the header rather than as a literal string of commas: the
+    literals silently stopped lining up with the columns the moment 0031 added
+    one, and a row that is short by a field still parses — it just tests a
+    different column than the test says it does."""
+    columns = header.strip().split(",")
+    unknown = set(cells) - set(columns)
+    assert not unknown, f"no such column(s): {sorted(unknown)}"
+    return ",".join(str(cells.get(c, "")) for c in columns)
 
 
 def card(card_id="MW_TRD_000001", status="live", eyebrow="", headline="A win",
          body="", link_url="", link_label="", image_path="", image_alt="",
-         sort_order=1, published_at=""):
+         image_credit="", sort_order=1, published_at=""):
     return dataset.TrendingCard(card_id, status, eyebrow, headline, body,
                                 link_url, link_label, image_path, image_alt,
-                                sort_order, published_at)
+                                image_credit, sort_order, published_at)
 
 
 class ParseTest(unittest.TestCase):
@@ -60,21 +79,36 @@ class ParseTest(unittest.TestCase):
                          source_supabase.COLUMNS["trending"])
 
     def test_everything_but_the_headline_is_optional(self):
-        c = parse("MW_TRD_000001,draft,,Just a headline,,,,,,,")["MW_TRD_000001"]
+        c = parse(row(card_id="MW_TRD_000001", status="draft",
+                      headline="Just a headline"))["MW_TRD_000001"]
         self.assertEqual(c.headline, "Just a headline")
-        self.assertEqual((c.eyebrow, c.body, c.link_url, c.image_path), ("",) * 4)
+        self.assertEqual(
+            (c.eyebrow, c.body, c.link_url, c.image_path, c.image_credit),
+            ("",) * 5)
 
     def test_a_blank_sort_order_reads_as_zero(self):
-        c = parse("MW_TRD_000001,live,,A win,,,,,,,")["MW_TRD_000001"]
+        c = parse(row(card_id="MW_TRD_000001", status="live",
+                      headline="A win", sort_order=""))["MW_TRD_000001"]
         self.assertEqual(c.sort_order, 0)
 
     def test_an_unknown_status_is_a_data_error(self):
         with self.assertRaises(dataset.DataError):
-            parse("MW_TRD_000001,published,,A win,,,,,,1,")
+            parse(row(card_id="MW_TRD_000001", status="published",
+                      headline="A win"))
 
     def test_a_blank_headline_is_a_data_error(self):
         with self.assertRaises(dataset.DataError):
-            parse("MW_TRD_000001,live,,,,,,,,1,")
+            parse(row(card_id="MW_TRD_000001", status="live"))
+
+    def test_a_snapshot_from_before_the_credit_still_parses(self):
+        """An absent column reads as every cell blank — the same rule the
+        officials and man-of-the-match columns live by, and what lets an older
+        data/canonical/ keep building."""
+        c = parse(row(HEADER_0030, card_id="MW_TRD_000001", status="live",
+                      headline="A win", sort_order=2),
+                  header=HEADER_0030)["MW_TRD_000001"]
+        self.assertEqual(c.image_credit, "")
+        self.assertEqual(c.sort_order, 2)
 
 
 class OrderTest(unittest.TestCase):
@@ -134,6 +168,36 @@ class RenderTest(unittest.TestCase):
         self.assertIn('src="trending/abc.jpg"', html)
         self.assertIn('alt="Bullets fans"', html)
         self.assertIn('loading="lazy"', html)
+
+    def test_the_photo_credit_renders_small_and_last(self):
+        html = trending.carousel(
+            [card(image_path="p.jpg", image_credit="FAM Media",
+                  link_url="/matches/", link_label="See them")],
+            {"p.jpg": "trending/p.jpg"})
+        self.assertIn('<span class="el-trend-credit">Photo: FAM Media</span>',
+                      html)
+        # After the call to action, not before the headline: it is an
+        # obligation to the photographer, not part of the story.
+        self.assertGreater(html.index("el-trend-credit"),
+                           html.index("el-trend-cta"))
+
+    def test_a_credit_with_no_photo_renders_nothing(self):
+        """Dropped by the renderer, not asked of the writer: a photo can be
+        cleared off a card months after its credit was typed, and the site must
+        not then thank somebody for a picture nobody can see."""
+        # No image_path at all…
+        self.assertNotIn("el-trend-credit",
+                         trending.carousel([card(image_credit="FAM Media")]))
+        # …and a path the build could not resolve to a URL.
+        self.assertNotIn("el-trend-credit", trending.carousel(
+            [card(image_path="p.jpg", image_credit="FAM Media")]))
+
+    def test_the_credit_is_escaped(self):
+        html = trending.carousel(
+            [card(image_path="p.jpg", image_credit='Mary & "Co" <b>')],
+            {"p.jpg": "trending/p.jpg"})
+        self.assertNotIn("<b>", html)
+        self.assertIn("Mary &amp; &quot;Co&quot;", html)
 
     def test_a_card_with_no_photo_is_marked_so_its_words_can_be_centred(self):
         self.assertIn("is-plain", trending.carousel([card()]))

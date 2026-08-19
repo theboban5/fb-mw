@@ -88,7 +88,7 @@ SUPABASE_ONLY_TABS = {
     # the same answer it gives when nobody has published a card yet.
     "trending": ("card_id", "status", "eyebrow", "headline", "body",
                  "link_url", "link_label", "image_path", "image_alt",
-                 "sort_order", "published_at"),
+                 "image_credit", "sort_order", "published_at"),
 }
 
 TABS = tuple(TAB_GIDS) + tuple(SUPABASE_ONLY_TABS)
@@ -632,6 +632,9 @@ class TrendingCard:
     link_label: str
     image_path: str       # object name in the trending-media bucket, or ""
     image_alt: str
+    # 0031. Whose photo it is. Separate from image_alt, which is read ALOUD to
+    # somebody who cannot see the image and should not carry a byline.
+    image_credit: str
     sort_order: int
     published_at: str
 
@@ -1074,6 +1077,7 @@ def parse_trending(text: str) -> "dict[str, TrendingCard]":
             _require(r, "headline", "trending", i),
             r.get("body", ""), r.get("link_url", ""), r.get("link_label", ""),
             r.get("image_path", ""), r.get("image_alt", ""),
+            r.get("image_credit", ""),
             # Blank sorts first, which is where a card written before this
             # column meant anything belongs.
             _int(r.get("sort_order", "") or "0", "sort_order", "trending", i),

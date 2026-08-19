@@ -99,7 +99,7 @@ COLUMNS = {
     # it is the archive's own date and answers "what was up that weekend".
     "trending": ("card_id", "status", "eyebrow", "headline", "body",
                  "link_url", "link_label", "image_path", "image_alt",
-                 "sort_order", "published_at"),
+                 "image_credit", "sort_order", "published_at"),
     "reporters": ("reporter_id", "name", "email", "affiliation",
                   "affiliation_id", "region", "active", "public_byline"),
     "aliases": ("alias_text", "entity_type", "entity_id", "context"),

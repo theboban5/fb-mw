@@ -317,13 +317,19 @@ an f-string in `build.py`: changing it meant editing Python and waiting for
 CI, so it was changed roughly never and the front of the site aged in public.
 
 - **`trending`** — `card_id`, `status`, `eyebrow`, `headline`, `body`,
-  `link_url`, `link_label`, `image_path`, `image_alt`, `sort_order`,
-  `published_at`. Everything but the headline is optional, and every omission
-  renders as nothing: no photo is a text-only card, no link is a card that is
-  not a link. `src/trending.py` renders the live ones as a scroll-snap
-  carousel in place of the old featured card; **no live cards renders "" and
-  the hand-written Scorchers card comes back**, which is what makes this
-  invisible on a site that has not published one.
+  `link_url`, `link_label`, `image_path`, `image_alt`, `image_credit`,
+  `sort_order`, `published_at`. Everything but the headline is optional, and
+  every omission renders as nothing: no photo is a text-only card, no link is
+  a card that is not a link. `src/trending.py` renders the live ones as a
+  scroll-snap carousel in place of the old featured card; **no live cards
+  renders "" and the hand-written Scorchers card comes back**, which is what
+  makes this invisible on a site that has not published one.
+- **`image_credit` (0031) is not `image_alt`.** The credit says whose photo it
+  is and renders small under the card; the alt text describes the picture and
+  is read ALOUD to somebody who cannot see it, so it must not carry a byline.
+  A credit renders **only when the card actually shows a photo** — dropped by
+  the renderer rather than asked of the writer, because a photo can be cleared
+  off a card long after its credit was typed.
 - **Writes are admin-only RPCs**, not RLS policies, because this is a Dataset
   tab: a bad row can abort a build and stop every future deploy for everyone.
   `save_trending_card` (create or update — it never changes status, because
