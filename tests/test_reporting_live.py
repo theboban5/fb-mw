@@ -97,14 +97,20 @@ class SubmitMatchReportTest(unittest.TestCase):
         self.assertEqual(row["reported_by"], self.ids["a"])
         self.assertIsNotNone(row["reported_at"])
 
-    def test_a_reporters_result_is_marked_unconfirmed(self):
-        """The site renders this as an asterisk and a legend on /matches/.
+    def test_a_reporters_result_is_confirmed_and_verified(self):
+        """Since 0029 the asterisk is not for reporters.
 
-        A grassroots result published from the touchline is real but not yet
-        verified, and the public page already has a way to say so.
+        It used to be: a reporter's result published as `unconfirmed` until an
+        admin re-typed the same score. But a reporter is assigned to the
+        competition by an admin and was at the ground — their word is the best
+        evidence this site has, and the gate is now who gets assigned, not what
+        happens after they submit.
         """
         self.submit("a", self.match_a, 2, 1, "played")
-        self.assertEqual(self.row(self.match_a)["confidence"], "unconfirmed")
+        row = self.row(self.match_a)
+        self.assertEqual(row["confidence"], "confirmed")
+        self.assertEqual(row["verified_by"], self.ids["a"])
+        self.assertIsNotNone(row["verified_at"])
 
     def test_an_admins_result_is_confirmed_and_verified(self):
         self.submit("admin", self.match_a, 3, 0, "played")

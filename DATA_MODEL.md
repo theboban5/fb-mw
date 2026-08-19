@@ -116,7 +116,9 @@ matches (home/away team_id, venue_id, competition_id, season_id)
   so a result can be checked later. Written by `submit_match_report`, which
   leaves it untouched when the caller sends a blank (a score correction must
   not erase the link).
-- `confidence`: unconfirmed | confirmed | official
+- `confidence`: unconfirmed | confirmed | official. Anything submitted
+  through `/report` is `confirmed` since `0029` (reporters included);
+  `unconfirmed` now marks rows that did not come from a reporter.
 - `goals.goal_type`: (blank) | open_play | penalty | free_kick | header | own_goal
 - `lineups.captain` / `nt_lineups.captain`: one per SIDE.
 - `lineups.motm` / `nt_lineups.motm`: man of the match, one per MATCH — across

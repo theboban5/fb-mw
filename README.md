@@ -733,15 +733,25 @@ score on an unplayed match, a negative or 3-digit score, and `awarded` from
 anyone but an admin. The match row is locked `for update`, so two reporters
 publishing the same match serialize rather than race.
 
-**Confidence policy.** The site already renders `confidence='unconfirmed'` as
-an asterisk with a "result not yet confirmed" legend on the by-date pages. That
-is exactly right for a result phoned in from the touchline, so a reporter's
-submission publishes immediately *and marked*:
+**Confidence policy.** The site renders `confidence='unconfirmed'` as an
+asterisk with a "result not yet confirmed" legend on the by-date pages. Until
+`0029` that asterisk meant "no admin has typed this yet", so every reporter's
+result carried one until an admin re-published the identical score — which put
+the mark on the most reliable rows the site gets and overwrote `reported_by` in
+the act of removing it.
+
+Since `0029` any authorized submission is confirmed:
 
 | | |
 |---|---|
-| reporter | `confidence='unconfirmed'` — shows with an asterisk |
-| admin | `confidence='confirmed'`, and the admin is recorded in `verified_by`/`verified_at` |
+| reporter or admin | `confidence='confirmed'`, submitter recorded in `verified_by`/`verified_at` |
+| anything not from `/report` | whatever it was loaded with — usually `unconfirmed` |
+
+The control moved from review to authorization: who is assigned to a
+competition is now the whole gate, and a reporter's typo publishes as fact. The
+middle ground, if it is ever wanted, is a `trusted` flag on `reporters` keyed in
+that same UPDATE — not a return to gating on role. `0029` backfilled nothing;
+rows already sitting at `unconfirmed` stay there until someone re-publishes.
 
 **Audit.** `match_change_log` is append-only: no role is granted INSERT, UPDATE
 or DELETE on it through the API, and only the RPC writes to it (as the owner).
