@@ -454,15 +454,32 @@ function stageOptions(matches) {
 }
 
 // The fixture list is re-read from the network only when it might have
-// changed. The `show` and `date` filters are then applied locally: on the
+// changed. The `show` and `md` filters are then applied locally: on the
 // connection this app is written for, re-fetching a list the phone already
 // holds just to hide half of it would be the slowest thing on the screen.
 //
-// The COMPETITION filter is different, and is part of the cache key. Played
-// results are capped — there are hundreds and a phone should not download them
-// all — and a cap applied before filtering would silently hide an older
-// league's results behind sixty newer ones from everywhere else. So narrowing
-// to a competition asks the database again, scoped to it.
+// The COMPETITION and DATE filters are different, and are part of the cache
+// key, because both are ways of asking for matches the unfiltered list does
+// not hold. Played results are capped in the unfiltered list — every league at
+// once is hundreds of rows and a phone should not download them all — and a
+// cap applied before filtering would silently hide an older league's results
+// behind sixty newer ones from everywhere else. So each of those two filters
+// asks the database again, scoped to what was asked for.
+//
+// WHAT WAS WRONG: the cap survived the narrowing. Choosing one competition
+// still fetched only its sixty most recent results, so the FDH Bank
+// Premiership — 104 played by August 2026 — began at matchday 6, halfway
+// through it, and matchdays 1–5 could not be reached from the portal at all.
+// The matchday menu is built from the matches on screen, so those rounds were
+// not merely empty, they were not offered. It read like the pre-Supabase
+// fixtures had been left behind by the migration; they had not, they were
+// simply row 61 and after.
+//
+// A competition asked for by name is bounded by its own history — hundreds of
+// rows across every season it has ever played, not thousands — so it is
+// fetched whole. If a competition ever grows past what a phone should carry,
+// the answer is a season filter in the UI, not a cap that decides in silence
+// which half of the season a reporter is allowed to fix.
 let homeCache = null;   // { key, matches, names }
 
 // The list the reporter is currently working through, captured whenever the
@@ -480,38 +497,65 @@ const invalidateHome = () => { homeCache = null; };
 
 const RESULT_LIMIT = 60;
 
-async function loadHome(comp) {
-  const key = comp || "*";
+const DECIDED = ["played", "awarded", "postponed", "abandoned", "cancelled"];
+
+/** What a cached list is a list OF. Anything that changes which rows the
+ *  database is asked for belongs here, or a filter silently reuses the wrong
+ *  cache. */
+const homeKey = (filters) => `${filters.comp || "*"}|${filters.date || ""}`;
+
+async function loadHome(filters) {
+  const { comp, date } = filters;
+  const key = homeKey(filters);
   if (homeCache && homeCache.key === key) return homeCache;
 
-  let pending = supabase.from("matches").select(MATCH_FIELDS)
-    .eq("status", "scheduled").order("date", { ascending: true });
+  // Scoping every query the same way, in one place: a reporter sees their own
+  // competitions, an admin sees all of them, and a chosen one wins over both.
+  const scope = (query) => {
+    if (comp) return query.eq("competition_id", comp);
+    // An admin reports everywhere and has no assignments to narrow by.
+    if (!context.isAdmin) return query.in("competition_id", context.competitions);
+    return query;
+  };
+
+  let pending = scope(supabase.from("matches").select(MATCH_FIELDS)
+    .eq("status", "scheduled").order("date", { ascending: true }));
   // Not played, but decided: these belong in the list too, or a postponed
   // match vanishes and looks like a fixture nobody ever entered.
-  let other = supabase.from("matches").select(MATCH_FIELDS)
-    .in("status", ["played", "awarded", "postponed", "abandoned", "cancelled"])
-    .order("date", { ascending: false }).limit(RESULT_LIMIT);
+  let other = scope(supabase.from("matches").select(MATCH_FIELDS)
+    .in("status", DECIDED).order("date", { ascending: false }));
+  // The cap is for the list nobody has narrowed. See the note above homeCache.
+  if (!comp) other = other.limit(RESULT_LIMIT);
 
-  if (comp) {
-    pending = pending.eq("competition_id", comp);
-    other = other.eq("competition_id", comp);
-  } else if (!context.isAdmin) {
-    // An admin reports everywhere and has no assignments to narrow by.
-    pending = pending.in("competition_id", context.competitions);
-    other = other.in("competition_id", context.competitions);
-  }
+  // A date is a precise question — "the match in that Facebook report, on the
+  // 30th" — and one day across every competition is a handful of rows, so it
+  // is asked in full rather than answered out of a capped list that may not
+  // reach back that far. Merged into the list rather than replacing it so the
+  // competition and matchday menus still hold everything they held before.
+  const older = date
+    ? scope(supabase.from("matches").select(MATCH_FIELDS)
+        .eq("date", date).order("date", { ascending: false }))
+    : null;
 
-  const [pendingRes, otherRes, names] = await Promise.all([
-    pending, other, competitionNames(),
+  const [pendingRes, otherRes, olderRes, names] = await Promise.all([
+    pending, other, older, competitionNames(),
   ]);
-  if (pendingRes.error || otherRes.error) {
-    throw pendingRes.error || otherRes.error;
+  if (pendingRes.error || otherRes.error || olderRes?.error) {
+    throw pendingRes.error || otherRes.error || olderRes.error;
   }
-  homeCache = {
-    key,
-    matches: [...(pendingRes.data || []), ...(otherRes.data || [])],
-    names,
-  };
+
+  // Deduped: a match on the chosen date is very likely in the first two
+  // queries as well, and a reporter must never see the same fixture twice.
+  const seen = new Set();
+  const matches = [...(pendingRes.data || []), ...(otherRes.data || []),
+                   ...(olderRes?.data || [])]
+    .filter((m) => {
+      if (seen.has(m.match_id)) return false;
+      seen.add(m.match_id);
+      return true;
+    });
+
+  homeCache = { key, matches, names };
   return homeCache;
 }
 
@@ -600,7 +644,7 @@ async function renderHome(params) {
     return;
   }
 
-  if (!homeCache || homeCache.key !== (filters.comp || "*")) {
+  if (!homeCache || homeCache.key !== homeKey(filters)) {
     h('<div class="rp-loading"><span class="rp-spinner"></span><p>Loading your matches…</p></div>');
   }
 
@@ -611,7 +655,7 @@ async function renderHome(params) {
     // would leave the menu holding only the league already chosen, with no way
     // back to any other.
     [data, choices] = await Promise.all([
-      loadHome(filters.comp), entryCompetitions(),
+      loadHome(filters), entryCompetitions(),
     ]);
   } catch (error) {
     h(`<p class="rp-empty">Could not load your matches.</p>
