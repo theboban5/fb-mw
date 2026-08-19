@@ -1066,12 +1066,12 @@ async function renderAddFixture(params) {
       <p class="rp-hint">Filled into the lines below. Change any line that is
         different — a list spread over two days is normal.</p>
 
-      <label class="rp-label" for="fx-source">Where is this from?</label>
+      <label class="rp-label" for="fx-source">Source (where is this information from?)</label>
       <input class="rp-input" id="fx-source" type="text" data-source maxlength="500"
              value="${esc(state.source)}" placeholder="Facebook link, or how you know"
              autocapitalize="sentences" autocorrect="off" spellcheck="false">
-      <p class="rp-hint">Optional, never shown publicly, and recorded against
-        every match added — it is there so a fixture can be checked later.</p>
+      <p class="rp-hint">Never shown publicly, and recorded against every match
+        added — it is there so a fixture can be checked later.</p>
 
       <h2 class="rp-field-head">The fixtures</h2>
       <p class="rp-hint" style="margin-top:0">Start typing a team and tap it
@@ -1720,14 +1720,14 @@ function drawMatch(match, names, state) {
     <h2 class="rp-field-head">Match status</h2>
     <div class="rp-status" data-status>${statusOptions}</div>
 
-    <h2 class="rp-field-head">Where is this from?</h2>
+    <h2 class="rp-field-head">Source (where is this information from?)</h2>
     <input class="rp-input" type="text" data-source maxlength="500"
            value="${esc(state.source)}"
            placeholder="Facebook link, or how you know"
            autocapitalize="sentences" autocorrect="off" spellcheck="false">
-    <p class="rp-hint">Optional, and never shown publicly — it is there so a
-      result can be checked later. A link, or plain words like
-      &ldquo;told to me by the referee&rdquo;.</p>
+    <p class="rp-hint">Never shown publicly — it is there so a result can be
+      checked later. A link, or plain words like &ldquo;told to me by the
+      referee&rdquo;.</p>
 
     <div class="rp-publish">
       <button class="rp-btn" type="button" data-publish></button>
@@ -4381,7 +4381,7 @@ function drawNTMatch(match, state) {
 const SHEET_ROLES = [
   ["starting", "Starting XI"],
   ["sub_on", "Came on"],
-  ["unused_sub", "Bench"],
+  ["unused_sub", "Unused sub"],
 ];
 const SHEET_POSITIONS = ["", "GK", "DF", "MF", "FW"];
 
@@ -4502,8 +4502,15 @@ function sheetState(state, key, saved) {
   if (!state.sheets[key]) {
     // `linking` is the index of the row whose "link to a player" box is open,
     // or null. One at a time: it is a repair, not a step in normal entry.
+    //
+    // `adding` is which end of the sheet a tapped name lands on. It starts
+    // wherever the saved sheet left off — a sheet reopened with eleven
+    // starters is being added to at the back, not the front.
+    const rows = (saved || []).map((r) => ({ ...r }));
     state.sheets[key] = {
-      rows: (saved || []).map((r) => ({ ...r })), filter: "", linking: null,
+      rows, filter: "", linking: null,
+      adding: rows.filter((r) => r.role === "starting").length >= STARTING_XI
+        ? "unused_sub" : "starting",
     };
   }
   return state.sheets[key];
@@ -4580,7 +4587,7 @@ function sheetRowHtml(sheet, row, i, key) {
           </select>
         </label>
         <label class="rp-sheet-field">
-          <span class="rp-sheet-field-label">Shirt</span>
+          <span class="rp-sheet-field-label">Shirt number</span>
           <input class="rp-input" data-sheet-field="shirt_number"
                  data-sheet-i="${i}" data-sheet-key="${esc(key)}" inputmode="numeric"
                  value="${esc(row.shirt_number || "")}">
@@ -4642,16 +4649,63 @@ function sheetRowHtml(sheet, row, i, key) {
     </li>`;
 }
 
-/** One side's whole team sheet, ready to drop into a section body. */
+/** The rows, under the heading each one's role belongs to.
+ *
+ *  The index passed down is the row's index in `sheet.rows`, never its place
+ *  in the group — every control on a row addresses state by that index, so
+ *  grouping is allowed to change what is drawn where and nothing else. An
+ *  empty group is not drawn: a heading with nothing under it reads like
+ *  something is missing rather than like nothing is there yet. */
+function sheetGroupsHtml(sheet, key) {
+  const numbered = sheet.rows.map((row, i) => [row, i]);
+  return SHEET_ROLES.map(([role, label]) => {
+    const mine = numbered.filter(([r]) => (r.role || "starting") === role);
+    if (!mine.length) return "";
+    const heading = role === "unused_sub" ? "Unused subs"
+      : role === "sub_on" ? "Came on" : label;
+    const over = role === "starting" && mine.length > STARTING_XI;
+    return `
+      <h3 class="rp-sheet-group${over ? " is-warn" : ""}">${heading}
+        <span>${mine.length}${role === "starting" ? ` of ${STARTING_XI}` : ""}</span></h3>
+      <ul class="rp-sheet">${
+        mine.map(([r, i]) => sheetRowHtml(sheet, r, i, key)).join("")}</ul>`;
+  }).join("");
+}
+
+/** One side's whole team sheet, ready to drop into a section body.
+ *
+ *  WHICH END OF THE SHEET AM I FILLING IN? The rule — the XI fills first, then
+ *  the bench — was written in a sentence above the squad and nowhere else, so
+ *  the moment the eleventh name went on, taps silently started meaning
+ *  something different and the only way to notice was to read every row's Role
+ *  box. It is a switch now: it says where the next tap lands, it moves by
+ *  itself when the XI fills, and it can be moved by hand for the sheet that
+ *  arrives subs-first. The list below it is grouped under the same three
+ *  headings, so the sheet reads the way a team sheet is written. */
 function sheetHtml({ key, teamName, sheet, squad }) {
   const starters = sheet.rows.filter((r) => r.role === "starting").length;
+  const subs = sheet.rows.filter((r) => r.role !== "starting").length;
   const unlinked = sheet.rows.filter((r) => !r.player_id).length;
+  const adding = sheet.adding === "unused_sub" ? "unused_sub" : "starting";
+
+  const segment = (role, label, count) => `
+    <button type="button" class="rp-seg-btn${adding === role ? " is-on" : ""}"
+            data-sheet-adding="${role}" data-sheet-key="${esc(key)}"
+            aria-pressed="${adding === role}">
+      ${label} <em>${count}</em>
+    </button>`;
 
   return `
     <div class="rp-sheet-block" data-sheet-block="${esc(key)}">
-      <p class="rp-hint" style="margin-top:0"><b>Tap a name to put them on the
-        sheet.</b> They arrive in the XI until there are ${STARTING_XI}, then on the
-        bench — change any of it below.</p>
+      <p class="rp-sheet-adding-label" id="adding-${esc(key)}">Tapping a name adds them to</p>
+      <div class="rp-seg" role="group" aria-labelledby="adding-${esc(key)}">
+        ${segment("starting", "Starting XI", `${starters} of ${STARTING_XI}`)}
+        ${segment("unused_sub", "Substitutes", subs)}
+      </div>
+      <p class="rp-hint">${adding === "starting"
+        ? `Names go into the starting XI. It switches to substitutes by itself
+           once there are ${STARTING_XI} — or tap to switch now.`
+        : "Names go on the bench. Set who came on, and when, on their row below."}</p>
       <input class="rp-input" data-sheet-filter data-sheet-key="${esc(key)}"
              placeholder="Find or add a player" autocomplete="off"
              autocapitalize="words" value="${esc(sheet.filter)}">
@@ -4685,11 +4739,11 @@ function sheetHtml({ key, teamName, sheet, squad }) {
       </details>
 
       ${sheet.rows.length ? `
-        <p class="rp-hint ${starters > STARTING_XI ? "is-warn" : ""}" style="margin-top:14px">
-          ${starters} in the starting XI${starters > STARTING_XI ? " — that is too many" : ""}${
-            unlinked ? `, ${unlinked} not linked to a player — tap “Link to a
-              player” on their row` : ""}.</p>
-        <ul class="rp-sheet">${sheet.rows.map((r, i) => sheetRowHtml(sheet, r, i, key)).join("")}</ul>
+        ${starters > STARTING_XI ? `<p class="rp-hint is-warn" style="margin-top:14px">
+          ${starters} in the starting XI — that is too many.</p>` : ""}
+        ${unlinked ? `<p class="rp-hint" style="margin-top:14px">${unlinked} not
+          linked to a player — tap “Link to a player” on their row.</p>` : ""}
+        ${sheetGroupsHtml(sheet, key)}
         <button class="rp-btn" type="button" data-sheet-save data-sheet-key="${esc(key)}">
           Save ${esc(teamName)}’s sheet</button>`
         : '<p class="rp-hint" style="margin-top:14px">Nobody on the sheet yet.</p>'}
@@ -4798,12 +4852,16 @@ function wireSheet(root, ctx, redraw) {
     redraw();
   }
 
-  /** Put someone on the sheet: the XI fills first, then the bench, so nobody
-   *  has to set a role for the ordinary case of eleven and then seven. */
+  /** Put someone on the sheet, wherever the switch above the squad is pointing
+   *  — the XI first, then the bench, so nobody has to set a role for the
+   *  ordinary case of eleven and then seven. The switch moves itself once the
+   *  XI is full, which is the same rule as before; the difference is that it
+   *  is now visible on the screen rather than only in the saved row. */
   function put(row) {
-    if (sheet.rows.filter((r) => r.role === "starting").length >= STARTING_XI) {
-      row.role = "unused_sub";
-    }
+    const starters = sheet.rows.filter((r) => r.role === "starting").length;
+    const toXI = sheet.adding !== "unused_sub" && starters < STARTING_XI;
+    row.role = toXI ? "starting" : "unused_sub";
+    if (!toXI || starters + 1 >= STARTING_XI) sheet.adding = "unused_sub";
     sheet.rows.push(row);
     sheet.filter = "";
     // `linking` is an index into rows, so anything that changes the list has
@@ -4814,6 +4872,13 @@ function wireSheet(root, ctx, redraw) {
   }
 
   root.addEventListener("click", async (e) => {
+    const seg = e.target.closest("[data-sheet-adding]");
+    if (seg) {
+      sheet.adding = seg.dataset.sheetAdding;
+      redraw();
+      return;
+    }
+
     const add = e.target.closest("[data-squad-add]");
     if (add) {
       const id = add.dataset.squadAdd;

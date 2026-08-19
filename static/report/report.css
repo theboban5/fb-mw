@@ -474,6 +474,54 @@ a { color: var(--accent); }
 }
 .rp-sheet-flags .rp-inline { font-size: 0.8rem; }
 
+/* WHERE THE NEXT TAP LANDS, SAID ON THE SCREEN. The XI-then-bench rule used to
+   live in a sentence above the squad, so the eleventh name changed what every
+   later tap meant with nothing moving to show it. Two halves, one lit: the lit
+   one is where the next name goes, and it slides across by itself when the XI
+   fills. Deliberately the same shape as the status picker further up the same
+   screen — same height, same border, same accent wash — because a reporter
+   should have to learn one control, not two. */
+.rp-sheet-adding-label {
+  margin: 0 0 6px;
+  font-size: 0.74rem; font-weight: 800; letter-spacing: 0.1em;
+  color: var(--muted); text-transform: uppercase;
+}
+.rp-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rp-seg-btn {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 2px;
+  min-height: var(--tap); padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg); color: var(--muted);
+  font: inherit; font-size: 0.92rem; font-weight: 600; text-align: center;
+  cursor: pointer;
+}
+.rp-seg-btn em {
+  font-style: normal; font-weight: 600; font-size: 0.74rem;
+  font-variant-numeric: tabular-nums; opacity: 0.85;
+}
+.rp-seg-btn.is-on {
+  border-color: var(--accent); background: var(--accent-wash);
+  color: var(--accent); font-weight: 700;
+}
+.rp-seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* The same three words over the rows themselves, so a sheet on the screen is
+   grouped the way a sheet on paper is: the XI, then who came on, then the
+   bench. The count sits in the heading — it is the number a reporter checks. */
+.rp-sheet-group {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  margin: 18px 0 0;
+  font-size: 0.74rem; font-weight: 800; letter-spacing: 0.1em;
+  color: var(--muted); text-transform: uppercase;
+}
+.rp-sheet-group span {
+  font-weight: 700; letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums; text-transform: none;
+}
+.rp-sheet-group.is-warn { color: var(--warn); }
+.rp-sheet-group + .rp-sheet { margin-top: 8px; }
+
 /* The squad: tap a name to put them on the sheet.
    A wrapping row of chips rather than a list, because a squad is 20-odd short
    names and a list of 20 rows is three screens of scrolling on a phone. */
