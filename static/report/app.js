@@ -5041,6 +5041,25 @@ function blankSheetRow(player = {}) {
   };
 }
 
+/** The value this player carried most often, ties broken by the most recent.
+ *
+ *  THE LATEST ROW USED TO WIN OUTRIGHT, and one slip poisoned every sheet
+ *  after it: a keeper typed in as 1 for eight weeks and 11 once by accident
+ *  came back pre-filled as 11 for the rest of the season, so the correction
+ *  had to be made again every single week. A number a reporter has entered
+ *  twice for this team this season is a number they meant; a number entered
+ *  once is a guess that the next agreeing pair quietly overrules.
+ *
+ *  Callers pass the counts in most-recent-first order and the strict `>`
+ *  below keeps the earliest-inserted winner, so a player with no repeats at
+ *  all still gets their latest — which is exactly the old behaviour. */
+function commonest(counts) {
+  let best = "";
+  let bestN = 0;
+  counts.forEach((n, value) => { if (n > bestN) { best = value; bestN = n; } });
+  return best;
+}
+
 /** Everyone this side has already fielded or scored through.
  *
  *  Deliberately derived rather than maintained: there is no squad-registration
@@ -5051,24 +5070,65 @@ function blankSheetRow(player = {}) {
  *  that cannot load costs convenience, never the entry. */
 function clubSquad(teamId) {
   return once(`squad:${teamId}`, async () => {
-    const [sheets, goals] = await Promise.all([
-      supabase.from("lineups")
-        .select("player_id,player_name,shirt_number,position,ord")
-        .eq("team_id", teamId).order("ord", { ascending: false }).limit(300),
-      supabase.from("goals").select("player_id")
-        .eq("team_id", teamId).neq("player_id", UNKNOWN_PLAYER).limit(300),
+    // The season each row belongs to rides along on the embed, because the
+    // rule below is "this season" — a shirt is a fact about a squad list, and
+    // squad lists are reissued every year.
+    //
+    // 600 rows where this was 300: a side plays some thirty matches a season
+    // at eighteen names a sheet, and a window that does not cover one season
+    // cannot count within it. It is one request per team per session, cached
+    // by `once`, and a row is four short strings and a season id.
+    const [season, [sheets, goals]] = await Promise.all([
+      activeSeason().catch(() => null),
+      Promise.all([
+        // `created_at`, NOT `ord`. This ordered by ord for a year and the
+        // comment under it claimed that meant "most recent first" — but
+        // save_lineup numbers ord 1..N within each sheet and writes it
+        // explicitly, so ord.desc means "everyone who was last on their own
+        // team sheet", in no particular match order. The shirt this pre-filled
+        // was therefore never the latest one; it was an arbitrary one. Every
+        // sheet is deleted and re-inserted whole on save, so created_at is
+        // when that sheet was last written, which is the order wanted here.
+        supabase.from("lineups")
+          .select("player_id,player_name,shirt_number,position,matches(season_id)")
+          .eq("team_id", teamId)
+          .order("created_at", { ascending: false }).limit(600),
+        supabase.from("goals").select("player_id")
+          .eq("team_id", teamId).neq("player_id", UNKNOWN_PLAYER).limit(300),
+      ]),
     ]);
     const by = new Map();
-    // Most recent first, so the FIRST row seen for a player is their latest
-    // shirt and position — which is the one worth pre-filling.
+    const bump = (counts, value) => {
+      if (value) counts.set(value, (counts.get(value) || 0) + 1);
+    };
+    // Most recent first, so the first ANSWER seen for a player is their latest
+    // shirt and position — the fallback, for anyone this season has not seen.
+    // A blank is not an answer: a sheet entered as bare names must not put a
+    // player's number beyond the reach of the sheet that did record it.
     (sheets.data || []).forEach((r) => {
       const key = r.player_id || `name:${r.player_name.toLowerCase()}`;
       if (!by.has(key)) {
         by.set(key, {
           player_id: r.player_id || "", name: r.player_name,
-          shirt_number: r.shirt_number || "", position: r.position || "",
+          shirt_number: "", position: "",
+          shirts: new Map(), positions: new Map(),
         });
       }
+      const entry = by.get(key);
+      entry.shirt_number = entry.shirt_number || r.shirt_number || "";
+      entry.position = entry.position || r.position || "";
+      // A season that could not be read, or an embed the server declined,
+      // leaves every tally empty and that fallback standing — degrading to
+      // one sheet's worth of guess, never to nothing.
+      if (!season || r.matches?.season_id !== season.season_id) return;
+      bump(entry.shirts, r.shirt_number);
+      bump(entry.positions, r.position);
+    });
+    by.forEach((entry) => {
+      entry.shirt_number = commonest(entry.shirts) || entry.shirt_number;
+      entry.position = commonest(entry.positions) || entry.position;
+      delete entry.shirts;
+      delete entry.positions;
     });
     // A scorer who has never been on a sheet is still someone this club has
     // played, so they belong in the list — with no shirt and no position,
@@ -5095,9 +5155,12 @@ function nationalSquad(teamCode) {
       supabase.from("nt_squads")
         .select("player_id,player_name,shirt_number,position,announcement_date")
         .eq("team_id", teamCode).limit(300),
+      // created_at, not ord — see clubSquad: ord is a place on a sheet, not a
+      // date, and sorting by it never meant what this said it meant.
       supabase.from("nt_lineups")
-        .select("player_id,player_name,shirt_number,position,ord")
-        .eq("team_id", teamCode).order("ord", { ascending: false }).limit(300),
+        .select("player_id,player_name,shirt_number,position,created_at")
+        .eq("team_id", teamCode)
+        .order("created_at", { ascending: false }).limit(300),
     ]);
     const rows = squads.data || [];
     // The current squad is the row group sharing the most recent
@@ -5116,6 +5179,36 @@ function nationalSquad(teamCode) {
     };
     rows.filter((r) => (r.announcement_date || "") === latest).forEach(put);
     (sheets.data || []).forEach(put);
+    // The same repeat rule as the club squad, with no season to scope it by:
+    // a cap list is not seasonal, and a number worn in four internationals
+    // beats one typed once. An announcement that carried a number keeps it —
+    // that list IS the squad, where a team sheet is a report of one.
+    const tally = new Map();
+    (sheets.data || []).forEach((r) => {
+      const key = r.player_id || `name:${r.player_name.toLowerCase()}`;
+      if (!tally.has(key)) tally.set(key, { shirts: new Map(), positions: new Map() });
+      const counts = tally.get(key);
+      const bump = (map, value) => {
+        if (value) map.set(value, (map.get(value) || 0) + 1);
+      };
+      bump(counts.shirts, r.shirt_number);
+      bump(counts.positions, r.position);
+    });
+    const announced = new Set(rows.filter((r) => (r.announcement_date || "") === latest)
+      .map((r) => r.player_id || `name:${r.player_name.toLowerCase()}`));
+    tally.forEach((counts, key) => {
+      const entry = by.get(key);
+      if (!entry) return;
+      // Per field, not per player: an announcement routinely lists numbers and
+      // no positions, and the half it left blank is worth filling in.
+      const keep = announced.has(key);
+      if (!keep || !entry.shirt_number) {
+        entry.shirt_number = commonest(counts.shirts) || entry.shirt_number;
+      }
+      if (!keep || !entry.position) {
+        entry.position = commonest(counts.positions) || entry.position;
+      }
+    });
     return [...by.values()].sort((a, b) => a.name.localeCompare(b.name));
   }).catch(() => []);
 }
@@ -5179,6 +5272,8 @@ function sheetRowHtml(sheet, row, i, key) {
   const state = cardStateOf(row);
   const card = CARD_STATES.find((c) => c.key === state);
   const others = sheet.rows.filter((_o, j) => j !== i);
+  // What a substitution on some other row has already decided about this one.
+  const derivedOff = offMinuteFor(sheet.rows, row);
   // AN UNLINKED ROW HAS TO BE FIXABLE WITHOUT DELETING IT. A pasted sheet
   // arrives with every name that matched nobody carrying no player_id, and
   // until this button existed the only way to give one an id was to remove the
@@ -5189,7 +5284,13 @@ function sheetRowHtml(sheet, row, i, key) {
   return `
     <li class="rp-sheet-row" data-sheet-row="${i}">
       <div class="rp-sheet-head">
-        <span class="rp-sheet-name">${row.shirt_number ? esc(row.shirt_number) + ". " : ""}${esc(row.player_name)}
+        ${/* The shirt is its own element so the box below can write into it
+              without redrawing the row — see wireSheet's change handler, and
+              the tap that redrawing used to eat. */ ""}
+        <span class="rp-sheet-name"><b data-sheet-shirt>${
+          row.shirt_number ? esc(row.shirt_number) + ". " : ""}</b>${esc(row.player_name)}
+          ${row.role === "sub_on"
+            ? '<em class="rp-sheet-on" title="Came on as a substitute">&#8593; on</em>' : ""}
           ${row.player_id ? "" : '<em class="rp-sheet-warn" title="Not linked to a player — they will show as plain text">name only</em>'}
         </span>
         <button class="rp-x" type="button" data-sheet-del="${i}" data-sheet-key="${esc(key)}"
@@ -5234,15 +5335,35 @@ function sheetRowHtml(sheet, row, i, key) {
                 ${esc(o.player_name)}</option>`).join("")}
             </select>
           </label>` : ""}
-        ${row.role === "starting" ? `
+        ${/* OFF' FILLS ITSELF IN. Naming a starter on the substitute's row is
+              already the sentence "he came off in the 60th"; asking for the
+              minute again on his own row was asking the same question twice,
+              and the answer sat in a placeholder so pale that reporters typed
+              it in anyway. Filled and read-only when a substitution says it —
+              the value is not stored (save_lineup derives the same minute, and
+              a copy would go stale the moment the substitution was corrected),
+              which is also why it carries no data-sheet-field.
+              Editable when nothing says it, for the sending-off and the
+              withdrawal nobody replaced — and editable again the moment a
+              minute IS typed, so an explicit one can always be taken back
+              out. `data-off-derived` is what the repaint below compares. */ ""}
+        ${row.role !== "starting" ? "" : derivedOff && !row.minute_off ? `
+          <label class="rp-sheet-field">
+            <span class="rp-sheet-field-label">Off (min)</span>
+            <input class="rp-input is-derived" data-sheet-off
+                   data-off-derived="${esc(derivedOff)}" readonly tabindex="-1"
+                   value="${esc(derivedOff)}"
+                   title="From the substitution below — change it there">
+          </label>` : `
           <label class="rp-sheet-field">
             <span class="rp-sheet-field-label">Off (min)</span>
             <input class="rp-input" data-sheet-field="minute_off" data-sheet-i="${i}"
-                   data-sheet-key="${esc(key)}" value="${esc(row.minute_off || "")}"
-                   placeholder="${esc(offMinuteFor(sheet.rows, row) || "")}"
+                   data-sheet-key="${esc(key)}" data-sheet-off
+                   data-off-derived="${esc(derivedOff)}"
+                   value="${esc(row.minute_off || "")}"
                    title="Only needed when no substitution says it — a sending-off, or coming off unreplaced"
                    inputmode="numeric">
-          </label>` : ""}
+          </label>`}
       </div>
       <div class="rp-sheet-flags">
         <button type="button" class="rp-chip${row.captain ? " is-on" : ""}"
@@ -5286,7 +5407,23 @@ function sheetRowHtml(sheet, row, i, key) {
     </li>`;
 }
 
-/** The rows, under the heading each one's role belongs to.
+/** Which of the two lists below a row is drawn in. */
+const sheetGroupOf = (row) => (row.role || "starting") === "starting"
+  ? "starting" : "bench";
+
+/** The rows, in two lists: the XI, and the bench.
+ *
+ *  TWO GROUPS, NOT THREE. Sub-on used to be its own heading between the other
+ *  two, so marking a substitute as having come on threw them out of the bench
+ *  and up the screen — the reporter's eye went with them, and the next name
+ *  they wanted was no longer where they had left it. Filling in a sheet is
+ *  reading one list top to bottom, and a list that reorders itself under you
+ *  while you read it is the most disorienting thing a form can do. A
+ *  substitute now stays exactly where they were put and grows two boxes; the
+ *  ↑ beside the name is what says they came on.
+ *
+ *  The heading counts both kinds together for the same reason — a number that
+ *  moved on every role change would have to be repainted on every role change.
  *
  *  The index passed down is the row's index in `sheet.rows`, never its place
  *  in the group — every control on a row addresses state by that index, so
@@ -5295,15 +5432,14 @@ function sheetRowHtml(sheet, row, i, key) {
  *  something is missing rather than like nothing is there yet. */
 function sheetGroupsHtml(sheet, key) {
   const numbered = sheet.rows.map((row, i) => [row, i]);
-  return SHEET_ROLES.map(([role, label]) => {
-    const mine = numbered.filter(([r]) => (r.role || "starting") === role);
+  return [["starting", "Starting XI"], ["bench", "Substitutes"]].map(([group, heading]) => {
+    const mine = numbered.filter(([r]) => sheetGroupOf(r) === group);
     if (!mine.length) return "";
-    const heading = role === "unused_sub" ? "Unused subs"
-      : role === "sub_on" ? "Came on" : label;
-    const over = role === "starting" && mine.length > STARTING_XI;
+    const starting = group === "starting";
+    const over = starting && mine.length > STARTING_XI;
     return `
       <h3 class="rp-sheet-group${over ? " is-warn" : ""}">${heading}
-        <span>${mine.length}${role === "starting" ? ` of ${STARTING_XI}` : ""}</span></h3>
+        <span>${mine.length}${starting ? ` of ${STARTING_XI}` : ""}</span></h3>
       <ul class="rp-sheet">${
         mine.map(([r, i]) => sheetRowHtml(sheet, r, i, key)).join("")}</ul>`;
   }).join("");
@@ -5703,20 +5839,86 @@ function wireSheet(root, ctx, redraw) {
     }
   });
 
+  /** Re-render one row where it stands, leaving every other row's DOM alone. */
+  function drawRow(i) {
+    const li = root.querySelector(`[data-sheet-row="${i}"]`);
+    if (li && sheet.rows[i]) {
+      li.outerHTML = sheetRowHtml(sheet, sheet.rows[i], i, ctx.key);
+    }
+  }
+
+  /** Show the starters whose Off' a substitution has just answered — or
+   *  un-answered, when the substitution that named them was changed or undone.
+   *
+   *  Only the rows whose derived minute actually CHANGED are redrawn, which is
+   *  normally one and often none. That precision is the point: this runs on a
+   *  text box losing focus, i.e. as a finger is already landing somewhere
+   *  else, and every row it touches needlessly is a tap it could swallow. */
+  function paintDerivedOff() {
+    sheet.rows.forEach((row, i) => {
+      if (row.role !== "starting") return;
+      const box = root.querySelector(`[data-sheet-row="${i}"] [data-sheet-off]`);
+      if (box && box.dataset.offDerived !== offMinuteFor(sheet.rows, row)) drawRow(i);
+    });
+  }
+
+  // NOTHING HERE MAY REDRAW THE BLOCK ON A TEXT BOX. `change` fires when a box
+  // loses focus, and on a phone that is the same gesture as the tap onto the
+  // next box: redrawing threw that box away mid-tap, so the tap did nothing
+  // and every field after the first cost two. Typing into a box now writes the
+  // one thing on the screen that box controls — its own row's shirt in the
+  // heading, or the Off' the substitution decides — and touches no other node.
+  // A <select> is safe to redraw from, because its change lands when the
+  // native picker closes and the next tap is a fresh one.
   root.addEventListener("change", (e) => {
     const field = e.target.dataset?.sheetField;
     if (!field) return;
-    const row = sheet.rows[Number(e.target.dataset.sheetI)];
+    const i = Number(e.target.dataset.sheetI);
+    const row = sheet.rows[i];
     if (!row) return;
+    const wasGroup = sheetGroupOf(row);
     row[field] = e.target.value;
-    // An unused substitute did not play, so cannot be man of the match — the
-    // RPC refuses it. Cleared here rather than reported: a reporter moving
-    // someone to the bench has already said what they mean, and a save that
-    // fails on a flag they cannot see is the worst way to learn it.
-    if (field === "role" && row.role === "unused_sub") row.motm = false;
-    // The role decides which controls a row shows, and the shirt shows in the
-    // row's own heading, so both redraw.
-    if (field === "role" || field === "shirt_number") redraw();
+
+    if (field === "shirt_number") {
+      const shirt = root.querySelector(`[data-sheet-row="${i}"] [data-sheet-shirt]`);
+      if (shirt) shirt.textContent = row.shirt_number ? `${row.shirt_number}. ` : "";
+      return;
+    }
+
+    if (field === "minute_off") {
+      // Clearing an explicit minute hands the row back to the derivation, and
+      // the box says so without being replaced — see the rule above.
+      const derived = offMinuteFor(sheet.rows, row);
+      if (derived && !row.minute_off) {
+        e.target.value = derived;
+        e.target.readOnly = true;
+        e.target.classList.add("is-derived");
+        delete e.target.dataset.sheetField;
+      }
+      return;
+    }
+
+    // A substitution names who it replaced and when, so both are answers to
+    // some starter's Off' — including the starter it has just stopped naming.
+    if (field === "minute_on" || field === "replaced_player") {
+      paintDerivedOff();
+      return;
+    }
+
+    if (field === "role") {
+      // An unused substitute did not play, so cannot be man of the match — the
+      // RPC refuses it. Cleared here rather than reported: a reporter moving
+      // someone to the bench has already said what they mean, and a save that
+      // fails on a flag they cannot see is the worst way to learn it.
+      if (row.role === "unused_sub") row.motm = false;
+      // Between the XI and the bench the row changes list and both counts
+      // move, which is a redraw. Within the bench — the common one, a
+      // substitute marked as having come on — it keeps its place and only
+      // grows the two boxes that go with the new role.
+      if (sheetGroupOf(row) !== wasGroup) { redraw(); return; }
+      drawRow(i);
+      paintDerivedOff();
+    }
   });
 }
 

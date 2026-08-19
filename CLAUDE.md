@@ -168,6 +168,33 @@ fixture and clean up, and they never mutate a real match.
 
 ## Recent work (Aug 2026)
 
+Team-sheet entry, no migration — four things that made filling one in slow:
+
+- **A `change` fires when a box loses focus, which on a phone is the same
+  gesture as the tap onto the next box.** The shirt-number field redrew the
+  whole block on change, so that tap landed on a node that had already been
+  thrown away and every field after the first cost two taps. Not a mobile
+  quirk — a redraw-on-blur. Text boxes now patch only what they control (the
+  shirt in the row heading); a `<select>` may still redraw, because its change
+  lands when the picker closes and the next tap is a fresh one.
+- **Off' fills itself in.** Naming a starter on the substitute's row already
+  says when he came off; the minute sat in a placeholder so pale that reporters
+  typed it again. It renders filled and read-only, and is NOT stored —
+  `save_lineup` derives the same minute, and a copy would go stale the moment
+  the substitution was corrected. Editable when nothing derives it (a
+  sending-off, an unreplaced withdrawal), and editable again the moment a
+  minute is typed, so an explicit one can be taken back out.
+- **The bench is one list.** Sub-on used to be its own heading between the XI
+  and the unused subs, so marking a substitute as having come on threw them up
+  the screen and the reporter's eye went with them. They stay put now; an ↑
+  beside the name is what says they came on.
+- **A shirt number is the one a reporter entered twice, not the last one
+  entered.** `clubSquad` tallies each player's numbers across the active season
+  and pre-fills the commonest, ties going to the most recent — so one slip no
+  longer has to be corrected every week after. It also ordered by `ord` and
+  called that "most recent": `save_lineup` writes ord as 1..N *within a sheet*,
+  so that was an arbitrary row, not the latest. It is `created_at` now.
+
 The homepage carousel, migration `0030` — a lite CMS for the front page:
 
 - The featured card was three sentences inside an f-string in `build.py`, and

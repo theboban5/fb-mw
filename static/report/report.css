@@ -598,6 +598,27 @@ a { color: var(--accent); }
   margin-left: 6px; font-style: normal;
   font-size: 0.72rem; font-weight: 600; color: var(--muted);
 }
+/* WHO CAME ON, NOW THAT THEY NO LONGER MOVE TO SAY SO. The bench is one list
+   again (see sheetGroupsHtml) so a substitute keeps their place when they are
+   marked on; this is what carries the fact instead of the position. Accent
+   rather than muted, because unlike "name only" beside it this is a thing that
+   happened rather than a thing that is missing. */
+.rp-sheet-on {
+  margin-left: 6px; font-style: normal;
+  font-size: 0.72rem; font-weight: 700; color: var(--accent);
+}
+
+/* A box the sheet filled in for itself: the minute a starter came off, taken
+   from the substitution that named them. It has to look ANSWERED and not
+   TYPEABLE — a plain empty box invited the reporter to type the number a
+   second time, which was the whole problem, and a plain filled one would
+   invite them to correct it here instead of on the substitution that owns it.
+   Muted ink on the page's own ground: present, settled, not a field. */
+.rp-sheet-controls .rp-input.is-derived {
+  background: transparent; border-style: dashed;
+  color: var(--muted); font-weight: 600;
+}
+
 /* "Replaced" holds a full name, so it spans the grid rather than truncating
    one to fit a column. */
 .rp-sheet-field-wide { grid-column: 1 / -1; }
