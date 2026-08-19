@@ -179,6 +179,7 @@ The whole migration, done and verified:
 | Officials | `0023_match_officials.sql` — `set_match_officials`; referee, assistants, fourth official, both coaches |
 | Officials registry | `0024_officials_registry.sql` — `officials` table, id columns on `matches`, `create_official`/`rename_official`/`merge_officials`/`search_officials` |
 | Match notes | `0025_match_notes.sql` — `matches.notes` + `set_match_notes`; reporter-only, never rendered, never snapshotted |
+| Reporter pool | `0026_reporter_admin.sql` + `supabase/functions/manage-reporters` — `#/reporters`: create an account, assign leagues, promote, reset a password |
 | Cutover | CI reads Supabase; the spreadsheet is deprecated |
 
 The workflow this replaced:
@@ -405,8 +406,48 @@ page, not an oversight.
 
 ### Reporter accounts
 
-Administration is CLI-only and runs with `SUPABASE_SECRET_KEY` — there is no
-admin portal, and no signed-in user can grant themselves anything.
+Two ways in, and they do the same things. `#/reporters` in the portal is for
+an administrator with a phone; the CLI is for a trusted machine and is still
+the only place some of it can happen.
+
+**From `/report` (`0026` + the `manage-reporters` function).** An
+administrator gets a Reporters screen: create an account with an email and a
+generated password, tap leagues on and off, promote or demote, deactivate,
+reset a password. This used to require somebody sitting at a checkout of this
+repo with the secret key in `.env`, which meant a reporter who turned up on a
+Saturday waited until Monday for a league.
+
+The split inside it is the interesting part, and it is a split by *what needs
+the key*, not by what feels risky:
+
+| | where it runs | why |
+|---|---|---|
+| assign / unassign a competition | RPC, `is_admin()` | touches two public columns |
+| change a role, activate, deactivate | RPC, `is_admin()` | same |
+| **create an account, reset a password** | Edge Function | needs the GoTrue admin API, and therefore the secret key, which must never be in a browser |
+
+`admin_create_reporter` takes an `auth_user_id` and a role, so anyone who
+could call it could attach an admin row to their own login. It is revoked
+from `authenticated` outright — **the grant is the authorization** — and is
+reachable only with the secret key, i.e. only from the Edge Function, which
+confirms the caller is an active admin before it does anything. That property
+is asserted directly in `tests/test_reporter_admin_live.py` rather than left
+to be inferred from the portal never calling it.
+
+Two rules the portal cannot talk its way past, because nothing in it could
+undo either: **an admin may not change their own role or deactivate their own
+account** (the overwhelmingly likely reading of that tap is a mis-tap on the
+wrong card), and **the last active administrator may not be demoted or
+deactivated** — that would lock everybody out of the screen that grants the
+role, and the only way back would be the CLI this exists to avoid needing.
+
+A created password is shown **once**, on screen, with a copy button. There is
+no SMTP on this project and nothing will ever mail it; it can be reset, never
+read back. None of this triggers a rebuild — no page on everyleague.co
+renders a reporter.
+
+**From the CLI**, which remains the whole surface and the only route to
+`--reporter-id`, `--season` and the national-team assignments:
 
 ```bash
 python3 scripts/reporters.py create --name "James Banda" \
@@ -431,7 +472,10 @@ same as forgetting what someone covered. `active` alone gates every check.
 **Disable public signup** in the Supabase dashboard (Authentication →
 Sign In / Providers → uncheck "Allow new users to sign up"). The schema does
 not depend on that being set: a new `auth.users` row with no `reporters` row
-resolves to a NULL reporter and can do nothing at all.
+resolves to a NULL reporter and can do nothing at all. It is also why the
+portal creates accounts through the admin API rather than `signUp()` — which
+would be disabled, and would sign the administrator out of their own session
+and into the new account halfway through making it.
 
 ### The reporter app (`/report`)
 
@@ -444,6 +488,7 @@ the ordinary static tree copy. No framework, no bundler, no build step.
 /report/#/m/<public-id> the reporting screen — this is the WhatsApp link
 /report/#/add           add a whole fixture list to a competition you cover
 /report/#/league/new    create a competition and its teams (admin only)
+/report/#/reporters     the reporter pool: create, assign, promote (admin only)
 /report/#/account       change password, sign out
 ```
 
@@ -915,6 +960,28 @@ browser and confirm `rebuild_state.dispatch_count` moved. That is the only test
 that exercises the path reporters actually use.
 
 Rotate the PAT by re-running `secrets set`; no redeploy is needed.
+
+#### The other function: `manage-reporters`
+
+Same shape, same CORS rules, and **nothing to configure** — it uses only the
+`SUPABASE_URL` and service key the platform injects.
+
+```bash
+export SUPABASE_ACCESS_TOKEN=sbp_...
+npx supabase functions deploy manage-reporters --project-ref <your-project-ref>
+```
+
+Deploy order matters, and in the usual direction: `0026` must be applied
+before this function is called, because it calls `admin_create_reporter`. A
+migration and a function are both separate deploys from git (see CLAUDE.md).
+Verify its preflight the same way — swap the name in the `OPTIONS` call above.
+
+Its live tests skip themselves when it is not deployed, so a checkout with the
+migration and no function reports a skip rather than a failure:
+
+```bash
+RLS_LIVE=1 python3 -m unittest tests.test_reporter_admin_live
+```
 
 ### Operations: coverage and data backlog
 

@@ -90,6 +90,7 @@ src/nt.py, nt_page.py  national teams (the nt_* tabs, /scorchers/)
 src/search.py          the site search index
 static/report/app.js   the reporter portal (one file, no framework)
 supabase/migrations/   version-controlled schema; numbered, applied in order
+supabase/functions/    Edge Functions — the only place a secret may live
 social/                post-pack generator; never publishes, a human posts
 data/canonical/        last validated fetch — drift baseline + audit log
 docs/                  build output, served by GitHub Pages
@@ -165,6 +166,27 @@ fixture and clean up, and they never mutate a real match.
 ---
 
 ## Recent work (Aug 2026)
+
+The reporter pool from the portal, migration `0026` + a second Edge Function:
+
+- `#/reporters` (admin only): create an account with a generated password, tap
+  leagues on and off, promote/demote, deactivate, reset a password. It replaces
+  needing `scripts/reporters.py` — and therefore a trusted laptop — for the
+  operations that happen weekly.
+- **Split by what needs the secret key, not by what feels risky.** Assigning a
+  competition and changing a role are `is_admin()`-gated RPCs. Creating a login
+  and resetting a password are the GoTrue admin API, so they live in
+  `supabase/functions/manage-reporters` — the same arrangement, and the same
+  CORS rules, as `trigger-rebuild`.
+- `admin_create_reporter` takes an `auth_user_id` and a role, so **the grant is
+  the authorization**: revoked from `authenticated`, reachable only with the
+  secret key. It also re-checks its `p_actor`, because the secret key has no
+  `auth.uid()` and `is_admin()` is false inside it.
+- Two rules nothing here can undo: an admin may not change their own role or
+  deactivate themselves, and the last active admin may not be removed.
+- None of it triggers a rebuild — no page renders a reporter.
+- Not built: national-team assignments (`nt-assign` is still CLI-only), and
+  `--season`-scoped assignments, which the RPC supports and the UI does not.
 
 Team sheets and player profiles, migrations `0018`–`0021`:
 

@@ -156,7 +156,17 @@ function humanError(error) {
       || message.includes("already have a scorer")
       || message.includes("did not play in this match")
       || message.includes("publish the score before")
-      || message.includes("needs a name")) {
+      || message.includes("needs a name")
+      // ...and the reporter-pool rules from 0026. "that is the last
+      // administrator" and "you cannot change your own role" are the two an
+      // admin will actually meet, and both are refusals they can only
+      // understand if the sentence survives.
+      || message.includes("needs an email")
+      || message.includes("role must be")
+      || message.includes("last administrator")
+      || message.includes("you cannot")
+      || message.includes("no competition")
+      || message.includes("no reporter")) {
     return error.message.charAt(0).toUpperCase() + error.message.slice(1);
   }
   // The RPC's own validation, which is phrased for a person to read.
@@ -687,6 +697,7 @@ async function renderHome(params) {
       ${canAdd ? '<a class="rp-btn is-ghost" href="#/add">＋ Add fixtures</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/league/new">＋ New league</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/ops">Operations</a>' : ""}
+      ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/reporters">Reporters</a>' : ""}
       ${hasNT ? '<a class="rp-btn is-ghost" href="#/nt">National teams</a>' : ""}
       <button class="rp-btn is-quiet" type="button" data-refresh>Refresh</button>
     </div>`;
@@ -3053,6 +3064,12 @@ async function renderAccount() {
       out to be one person.</p>
     <a class="rp-btn is-ghost" href="#/players">Find a player</a>
 
+    ${context.isAdmin ? `
+    <h2 class="rp-field-head">Reporters</h2>
+    <p class="rp-hint">Create an account for somebody new, give them leagues,
+      or reset a password.</p>
+    <a class="rp-btn is-ghost" href="#/reporters">Manage reporters</a>` : ""}
+
     <div class="rp-btn-row" style="margin-top:24px">
       <a class="rp-btn is-ghost" href="#/">My matches</a>
       <button class="rp-btn is-quiet" type="button" data-signout>Sign out</button>
@@ -3364,6 +3381,503 @@ async function signOut() {
   invalidateHome();
   invalidateReference();
   location.hash = "#/login";
+}
+
+// ── Reporters ────────────────────────────────────────────────────────────────
+// THE SCREEN THAT MEANS A NEW REPORTER DOES NOT HAVE TO WAIT FOR A LAPTOP.
+//
+// Everything here was scripts/reporters.py, which needs the secret key and so
+// needs a trusted machine. That is still true of the half that mints a login —
+// see supabase/functions/manage-reporters — but it was never true of the rest.
+// Giving somebody a league is a two-column insert, and it was gated behind the
+// same door as creating credentials, so a reporter who turned up on a Saturday
+// waited until somebody was sitting at a checkout of this repo.
+//
+// Two paths out of this screen, for the two different things it does:
+//
+//   * Creating a reporter goes to the Edge Function, because only the secret
+//     key may make an auth.users row. It comes back with a password, shown
+//     ONCE — there is no SMTP on this project and nothing will ever mail it.
+//   * Everything else is an RPC (0026), gated on is_admin() in Postgres.
+//
+// Nothing here nudges a rebuild. No page on everyleague.co renders a reporter,
+// so unlike a rename or a scoreline none of this changes the published site.
+
+/** Everyone, with their assignments folded in. Admin-only by RLS: the
+ *  `reporters` policy is `auth_user_id = auth.uid() or is_admin()`, so an
+ *  ordinary reporter reading this table gets exactly themselves — which is why
+ *  the screen is gated in the router as well, rather than trusting a list that
+ *  would quietly come back with one row. */
+async function loadReporters() {
+  const [{ data: reporters, error }, { data: assignments }] = await Promise.all([
+    supabase.from("reporters")
+      .select("reporter_id,name,email,role,active,auth_user_id")
+      .order("reporter_id", { ascending: true }),
+    supabase.from("reporter_assignments").select("reporter_id,competition_id"),
+  ]);
+  if (error) throw error;
+  const byReporter = {};
+  (assignments || []).forEach((a) => {
+    (byReporter[a.reporter_id] ||= []).push(a.competition_id);
+  });
+  return (reporters || []).map((r) => ({
+    ...r, competitions: byReporter[r.reporter_id] || [],
+  }));
+}
+
+// The same unambiguous alphabet the CLI and the Edge Function use: no O/0, no
+// l/1/I. A temporary password gets read aloud over WhatsApp and typed on a
+// phone keyboard, where an ambiguous character is a support call.
+const PASSWORD_ALPHABET =
+  "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function suggestPassword(length = 14) {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes,
+    (b) => PASSWORD_ALPHABET[b % PASSWORD_ALPHABET.length]).join("");
+}
+
+/** The password panel. Deliberately loud, and deliberately not dismissed by
+ *  the next render: this string exists nowhere else and cannot be looked up
+ *  again — only reset, which invalidates the one already handed over. */
+function credentialsPanel(email, password, heading) {
+  return `
+    <div class="rp-creds" data-creds>
+      <h2 class="rp-field-head">${esc(heading)}</h2>
+      <div class="rp-account-row"><span>Email</span><span>${esc(email)}</span></div>
+      <div class="rp-account-row"><span>Password</span>
+        <span><code class="rp-code">${esc(password)}</code></span></div>
+      <button class="rp-btn is-ghost" type="button" data-copy
+              data-value="${esc(password)}">Copy password</button>
+      <p class="rp-hint">Shown once. Send it over a private channel — they can
+        change it in Account. Nobody can read it back, only reset it.</p>
+    </div>`;
+}
+
+function wireCopy(host) {
+  host.querySelectorAll("[data-copy]").forEach((button) => {
+    button.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.value);
+        button.textContent = "Copied";
+        setTimeout(() => { button.textContent = "Copy password"; }, 2000);
+      } catch {
+        // Clipboard access is refused often enough on a phone browser that
+        // failing silently would look like a dead button. The password is on
+        // screen either way.
+        flash("Could not copy — select the password and copy it by hand.",
+              "warn");
+      }
+    };
+  });
+}
+
+/** A chip per competition, lit when assigned. Buttons rather than checkboxes
+ *  for the reason the rest of this app gives: a 38px chip is a far easier tap
+ *  than a 16px box. */
+function competitionChips(comps, selected, attr) {
+  return `<div class="rp-chip-row">${comps.map((c) => `
+    <button class="rp-chip${selected.includes(c.competition_id) ? " is-on" : ""}"
+            type="button" ${attr}="${esc(c.competition_id)}"
+            aria-pressed="${selected.includes(c.competition_id)}"
+            >${esc(c.label)}</button>`).join("")}</div>`;
+}
+
+async function renderReporters() {
+  if (!context.isAdmin) {
+    h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+       <p class="rp-empty">Only an administrator can manage reporters.</p>`);
+    return;
+  }
+
+  h(`<div class="rp-loading"><span class="rp-spinner" aria-hidden="true"></span>
+       <p>Loading reporters…</p></div>`);
+
+  let reporters, comps;
+  try {
+    [reporters, comps] = await Promise.all([loadReporters(), entryCompetitions()]);
+  } catch (error) {
+    h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+       <p class="rp-empty">Could not load the reporters.</p>`);
+    flash(humanError(error), "error");
+    return;
+  }
+
+  const self = context.reporter?.reporter_id;
+
+  h(`
+    <a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+    <h1 class="rp-login-head">Reporters</h1>
+    <p class="rp-login-sub">Create an account, give it leagues, and hand over
+      the password. A reporter can only see and report the competitions ticked
+      on their card.</p>
+
+    <details class="rp-sec" data-new-reporter>
+      <summary>＋ Add a reporter</summary>
+      <div class="rp-sec-body">
+        <form class="rp-form" data-create autocomplete="off">
+          <label class="rp-label" for="rp-name">Name</label>
+          <input class="rp-input" id="rp-name" name="name" required
+                 autocapitalize="words" placeholder="James Banda">
+
+          <label class="rp-label" for="rp-email">Email</label>
+          <input class="rp-input" id="rp-email" name="email" type="email" required
+                 autocapitalize="off" autocorrect="off" spellcheck="false"
+                 placeholder="james@example.com">
+          <p class="rp-hint">This is what they sign in with. It cannot be
+            changed from here afterwards.</p>
+
+          <label class="rp-label" for="rp-password">Password</label>
+          <div class="rp-btn-row">
+            <input class="rp-input" id="rp-password" name="password" required
+                   minlength="8" autocapitalize="off" autocorrect="off"
+                   spellcheck="false" value="${esc(suggestPassword())}">
+            <button class="rp-btn is-ghost" type="button" data-regen>New</button>
+          </div>
+          <p class="rp-hint">Generated for you, and safe to send. Shown again
+            once when the account is made, then never.</p>
+
+          <label class="rp-label" for="rp-role">Role</label>
+          <select class="rp-select" id="rp-role" name="role">
+            <option value="reporter" selected>Reporter</option>
+            <option value="admin">Administrator</option>
+          </select>
+          <p class="rp-hint">An administrator reports every competition without
+            being assigned one, and can manage this screen.</p>
+
+          <label class="rp-label">Leagues</label>
+          ${comps.length
+            ? competitionChips(comps, [], "data-new-comp")
+            : '<p class="rp-hint">No competitions exist yet.</p>'}
+          <p class="rp-hint">Tap to give access. An administrator does not need
+            any of these.</p>
+
+          <button class="rp-btn" type="submit" data-submit>Create reporter</button>
+        </form>
+      </div>
+    </details>
+
+    <div data-created></div>
+
+    <h2 class="rp-group-head">Everyone
+      <span class="rp-count">${reporters.length}</span></h2>
+    <div data-reporter-list>
+      ${reporters.map((r) => reporterCard(r, comps, self)).join("")}
+    </div>
+  `);
+
+  wireCreateForm(comps);
+  wireReporterCards(comps);
+}
+
+function reporterCard(r, comps, self) {
+  const flags = [];
+  if (r.role === "admin") flags.push("Administrator");
+  if (!r.active) flags.push("Inactive");
+  if (!r.auth_user_id) flags.push("No login");
+  const isSelf = r.reporter_id === self;
+
+  const covers = r.role === "admin"
+    ? '<p class="rp-hint">An administrator reports every competition. These are recorded but not needed.</p>'
+    : (r.competitions.length
+        ? ""
+        : '<p class="rp-hint">No leagues yet — this account can see nothing.</p>');
+
+  return `
+    <details class="rp-sec" data-reporter="${esc(r.reporter_id)}"
+             data-email="${esc(r.email || "")}">
+      <summary>${esc(r.name)}${flags.length
+        ? `<span class="rp-sec-count">${esc(flags.join(" · "))}</span>` : ""}</summary>
+      <div class="rp-sec-body">
+        <div class="rp-account-row"><span>Email</span><span>${esc(r.email || "—")}</span></div>
+        <div class="rp-account-row"><span>Id</span><span>${esc(r.reporter_id)}</span></div>
+
+        <h2 class="rp-field-head">Leagues</h2>
+        ${covers}
+        ${comps.length
+          ? competitionChips(comps, r.competitions, "data-comp")
+          : '<p class="rp-hint">No competitions exist yet.</p>'}
+
+        <h2 class="rp-field-head">Role</h2>
+        ${isSelf
+          ? `<p class="rp-hint">This is you. Your own role and account cannot be
+               changed here — ask another administrator, or use the CLI.</p>`
+          : `<div class="rp-chip-row">
+               <button class="rp-chip${r.role === "reporter" ? " is-on" : ""}"
+                       type="button" data-role-set="reporter">Reporter</button>
+               <button class="rp-chip${r.role === "admin" ? " is-on" : ""}"
+                       type="button" data-role-set="admin">Administrator</button>
+             </div>`}
+
+        <h2 class="rp-field-head">Access</h2>
+        <div class="rp-btn-row">
+          ${r.auth_user_id
+            ? '<button class="rp-btn is-ghost" type="button" data-reset>Reset password</button>'
+            : '<span class="rp-hint">No login to reset.</span>'}
+          ${isSelf ? "" : `<button class="rp-btn is-quiet" type="button"
+              data-active-set="${r.active ? "false" : "true"}"
+              >${r.active ? "Deactivate" : "Reactivate"}</button>`}
+        </div>
+        ${isSelf ? "" : `<p class="rp-hint">Deactivating keeps their history and
+          their leagues — it is reversible, and is not the same as forgetting
+          what somebody covered.</p>`}
+        <div data-card-creds></div>
+      </div>
+    </details>`;
+}
+
+function wireCreateForm(comps) {
+  const details = view.querySelector("[data-new-reporter]");
+  const form = details.querySelector("[data-create]");
+  const chosen = [];
+
+  // FIELDS ARE LOOKED UP BY SELECTOR, NOT AS form.name.
+  //
+  // Two of these four names collide with properties a form already has:
+  // HTMLFormElement.prototype.name, and Element.prototype.role (ARIA
+  // reflection). `form.name` and `form.role` DO still return the controls —
+  // HTMLFormElement carries [LegacyOverrideBuiltIns], so named controls beat
+  // the built-ins, and this was checked in a browser rather than assumed.
+  // It is spelled out anyway because that is a lot of spec to have to know
+  // before trusting three characters, and because the failure it would cause
+  // is silent: `form.name.value` on a form whose `name` resolved to a string
+  // is `undefined`, which submits an empty name rather than throwing.
+  // Everywhere else in this app the field names happen not to collide
+  // (`full_name`, `known_as`, `players`); here they do.
+  const field = (name) => form.querySelector(`[name="${name}"]`);
+
+  form.querySelector("[data-regen]").onclick = () => {
+    field("password").value = suggestPassword();
+  };
+
+  form.querySelectorAll("[data-new-comp]").forEach((chip) => {
+    chip.onclick = () => {
+      const id = chip.dataset.newComp;
+      const at = chosen.indexOf(id);
+      if (at === -1) chosen.push(id); else chosen.splice(at, 1);
+      chip.classList.toggle("is-on", at === -1);
+      chip.setAttribute("aria-pressed", String(at === -1));
+    };
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = form.querySelector("[data-submit]");
+    if (button.disabled) return;
+    button.disabled = true;
+    button.textContent = "Creating…";
+
+    const body = {
+      action: "create",
+      name: field("name").value.trim(),
+      email: field("email").value.trim(),
+      password: field("password").value,
+      role: field("role").value,
+      competitions: chosen,
+    };
+
+    let data, error;
+    try {
+      ({ data, error } = await supabase.functions.invoke("manage-reporters", { body }));
+    } catch (err) {
+      error = err;
+    }
+    button.disabled = false;
+    button.textContent = "Create reporter";
+
+    // NOTHING TYPED IS LOST ON FAILURE. The form keeps every field, including
+    // the password, so a rejected email address is one correction away from a
+    // retry rather than a re-type.
+    if (error || !data?.reporter_id) {
+      flash(await functionError(error, data), "error");
+      return;
+    }
+
+    // The password panel goes OUTSIDE the form, above the list, because the
+    // form is about to be cleared and reused and this is the one thing on the
+    // screen that cannot be recovered if it scrolls away unread.
+    const host = view.querySelector("[data-created]");
+    host.innerHTML = credentialsPanel(data.email, data.password,
+      `${body.name} can now sign in`);
+    wireCopy(host);
+    host.scrollIntoView({ block: "center" });
+
+    form.reset();
+    field("password").value = suggestPassword();
+    chosen.length = 0;
+    form.querySelectorAll("[data-new-comp]").forEach((chip) => {
+      chip.classList.remove("is-on");
+      chip.setAttribute("aria-pressed", "false");
+    });
+    details.open = false;
+    flash(`${data.reporter_id} created.`, "ok");
+
+    // The list is now wrong by one row. Redrawn rather than patched, so it
+    // matches the database exactly. It replaces ONLY [data-reporter-list],
+    // which is what keeps the password panel above it on screen — redrawing
+    // the whole view here would wipe the one string that cannot be fetched
+    // again.
+    await refreshReporterList(comps);
+  });
+}
+
+/** Redraw just the list, keeping the create form and its password panel.
+ *
+ *  A role change rewrites the card that describes it — the summary flags, and
+ *  which of the two role chips is lit — so the row has to come back from the
+ *  database rather than be patched in place. Two things are carried across the
+ *  redraw, because losing either of them is worse than the staleness it fixes:
+ *
+ *    * WHICH CARDS WERE OPEN. Without this, promoting somebody collapses the
+ *      card you are standing in and you have to find them again.
+ *    * ANY PASSWORD ON SCREEN. It exists nowhere else and cannot be fetched
+ *      again, only reset — so a reset followed by a role change would destroy
+ *      the credential that had just been issued.
+ */
+async function refreshReporterList(comps) {
+  let reporters;
+  try {
+    reporters = await loadReporters();
+  } catch (error) {
+    flash(humanError(error), "error");
+    return;
+  }
+  const host = view.querySelector("[data-reporter-list]");
+  if (!host) return;
+
+  const open = new Set();
+  const creds = new Map();
+  host.querySelectorAll("[data-reporter]").forEach((card) => {
+    if (card.open) open.add(card.dataset.reporter);
+    const panel = card.querySelector("[data-card-creds]");
+    if (panel?.innerHTML.trim()) creds.set(card.dataset.reporter, panel.innerHTML);
+  });
+
+  const self = context.reporter?.reporter_id;
+  host.innerHTML = reporters.map((r) => reporterCard(r, comps, self)).join("");
+  const count = view.querySelector(".rp-group-head .rp-count");
+  if (count) count.textContent = String(reporters.length);
+
+  host.querySelectorAll("[data-reporter]").forEach((card) => {
+    if (open.has(card.dataset.reporter)) card.open = true;
+    const kept = creds.get(card.dataset.reporter);
+    if (kept) {
+      const panel = card.querySelector("[data-card-creds]");
+      panel.innerHTML = kept;
+      wireCopy(panel);
+    }
+  });
+
+  wireReporterCards(comps);
+}
+
+function wireReporterCards(comps) {
+  view.querySelectorAll("[data-reporter]").forEach((card) => {
+    const reporterId = card.dataset.reporter;
+
+    // Assignments save on the tap, one competition at a time. There is no Save
+    // button because there is nothing to batch: each chip is its own row, and
+    // a reporter half-way through being given three leagues is a valid state.
+    card.querySelectorAll("[data-comp]").forEach((chip) => {
+      chip.onclick = async () => {
+        if (chip.disabled) return;
+        const on = chip.classList.contains("is-on");
+        chip.disabled = true;
+        const { error } = await supabase.rpc(
+          on ? "admin_unassign_competition" : "admin_assign_competition",
+          { p_reporter: reporterId, p_competition: chip.dataset.comp });
+        chip.disabled = false;
+        if (error) { flash(humanError(error), "error"); return; }
+        // Painted only after the database agrees, so a chip never shows an
+        // access level that was refused.
+        chip.classList.toggle("is-on", !on);
+        chip.setAttribute("aria-pressed", String(!on));
+      };
+    });
+
+    card.querySelectorAll("[data-role-set]").forEach((chip) => {
+      chip.onclick = async () => {
+        const role = chip.dataset.roleSet;
+        if (chip.classList.contains("is-on")) return;
+        chip.disabled = true;
+        const { error } = await supabase.rpc("admin_set_reporter_role",
+          { p_reporter: reporterId, p_role: role });
+        chip.disabled = false;
+        if (error) { flash(humanError(error), "error"); return; }
+        flash(role === "admin"
+          ? "Promoted to administrator."
+          : "Now an ordinary reporter.", "ok");
+        refreshReporterList(comps);
+      };
+    });
+
+    const activeBtn = card.querySelector("[data-active-set]");
+    if (activeBtn) {
+      activeBtn.onclick = async () => {
+        const next = activeBtn.dataset.activeSet === "true";
+        activeBtn.disabled = true;
+        const { error } = await supabase.rpc("admin_set_reporter_active",
+          { p_reporter: reporterId, p_active: next });
+        activeBtn.disabled = false;
+        if (error) { flash(humanError(error), "error"); return; }
+        flash(next ? "Account reactivated." : "Account deactivated.", "ok");
+        refreshReporterList(comps);
+      };
+    }
+
+    const reset = card.querySelector("[data-reset]");
+    if (reset) {
+      reset.onclick = async () => {
+        reset.disabled = true;
+        reset.textContent = "Resetting…";
+        let data, error;
+        try {
+          ({ data, error } = await supabase.functions.invoke("manage-reporters", {
+            body: { action: "reset_password", reporter_id: reporterId },
+          }));
+        } catch (err) {
+          error = err;
+        }
+        reset.disabled = false;
+        reset.textContent = "Reset password";
+        if (error || !data?.password) {
+          flash(await functionError(error, data), "error");
+          return;
+        }
+        // Inside the card, not at the top of the screen: the admin is looking
+        // at one person, and a password panel anywhere else would leave them
+        // checking which reporter it belonged to.
+        const host = card.querySelector("[data-card-creds]");
+        host.innerHTML = credentialsPanel(
+          card.dataset.email, data.password, "New password");
+        wireCopy(host);
+        flash("Password reset. The old one no longer works.", "warn");
+      };
+    }
+  });
+}
+
+/** An Edge Function failure, said in a sentence.
+ *
+ *  supabase-js reports a non-2xx as a FunctionsHttpError whose useful half —
+ *  the `error` this function put in the body — is inside `context`, an
+ *  unread Response. Without this, every refusal from manage-reporters reached
+ *  the admin as "Edge Function returned a non-2xx status code", which names
+ *  neither the problem nor what to do about it. The messages on the other side
+ *  are written for a person; this is what lets them arrive.
+ */
+async function functionError(error, data) {
+  const body = data?.error;
+  if (body) return String(body);
+  try {
+    const response = error?.context;
+    if (response && typeof response.json === "function") {
+      const parsed = await response.json();
+      if (parsed?.error) return String(parsed.error);
+    }
+  } catch { /* fall through to the generic sentence */ }
+  return humanError(error);
 }
 
 // ── National teams ───────────────────────────────────────────────────────────
@@ -5527,6 +6041,7 @@ async function route() {
   if (path === "/league/new") return renderNewLeague();
   if (path === "/account") return renderAccount();
   if (path === "/players") return renderPlayers(params);
+  if (path === "/reporters") return renderReporters();
   if (path === "/login") { location.hash = "#/"; return; }
   return renderHome(params);
 }

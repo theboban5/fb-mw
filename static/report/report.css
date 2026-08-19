@@ -274,6 +274,25 @@ main.is-wide { max-width: 900px; }
 .rp-account-row span:first-child { color: var(--muted); }
 .rp-account-row span:last-child { font-weight: 600; text-align: right; }
 
+/* A password, shown once and never again. Boxed and warm-coloured because it
+   is the one thing on this screen that cannot be recovered by reloading — an
+   admin who scrolls past it has to reset the account to get another. */
+.rp-creds {
+  margin-top: 16px; padding: 4px 14px 14px;
+  border: 1px solid var(--warn); border-radius: var(--radius);
+  background: var(--warn-wash);
+}
+.rp-creds .rp-account-row { border-bottom-color: rgba(0, 0, 0, 0.1); }
+.rp-creds .rp-hint { color: var(--warn); }
+.rp-code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 1rem; letter-spacing: 0.04em;
+  /* The one string on the site worth selecting by hand — a phone that refuses
+     the clipboard API leaves a long-press as the only way to copy it. */
+  user-select: all; -webkit-user-select: all;
+  word-break: break-all;
+}
+
 a { color: var(--accent); }
 
 /* Nobody using this is on a large screen by choice, but a desktop check
@@ -468,6 +487,14 @@ a { color: var(--accent); }
 .rp-chip.is-on {
   border-color: var(--accent); background: var(--accent);
   color: var(--accent-ink);
+}
+.rp-chip:disabled { opacity: 0.5; }
+
+/* A wrapping row of chips. Used for a reporter's leagues, where the count is
+   however many competitions exist and a fixed column count would either waste
+   half the width on short names or clip the long ones. */
+.rp-chip-row {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
 }
 .rp-card-chip.is-card-none { color: var(--muted); }
 .rp-card-chip.is-card-yellow_card {
