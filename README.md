@@ -1031,6 +1031,12 @@ Notes worth having in mind:
 - **Editing a live card nudges a rebuild; editing a draft does not.** The site
   is static, so a published card is in the database and nowhere a reader can
   see it until CI runs — a minute or two.
+- **The label is free text, and the chips grow.** The row starts as a house
+  vocabulary ("Weekend preview", "Top scorers") and then adds every label
+  already used on any card — drafts and archive included — so a label typed
+  once through **＋** is one tap from then on. Nothing stores the list: the
+  cards are the record of what this site calls things, and a second list of
+  known labels would be one more thing to keep in step with them.
 - **The link is checked twice**, in Postgres and again by `validate.py`, and
   only two forms are legal: a path on this site (`/scorchers/`,
   `/players/CAF_MW_000123.html`) or an `https://` URL. Use **Open** before

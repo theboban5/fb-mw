@@ -118,6 +118,14 @@ SPECS = [
     # No natural key: a duplicate alias_text is legal, so rows are replaced
     # wholesale rather than upserted (see _load).
     Spec("aliases", None),
+    # 0030. The homepage cards. Referenced by nothing, so its position in this
+    # FK-ordered list does not matter; it sits last among the league tabs
+    # because it is the newest. `sort_order` takes 0 rather than NULL on a
+    # blank — the column is `not null default 0`, and a blank there is a card
+    # written before the column meant anything, which sorts first.
+    Spec("trending", "card_id", ints=("sort_order",),
+         zero_default=("sort_order",), stamps=("published_at",),
+         lower=("status",), defaults={"status": "draft"}),
 
     # ── National teams: a separate schema, imported the same way ────────────
     Spec("nt_teams", "team_code"),

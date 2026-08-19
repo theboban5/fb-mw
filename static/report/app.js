@@ -3469,10 +3469,43 @@ const TRENDING_COMFORTABLE_LIVE = 5;
 // purpose — the useful set is not knowable in advance — but a card that says
 // "Weekend preview" this week and "Weekend Preview!!" next week is exactly the
 // inconsistency this screen exists to fix, so the common ones are one tap.
+//
+// These are only the STARTING vocabulary. trendingLabels() adds every label
+// already used on any card, so a label typed once through ＋ is a chip from
+// then on. That is why nothing new was stored to remember them: the cards
+// already are the record of what this site calls things, and a second list of
+// "known labels" would be one more thing to keep in step with them.
 const TRENDING_EYEBROWS = [
   "Weekend preview", "Matchday review", "Player of the week",
   "Top scorers", "Team of the week", "Cup special", "Transfer news",
 ];
+
+/** The chip row: the presets, then everything already in use, deduped.
+ *
+ *  Case-insensitively, keeping the first spelling seen — so the presets win
+ *  the casing and "weekend preview" typed in a hurry does not become a second
+ *  chip beside "Weekend preview". Used labels sort alphabetically after the
+ *  presets rather than by recency: a row that reorders itself between renders
+ *  makes the tap you were about to make land on something else.
+ */
+function trendingLabels(cards) {
+  const out = [];
+  const seen = new Set();
+  const add = (label) => {
+    const key = (label || "").trim().toLowerCase();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(label.trim());
+  };
+  TRENDING_EYEBROWS.forEach(add);
+  const used = cards.map((c) => c.eyebrow || "").filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  used.forEach(add);
+  return out;
+}
+
+const sameLabel = (a, b) =>
+  (a || "").trim().toLowerCase() === (b || "").trim().toLowerCase();
 
 const TRENDING_TABS = [
   ["live", "On the site"],
@@ -3544,18 +3577,23 @@ function trendingPreview(card) {
 
 /** The editor. One function for a new card and an existing one — it is the
  *  same form either way, which is also why save_trending_card is one RPC. */
-function trendingFields(card) {
+function trendingFields(card, labels) {
   const c = card || {};
   return `
     <label class="rp-label" for="tr-eyebrow-${esc(c.card_id || "new")}">Label</label>
     <input class="rp-input" id="tr-eyebrow-${esc(c.card_id || "new")}" name="eyebrow"
            maxlength="40" autocapitalize="sentences" autocomplete="off"
            value="${esc(c.eyebrow || "")}" placeholder="Weekend preview">
-    <div class="rp-chip-row">
-      ${TRENDING_EYEBROWS.map((e) =>
-        `<button class="rp-chip${c.eyebrow === e ? " is-on" : ""}" type="button"
+    <div class="rp-chip-row" data-eyebrow-chips>
+      ${labels.map((e) =>
+        `<button class="rp-chip${sameLabel(c.eyebrow, e) ? " is-on" : ""}" type="button"
                  data-eyebrow="${esc(e)}">${esc(e)}</button>`).join("")}
+      <button class="rp-chip is-add" type="button" data-eyebrow-new
+              aria-label="Write a new label" title="Write a new label">＋</button>
     </div>
+    <p class="rp-hint">Tap one, or <strong>＋</strong> to write your own — the
+      box above takes anything. A label you use once is a chip here from then
+      on, so the site keeps calling the same thing the same name.</p>
 
     <label class="rp-label" for="tr-headline-${esc(c.card_id || "new")}">Headline</label>
     <input class="rp-input" id="tr-headline-${esc(c.card_id || "new")}" name="headline"
@@ -3611,7 +3649,7 @@ function trendingFields(card) {
       blank when the headline beside it already says the same thing.</p>`;
 }
 
-function trendingCard(card, index, total) {
+function trendingCard(card, index, total, labels) {
   const live = card.status === "live";
   return `
     <details class="rp-sec" data-trend-card="${esc(card.card_id)}">
@@ -3633,7 +3671,7 @@ function trendingCard(card, index, total) {
           the carousel starts there and most readers never swipe.</p>` : ""}
 
         <form class="rp-form" data-trend-form autocomplete="off">
-          ${trendingFields(card)}
+          ${trendingFields(card, labels)}
           <button class="rp-btn" type="submit">Save changes</button>
         </form>
 
@@ -3700,6 +3738,10 @@ async function renderTrending(params) {
     counts[key] = cards.filter((c) => c.status === key).length;
   });
 
+  // Built from EVERY card, not just the tab on screen: a label used on an
+  // archived card a year ago is exactly the one worth offering again.
+  const labels = trendingLabels(cards);
+
   const tabs = TRENDING_TABS.map(([key, label]) =>
     `<a class="ops-tab${key === tab ? " is-on" : ""}" href="#/trending?tab=${key}"
        >${esc(label)} <em>${counts[key]}</em></a>`).join("");
@@ -3731,7 +3773,7 @@ async function renderTrending(params) {
       <summary>＋ Write a card</summary>
       <div class="rp-sec-body">
         <form class="rp-form" data-trend-form autocomplete="off">
-          ${trendingFields(null)}
+          ${trendingFields(null, labels)}
           <button class="rp-btn" type="submit">Save as draft</button>
           <p class="rp-hint">It is saved as a draft — nothing reaches the
             homepage until you publish it.</p>
@@ -3740,7 +3782,7 @@ async function renderTrending(params) {
     </details>
 
     <div data-trend-list>
-      ${shown.map((c, i) => trendingCard(c, i, shown.length)).join("")
+      ${shown.map((c, i) => trendingCard(c, i, shown.length, labels)).join("")
         || `<p class="rp-empty">${blank}</p>`}
     </div>
   `);
@@ -3818,15 +3860,36 @@ function wireTrending(tab) {
       paint();
     });
 
-    // The label chips fill the box rather than replacing what is in it
-    // silently — the box stays the truth, the chips are a shortcut to it.
-    form.querySelectorAll("[data-eyebrow]").forEach((chip) => {
+    // THE BOX IS THE TRUTH; THE CHIPS ARE A SHORTCUT TO IT. Every chip writes
+    // into the field, and the lit chip is worked out FROM the field — so
+    // typing a label by hand lights its chip, and a label that matches no chip
+    // simply lights none. Nothing here can put a value on a card that is not
+    // the one on screen in the box.
+    const chipRow = form.querySelector("[data-eyebrow-chips]");
+    const paintChips = () => {
+      const value = form.eyebrow.value.trim();
+      chipRow.querySelectorAll("[data-eyebrow]").forEach((chip) =>
+        chip.classList.toggle("is-on",
+          Boolean(value) && sameLabel(chip.dataset.eyebrow, value)));
+    };
+    chipRow.querySelectorAll("[data-eyebrow]").forEach((chip) => {
       chip.onclick = () => {
-        form.eyebrow.value = chip.dataset.eyebrow;
-        form.querySelectorAll("[data-eyebrow]").forEach((other) =>
-          other.classList.toggle("is-on", other === chip));
+        // Tapping the lit chip takes the label off — one tap to add, one to
+        // remove, the same gesture in both directions.
+        const on = chip.classList.contains("is-on");
+        form.eyebrow.value = on ? "" : chip.dataset.eyebrow;
+        paintChips();
       };
     });
+    // ＋ empties the box and puts the cursor in it. It is not a second way to
+    // store a label — a new one becomes a chip by being SAVED on a card, which
+    // is why there is nothing here to confirm.
+    chipRow.querySelector("[data-eyebrow-new]").onclick = () => {
+      form.eyebrow.value = "";
+      paintChips();
+      form.eyebrow.focus();
+    };
+    form.eyebrow.addEventListener("input", paintChips);
 
     // Check the link before publishing a card that points at it. A new tab,
     // never this one: the form is full of unsaved words.

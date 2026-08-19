@@ -80,6 +80,20 @@ class ColumnCoverageTest(unittest.TestCase):
             set(source_supabase.COLUMNS),
             set(dataset.TABS) | set(dataset.NT_TABS))
 
+    def test_every_tab_has_an_importer_spec(self):
+        """The other half of the round trip, and a trap worth naming.
+
+        A new tab without a Spec does not fail anything on the day it is
+        added: _round_trip returns an empty tab whenever the snapshot has no
+        file for it, so both tests above quietly pass. They start failing
+        weeks later, on the first CI build that writes the file — by which
+        time the change that caused it is far behind. Assert the invariant
+        itself instead of waiting for the symptom.
+        """
+        self.assertEqual(
+            set(import_canonical.SPEC_BY_TABLE),
+            set(dataset.TABS) | set(dataset.NT_TABS))
+
 
 class RoundTripTest(unittest.TestCase):
     """The parsed result must be identical, tab by tab, row for row."""

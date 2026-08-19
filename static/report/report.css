@@ -944,3 +944,16 @@ a { color: var(--accent); }
   font-variant-numeric: tabular-nums;
   opacity: 0.75;
 }
+
+/* ＋ on the label row: a shortcut to an empty box, not a second way of
+   storing a label. Dashed, because it is the one chip that is not a label —
+   it adds nothing by itself, and a solid one would read as "Add" the way the
+   others read as "Weekend preview". */
+.rp-chip.is-add {
+  justify-content: center;
+  min-width: 44px;
+  border-style: dashed;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+}
