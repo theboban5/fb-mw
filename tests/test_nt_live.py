@@ -275,6 +275,34 @@ class NTReportingTest(unittest.TestCase):
         self.assertTrue(by_name["ZZ P4"]["red_card"])
         self.assertEqual(by_name["ZZ Sub"]["replaced_player"], "ZZ P3")
 
+    def test_one_man_of_the_match_saves(self):
+        mid = self.new_match()
+        rows = self.xi()
+        rows[0]["motm"] = True
+        status, saved = self.lineup(mid, rows)
+        self.assertEqual(status, 200, saved)
+        starred = [r["player_name"] for r in saved if r["motm"]]
+        self.assertEqual(starred, ["ZZ P1"])
+
+    def test_two_men_of_the_match_are_refused(self):
+        """The rule that differs from every other flag on this sheet: the
+        armband is one per side, this is one per match."""
+        mid = self.new_match()
+        rows = self.xi()
+        rows[0]["motm"] = True
+        rows[1]["motm"] = True
+        status, body = self.lineup(mid, rows)
+        self.assertNotEqual(status, 200)
+        self.assertIn("only one player", str(body))
+
+    def test_an_unused_substitute_cannot_be_man_of_the_match(self):
+        mid = self.new_match()
+        rows = self.xi() + [{"player_name": "ZZ Bench", "role": "unused_sub",
+                             "motm": True}]
+        status, body = self.lineup(mid, rows)
+        self.assertNotEqual(status, 200)
+        self.assertIn("did not play", str(body))
+
     def test_a_replaced_starter_is_marked_off_at_the_substitution(self):
         """nt_page draws "↓ 63'" beside a starter from minute_off, and nothing
         set it — so the first sheet entered through /report rendered a starting

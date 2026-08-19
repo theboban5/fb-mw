@@ -4411,7 +4411,7 @@ function blankSheetRow(player = {}) {
   return {
     player_name: player.name || "", player_id: player.player_id || "",
     shirt_number: player.shirt_number || "", position: player.position || "",
-    role: "starting", captain: false,
+    role: "starting", captain: false, motm: false,
     minute_on: "", minute_off: "", replaced_player: "",
     yellow_card: false, yellow_red_card: false, red_card: false,
   };
@@ -4624,6 +4624,19 @@ function sheetRowHtml(sheet, row, i, key) {
         <button type="button" class="rp-chip${row.captain ? " is-on" : ""}"
                 data-sheet-captain="${i}" data-sheet-key="${esc(key)}"
                 aria-pressed="${row.captain}">Captain</button>
+        ${row.role === "unused_sub" ? "" : `
+          <button type="button" class="rp-chip rp-motm-chip${row.motm ? " is-on" : ""}"
+                  data-sheet-motm="${i}" data-sheet-key="${esc(key)}"
+                  aria-pressed="${Boolean(row.motm)}"
+                  aria-label="Man of the match"
+                  title="Man of the match — one player in the whole match">
+            <span aria-hidden="true">&#9733;</span>
+            ${/* SHORT UNTIL IT MEANS SOMETHING. Spelled out on every row, three
+                  chips no longer fit a 390px line and the flags wrapped onto a
+                  second one — on all twenty rows, to label a thing that is true
+                  of one of them. Abbreviated it fits; set, it spells itself
+                  out on the one row that is it. */ ""}
+            ${row.motm ? "Man of the match" : "MOTM"}</button>`}
         <button type="button" class="rp-chip rp-card-chip is-card-${state || "none"}"
                 data-sheet-card="${i}" data-sheet-key="${esc(key)}"
                 title="Tap to change: none, yellow, second yellow, red">
@@ -4762,7 +4775,12 @@ function sheetHtml({ key, teamName, sheet, squad }) {
 function wireSheets(host, sheets, redraw) {
   sheets.forEach((ctx) => {
     const root = host.querySelector(`[data-sheet-block="${CSS.escape(ctx.key)}"]`);
-    if (root) wireSheet(root, ctx, redraw);
+    // The other side's sheet, so man of the match can be taken off it here
+    // rather than only on the server. The award is one per MATCH and the two
+    // sheets are two screens; without this a reporter starring an away player
+    // would see the home star still lit until the page was reloaded.
+    if (root) wireSheet(root, { ...ctx, siblings: sheets.filter((o) => o !== ctx) },
+                        redraw);
   });
 }
 
@@ -4976,6 +4994,22 @@ function wireSheet(root, ctx, redraw) {
       return;
     }
 
+    const star = e.target.closest("[data-sheet-motm]");
+    if (star) {
+      const row = sheet.rows[Number(star.dataset.sheetMotm)];
+      if (!row) return;
+      // One star in the whole MATCH, where the armband above it is one per
+      // side — so this clears both sheets before lighting one name. The
+      // server does the same thing on save (0028); doing it here as well is
+      // what makes the screen agree with what will be stored.
+      const on = !row.motm;
+      sheet.rows.forEach((r) => { r.motm = false; });
+      (ctx.siblings || []).forEach((o) => o.sheet.rows.forEach((r) => { r.motm = false; }));
+      row.motm = on;
+      redraw();
+      return;
+    }
+
     const card = e.target.closest("[data-sheet-card]");
     if (card) {
       const row = sheet.rows[Number(card.dataset.sheetCard)];
@@ -5028,6 +5062,7 @@ function wireSheet(root, ctx, redraw) {
         player_name: r.player_name, player_id: r.player_id || "",
         shirt_number: r.shirt_number || "", position: r.position || "",
         role: r.role || "starting", captain: Boolean(r.captain),
+        motm: Boolean(r.motm),
         minute_on: r.minute_on || "", minute_off: r.minute_off || "",
         replaced_player: r.replaced_player || "",
         yellow_card: Boolean(r.yellow_card),
@@ -5050,6 +5085,11 @@ function wireSheet(root, ctx, redraw) {
     const row = sheet.rows[Number(e.target.dataset.sheetI)];
     if (!row) return;
     row[field] = e.target.value;
+    // An unused substitute did not play, so cannot be man of the match — the
+    // RPC refuses it. Cleared here rather than reported: a reporter moving
+    // someone to the bench has already said what they mean, and a save that
+    // fails on a flag they cannot see is the worst way to learn it.
+    if (field === "role" && row.role === "unused_sub") row.motm = false;
     // The role decides which controls a row shows, and the shirt shows in the
     // row's own heading, so both redraw.
     if (field === "role" || field === "shirt_number") redraw();

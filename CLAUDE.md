@@ -167,6 +167,25 @@ fixture and clean up, and they never mutate a real match.
 
 ## Recent work (Aug 2026)
 
+Man of the match, migration `0028`:
+
+- One boolean on the team sheet (`lineups.motm` / `nt_lineups.motm`), because
+  the award belongs to a player IN A MATCH and a lineups row already is that
+  sentence. On `matches` it would have been a second place a player is named
+  per match, free to disagree with the sheet beside it.
+- **One per MATCH, across both sides** — the armband beside it is one per side.
+  A partial unique index says so, `save_lineup` clears the other side before it
+  writes (so marking the away keeper takes the star off the home striker rather
+  than failing), and check 10 re-checks it at build time.
+- Renders as an amber ★ beside the name wherever a sheet renders, and in the
+  role column of the player's own match table. No summary tile yet: a total
+  means something only once enough matches carry one.
+- In `/report` it is a chip beside Captain, reading `★ MOTM` until it is set
+  and `★ Man of the match` when it is — three spelled-out chips do not fit a
+  390px row, and the abbreviation is only ambiguous on the rows where it is off.
+- The trade: a man of the match who is not on the team sheet cannot be recorded
+  at all.
+
 The reporter pool from the portal, migration `0026` + a second Edge Function:
 
 - `#/reporters` (admin only): create an account with a generated password, tap

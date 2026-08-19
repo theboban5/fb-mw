@@ -563,6 +563,16 @@ a { color: var(--accent); }
 }
 .rp-chip:disabled { opacity: 0.5; }
 
+/* Man of the match, beside the armband because it is the same kind of tap —
+   and amber rather than green because it is not the same kind of fact: the
+   armband is one per side, this is one in the whole match, and two chips in
+   one colour on one row would invite tapping both without noticing that the
+   second took the first off the other team's sheet. The same amber the star
+   renders in on everyleague.co. */
+.rp-motm-chip.is-on {
+  border-color: #e0a107; background: #e0a107; color: #ffffff;
+}
+
 /* A wrapping row of chips. Used for a reporter's leagues, where the count is
    however many competitions exist and a fixed column count would either waste
    half the width on short names or clip the long ones. */

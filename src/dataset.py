@@ -76,8 +76,8 @@ TAB_GIDS = {
 # still builds a whole site, minus the data it never had.
 SUPABASE_ONLY_TABS = {
     "lineups": ("match_id", "team_id", "player_name", "player_id",
-                "shirt_number", "position", "role", "captain", "minute_on",
-                "minute_off", "replaced_player", "yellow_card",
+                "shirt_number", "position", "role", "captain", "motm",
+                "minute_on", "minute_off", "replaced_player", "yellow_card",
                 "yellow_red_card", "red_card"),
     # 0024. Referees and coaches as identities. Empty under the sheets
     # fallback, which is exactly right: every match then renders the names it
@@ -561,6 +561,11 @@ class LineupRow:
     yellow_card: bool
     yellow_red_card: bool
     red_card: bool
+    # 0028. One per MATCH, not one per side — the armband above it is the
+    # other way round. Defaulted rather than positional because every row
+    # written before 0028 has no such column and reads as false, which is
+    # exactly what "nobody recorded one" should look like.
+    motm: bool = False
     # What this player did in THIS match, joined on by src/adapt.py from the
     # goals tab (see lineups.with_goals). Not a column on the tab and never
     # parsed from one: a goal is a row in `goals` and this is a count of them,
@@ -1022,6 +1027,7 @@ def parse_lineups(text: str) -> "list[LineupRow]":
             _flag(r.get("yellow_card", ""), "yellow_card", "lineups", i),
             _flag(r.get("yellow_red_card", ""), "yellow_red_card", "lineups", i),
             _flag(r.get("red_card", ""), "red_card", "lineups", i),
+            motm=_flag(r.get("motm", ""), "motm", "lineups", i),
         ))
     return out
 

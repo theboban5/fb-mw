@@ -61,8 +61,9 @@ matches (home/away team_id, venue_id, competition_id, season_id)
   (blank/active | withdrawn | expelled).
 - **venues**, **matches**, **goals**, **players** — as named.
 - **lineups** — one row per named player per side per match: the starting XI,
-  the bench, who came on for whom, the cards and the armband. Deliberately the
-  same shape as `nt_lineups`, so `src/lineups.py` folds and renders both.
+  the bench, who came on for whom, the cards, the armband and the man of the
+  match. Deliberately the same shape as `nt_lineups`, so `src/lineups.py` folds
+  and renders both.
 - **officials** — referees and coaches as identities (0024). `kind` is
   `referee | coach`, and the four match-official roles share the referee kind
   because the same person referees one match and runs the line at the next.
@@ -117,6 +118,13 @@ matches (home/away team_id, venue_id, competition_id, season_id)
   not erase the link).
 - `confidence`: unconfirmed | confirmed | official
 - `goals.goal_type`: (blank) | open_play | penalty | free_kick | header | own_goal
+- `lineups.captain` / `nt_lineups.captain`: one per SIDE.
+- `lineups.motm` / `nt_lineups.motm`: man of the match, one per MATCH — across
+  both sides, unlike the armband above it (0028). A partial unique index on
+  `match_id` enforces it, `save_lineup` clears the other side before it writes
+  so marking the away keeper takes the star off the home striker rather than
+  failing, and check 10 re-checks it at build time. An `unused_sub` cannot hold
+  it: they did not play.
 - `lineups.role` / `nt_lineups.role`: starting | sub_on | unused_sub
 - `lineups.position` / `nt_lineups.position` / `nt_squads.position`:
   (blank) | GK | DF | MF | FW. **Optional on all three, and blank is a real
@@ -173,6 +181,12 @@ matches (home/away team_id, venue_id, competition_id, season_id)
 - **An unused substitute is not an appearance.** They are on the team sheet and
   they render in the match's line-up block, but a profile does not count them:
   otherwise "games played" would mean "games named in a squad".
+- **Man of the match is a flag on the team sheet, not a column on the match.**
+  It renders as a star beside the name wherever that sheet renders, and as a
+  star on the player's own match table. The trade: a man of the match who is
+  not on the team sheet cannot be recorded at all, which is accepted because
+  the alternative — a name and an id on `matches` — is a second place a player
+  is named per match, free to disagree with the sheet beside it.
 - **A `lineups` row with a blank `player_id`** is a name nobody has identified
   yet — the same state a reported scorer sits in. It renders as plain text
   rather than a link, and earns its player no page and no appearance. Setting a
@@ -432,8 +446,10 @@ Rules that differ from the league schema, and why:
 10. **Line-ups**: the same cross-row rules as check 9, on the league tab —
     at most 11 starters per match AND side, every `sub_on` row carries a
     `minute_on`, and its `replaced_player` names someone on that same side's
-    sheet. Plus the one rule `nt_lineups` cannot state: a sheet's `team_id`
-    must be one of the two teams that actually played. All ERRORs, because
+    sheet, and at most one man of the match per match (counted across BOTH
+    sides — it is the one flag on this tab that spans them). Plus the one rule
+    `nt_lineups` cannot state: a sheet's `team_id` must be one of the two teams
+    that actually played. All ERRORs, because
     `src/lineups.py` pairs a substitute to the starter they replaced BY NAME
     — a `replaced_player` naming nobody renders a dangling name, and a twelfth
     starter renders a starting XI that is not one.

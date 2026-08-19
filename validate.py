@@ -350,6 +350,13 @@ def check_lineups(ds):
     """
     errors = []
     by_side = {}
+    # Man of the match is the one flag on this tab that spans both sides, so
+    # it is counted per MATCH rather than per sheet — a unique index says the
+    # same thing in Postgres (0028), and an imported row could still arrive
+    # with two. Two stars in one match is not a rendering failure, which is
+    # why this is here rather than in the renderer: it is a claim that two
+    # different people won the same award.
+    motm = {}
     for r in ds.lineups:
         m = ds.matches.get(r.match_id)
         if m is None:
@@ -360,6 +367,14 @@ def check_lineups(ds):
                 f"did not play in this match")
             continue
         by_side.setdefault((r.match_id, r.team_id), []).append(r)
+        if r.motm:
+            motm.setdefault(r.match_id, []).append(r.player_name)
+
+    for mid, names in sorted(motm.items()):
+        if len(names) > 1:
+            errors.append(
+                f"lineups {mid}: {len(names)} players marked man of the match "
+                f"({', '.join(sorted(names))}) — the award is one per match")
 
     for (mid, tid), rows in sorted(by_side.items()):
         names = {r.player_name for r in rows}
@@ -566,6 +581,7 @@ def check_nt(ntd):
     # team_id is deliberately NOT resolved: like nt_goals, a line-up row may
     # belong to the opponent (NIGERIA_W), which has no nt_teams row to hit.
     by_match = {}
+    nt_motm = {}
     for r in ntd.nt_lineups:
         if r.match_id not in ntd.nt_matches:
             errors.append(
@@ -573,6 +589,16 @@ def check_nt(ntd):
                 f"{r.match_id!r} does not resolve")
             continue
         by_match.setdefault((r.match_id, r.team_id), []).append(r)
+        if r.motm:
+            nt_motm.setdefault(r.match_id, []).append(r.player_name)
+
+    # One star per match, the same rule check_lineups applies to the league tab.
+    for mid, names in sorted(nt_motm.items()):
+        if len(names) > 1:
+            errors.append(
+                f"nt_lineups {mid}: {len(names)} players marked man of the "
+                f"match ({', '.join(sorted(names))}) — the award is one per match")
+
     for (mid, tid), rows in sorted(by_match.items()):
         names = {r.player_name for r in rows}
         starting = [r for r in rows if r.role == "starting"]

@@ -347,6 +347,11 @@ class Appearance:
     # belongs on their page, so the row has to know which it is. Defaulted
     # true: an Appearance is an appearance unless it says otherwise.
     played: bool = True
+    # 0028. Man of the match, straight off the team sheet row. Shown on the
+    # match table and deliberately NOT counted in the summary tiles yet: a
+    # total means something only once enough matches carry one, and on the day
+    # this shipped none of them did.
+    motm: bool = False
 
     @property
     def sort_key(self):
@@ -463,7 +468,7 @@ def _club_appearances(ds):
             captain=r.captain, shirt_number=r.shirt_number, position=r.position,
             goals=goals_by.get((r.player_id, r.match_id), 0),
             assists=assists_by.get((r.player_id, r.match_id), 0),
-            played=_playable(r),
+            played=_playable(r), motm=getattr(r, "motm", False),
             yellow_card=r.yellow_card, yellow_red_card=r.yellow_red_card,
             red_card=r.red_card, scoreline=scoreline, outcome=outcome,
         ))
@@ -511,7 +516,7 @@ def _national_appearances(ntd):
             captain=r.captain, shirt_number=r.shirt_number, position=r.position,
             goals=goals_by.get((r.player_id, r.match_id), 0),
             assists=assists_by.get((r.player_id, r.match_id), 0),
-            played=_playable(r),
+            played=_playable(r), motm=getattr(r, "motm", False),
             yellow_card=r.yellow_card, yellow_red_card=r.yellow_red_card,
             red_card=r.red_card, scoreline=scoreline, outcome=outcome,
         ))
@@ -684,6 +689,10 @@ def _match_stat_row(a, show_side=False) -> str:
             role += f' <span class="pl-min">&uarr;{escape(a.minute_on)}\'</span>'
         if a.captain:
             role += lineups.captain_badge(is_captain=True)
+    # Outside the branch above on purpose: it is a fact about the match, not
+    # about how much of it they played, and the same badge in the same place
+    # as on the team sheet is what makes it recognisable in a column of rows.
+    role += lineups.motm_badge(a.motm)
 
     cards = lineups.cards_html(a)
     score = (f'<span class="pl-res pl-res-{a.outcome.lower()}">'

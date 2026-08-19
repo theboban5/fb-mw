@@ -362,6 +362,21 @@ def contribution_badges(row) -> str:
     return ball * goals + og * own + a * assists
 
 
+def motm_badge(is_motm=False) -> str:
+    """A star beside the man of the match (0028).
+
+    A star and not a letter, where the armband beside it is a letter, because
+    the two must never be read as a pair of initials: "C ★" says captain and
+    man of the match at a glance, "C M" says nothing until you hover it. The
+    glyph is a character rather than an image for the reason everything here
+    is — it costs no request on a phone paying for every one.
+    """
+    if not is_motm:
+        return ""
+    return ('<span class="el-motm" title="Man of the match" '
+            'aria-label="Man of the match">&#9733;</span>')
+
+
 def captain_badge(is_captain=False, is_vice=False) -> str:
     if is_captain:
         return '<span class="el-cap" title="Captain" aria-label="Captain">C</span>'
@@ -411,7 +426,8 @@ def player_html(row, off_minute="", player_href=_no_href,
         '<li class="el-player">'
         f"{shirt}{pos}"
         f'<span class="el-player-name">{_name_html(row, player_href)}'
-        f"{captain_badge(is_captain=row.captain)}{contribution_badges(row)}"
+        f"{captain_badge(is_captain=row.captain)}"
+        f"{motm_badge(getattr(row, 'motm', False))}{contribution_badges(row)}"
         f"{cards_html(row)}{off}</span>"
         "</li>"
     )

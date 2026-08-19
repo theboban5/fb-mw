@@ -85,9 +85,11 @@ COLUMNS = {
     # 0018. The one tab with no counterpart in the spreadsheet — it postdates
     # it — so dataset.SUPABASE_ONLY_TABS holds the same header for the sheets
     # fallback to emit empty. Keep the two in step.
+    # 0028 added motm, next to captain because it is the same kind of thing:
+    # a flag on one name on the sheet.
     "lineups": ("match_id", "team_id", "player_name", "player_id",
-                "shirt_number", "position", "role", "captain", "minute_on",
-                "minute_off", "replaced_player", "yellow_card",
+                "shirt_number", "position", "role", "captain", "motm",
+                "minute_on", "minute_off", "replaced_player", "yellow_card",
                 "yellow_red_card", "red_card"),
     # 0024. The referee/coach registry, alongside players.
     "officials": ("official_id", "full_name", "known_as", "kind", "status"),
@@ -115,8 +117,8 @@ COLUMNS = {
                         "last_update", "wikipedia_url", "team_name",
                         "goals_for", "goals_against"),
     "nt_lineups": ("match_id", "team_id", "player_name", "player_id",
-                   "shirt_number", "position", "role", "captain", "minute_on",
-                   "minute_off", "replaced_player", "yellow_card",
+                   "shirt_number", "position", "role", "captain", "motm",
+                   "minute_on", "minute_off", "replaced_player", "yellow_card",
                    "yellow_red_card", "red_card"),
     # home_from/away_from post-date the last snapshot but src/nt.py already
     # parses them (they feed a bracket slot from an earlier tie).

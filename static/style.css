@@ -1842,6 +1842,21 @@ table.nt-table {
   vertical-align: 1px;
 }
 
+/* Man of the match: one star, on one name in the whole match (0028).
+   A glyph rather than a chip, unlike the C and the A beside it — those are
+   letters and need a box to read as badges, where a star already reads as
+   one. Amber because nothing else on this line is: the point of a mark that
+   appears once per match is that the eye finds it without looking. Not the
+   emoji star, which arrives in a different colour and a different size on
+   every phone; ★ is a text character and takes the colour it is given. */
+.el-motm {
+  margin-left: 5px;
+  color: #e0a107;
+  font-size: 0.82rem;
+  line-height: 1;
+  vertical-align: 0;
+}
+
 .el-off { margin-left: 6px; font-size: 0.72rem; color: #d33a3a; font-weight: 700; }
 
 /* Substitutions */

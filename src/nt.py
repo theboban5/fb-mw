@@ -288,6 +288,9 @@ class NTLineupRow:
     yellow_card: bool
     yellow_red_card: bool
     red_card: bool
+    # 0028, same column and same meaning as dataset.LineupRow.motm — both row
+    # types carry it because src/lineups.py draws the badge for both.
+    motm: bool = False
     # Goals in THIS match, joined on from nt_goals by src/nt.py — not a column
     # on the tab. Same field, same reason, as dataset.LineupRow.goals: the
     # markup puts a ball beside the name and src/lineups.py renders both
@@ -628,6 +631,7 @@ def parse_nt_lineups(text: str) -> "list[NTLineupRow]":
             _flag(r.get("yellow_card", ""), "yellow_card", "nt_lineups", i),
             _flag(r.get("yellow_red_card", ""), "yellow_red_card", "nt_lineups", i),
             _flag(r.get("red_card", ""), "red_card", "nt_lineups", i),
+            motm=_flag(r.get("motm", ""), "motm", "nt_lineups", i),
         ))
     return out
 

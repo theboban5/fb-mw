@@ -37,6 +37,16 @@ def rows(*lines):
     return HEADER + "".join(line + "\n" for line in lines)
 
 
+# The same, with 0028's column on the end. A separate header on purpose: the
+# fixtures below it pre-date the column and must keep parsing without it, which
+# is the state every row written before 0028 is in.
+MOTM_HEADER = HEADER.rstrip("\n") + ",motm\n"
+
+
+def motm_rows(*lines):
+    return MOTM_HEADER + "".join(line + "\n" for line in lines)
+
+
 # A complete, legal side: eleven starters, one substitution, one unused sub.
 SIDE = rows(
     "M1,T_HOME,Mercy Sikelo,P1,1,GK,starting,,,,,,,",
@@ -391,6 +401,67 @@ class CareerTest(unittest.TestCase):
         self.assertEqual(hubs._outcome(1, 1), ("1-1", "D"))
         self.assertEqual(hubs._outcome(0, 3), ("0-3", "L"))
         self.assertEqual(hubs._outcome(None, None), ("", ""))
+
+
+class ManOfTheMatchTest(unittest.TestCase):
+    """One star, on one name, in the whole match (0028).
+
+    The rule worth protecting is the one that differs from every other flag on
+    this tab: the armband is one per SIDE and this is one per MATCH, so the
+    count that catches a mistake has to be taken across both sheets. Postgres
+    says it with a partial unique index; check 10 says it again because a row
+    can also arrive by import.
+    """
+
+    STARRED = motm_rows(
+        "M1,T_HOME,Mercy Sikelo,P1,1,GK,starting,,,,,,,,1",
+        "M1,T_HOME,Adam Ali,P4,4,DF,starting,1,,,,,,,")
+
+    def parsed(self, text=None):
+        return dataset.parse_lineups(text if text is not None else self.STARRED)
+
+    def test_the_column_parses(self):
+        starred, plain = self.parsed()
+        self.assertTrue(starred.motm)
+        self.assertFalse(plain.motm)
+
+    def test_a_sheet_without_the_column_is_nobody(self):
+        """Every row written before 0028 reads as "nobody recorded one"."""
+        self.assertFalse(any(r.motm for r in dataset.parse_lineups(SIDE)))
+
+    def test_the_star_renders_beside_that_name_only(self):
+        html = lineups.lineup_row_html(lineups.fold(self.parsed()))
+        self.assertEqual(html.count("el-motm"), 1)
+        self.assertLess(html.index("Mercy Sikelo"), html.index("el-motm"))
+
+    def test_it_reaches_the_players_own_match_table(self):
+        row = hubs._match_stat_row(hubs.Appearance(
+            date="2026-08-15", competition="Super League", opponent="Creck",
+            team_label="Silver Strikers", club_id="MW_SS", team_id="MW_SS_M1",
+            national=False, home=True, started=True, minute_on="", minute_off="",
+            captain=False, shirt_number="1", position="GK", goals=0, assists=0,
+            yellow_card=False, yellow_red_card=False, red_card=False,
+            scoreline="1-0", outcome="W", motm=True))
+        self.assertIn("el-motm", row)
+
+    def test_two_stars_in_one_match_is_an_error(self):
+        """Across the two SIDES — the case a per-sheet count would miss."""
+        text = motm_rows(
+            "M1,T_HOME,Mercy Sikelo,P1,1,GK,starting,,,,,,,,1",
+            "M1,T_AWAY,Zebron Kalima,P20,9,FW,starting,,,,,,,,1")
+        errors = validate.check_lineups(_DS(text))
+        self.assertTrue(any("one per match" in e for e in errors), errors)
+
+    def test_one_star_across_two_sides_passes(self):
+        text = motm_rows(
+            "M1,T_HOME,Mercy Sikelo,P1,1,GK,starting,,,,,,,,1",
+            "M1,T_AWAY,Zebron Kalima,P20,9,FW,starting,,,,,,,,")
+        self.assertEqual(validate.check_lineups(_DS(text)), [])
+
+    def test_the_national_tab_carries_it_too(self):
+        """Both row types, because src/lineups.py draws the badge for both."""
+        self.assertIn("motm", nt.NTLineupRow.__dataclass_fields__)
+        self.assertIn("motm", dataset.LineupRow.__dataclass_fields__)
 
 
 class BenchRowTest(unittest.TestCase):
