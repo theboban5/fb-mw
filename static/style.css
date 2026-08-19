@@ -1111,6 +1111,170 @@ body.landing {
   }
 }
 
+/* ─── Landing: trending carousel (0030) ──────────────── */
+/* The editorial slot, rendered from the `trending` tab in place of the
+   hand-written feature card above.
+
+   THE CAROUSEL IS THE SCROLLER, AND THE SCROLLER IS THE FEATURE. There is no
+   JavaScript in the swipe: a flex row with scroll-snap IS a phone carousel,
+   and the script on the landing page only adds the dots and the auto-advance.
+   That is also why the track carries `scrollbar-width: none` — a visible bar
+   under three cards reads as a broken layout, and the dots say the same thing
+   better.
+
+   The track bleeds to the screen edges (the -16px margin cancels the page
+   padding) so a card sits edge to edge on a phone the way a photo should,
+   while the padding inside it keeps the first card aligned with the text
+   above. The page body still never scrolls sideways — this element does. */
+.el-trend {
+  margin: 0 -16px 6px;
+}
+.el-trend-track {
+  display: flex;
+  gap: 10px;
+  padding: 0 16px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.el-trend-track::-webkit-scrollbar { display: none; }
+
+/* The slide is the scroll-snap unit and the labelled ARIA group; the card
+   inside it is the link. See src/trending.py for why they are two elements
+   and not one. */
+.el-trend-slide {
+  flex: 0 0 100%;
+  scroll-snap-align: center;
+  display: flex;
+  min-width: 0;
+}
+.el-trend-card {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--feature-line);
+  border-radius: 14px;
+  background: var(--feature-bg);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s;
+}
+/* The photo is a fixed 16:9 box so the headline underneath never jumps as the
+   bytes land, and object-fit crops rather than letterboxes — a card with grey
+   bars down its sides looks like a mistake. */
+.el-trend-media {
+  display: block;
+  aspect-ratio: 16 / 9;
+  background: var(--row-alt);
+}
+.el-trend-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.el-trend-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 15px 16px 17px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+/* See src/trending.py: a card with no photo is as tall as the one beside it,
+   so its words are centred instead of sitting at the top of a green field. */
+.el-trend-card.is-plain .el-trend-body { justify-content: center; }
+.el-trend-eyebrow {
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--accent);
+}
+.el-trend-title {
+  font-size: clamp(1.15rem, 4.4vw, 1.45rem);
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: var(--ink);
+}
+.el-trend-copy {
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+.el-trend-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 4px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+.el-trend-arrow { transition: transform 0.15s; }
+.el-trend-card:hover { border-color: var(--accent); }
+.el-trend-card:hover .el-trend-arrow { transform: translateX(3px); }
+.el-trend-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-color: var(--accent);
+}
+
+/* Hidden in the markup until the script unhides them: without JavaScript they
+   would be buttons that do nothing, and the track swipes either way. */
+.el-trend-dots {
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  margin: 10px 0 0;
+}
+.el-trend-dots[hidden] { display: none; }
+.el-trend-dot {
+  /* 22px of tappable area around a 7px dot — the dot is the paint, the
+     padding is the target. */
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  position: relative;
+}
+.el-trend-dot::after {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background: var(--line);
+  transition: background 0.15s;
+}
+.el-trend-dot.is-on::after { background: var(--accent); }
+.el-trend-dot:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 50%;
+}
+
+/* Past the phone the card becomes photo-left / words-right, at the same 560px
+   breakpoint the featured card and the rest of the site use. The image gets a
+   fixed column so a portrait photo and a landscape one make the same card. */
+@media (min-width: 560px) {
+  .el-trend-card { flex-direction: row; align-items: stretch; }
+  .el-trend-media {
+    flex: 0 0 44%;
+    aspect-ratio: auto;
+  }
+  .el-trend-body { flex: 1 1 auto; justify-content: center; padding: 18px 18px 20px; }
+}
+
 /* ─── Landing: category tabs ─────────────────────────── */
 /* Slim tabs stick to the top of the viewport; opaque background keeps the
    list legible as it scrolls underneath. */

@@ -67,6 +67,18 @@ _PLAYER_GOAL_CAP = 25    # a prolific scorer surfaces first, but never above a c
 _OFFICIAL_BASE = 14
 
 
+# Tabs this index is provably not built from, and so must not be hashed into
+# its version. Only `trending` (0030) so far: it is homepage copy, it holds no
+# searchable entity, and every page on the site embeds the versioned index URL
+# — so hashing it would make rewording one card re-download search-index.json
+# for every reader on a connection they pay for by the megabyte.
+#
+# The maintenance rule is one line: if anything in a tab listed here ever
+# becomes searchable, take it out of this set in the same commit, or the index
+# will go stale behind a version that never changes.
+NOT_INDEXED = frozenset({"trending"})
+
+
 def index_version(texts, nt_texts=None) -> str:
     """Cache-busting token for search-index.json, from the data it is built of.
 
@@ -77,6 +89,8 @@ def index_version(texts, nt_texts=None) -> str:
     """
     h = hashlib.md5(SCHEMA_VERSION.encode("utf-8"))
     for tab in sorted(texts):
+        if tab in NOT_INDEXED:
+            continue
         h.update(texts[tab].encode("utf-8"))
     for tab in sorted(nt_texts or {}):
         h.update((nt_texts or {})[tab].encode("utf-8"))

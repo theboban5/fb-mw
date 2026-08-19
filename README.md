@@ -24,6 +24,7 @@ src/render.py        ← data → HTML
 src/lineups.py       ← team sheets: folding + markup, shared league/national
 src/hubs.py          ← club hub + player pages (cross-competition views)
 src/matches_page.py  ← /matches/ — every match on one date, any date
+src/trending.py      ← the homepage carousel (the `trending` tab)
 src/nt.py            ← national-team tabs (nt_*), filtered to one team
 src/nt_page.py       ← the national-team pages (/scorchers/)
 src/flags.py         ← country name → static/flags/<code>.png
@@ -992,6 +993,56 @@ migration and no function reports a skip rather than a failure:
 ```bash
 RLS_LIVE=1 python3 -m unittest tests.test_reporter_admin_live
 ```
+
+### The homepage carousel (`#/trending`)
+
+Administrators only, and the only screen in this portal that writes something
+other than football.
+
+**What was wrong.** The card at the top of everyleague.co — the one that
+carried WAFCON, and linked at `/scorchers/` — was three sentences in an
+f-string in `build.py`. Changing a word meant editing Python, pushing to main
+and waiting for GitHub Actions, so it was changed roughly never. Its own
+docstring records the result: it went on inviting readers to follow a final
+that had already been played and lost, because nothing on the card read a
+result and nobody had rewritten it yet.
+
+**What it is now.** A card is a row: an eyebrow ("Weekend preview"), a
+headline, a paragraph, a photo, and a link — nearly always a link to somewhere
+else on this site, which is the whole point of the slot. Two to five of them
+render as a swipeable carousel where the single card used to be. Everything
+but the headline is optional and drops out when it is missing; a card with no
+photo is text-only, a card with no link is not a link.
+
+Three places a card can be, and the middle one is the point:
+
+| | |
+|---|---|
+| **Drafts** | Written, not on the site. Thursday's weekend preview. |
+| **On the site** | Live, in the carousel, in the order set on this screen. |
+| **Archive** | Taken down and **kept**. Last month's preview is the skeleton of this month's — that is what **Duplicate** is for. |
+
+Writing and publishing are two taps, deliberately: `save_trending_card` cannot
+change a card's status, so a hand slipping on the way to Save can never put a
+half-written preview on the homepage.
+
+Notes worth having in mind:
+
+- **Editing a live card nudges a rebuild; editing a draft does not.** The site
+  is static, so a published card is in the database and nowhere a reader can
+  see it until CI runs — a minute or two.
+- **The link is checked twice**, in Postgres and again by `validate.py`, and
+  only two forms are legal: a path on this site (`/scorchers/`,
+  `/players/CAF_MW_000123.html`) or an `https://` URL. Use **Open** before
+  publishing — a card pointing at a 404 is worse than no card.
+- **The photo is shrunk on the phone before it is sent**, and again at build
+  time on the way into `docs/trending/`, so the homepage serves it from
+  everyleague.co rather than from Supabase.
+- **Photos are never deleted**, because duplicating a card copies its path and
+  two cards can share one object. Removing a photo from a card unhooks it; the
+  bytes stay in the bucket.
+- **No live cards is a normal state**, and the built-in Scorchers card comes
+  back — the homepage cannot end up with an empty box where the feature was.
 
 ### Operations: coverage and data backlog
 

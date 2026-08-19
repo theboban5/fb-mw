@@ -85,6 +85,7 @@ src/render.py          data → HTML (league, cup, club pages)
 src/lineups.py         team sheets: folding + markup, shared league/national
 src/hubs.py            club hubs + player profiles (cross-competition)
 src/officials.py       referee + coach pages (the officials registry, 0024)
+src/trending.py        the homepage carousel (the `trending` tab, 0030)
 src/matches_page.py    /matches/ — every match on one date, any date
 src/nt.py, nt_page.py  national teams (the nt_* tabs, /scorchers/)
 src/search.py          the site search index
@@ -166,6 +167,34 @@ fixture and clean up, and they never mutate a real match.
 ---
 
 ## Recent work (Aug 2026)
+
+The homepage carousel, migration `0030` — a lite CMS for the front page:
+
+- The featured card was three sentences inside an f-string in `build.py`, and
+  its own docstring recorded the cost: it invited readers to follow a final
+  that had already been played and lost, because changing it meant editing
+  Python and waiting for CI. `trending` is that slot as data.
+- **A card is the smallest thing that can carry a story**: photo, eyebrow,
+  headline, paragraph, link — nearly always a link to somewhere else on this
+  site, because the homepage is a way IN. Everything but the headline is
+  optional and every omission renders as nothing.
+- **`carousel([])` returns `""` and the old Scorchers card comes back.** That
+  is what makes this invisible on a site with no published card, and it is why
+  the two never stack — two features above the fold is how neither gets read.
+- **The carousel needs no JavaScript.** A scroll-snap flex row IS a phone
+  carousel; the inlined script only adds the dots (shipped `hidden`, so they
+  are never buttons that do nothing) and an auto-advance that stops for good
+  the first time a reader touches the track.
+- Photos live in a `trending-media` bucket; `build.py` pulls each live card's
+  photo local and shrinks it, so the homepage depends on no second origin. A
+  failed download falls back to the bucket URL; an offline build renders text.
+  **Nothing ever deletes an object** — a duplicate shares its path.
+- `/report` → `#/trending` (admin only): three tabs, an editor that opens with
+  a preview of the card as the reader will see it, ▲▼ ordering, Duplicate, and
+  a two-tap Delete. Only a change touching a LIVE card nudges a rebuild.
+- The trade: three states means publishing is a second tap after writing. That
+  is on purpose — `save_trending_card` cannot change status, so a hand
+  slipping on the way to Save cannot put a half-written preview on the site.
 
 Man of the match, migration `0028`:
 

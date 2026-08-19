@@ -93,6 +93,13 @@ COLUMNS = {
                 "yellow_red_card", "red_card"),
     # 0024. The referee/coach registry, alongside players.
     "officials": ("official_id", "full_name", "known_as", "kind", "status"),
+    # 0030. The homepage cards. `created_by` and the timestamps stay out for
+    # the same reason matches.notes does: this snapshot is committed to a
+    # public repository and neither is football data. `published_at` IS here —
+    # it is the archive's own date and answers "what was up that weekend".
+    "trending": ("card_id", "status", "eyebrow", "headline", "body",
+                 "link_url", "link_label", "image_path", "image_alt",
+                 "sort_order", "published_at"),
     "reporters": ("reporter_id", "name", "email", "affiliation",
                   "affiliation_id", "region", "active", "public_byline"),
     "aliases": ("alias_text", "entity_type", "entity_id", "context"),

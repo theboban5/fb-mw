@@ -741,6 +741,7 @@ async function renderHome(params) {
       ${canAdd ? '<a class="rp-btn is-ghost" href="#/add">＋ Add fixtures</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/league/new">＋ New league</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/ops">Operations</a>' : ""}
+      ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/trending">Homepage</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/reporters">Reporters</a>' : ""}
       ${hasNT ? '<a class="rp-btn is-ghost" href="#/nt">National teams</a>' : ""}
       <button class="rp-btn is-quiet" type="button" data-refresh>Refresh</button>
@@ -3426,6 +3427,547 @@ async function signOut() {
   invalidateReference();
   location.hash = "#/login";
 }
+
+// ── Trending ─────────────────────────────────────────────────────────────────
+// THE FRONT OF EVERYLEAGUE.CO, EDITABLE WITHOUT A DEPLOY.
+//
+// The homepage used to lead with one card written into build.py as an
+// f-string. Changing a sentence on it meant editing Python and pushing to
+// main, so it was changed roughly never and the first thing a reader saw was
+// usually last month's story — at one point it was still inviting people to
+// follow a final that had been played and lost.
+//
+// This is the lite CMS behind that slot (0030): write a card, put a photo on
+// it, point it at a page on the site, publish. Three states, and the middle
+// one is the point:
+//
+//   Drafts    written, not on the site. Thursday's weekend preview.
+//   On site   live, in the carousel, in the order set here.
+//   Archive   taken down and KEPT. Last month's preview is the skeleton of
+//             this month's, which is what Duplicate is for.
+//
+// Admin only, in the router and in Postgres both — every write below is an
+// is_admin()-gated RPC, so a reporter who reaches this URL gets a refusal from
+// the database and not just a hidden button.
+//
+// EVERY CHANGE THAT TOUCHES A LIVE CARD NUDGES A REBUILD, and only those do.
+// The site is static: publishing a card puts it in the database and nowhere a
+// reader can see it until GitHub Actions runs. Saving a draft changes no
+// published page and asking CI to rebuild the world for it would be a build
+// that does nothing.
+
+const TRENDING_BUCKET = "trending-media";
+const TRENDING_HEADLINE_MAX = 90;
+const TRENDING_BODY_MAX = 400;
+// Matches src/trending.py. Above this the homepage is carrying more photos
+// than a phone on an expensive connection should be asked to fetch — a warning
+// on the screen, never a refusal, because which card comes down is an
+// editorial decision and not this app's.
+const TRENDING_COMFORTABLE_LIVE = 5;
+
+// Tappable suggestions rather than a fixed enum. The column is free text on
+// purpose — the useful set is not knowable in advance — but a card that says
+// "Weekend preview" this week and "Weekend Preview!!" next week is exactly the
+// inconsistency this screen exists to fix, so the common ones are one tap.
+const TRENDING_EYEBROWS = [
+  "Weekend preview", "Matchday review", "Player of the week",
+  "Top scorers", "Team of the week", "Cup special", "Transfer news",
+];
+
+const TRENDING_TABS = [
+  ["live", "On the site"],
+  ["draft", "Drafts"],
+  ["archived", "Archive"],
+];
+
+const TRENDING_STATUS_WORD = {
+  live: "On the site", draft: "Draft", archived: "Archived",
+};
+
+/** Every card, drafts and archive included. Public read (the cards are
+ *  published on the homepage), so this needs no special key — the WRITES are
+ *  what is gated. */
+async function loadTrending() {
+  const { data, error } = await supabase.from("trending")
+    .select("card_id,status,eyebrow,headline,body,link_url,link_label," +
+            "image_path,image_alt,sort_order,published_at,updated_at")
+    .order("sort_order", { ascending: true })
+    .order("card_id", { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+/** The bucket is public — the static site has to be able to <img src> the
+ *  result and a signed URL would expire long before the next rebuild. */
+function trendingImageUrl(path) {
+  if (!path) return "";
+  return supabase.storage.from(TRENDING_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+/** Shrink and send one photo; returns its object name.
+ *
+ *  The path is dated rather than keyed on the card, because an image is
+ *  uploaded BEFORE a new card has an id — and because duplicating a card
+ *  copies the path, so an object never belonged to exactly one card anyway.
+ *  Nothing here ever deletes an object: see 0030's header.
+ */
+async function uploadTrendingImage(file) {
+  const blob = await shrinkImage(file);
+  const now = new Date();
+  const folder = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const path = `${folder}/${crypto.randomUUID()}.jpg`;
+  const { error } = await supabase.storage.from(TRENDING_BUCKET)
+    .upload(path, blob, { contentType: "image/jpeg", upsert: false });
+  if (error) throw error;
+  return path;
+}
+
+/** What the card will look like on the homepage. Not decoration: the whole
+ *  ask was a front page that grips, and a headline that is three words too
+ *  long is obvious here and invisible in a form field. */
+function trendingPreview(card) {
+  const url = trendingImageUrl(card.image_path);
+  return `
+    <div class="rp-trend-preview" data-trend-preview>
+      ${url ? `<img src="${esc(url)}" alt="${esc(card.image_alt || "")}">`
+            : '<div class="rp-trend-noimg">No photo</div>'}
+      <div class="rp-trend-text">
+        ${card.eyebrow ? `<span class="rp-trend-eyebrow">${esc(card.eyebrow)}</span>` : ""}
+        <span class="rp-trend-title">${esc(card.headline || "Untitled")}</span>
+        ${card.body ? `<span class="rp-trend-copy">${esc(card.body)}</span>` : ""}
+        ${card.link_url
+          ? `<span class="rp-trend-cta">${esc(card.link_label || "Read more")} &rarr;</span>`
+          : ""}
+      </div>
+    </div>`;
+}
+
+/** The editor. One function for a new card and an existing one — it is the
+ *  same form either way, which is also why save_trending_card is one RPC. */
+function trendingFields(card) {
+  const c = card || {};
+  return `
+    <label class="rp-label" for="tr-eyebrow-${esc(c.card_id || "new")}">Label</label>
+    <input class="rp-input" id="tr-eyebrow-${esc(c.card_id || "new")}" name="eyebrow"
+           maxlength="40" autocapitalize="sentences" autocomplete="off"
+           value="${esc(c.eyebrow || "")}" placeholder="Weekend preview">
+    <div class="rp-chip-row">
+      ${TRENDING_EYEBROWS.map((e) =>
+        `<button class="rp-chip${c.eyebrow === e ? " is-on" : ""}" type="button"
+                 data-eyebrow="${esc(e)}">${esc(e)}</button>`).join("")}
+    </div>
+
+    <label class="rp-label" for="tr-headline-${esc(c.card_id || "new")}">Headline</label>
+    <input class="rp-input" id="tr-headline-${esc(c.card_id || "new")}" name="headline"
+           maxlength="${TRENDING_HEADLINE_MAX}" required autocapitalize="sentences"
+           autocomplete="off" value="${esc(c.headline || "")}"
+           placeholder="The journey to the final">
+    <p class="rp-hint" data-count="headline"></p>
+
+    <label class="rp-label" for="tr-body-${esc(c.card_id || "new")}">Words</label>
+    <textarea class="rp-input rp-textarea" id="tr-body-${esc(c.card_id || "new")}"
+              name="body" rows="4" maxlength="${TRENDING_BODY_MAX}"
+              autocapitalize="sentences"
+              placeholder="Two or three sentences. Say what happened, not that something happened."
+              >${esc(c.body || "")}</textarea>
+    <p class="rp-hint" data-count="body"></p>
+
+    <label class="rp-label" for="tr-link-${esc(c.card_id || "new")}">Link</label>
+    <div class="rp-btn-row">
+      <input class="rp-input" id="tr-link-${esc(c.card_id || "new")}" name="link_url"
+             autocapitalize="off" autocorrect="off" spellcheck="false"
+             autocomplete="off" value="${esc(c.link_url || "")}"
+             placeholder="/scorchers/">
+      <button class="rp-btn is-quiet" type="button" data-open-link>Open</button>
+    </div>
+    <p class="rp-hint">Where the card goes when it is tapped — almost always a
+      page on this site, written from the slash: <code>/scorchers/</code>,
+      <code>/matches/</code>, <code>/players/CAF_MW_000123.html</code>.
+      An outside link must start with <code>https://</code>. Open it first;
+      a card pointing at a 404 is worse than no card. Leave it blank for a
+      card that is only an announcement.</p>
+
+    <label class="rp-label" for="tr-linklabel-${esc(c.card_id || "new")}">Button</label>
+    <input class="rp-input" id="tr-linklabel-${esc(c.card_id || "new")}" name="link_label"
+           maxlength="40" autocapitalize="sentences" autocomplete="off"
+           value="${esc(c.link_label || "")}" placeholder="Read more">
+
+    <h2 class="rp-field-head">Photo</h2>
+    <input class="rp-input" type="file" name="photo"
+           accept="image/jpeg,image/png,image/webp">
+    <p class="rp-hint" data-upload-note>Landscape works best — the card crops to
+      a wide box. Large photos are shrunk on the phone before sending, so this
+      works on a slow connection. Choosing one replaces what is there when you
+      save.</p>
+    <input type="hidden" name="image_path" value="${esc(c.image_path || "")}">
+    ${c.image_path ? `
+      <button class="rp-btn is-quiet" type="button" data-drop-photo>Remove photo</button>` : ""}
+
+    <label class="rp-label" for="tr-alt-${esc(c.card_id || "new")}">Photo description</label>
+    <input class="rp-input" id="tr-alt-${esc(c.card_id || "new")}" name="image_alt"
+           maxlength="140" autocapitalize="sentences" autocomplete="off"
+           value="${esc(c.image_alt || "")}" placeholder="Optional">
+    <p class="rp-hint">Read aloud to somebody who cannot see the photo. Leave it
+      blank when the headline beside it already says the same thing.</p>`;
+}
+
+function trendingCard(card, index, total) {
+  const live = card.status === "live";
+  return `
+    <details class="rp-sec" data-trend-card="${esc(card.card_id)}">
+      <summary>${esc(card.headline)}
+        <span class="rp-sec-count">${esc(TRENDING_STATUS_WORD[card.status])}${
+          live ? ` · ${index + 1} of ${total}` : ""}</span></summary>
+      <div class="rp-sec-body">
+        ${trendingPreview(card)}
+
+        ${live ? `
+        <h2 class="rp-field-head">Order</h2>
+        <div class="rp-btn-row">
+          <button class="rp-btn is-quiet" type="button" data-move="up"
+                  ${index === 0 ? "disabled" : ""}>&uarr; Earlier</button>
+          <button class="rp-btn is-quiet" type="button" data-move="down"
+                  ${index === total - 1 ? "disabled" : ""}>&darr; Later</button>
+        </div>
+        <p class="rp-hint">The first card is the one most people will see —
+          the carousel starts there and most readers never swipe.</p>` : ""}
+
+        <form class="rp-form" data-trend-form autocomplete="off">
+          ${trendingFields(card)}
+          <button class="rp-btn" type="submit">Save changes</button>
+        </form>
+
+        <h2 class="rp-field-head">Where it is</h2>
+        <div class="rp-chip-row">
+          ${TRENDING_TABS.map(([key, label]) =>
+            `<button class="rp-chip${card.status === key ? " is-on" : ""}"
+                     type="button" data-status="${esc(key)}"
+                     aria-pressed="${card.status === key}">${esc(label)}</button>`
+          ).join("")}
+        </div>
+        <p class="rp-hint">${live
+          ? "On the site now. Archiving takes it down and keeps it here."
+          : "Not on the site. Tap “On the site” to publish it."}${
+          card.published_at
+            ? ` First published ${esc(formatDate(card.published_at.slice(0, 10)))}.`
+            : ""}</p>
+
+        <h2 class="rp-field-head">Reuse</h2>
+        <div class="rp-btn-row">
+          <button class="rp-btn is-ghost" type="button" data-duplicate>Duplicate</button>
+          <button class="rp-btn is-quiet" type="button" data-delete>Delete</button>
+        </div>
+        <p class="rp-hint">A duplicate arrives as a draft with the same photo
+          and link — the quick way to turn last month's preview into this
+          month's. Deleting is for a card typed by mistake; to take one off the
+          site and keep it, archive it instead.</p>
+      </div>
+    </details>`;
+}
+
+async function renderTrending(params) {
+  if (!context.isAdmin) {
+    h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+       <p class="rp-empty">Only an administrator can change the homepage.</p>`);
+    return;
+  }
+
+  const tab = TRENDING_TABS.some(([k]) => k === params.get("tab"))
+    ? params.get("tab") : "live";
+
+  h(`<div class="rp-loading"><span class="rp-spinner" aria-hidden="true"></span>
+       <p>Loading the homepage…</p></div>`);
+
+  let cards;
+  try {
+    cards = await loadTrending();
+  } catch (error) {
+    h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+       <p class="rp-empty">Could not load the homepage cards.</p>`);
+    flash(humanError(error), "error");
+    return;
+  }
+
+  const live = cards.filter((c) => c.status === "live");
+  // The archive reads newest-first: it is a history, and the card somebody
+  // wants to duplicate is nearly always the last one down.
+  const shown = tab === "live" ? live
+    : cards.filter((c) => c.status === tab)
+        .sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
+
+  const counts = {};
+  TRENDING_TABS.forEach(([key]) => {
+    counts[key] = cards.filter((c) => c.status === key).length;
+  });
+
+  const tabs = TRENDING_TABS.map(([key, label]) =>
+    `<a class="ops-tab${key === tab ? " is-on" : ""}" href="#/trending?tab=${key}"
+       >${esc(label)} <em>${counts[key]}</em></a>`).join("");
+
+  const heavy = live.length > TRENDING_COMFORTABLE_LIVE
+    ? `<p class="rp-hint rp-trend-warn">${live.length} cards are on the site.
+       Every one is a photo the homepage has to load; ${TRENDING_COMFORTABLE_LIVE}
+       or fewer keeps it quick on a phone. Archive the older ones.</p>`
+    : "";
+
+  const blank = {
+    live: "Nothing is on the homepage. Until a card is published the site "
+        + "shows the built-in Scorchers card, exactly as it always has.",
+    draft: "No drafts. Write one below and it stays here until you publish it.",
+    archived: "Nothing archived yet. Cards taken off the site land here.",
+  }[tab];
+
+  h(`
+    <a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+    <h1 class="rp-login-head">Homepage</h1>
+    <p class="rp-login-sub">The cards at the top of everyleague.co. Write one,
+      give it a photo and a link, publish it. They go live at the next build —
+      a minute or two after you publish.</p>
+
+    <nav class="ops-tabs">${tabs}</nav>
+    ${heavy}
+
+    <details class="rp-sec" data-trend-new>
+      <summary>＋ Write a card</summary>
+      <div class="rp-sec-body">
+        <form class="rp-form" data-trend-form autocomplete="off">
+          ${trendingFields(null)}
+          <button class="rp-btn" type="submit">Save as draft</button>
+          <p class="rp-hint">It is saved as a draft — nothing reaches the
+            homepage until you publish it.</p>
+        </form>
+      </div>
+    </details>
+
+    <div data-trend-list>
+      ${shown.map((c, i) => trendingCard(c, i, shown.length)).join("")
+        || `<p class="rp-empty">${blank}</p>`}
+    </div>
+  `);
+
+  wireTrending(tab);
+}
+
+/** Read one editor form into the argument list save_trending_card takes,
+ *  uploading a chosen photo first. Throws only on a failed upload — every
+ *  other failure is the RPC's to report. */
+async function trendingArgs(form, cardId, note) {
+  let imagePath = form.image_path.value;
+  const file = form.photo.files?.[0];
+  if (file) {
+    if (note) note.textContent = "Shrinking…";
+    const blob = await shrinkImage(file);
+    if (note) note.textContent = `Sending ${Math.round(blob.size / 1024)} KB…`;
+    imagePath = await uploadTrendingImage(file);
+  }
+  return {
+    p_card_id: cardId || null,
+    p_eyebrow: form.eyebrow.value.trim(),
+    p_headline: form.headline.value.trim(),
+    p_body: form.body.value.trim(),
+    p_link_url: form.link_url.value.trim(),
+    p_link_label: form.link_label.value.trim(),
+    p_image_path: imagePath,
+    p_image_alt: form.image_alt.value.trim(),
+  };
+}
+
+/** Lock a button, run, unlock. The portal's rule everywhere: a form NEVER
+ *  loses what was typed into it, whatever comes back. */
+async function trendingAction(button, busyLabel, fn) {
+  if (button.disabled) return false;
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = busyLabel;
+  try {
+    await fn();
+    return true;
+  } catch (error) {
+    flash(humanError(error), "error");
+    button.disabled = false;
+    button.textContent = original;
+    return false;
+  }
+}
+
+function wireTrending(tab) {
+  const reload = () => renderTrending(new URLSearchParams(`tab=${tab}`));
+  // A new card and a duplicate both land in drafts, so both go there to show
+  // it. Assigning the hash it ALREADY holds fires no hashchange and would
+  // leave the list looking as though nothing had been created — the same trap
+  // renderLogin documents about its `next` redirect.
+  const showDrafts = () => {
+    if (tab === "draft") reload();
+    else location.hash = "#/trending?tab=draft";
+  };
+
+  // The live counters under the headline and the body. A limit you only meet
+  // by being refused is a limit you meet at the wrong moment.
+  view.querySelectorAll("[data-trend-form]").forEach((form) => {
+    const counters = [
+      [form.headline, form.querySelector('[data-count="headline"]'), TRENDING_HEADLINE_MAX],
+      [form.body, form.querySelector('[data-count="body"]'), TRENDING_BODY_MAX],
+    ];
+    counters.forEach(([field, out, max]) => {
+      if (!field || !out) return;
+      const paint = () => {
+        const left = max - field.value.length;
+        out.textContent = left > max / 4 ? "" : `${left} characters left`;
+      };
+      field.addEventListener("input", paint);
+      paint();
+    });
+
+    // The label chips fill the box rather than replacing what is in it
+    // silently — the box stays the truth, the chips are a shortcut to it.
+    form.querySelectorAll("[data-eyebrow]").forEach((chip) => {
+      chip.onclick = () => {
+        form.eyebrow.value = chip.dataset.eyebrow;
+        form.querySelectorAll("[data-eyebrow]").forEach((other) =>
+          other.classList.toggle("is-on", other === chip));
+      };
+    });
+
+    // Check the link before publishing a card that points at it. A new tab,
+    // never this one: the form is full of unsaved words.
+    form.querySelector("[data-open-link]").onclick = () => {
+      const href = form.link_url.value.trim();
+      if (!href) { flash("There is no link to open.", "warn"); return; }
+      window.open(href, "_blank", "noopener");
+    };
+
+    form.querySelector("[data-drop-photo]")?.addEventListener("click", (e) => {
+      form.image_path.value = "";
+      form.photo.value = "";
+      e.target.remove();
+      const preview = form.closest(".rp-sec-body")?.querySelector("[data-trend-preview] img");
+      if (preview) preview.replaceWith(
+        Object.assign(document.createElement("div"),
+          { className: "rp-trend-noimg", textContent: "No photo" }));
+      flash("Photo removed here — save the card to make it stick.", "warn");
+    });
+  });
+
+  // A new card.
+  const fresh = view.querySelector("[data-trend-new]");
+  const newForm = fresh.querySelector("[data-trend-form]");
+  newForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const note = newForm.querySelector("[data-upload-note]");
+    const button = newForm.querySelector('button[type="submit"]');
+    const ok = await trendingAction(button, "Saving…", async () => {
+      const args = await trendingArgs(newForm, null, note);
+      const { error } = await supabase.rpc("save_trending_card", args);
+      if (error) throw error;
+    });
+    // NO requestRebuild: a draft changes no published page.
+    if (ok) {
+      flash("Saved as a draft.", "ok");
+      showDrafts();
+    }
+  });
+
+  // Every existing card.
+  view.querySelectorAll("[data-trend-card]").forEach((host) => {
+    const cardId = host.dataset.trendCard;
+    const wasLive = tab === "live";
+    const form = host.querySelector("[data-trend-form]");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const note = form.querySelector("[data-upload-note]");
+      const button = form.querySelector('button[type="submit"]');
+      const ok = await trendingAction(button, "Saving…", async () => {
+        const args = await trendingArgs(form, cardId, note);
+        const { error } = await supabase.rpc("save_trending_card", args);
+        if (error) throw error;
+      });
+      if (!ok) return;
+      // Only a card that is ON the site has changed a published page.
+      if (wasLive) requestRebuild();
+      flash(wasLive ? "Saved — the homepage updates at the next build."
+                    : "Saved.", "ok");
+      reload();
+    });
+
+    host.querySelectorAll("[data-status]").forEach((chip) => {
+      chip.onclick = async () => {
+        const next = chip.dataset.status;
+        // The chip for where the card already IS does nothing. It has to stay
+        // on screen — it is what says where the card is — but running the RPC
+        // would nudge a rebuild of the whole site for a tap that changed
+        // nothing.
+        if (chip.classList.contains("is-on")) return;
+        const ok = await trendingAction(chip, "…", async () => {
+          const { error } = await supabase.rpc("set_trending_status", {
+            p_card_id: cardId, p_status: next,
+          });
+          if (error) throw error;
+        });
+        if (!ok) return;
+        // Either leaving the site or arriving on it changes the homepage.
+        if (wasLive || next === "live") requestRebuild();
+        flash(next === "live"
+          ? "Published — it appears on the homepage at the next build."
+          : `Moved to ${TRENDING_STATUS_WORD[next].toLowerCase()}.`, "ok");
+        reload();
+      };
+    });
+
+    host.querySelectorAll("[data-move]").forEach((button) => {
+      button.onclick = async () => {
+        const ok = await trendingAction(button, "…", async () => {
+          const { error } = await supabase.rpc("move_trending_card", {
+            p_card_id: cardId, p_direction: button.dataset.move,
+          });
+          if (error) throw error;
+        });
+        if (!ok) return;
+        requestRebuild();
+        reload();
+      };
+    });
+
+    host.querySelector("[data-duplicate]").onclick = async (event) => {
+      const ok = await trendingAction(event.target, "Copying…", async () => {
+        const { error } = await supabase.rpc("duplicate_trending_card", {
+          p_card_id: cardId,
+        });
+        if (error) throw error;
+      });
+      // The copy is a draft, so nothing published moved.
+      if (ok) {
+        flash("Copied into drafts.", "ok");
+        showDrafts();
+      }
+    };
+
+    // Two taps, never a browser dialog — the same rule the merge picker
+    // follows, and for the same reason: a confirm() blocks every other event
+    // on a page being read on a phone with a bad connection.
+    const del = host.querySelector("[data-delete]");
+    let armed = false;
+    del.onclick = async () => {
+      if (!armed) {
+        armed = true;
+        del.textContent = "Tap again to delete for good";
+        del.classList.add("is-danger");
+        return;
+      }
+      const ok = await trendingAction(del, "Deleting…", async () => {
+        const { error } = await supabase.rpc("delete_trending_card", {
+          p_card_id: cardId,
+        });
+        if (error) throw error;
+      });
+      if (!ok) return;
+      if (wasLive) requestRebuild();
+      flash("Deleted.", "ok");
+      reload();
+    };
+  });
+}
+
 
 // ── Reporters ────────────────────────────────────────────────────────────────
 // THE SCREEN THAT MEANS A NEW REPORTER DOES NOT HAVE TO WAIT FOR A LAPTOP.
@@ -6208,6 +6750,7 @@ async function route() {
   if (path === "/league/new") return renderNewLeague();
   if (path === "/account") return renderAccount();
   if (path === "/players") return renderPlayers(params);
+  if (path === "/trending") return renderTrending(params);
   if (path === "/reporters") return renderReporters();
   if (path === "/login") { location.hash = "#/"; return; }
   return renderHome(params);

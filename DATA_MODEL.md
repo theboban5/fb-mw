@@ -67,6 +67,9 @@ matches (home/away team_id, venue_id, competition_id, season_id)
 - **officials** — referees and coaches as identities (0024). `kind` is
   `referee | coach`, and the four match-official roles share the referee kind
   because the same person referees one match and runs the line at the next.
+- **trending** — homepage carousel cards (0030). The one editorial table:
+  it references nothing and nothing references it, because it is copy about
+  football rather than football. Only `status = live` rows render.
 - **registrations**, **reporters** — present, currently empty.
 - **aliases** — every spelling an entity has ever been filed under.
   Written by `rename_player`/`merge_players` (0022) and their official
@@ -91,6 +94,8 @@ matches (home/away team_id, venue_id, competition_id, season_id)
   no reserved "unknown" row: an unresolved official is a blank id, not a
   pointer at a placeholder, because unlike a goal there is nothing that has to
   be attributed to somebody.
+- `card_id` is `MW_TRD_000123`, minted by `save_trending_card()` as the
+  highest plus one. Same shape, same rule: a counter, no meaning.
 - `match_id` like `MW_SL_2627_001`. Opaque string everywhere.
 - **General rule: NEVER derive meaning by parsing an ID. Always join through
   the tabs.** The only sanctioned string transform is presentational
@@ -141,6 +146,8 @@ matches (home/away team_id, venue_id, competition_id, season_id)
   `teams.squad_level`: 1–4
 - `entries.status`: (blank = active) | active | withdrawn | expelled
 - `seasons.status`: active | complete
+- `trending.status`: draft | live | archived (0030). Only `live` renders.
+  `archived` is off the site and kept — the whole reason it is not a delete.
 
 ## Hard rules the build enforces
 
@@ -302,6 +309,44 @@ rather than two.
   reported name and links nowhere, which is graceful degradation working, not
   an error worth failing a build over.
 
+## Trending (0030)
+
+The one table in this schema that holds editorial copy rather than facts. It
+exists because the homepage's featured card used to be three sentences inside
+an f-string in `build.py`: changing it meant editing Python and waiting for
+CI, so it was changed roughly never and the front of the site aged in public.
+
+- **`trending`** — `card_id`, `status`, `eyebrow`, `headline`, `body`,
+  `link_url`, `link_label`, `image_path`, `image_alt`, `sort_order`,
+  `published_at`. Everything but the headline is optional, and every omission
+  renders as nothing: no photo is a text-only card, no link is a card that is
+  not a link. `src/trending.py` renders the live ones as a scroll-snap
+  carousel in place of the old featured card; **no live cards renders "" and
+  the hand-written Scorchers card comes back**, which is what makes this
+  invisible on a site that has not published one.
+- **Writes are admin-only RPCs**, not RLS policies, because this is a Dataset
+  tab: a bad row can abort a build and stop every future deploy for everyone.
+  `save_trending_card` (create or update — it never changes status, because
+  writing and publishing are two decisions), `set_trending_status`,
+  `duplicate_trending_card` (always into a draft), `move_trending_card`
+  (up/down among the live ones), `delete_trending_card`. The `/report` screen
+  is `#/trending`.
+- **`link_url` is checked in Postgres and again by the build.** It is the one
+  value here that becomes an `href` on the most-visited page, so only two
+  forms are legal: a path on this site (`/scorchers/`) or an `https://` URL.
+  `//host` and `/\host` are refused — a browser follows both off the site.
+- **Photos live in the `trending-media` bucket** and `image_path` is the
+  object's name. `build.py` downloads each live card's photo, shrinks it and
+  writes it into `docs/trending/`, so the homepage depends on no second
+  origin; a download that fails falls back to the bucket's public URL, and an
+  offline build renders the cards text-only. **Nothing ever deletes an
+  object** — `duplicate_trending_card` copies the path, so two rows can share
+  one, and reference-counting them would cost more than the storage does.
+- **Drafts and the archive are in the public snapshot.** `data/canonical/` is
+  committed to a public repository and this tab goes there with the rest, so
+  an unpublished card is unannounced rather than secret. `created_by` and the
+  timestamps are held back, the way `matches.notes` is.
+
 ## Cups (`competitions.type = cup`)
 
 A cup is just a competitions row with `type=cup` — no extra tabs, no
@@ -455,3 +500,10 @@ Rules that differ from the league schema, and why:
     `src/lineups.py` pairs a substitute to the starter they replaced BY NAME
     — a `replaced_player` naming nobody renders a dangling name, and a twelfth
     starter renders a starting XI that is not one.
+11. **Trending**: a LIVE card's `link_url` is a path on this site or an
+    `https://` URL, and nothing else. Deliberately the whole check — a card is
+    an escaped string in a template, and every length and the status
+    vocabulary are constrained by 0030 — and deliberately live-only: an ERROR
+    here fails the deploy for the whole site, so refusing to build over a link
+    typed into a card nobody has published would be the validator causing the
+    outage it exists to prevent.

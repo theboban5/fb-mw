@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate the new-schema data; the first build step.
 
-Fetches all 13 league tabs plus the six national-team tabs (or reads
+Fetches every league tab plus the seven national-team tabs (or reads
 DATASET_LOCAL_DIR), runs every check, and:
   * any ERROR -> prints them all and exits 1; the build must not proceed and
     production stays untouched;
@@ -19,6 +19,7 @@ Usage:
 import csv
 import io
 import os
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -46,6 +47,7 @@ PRIMARY_KEYS = {
     # player. team_id is in it because a league match has two real teams and
     # two clubs may field players who share a name.
     "lineups": ("match_id", "team_id", "player_name"),
+    "trending": ("card_id",),
     "reporters": ("reporter_id",),
 }
 
@@ -404,6 +406,48 @@ def check_lineups(ds):
     return errors
 
 
+# A homepage card's link is the one value in this whole dataset that goes
+# straight into an href on the site's most-visited page. Two forms are legal:
+# a path on this site, or an https URL. `//host` and `/\host` are excluded on
+# purpose — a browser reads both as protocol-relative and leaves the site,
+# and both would pass a naive "starts with a slash" test.
+# Written in the same character-class form as 0030's CHECK constraint, rather
+# than the lookahead Python would allow, so the two copies of this rule can be
+# compared character for character (tests/test_trending.py does exactly that).
+_SAFE_LINK = re.compile(r"^(/([^/\\\s][^\s]*)?|https://[^\s]+)$")
+
+
+def check_trending(ds):
+    """Check 11: a homepage card that is safe to render (0030).
+
+    Deliberately short, and deliberately about LIVE cards only.
+
+    Short, because a card is an escaped string in a template: there is no
+    cross-row arithmetic to get wrong, and every optional part already renders
+    as nothing when it is missing. The lengths, the status vocabulary and the
+    link scheme are all constrained in Postgres by 0030 — this is the same
+    belt-and-braces re-check check 10 gives the man-of-the-match index, for
+    the one field where being wrong is worse than being ugly.
+
+    Live only, because of the rule this file exists to serve: an ERROR here
+    stops every deploy for everyone. A draft is not on the site, so refusing to
+    build the whole of everyleague.co over a link somebody typed into a card
+    they have not published would be the validator causing exactly the outage
+    it is meant to prevent. A draft's link is checked the moment it matters —
+    the tap that publishes it goes through set_trending_status, and the row it
+    publishes went through save_trending_card's identical test.
+    """
+    errors = []
+    for card in sorted(ds.trending.values(), key=lambda c: c.card_id):
+        if not card.is_live:
+            continue
+        if card.link_url and not _SAFE_LINK.match(card.link_url):
+            errors.append(
+                f"trending {card.card_id}: link_url {card.link_url!r} must be "
+                f"a path on this site (/matches/) or an https:// URL")
+    return errors
+
+
 def check_nt(ntd):
     """Check 9: the national-team tabs are internally coherent.
 
@@ -669,6 +713,7 @@ def validate(texts, canonical_dir=CANONICAL_DIR, allow_deletions=False,
         errors += check_dates(ds)
         errors += check_cup_rules(ds)
         errors += check_lineups(ds)
+        errors += check_trending(ds)
         try:
             ds.active_season()
         except dataset.DataError as err:

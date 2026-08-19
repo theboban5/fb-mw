@@ -850,3 +850,97 @@ a { color: var(--accent); }
 }
 
 .ops-nowrap { white-space: nowrap; }
+
+
+/* ─── Homepage cards (#/trending) ──────────────────────────────────────────
+   The lite CMS behind the carousel at the top of everyleague.co (0030).
+
+   The preview is the point of the screen and not decoration. The whole ask
+   was a front page that grips, and a headline three words too long is obvious
+   in a card and invisible in a form field — so every editor opens with what
+   the reader will actually see, at roughly the shape they will see it. */
+
+.rp-trend-preview {
+  margin: 4px 0 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--accent-wash);
+}
+.rp-trend-preview img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: var(--row-alt);
+}
+/* A card with no photo says so, rather than collapsing — "did the upload
+   work?" is the question this screen must never leave open. */
+.rp-trend-noimg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 5;
+  background: var(--row-alt);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.rp-trend-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px 14px 14px;
+}
+.rp-trend-eyebrow {
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.rp-trend-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--ink);
+}
+.rp-trend-copy { font-size: 0.84rem; color: var(--muted); }
+.rp-trend-cta {
+  margin-top: 2px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+/* Too many live cards is a warning, never a refusal: which one comes down is
+   an editorial decision and not this app's. */
+.rp-trend-warn {
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+
+/* The armed half of a two-tap delete. It only ever exists for the second tap,
+   so it is allowed to shout. */
+.rp-btn.is-danger {
+  background: var(--danger-wash);
+  border-color: var(--danger);
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* The count beside a tab label ("Drafts 2"). */
+.ops-tab em {
+  font-style: normal;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}

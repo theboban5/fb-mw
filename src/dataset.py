@@ -83,6 +83,12 @@ SUPABASE_ONLY_TABS = {
     # fallback, which is exactly right: every match then renders the names it
     # already holds as plain text, and nothing links anywhere.
     "officials": ("official_id", "full_name", "known_as", "kind", "status"),
+    # 0030. The homepage carousel. Empty here means the landing page falls back
+    # to the hand-written featured card build.py has always carried, which is
+    # the same answer it gives when nobody has published a card yet.
+    "trending": ("card_id", "status", "eyebrow", "headline", "body",
+                 "link_url", "link_label", "image_path", "image_alt",
+                 "sort_order", "published_at"),
 }
 
 TABS = tuple(TAB_GIDS) + tuple(SUPABASE_ONLY_TABS)
@@ -264,6 +270,9 @@ CONFIDENCES = frozenset({"unconfirmed", "confirmed", "official"})
 # the same person referees one match and runs the line at the next; `coach` is
 # the other kind of person on a team-sheet graphic.
 OFFICIAL_KINDS = frozenset({"referee", "coach"})
+# trending.status (0030). Only `live` renders; `archived` is off the site and
+# still findable in the portal, which is the whole reason it is not a delete.
+TRENDING_STATUSES = frozenset({"draft", "live", "archived"})
 # matches.stage vocabulary for knockout (type=cup) competitions. League rows
 # use free-form md_<n> stages instead; presentation order lives in adapt.
 # Two-legged ties carry no leg column: a reversed fixture between the same
@@ -601,6 +610,42 @@ class Official:
         return self.known_as or self.full_name or self.official_id
 
 
+@dataclass(frozen=True)
+class TrendingCard:
+    """One homepage carousel card (0030) — the lite CMS behind the front page.
+
+    Everything on it is optional except the headline, and every omission
+    degrades rather than breaks: no image renders text-only, no link renders a
+    card that is not a link, no eyebrow renders no label. That is the same rule
+    the rest of the site follows, applied to editorial copy.
+
+    `status` is what the build reads and nothing else: only `live` renders.
+    Drafts and the archive are parsed and carried so the snapshot is a complete
+    record of what has ever been on the homepage.
+    """
+    card_id: str
+    status: str           # draft | live | archived
+    eyebrow: str
+    headline: str
+    body: str
+    link_url: str
+    link_label: str
+    image_path: str       # object name in the trending-media bucket, or ""
+    image_alt: str
+    sort_order: int
+    published_at: str
+
+    @property
+    def is_live(self) -> bool:
+        return self.status == "live"
+
+    @property
+    def sort_key(self) -> "tuple[int, str]":
+        """Carousel order. card_id breaks a tie so the site is deterministic —
+        two cards sharing a sort_order must not reorder between builds."""
+        return (self.sort_order, self.card_id)
+
+
 @dataclass
 class Dataset:
     """Every tab, parsed and keyed by primary key (insertion order preserved)."""
@@ -620,6 +665,13 @@ class Dataset:
     aliases: "list[Alias]" = field(default_factory=list)
     lineups: "list[LineupRow]" = field(default_factory=list)
     officials: "dict[str, Official]" = field(default_factory=dict)
+    trending: "dict[str, TrendingCard]" = field(default_factory=dict)
+
+    def live_trending(self) -> "list[TrendingCard]":
+        """The homepage carousel, in the order it renders. Empty is normal —
+        the landing page then falls back to its hand-written feature card."""
+        return sorted((c for c in self.trending.values() if c.is_live),
+                      key=lambda c: c.sort_key)
 
     def active_season(self) -> Season:
         """The single season with status=active. Never the system clock."""
@@ -1003,6 +1055,33 @@ def parse_officials(text: str) -> "dict[str, Official]":
     return out
 
 
+def parse_trending(text: str) -> "dict[str, TrendingCard]":
+    """The homepage carousel tab (0030). Absent or empty on an older snapshot.
+
+    Only `card_id`, `status` and `headline` are required — a card is mostly
+    optional parts, and the renderer drops each missing one rather than
+    substituting anything for it.
+    """
+    out: "dict[str, TrendingCard]" = {}
+    required = {"card_id", "status", "headline"}
+    for i, r in _rows(text, "trending", required):
+        cid = _require(r, "card_id", "trending", i)
+        _put(out, cid, TrendingCard(
+            cid,
+            _enum(_require(r, "status", "trending", i), TRENDING_STATUSES,
+                  "status", "trending", i),
+            r.get("eyebrow", ""),
+            _require(r, "headline", "trending", i),
+            r.get("body", ""), r.get("link_url", ""), r.get("link_label", ""),
+            r.get("image_path", ""), r.get("image_alt", ""),
+            # Blank sorts first, which is where a card written before this
+            # column meant anything belongs.
+            _int(r.get("sort_order", "") or "0", "sort_order", "trending", i),
+            r.get("published_at", ""),
+        ), "trending", i)
+    return out
+
+
 def parse_lineups(text: str) -> "list[LineupRow]":
     """The league team-sheet tab. A list, not a dict: the key is three columns
     and every reader wants the rows grouped rather than looked up one by one."""
@@ -1087,6 +1166,7 @@ _PARSERS = {
     "registrations": parse_registrations,
     "lineups": parse_lineups,
     "officials": parse_officials,
+    "trending": parse_trending,
     "reporters": parse_reporters,
     "aliases": parse_aliases,
 }

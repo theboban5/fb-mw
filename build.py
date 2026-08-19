@@ -17,17 +17,20 @@ Usage:
 
 from datetime import datetime, timezone, timedelta
 from html import escape
+import hashlib
+import io
 import json
 import os
 import subprocess
 import sys
+import urllib.request
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
 import validate  # noqa: E402
 from src import (adapt, dataset, flags, hubs, matches_page, nt, nt_page,  # noqa: E402
-                 officials, render, scorers, search, standings)
+                 officials, render, scorers, search, standings, trending)
 
 STATIC = os.path.join(ROOT, "static")
 TEMPLATES = os.path.join(ROOT, "templates")
@@ -415,6 +418,11 @@ def _brand_header(fl):
 def _scorchers_feature(fl, team_data):
     """The featured Scorchers card, or "" when the national-team page is absent.
 
+    SINCE 0030 THIS IS THE FALLBACK, not the front page. A published trending
+    card takes this slot; this renders only while `trending` holds no live
+    card — which is the state of every site that has not written one, and of
+    every offline build. Everything below still applies whenever it does show.
+
     One <a> wrapping the whole card — the CTA is a styled span, since a link
     inside a link is invalid — so the hit area is the card and the keyboard
     focus ring lands on it once. With a match scheduled the card runs two
@@ -446,14 +454,124 @@ def _scorchers_feature(fl, team_data):
   </a>"""
 
 
+# ── Trending: the homepage carousel's photos ─────────────────────────────────
+# The cards themselves are a Dataset tab; their images are objects in the
+# Supabase `trending-media` bucket (0030), and this brings them INTO the site
+# rather than pointing the homepage at another origin.
+#
+# Why bother, when a public bucket URL would work in one line: everyleague.co
+# is a static site whose whole point is that everything it needs is in docs/.
+# A remote <img> on the most-visited page makes the front of the site depend
+# on a second service being up, adds a DNS lookup and a TLS handshake on a
+# connection where both are expensive, and hands over the one decision that
+# actually matters here — how many kilobytes a reader pays for a decorative
+# photo. Shrinking to TRENDING_MAX_PX turns a 4 MB phone photo into ~120 KB.
+#
+# It is best-effort, in the house style. A download that fails falls back to
+# the bucket's own public URL, which still renders — one origin worse, not one
+# card missing. An offline build (DATASET_LOCAL_DIR, every test, every parity
+# check) has no SUPABASE_URL and therefore no fallback either, and the cards
+# render text-only. None of the three states can fail a build.
+TRENDING_DIR = "trending"
+TRENDING_MAX_PX = 1200
+TRENDING_QUALITY = 82
+TRENDING_TIMEOUT = 10
+
+
+def _bucket_url(path):
+    """The public URL of one object in the trending-media bucket, or "".
+
+    Imported here rather than at the top, the way src/dataset.py does it, so a
+    build that never reaches Supabase never touches its credentials module.
+    """
+    from src import supabase_client as sb
+    try:
+        base = sb.url()
+    except sb.SupabaseError:
+        # No SUPABASE_URL configured — an offline build. Not an error: the
+        # card renders without its photo, which is a whole card.
+        return ""
+    return f"{base}/storage/v1/object/public/trending-media/{path}"
+
+
+def _shrink_jpeg(raw, dst):
+    """Write `raw` to `dst` as a JPEG no wider than TRENDING_MAX_PX.
+
+    Pillow is the repo's one dependency and is already only used for making
+    images smaller (render._downscale_png). Without it the bytes are written
+    through untouched: a bigger file is a worse page, not a broken one, and
+    the portal has already shrunk this photo once on the phone that took it.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        with open(dst, "wb") as fh:
+            fh.write(raw)
+        return
+    with Image.open(io.BytesIO(raw)) as im:
+        im = im.convert("RGB")
+        if max(im.size) > TRENDING_MAX_PX:
+            im.thumbnail((TRENDING_MAX_PX, TRENDING_MAX_PX), Image.LANCZOS)
+        im.save(dst, "JPEG", quality=TRENDING_QUALITY, optimize=True,
+                progressive=True)
+
+
+def _trending_images(cards, dist):
+    """{image_path: url} for every live card that has a photo.
+
+    The filename is a hash of the object's own path, which already contains a
+    uuid minted at upload — so it is stable across builds (the browser cache
+    survives a rebuild) and unique per upload (replacing a card's photo busts
+    that cache, because it is a new object at a new path).
+    """
+    wanted = sorted({c.image_path for c in cards if c.image_path})
+    if not wanted:
+        return {}
+    out_dir = os.path.join(dist, TRENDING_DIR)
+    os.makedirs(out_dir, exist_ok=True)
+    urls = {}
+    for path in wanted:
+        remote = _bucket_url(path)
+        name = f"{hashlib.sha1(path.encode('utf-8')).hexdigest()[:12]}.jpg"
+        dst = os.path.join(out_dir, name)
+        if os.path.exists(dst):
+            urls[path] = f"{TRENDING_DIR}/{name}"
+            continue
+        if not remote:
+            continue
+        try:
+            req = urllib.request.Request(remote,
+                                         headers={"User-Agent": "fb-mw-build"})
+            with urllib.request.urlopen(req, timeout=TRENDING_TIMEOUT) as resp:
+                raw = resp.read()
+            _shrink_jpeg(raw, dst)
+            urls[path] = f"{TRENDING_DIR}/{name}"
+        except (OSError, ValueError) as err:
+            # Including whatever Pillow raises on a file that is not an image.
+            print(f"WARNING: trending image {path} could not be brought local "
+                  f"({err}); the card links at the bucket instead.")
+            if os.path.exists(dst):
+                os.remove(dst)
+            urls[path] = remote
+    return urls
+
+
 def _write_landing(dist, ds, leagues, updated, scorchers_meta=None, scorchers=None,
-                   today_card=""):
+                   today_card="", trending_html=""):
     css_ver = render.css_version(STATIC)
     categories = _landing_categories(ds, leagues, scorchers_meta)
     fl = flags.Flags(STATIC)
-    # No national-team page built means the card would link at a 404, so the
-    # hero simply runs straight into the tabs.
-    feature = _scorchers_feature(fl, scorchers) if scorchers_meta else ""
+    # THE EDITORIAL SLOT, and there is only one of it. A published trending
+    # card is what an administrator decided the site should lead with today,
+    # so it wins; the hand-written Scorchers card below is the fallback for an
+    # empty `trending` table — which is every build before 0030 and every
+    # offline build — and NOT a second card stacked underneath. Two features
+    # competing above the fold is how neither gets read.
+    #
+    # And no national-team page built means even the fallback would link at a
+    # 404, so the hero then runs straight into the tabs.
+    feature = trending_html or (
+        _scorchers_feature(fl, scorchers) if scorchers_meta else "")
 
     tabs = "".join(
         f'<button class="comp-tab{" active" if i == 0 else ""}" type="button" '
@@ -507,7 +625,7 @@ def _write_landing(dist, ds, leagues, updated, scorchers_meta=None, scorchers=No
   </div>
 </main>
 {render.footer(updated)}
-<script>{_NAV_JS}</script>
+<script>{_NAV_JS}{trending.CAROUSEL_JS if trending_html else ""}</script>
 </body>
 </html>"""
     render._write(os.path.join(dist, "index.html"), html)
@@ -736,10 +854,22 @@ def main(argv):
     # themselves are written below.
     days = matches_page.collect(ds, nt_data)
 
+    # The homepage carousel (0030). Its photos are fetched before the page is
+    # written because the markup names their local filenames; a card whose
+    # photo could not be brought local still renders, pointing at the bucket.
+    live_cards = ds.live_trending()
+    if len(live_cards) > trending.COMFORTABLE_LIVE:
+        print(f"WARNING: {len(live_cards)} trending cards are live. Every one "
+              f"is a photo on the homepage; {trending.COMFORTABLE_LIVE} or "
+              f"fewer keeps it light. Archive the older ones in /report.")
+    trending_html = trending.carousel(live_cards,
+                                      _trending_images(live_cards, dist))
+
     _write_landing(dist, ds, leagues, updated,
                    scorchers_meta=nt_page.landing_meta(scorchers),
                    scorchers=scorchers,
-                   today_card=matches_page.landing_card(days, today))
+                   today_card=matches_page.landing_card(days, today),
+                   trending_html=trending_html)
 
     # Cross-competition pages: club hubs and player pages.
     n_clubs = hubs.build_club_hubs(
@@ -767,6 +897,7 @@ def main(argv):
     _write_build_info(dist, ds, club_hub_ids, data_read_at, tz)
 
     print(f"Built {dist}/  " + " | ".join(parts)
+          + (f" | {len(live_cards)} trending" if live_cards else "")
           + f" | {n_clubs} club hubs | {n_players} player pages"
           + (f" | {n_officials} official pages" if n_officials else "")
           + f" | {nt_page.SLUG}: {len(scorchers.results)} results,"
