@@ -166,7 +166,12 @@ function humanError(error) {
       || message.includes("last administrator")
       || message.includes("you cannot")
       || message.includes("no competition")
-      || message.includes("no reporter")) {
+      || message.includes("no reporter")
+      // ...and delete_fixture (0032): only an administrator, only a
+      // scheduled fixture, only one with nothing already reported onto it.
+      || message.includes("only an administrator can delete a fixture")
+      || message.includes("can be deleted")
+      || message.includes("cannot be deleted")) {
     return error.message.charAt(0).toUpperCase() + error.message.slice(1);
   }
   // The RPC's own validation, which is phrased for a person to read.
@@ -1761,11 +1766,20 @@ function drawMatch(match, names, state) {
         (state.venues || []).map((n) => `<option value="${esc(n)}"></option>`).join("")}</datalist>
     `, state.open?.reschedule)}
 
+    ${context.isAdmin && match.status === "scheduled" ? section("delete",
+      "Delete this fixture", 0, `
+      <p class="rp-hint" style="margin-top:0">For a duplicate or a fixture
+        entered by mistake — not a way to take down a result. Only works
+        while nothing has been reported onto it: no scorers, no team sheet.</p>
+      <button class="rp-btn is-quiet" type="button" data-delete-fixture>Delete fixture</button>
+    `, state.open?.delete) : ""}
+
     <div data-detail></div>
   `);
 
   drawDetail(match, state);
   wireReschedule(match, names, state);
+  wireDeleteFixture(match, state);
 
   const valueEls = {
     home: view.querySelector('[data-value="home"]'),
@@ -2048,6 +2062,54 @@ function wireVenue(match, names, state, lock) {
                       : "Ground removed.", "ok");
     drawMatch(match, names, state);
     requestRebuild();
+  });
+}
+
+/** Removing a fixture that never should have existed — a duplicate entry, or
+ *  the wrong pairing tapped in on #/add. Admin-only (delete_fixture, 0032,
+ *  checks again in Postgres) and only offered while the fixture is still
+ *  'scheduled' — the section itself is absent from drawMatch's markup for
+ *  anyone else or anything else. */
+function wireDeleteFixture(match, state) {
+  const del = view.querySelector("[data-delete-fixture]");
+  if (!del) return;
+
+  // Two taps, never a browser dialog — confirm() blocks every other event on
+  // a page being read on a weak connection. Same rule trending's delete
+  // follows (0030), for the same reason.
+  let armed = false;
+  del.addEventListener("click", async () => {
+    if (del.disabled) return;
+    if (!armed) {
+      armed = true;
+      del.textContent = "Tap again to delete for good";
+      del.classList.add("is-danger");
+      return;
+    }
+
+    del.disabled = true;
+    del.textContent = "Deleting…";
+
+    const { data: ok, error } = await supabase.rpc("delete_fixture", {
+      p_match_id: match.match_id,
+    });
+
+    if (error || !ok) {
+      del.disabled = false;
+      armed = false;
+      del.textContent = "Delete fixture";
+      del.classList.remove("is-danger");
+      flash(error ? humanError(error)
+                  : "That fixture is already gone.", "error");
+      return;
+    }
+
+    // Nothing left to redraw — the match this screen was showing no longer
+    // exists, so leave rather than ask drawMatch to refetch it.
+    invalidateHome();
+    flash("Fixture deleted.", "ok");
+    requestRebuild();
+    location.hash = state.back;
   });
 }
 
