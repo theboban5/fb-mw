@@ -3725,9 +3725,26 @@ function trendingFields(card, labels) {
       thing.</p>`;
 }
 
+// The move arrows sit OUTSIDE the <details> so a card can be reordered
+// without opening it — a phone reading "3 of 3" and wanting it first
+// shouldn't have to expand every card between here and there. (Buttons
+// can't nest inside <summary> either, so outside is also where they have
+// to live.)
+function trendingMoveControl(cardId, index, total) {
+  return `
+    <div class="rp-trend-move" role="group" aria-label="Reorder on the homepage">
+      <button class="rp-trend-arrow" type="button" data-move="up"
+              data-card-id="${esc(cardId)}" aria-label="Move earlier"
+              ${index === 0 ? "disabled" : ""}>&uarr;</button>
+      <button class="rp-trend-arrow" type="button" data-move="down"
+              data-card-id="${esc(cardId)}" aria-label="Move later"
+              ${index === total - 1 ? "disabled" : ""}>&darr;</button>
+    </div>`;
+}
+
 function trendingCard(card, index, total, labels) {
   const live = card.status === "live";
-  return `
+  const details = `
     <details class="rp-sec" data-trend-card="${esc(card.card_id)}">
       <summary>${esc(card.headline)}
         <span class="rp-sec-count">${esc(TRENDING_STATUS_WORD[card.status])}${
@@ -3735,16 +3752,9 @@ function trendingCard(card, index, total, labels) {
       <div class="rp-sec-body">
         ${trendingPreview(card)}
 
-        ${live ? `
-        <h2 class="rp-field-head">Order</h2>
-        <div class="rp-btn-row">
-          <button class="rp-btn is-quiet" type="button" data-move="up"
-                  ${index === 0 ? "disabled" : ""}>&uarr; Earlier</button>
-          <button class="rp-btn is-quiet" type="button" data-move="down"
-                  ${index === total - 1 ? "disabled" : ""}>&darr; Later</button>
-        </div>
-        <p class="rp-hint">The first card is the one most people will see —
-          the carousel starts there and most readers never swipe.</p>` : ""}
+        ${live ? `<p class="rp-hint">The first card is the one most people
+          see — the carousel starts there and most readers never swipe. Use
+          the &uarr;&darr; beside the card to reorder it.</p>` : ""}
 
         <form class="rp-form" data-trend-form autocomplete="off">
           ${trendingFields(card, labels)}
@@ -3777,6 +3787,13 @@ function trendingCard(card, index, total, labels) {
           site and keep it, archive it instead.</p>
       </div>
     </details>`;
+
+  if (!live) return details;
+  return `
+    <div class="rp-trend-item">
+      ${trendingMoveControl(card.card_id, index, total)}
+      ${details}
+    </div>`;
 }
 
 async function renderTrending(params) {
@@ -4011,6 +4028,21 @@ function wireTrending(tab) {
     }
   });
 
+  // Reorder arrows — outside the per-card <details>, so wired on their own.
+  view.querySelectorAll("[data-move]").forEach((button) => {
+    button.onclick = async () => {
+      const ok = await trendingAction(button, "…", async () => {
+        const { error } = await supabase.rpc("move_trending_card", {
+          p_card_id: button.dataset.cardId, p_direction: button.dataset.move,
+        });
+        if (error) throw error;
+      });
+      if (!ok) return;
+      requestRebuild();
+      reload();
+    };
+  });
+
   // Every existing card.
   view.querySelectorAll("[data-trend-card]").forEach((host) => {
     const cardId = host.dataset.trendCard;
@@ -4054,20 +4086,6 @@ function wireTrending(tab) {
         flash(next === "live"
           ? "Published — it appears on the homepage at the next build."
           : `Moved to ${TRENDING_STATUS_WORD[next].toLowerCase()}.`, "ok");
-        reload();
-      };
-    });
-
-    host.querySelectorAll("[data-move]").forEach((button) => {
-      button.onclick = async () => {
-        const ok = await trendingAction(button, "…", async () => {
-          const { error } = await supabase.rpc("move_trending_card", {
-            p_card_id: cardId, p_direction: button.dataset.move,
-          });
-          if (error) throw error;
-        });
-        if (!ok) return;
-        requestRebuild();
         reload();
       };
     });

@@ -863,6 +863,24 @@ a { color: var(--accent); }
    in a card and invisible in a form field — so every editor opens with what
    the reader will actually see, at roughly the shape they will see it. */
 
+/* Reorder arrows for a live card, sitting beside the collapsed row rather
+   than inside it — reordering the homepage is the one editing action that
+   should never require opening a card first. */
+.rp-trend-item { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.rp-trend-item .rp-sec { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
+.rp-trend-move { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
+.rp-trend-arrow {
+  display: flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg); color: var(--ink);
+  font-size: 1.15rem; font-weight: 700; cursor: pointer;
+}
+.rp-trend-arrow:active:not([disabled]) {
+  background: var(--accent-wash); border-color: var(--accent); color: var(--accent);
+}
+.rp-trend-arrow[disabled] { opacity: 0.35; cursor: default; }
+
 .rp-trend-preview {
   margin: 4px 0 16px;
   border: 1px solid var(--line);
