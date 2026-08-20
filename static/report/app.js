@@ -6678,75 +6678,55 @@ function opsUrgent(totals, fresh) {
   return `<div class="ops-urgent">${items.join("")}${site}</div>`;
 }
 
-// ── One row per competition ──────────────────────────────────────────────────
-// A table on a wide screen, a stack of cards on a phone — same markup, the CSS
-// does the collapsing (see .ops-table in report.css).
+// ── At-a-glance: one row per competition ─────────────────────────────────────
+// The question this screen exists to answer, and for now the only one: is
+// every competition caught up? Two things go stale — a played match with no
+// result, and a next round nobody has entered yet — so each row shows exactly
+// those two, unmissably green or red. Everything else the dashboard tracks
+// (scorers, venues, sources, verification) still has its own tab; it just
+// doesn't compete for attention here.
 
-function opsNextCell(row) {
-  if (row.next_round_state === "none") {
-    return `<span class="ops-warn">none entered</span>`;
+function opsResultsChip(r) {
+  if (!r.overdue) {
+    return `<span class="ops-glance-chip is-ok">✓ results up to date</span>`;
   }
-  const label = row.next_round_label || "—";
-  const when = row.next_round_state === "undated"
-    ? "no date" : formatDate(row.next_date);
-  const expected = row.next_round_expected;
-  // "9 of 8" is not a typo when it appears: it is a round holding more
-  // fixtures than it can, which is the anomaly the Fixtures tab explains.
-  const count = expected == null
-    ? `${row.next_round_entered}`
-    : `${row.next_round_entered} of ${expected}`;
-  const bad = expected != null && row.next_round_entered !== expected;
-  return `<strong>${esc(label)}</strong>
-          <span class="ops-sub">${esc(when)} ·
-            <span class="ops-nowrap${bad ? " ops-warn" : ""}">${esc(count)}</span></span>`;
+  const n = r.overdue;
+  return `<a class="ops-glance-chip is-bad"
+             href="#/ops?tab=results&comp=${encodeURIComponent(r.competition_id)}">
+             ⚠ ${n} result${n === 1 ? "" : "s"} missing</a>`;
 }
 
-function opsCount(n, tab, comp, { warn = false } = {}) {
-  if (!n) return `<span class="ops-zero">·</span>`;
-  return `<a class="ops-n${warn ? " ops-warn" : ""}"
-             href="#/ops?tab=${tab}&comp=${encodeURIComponent(comp)}">${n}</a>`;
+function opsFixturesChip(r) {
+  const href = `#/ops?tab=fixtures&comp=${encodeURIComponent(r.competition_id)}`;
+  if (r.next_round_state === "none") {
+    return `<a class="ops-glance-chip is-bad" href="${href}">⚠ next matchday not added</a>`;
+  }
+  const label = r.next_round_label || "next round";
+  if (r.next_round_state === "undated") {
+    return `<a class="ops-glance-chip is-warn" href="${href}">
+               ◐ ${esc(label)} added, no date yet</a>`;
+  }
+  return `<span class="ops-glance-chip is-ok">
+             ✓ ${esc(label)} added · ${esc(formatDate(r.next_date))}</span>`;
 }
 
-function opsCompetitionTable(comps) {
+function opsGlance(comps) {
+  if (!comps.length) return '<p class="rp-empty">No active competitions this season.</p>';
   const rows = comps.map((r) => {
-    const anomalies = r.rounds_with_surplus + r.rounds_with_deficit
-                    + (r.unassigned_fixtures ? 1 : 0);
+    const attention = r.overdue > 0 || r.next_round_state !== "dated";
     return `
-    <tr>
-      <th scope="row">
-        <span class="ops-comp">${esc(r.competition_name)}</span>
-        <span class="ops-sub">${esc(r.competition_id)} · ${r.matches_total} fixtures</span>
-      </th>
-      <td data-h="Next round">${opsNextCell(r)}</td>
-      <td data-h="Past rounds">${opsCount(r.incomplete_rounds, "fixtures", r.competition_id, { warn: true })}</td>
-      <td data-h="Round faults">${opsCount(anomalies, "fixtures", r.competition_id)}</td>
-      <td data-h="Overdue">${opsCount(r.overdue, "results", r.competition_id, { warn: true })}</td>
-      <td data-h="Scorers">${opsCount(r.missing_scorers_current, "scorers", r.competition_id)}</td>
-      <td data-h="Venues">${opsCount(r.missing_venue_current, "venues", r.competition_id)}</td>
-      <td data-h="Sources">${opsCount(r.missing_source_current, "sources", r.competition_id)}</td>
-      <td data-h="Unconfirmed">${opsCount(r.unconfirmed, "verification", r.competition_id)}</td>
-    </tr>`;
+      <div class="ops-glance-row${attention ? " is-attn" : " is-good"}">
+        <div class="ops-glance-comp">
+          <span class="ops-comp">${esc(r.competition_name)}</span>
+          <span class="ops-sub">${esc(r.competition_id)} · ${r.matches_total} fixtures</span>
+        </div>
+        <div class="ops-glance-status">
+          ${opsResultsChip(r)}
+          ${opsFixturesChip(r)}
+        </div>
+      </div>`;
   }).join("");
-
-  return `
-    <div class="ops-table-wrap">
-      <table class="ops-table">
-        <thead><tr>
-          <th scope="col">Competition</th>
-          <th scope="col">Next round</th>
-          <th scope="col" title="Past rounds still waiting on a result">Past</th>
-          <th scope="col" title="Rounds the wrong size, plus unassigned fixtures">Faults</th>
-          <th scope="col">Overdue</th>
-          <th scope="col">Scorers</th>
-          <th scope="col">Venues</th>
-          <th scope="col">Sources</th>
-          <th scope="col">Unconf.</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-    <p class="rp-hint">Scorer, venue and source counts hide the historical
-      import by default — open a tab to see everything.</p>`;
+  return `<div class="ops-glance">${rows}</div>`;
 }
 
 // ── Backlog rows ─────────────────────────────────────────────────────────────
@@ -7028,7 +7008,7 @@ async function renderOps(params) {
       header('<p class="rp-empty">No active competitions this season.</p>');
       return;
     }
-    header(opsUrgent(totals, fresh) + opsCompetitionTable(comps));
+    header(opsUrgent(totals, fresh) + opsGlance(comps));
   } catch (error) {
     h('<p class="rp-empty">Could not load operations.</p>');
     flash(humanError(error), "error");

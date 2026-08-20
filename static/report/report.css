@@ -735,10 +735,8 @@ a { color: var(--accent); }
 }
 
 /* ─── Operations dashboard ────────────────────────────────────────────────────
-   Administrator-only. Wider than the rest of the app on purpose: the overview
-   is a comparison across competitions, which a 560px column cannot show. On a
-   phone the table collapses to one card per competition (below), so the same
-   markup serves both without a second template. */
+   Administrator-only. Wider than the rest of the app on purpose — the backlog
+   tabs list a lot on one line, which a 560px column wraps awkwardly. */
 
 .ops-tabs {
   display: flex;
@@ -785,29 +783,45 @@ a { color: var(--accent); }
 .ops-urgent-n { font-size: 1.3rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 .ops-urgent-l { font-size: 0.8rem; color: var(--muted); }
 
-.ops-table-wrap { overflow-x: auto; }
-.ops-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
-.ops-table th, .ops-table td {
-  padding: 10px 8px;
-  text-align: left;
-  vertical-align: top;
-  border-bottom: 1px solid var(--line);
-}
-.ops-table thead th {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.ops-table tbody tr:nth-child(even) { background: var(--row-alt); }
 .ops-comp { display: block; font-weight: 700; }
 .ops-sub { display: block; color: var(--muted); font-size: 0.76rem; }
-.ops-n { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
-.ops-zero { color: var(--line); }
 .ops-warn { color: var(--danger); font-weight: 700; }
 .ops-ok   { color: var(--accent); font-weight: 600; }
 .ops-recon { margin: 0 0 8px; }
+
+/* The overview: one row per competition, two chips — results and next round.
+   Everything else the dashboard tracks lives behind its own tab so it never
+   has to compete with these two for attention. A row with anything less than
+   both chips green gets a red left edge, so scanning down the left side of
+   the list is enough to find every competition that needs a look. */
+.ops-glance { display: flex; flex-direction: column; gap: 8px; }
+.ops-glance-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line);
+  border-radius: var(--radius);
+}
+.ops-glance-row.is-attn { border-left-color: var(--danger); }
+.ops-glance-row.is-good { opacity: 0.7; }
+.ops-glance-comp { flex: 1 1 200px; }
+.ops-glance-status { display: flex; flex-wrap: wrap; gap: 8px; }
+.ops-glance-chip {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ops-glance-chip.is-ok   { background: var(--accent-wash); color: var(--accent); }
+.ops-glance-chip.is-bad  { background: var(--danger-wash); color: var(--danger); }
+.ops-glance-chip.is-warn { background: var(--warn-wash);   color: var(--warn); }
 
 /* A backlog row. Deliberately not .rp-card: these are scanned by the dozen,
    so they are one compact line each rather than a card with a button. */
@@ -837,40 +851,8 @@ a { color: var(--accent); }
 .ops-tag.is-bad  { background: var(--danger-wash); color: var(--danger); }
 .ops-tag.is-warn { background: var(--warn-wash);   color: var(--warn); }
 
-/* Phone: the comparison table becomes one card per competition. Each cell
-   carries its own label from data-h, so nothing depends on reading a header
-   row that is no longer above it. */
-@media (max-width: 620px) {
-  .ops-table, .ops-table tbody, .ops-table tr, .ops-table td, .ops-table th {
-    display: block;
-  }
-  .ops-table thead { display: none; }
-  .ops-table tr {
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    margin-bottom: 10px;
-    padding: 4px 12px 8px;
-  }
-  .ops-table tbody tr:nth-child(even) { background: transparent; }
-  .ops-table th, .ops-table td { border-bottom: 0; padding: 6px 0; }
-  .ops-table td {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 12px;
-    border-top: 1px solid var(--line);
-  }
-  .ops-table td::before {
-    content: attr(data-h);
-    color: var(--muted);
-    font-size: 0.76rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-  .ops-table td:empty { display: none; }
-}
-
-.ops-nowrap { white-space: nowrap; }
+/* Phone: a glance row's comp block and its chips already wrap onto their own
+   lines via flex-wrap, so no separate collapse rule is needed here. */
 
 
 /* ─── Homepage cards (#/trending) ──────────────────────────────────────────
