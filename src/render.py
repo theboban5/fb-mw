@@ -754,11 +754,24 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
     all_days = sorted(by_day)
     has_venue = any(m.stadium for m in matches)
 
-    # The season's "live edge": the earliest matchday that still has an unplayed
-    # fixture (a round in progress, or the next one up). The Matches tab opens
-    # here. If every match has been played, fall back to the latest matchday.
-    unplayed_days = [md for md in all_days if any(not m.played for m in by_day[md])]
-    default_md = unplayed_days[0] if unplayed_days else (all_days[-1] if all_days else None)
+    # The season's "live edge": the matchday in progress, or the next one up
+    # once the current one is fully played. Picking the *earliest* unplayed
+    # fixture used to get this wrong forever once anything was postponed — a
+    # single postponed match from months back would pin the default there,
+    # even with the season several rounds further on. Instead we track the
+    # furthest matchday that has kicked off at all (any match played) and only
+    # advance past it once every match in it is played, so a lone postponed
+    # game just sits on its own matchday rather than freezing the pager.
+    played_days = [md for md in all_days if any(m.played for m in by_day[md])]
+    if not played_days:
+        default_md = all_days[0] if all_days else None
+    else:
+        latest_played = played_days[-1]
+        if all(m.played for m in by_day[latest_played]):
+            later = [md for md in all_days if md > latest_played]
+            default_md = later[0] if later else latest_played
+        else:
+            default_md = latest_played
 
     # ── Content (fussball.de style) ────────────────────────
     v2 = [
