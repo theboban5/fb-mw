@@ -4680,7 +4680,7 @@ function ntTeams() {
 const NT_MATCH_FIELDS =
   "match_id,team_code,date,kickoff,competition,opponent,home_away,neutral,"
   + "venue,city,country,team_score,opponent_score,status,coach,extra_time,"
-  + "penalty_shootout,extra_time_result";
+  + "penalty_shootout,extra_time_result,source_ref";
 
 /** A Malawi-perspective scoreline, written the way the page reads it. */
 function ntScoreline(m) {
@@ -4922,6 +4922,7 @@ async function renderNTMatch(matchId) {
     status: match.team_score != null ? match.status : "played",
     extraTime: Boolean(match.extra_time),
     pens: match.penalty_shootout || "",
+    source: match.source_ref || "",
     published: match.team_score != null,
     busy: false,
     open: {},
@@ -4984,15 +4985,49 @@ function drawNTMatch(match, state) {
            placeholder="e.g. 4-3" autocomplete="off">
     <p class="rp-hint">Leave blank unless it went to penalties.</p>
 
+    <h2 class="rp-field-head">Source (where is this information from?)</h2>
+    <input class="rp-input" type="text" data-nt-source maxlength="500"
+           value="${esc(state.source)}"
+           placeholder="Facebook link, or how you know"
+           autocapitalize="sentences" autocorrect="off" spellcheck="false">
+    <p class="rp-hint">Never shown publicly — it is there so a result can be
+      checked later. A link, or plain words like &ldquo;told to me by the
+      federation&rdquo;.</p>
+
     <div class="rp-publish">
       <button class="rp-btn" type="button" data-nt-publish></button>
       <p class="rp-publish-note" data-nt-note></p>
     </div>
 
+    ${section("nt-reschedule", "Change date or ground", 0, `
+      <p class="rp-hint" style="margin-top:0">The fixture was agreed one way
+        and it happened another? Change it here. This saves on its own —
+        it is not part of publishing the score.</p>
+      <label class="rp-label" for="nt-rs-date">Date</label>
+      <input class="rp-input" id="nt-rs-date" type="date" data-nt-rs-date
+             value="${esc(/^\d{4}-\d{2}-\d{2}$/.test(match.date || "") ? match.date : "")}">
+      <p class="rp-hint">Clear it if the match no longer has a fixed day.</p>
+      <label class="rp-label" for="nt-rs-kickoff">Kick-off</label>
+      <input class="rp-input" id="nt-rs-kickoff" type="time" data-nt-rs-kickoff
+             value="${esc((match.kickoff || "").slice(0, 5))}">
+      <p class="rp-hint">Malawi time.</p>
+      <label class="rp-label" for="nt-rs-venue">Venue</label>
+      <input class="rp-input" id="nt-rs-venue" data-nt-rs-venue maxlength="120"
+             value="${esc(match.venue || "")}" autocapitalize="words">
+      <div class="rp-row">
+        <input class="rp-input" data-nt-rs-city placeholder="City"
+               maxlength="120" value="${esc(match.city || "")}" autocapitalize="words">
+        <input class="rp-input" data-nt-rs-country placeholder="Country"
+               maxlength="120" value="${esc(match.country || "")}" autocapitalize="words">
+      </div>
+      <button class="rp-btn is-ghost" type="button" data-nt-rs-save>Save date and ground</button>
+    `, state.open?.["nt-reschedule"])}
+
     <div data-nt-detail></div>
   `);
 
   drawNTDetail(match, state);
+  wireNTReschedule(match, state);
 
   const valueEls = {
     ours: view.querySelector('[data-nt-value="ours"]'),
@@ -5002,9 +5037,11 @@ function drawNTMatch(match, state) {
   const note = view.querySelector("[data-nt-note]");
   const etEl = view.querySelector("[data-nt-et]");
   const pensEl = view.querySelector("[data-nt-pens]");
+  const sourceEl = view.querySelector("[data-nt-source]");
 
   etEl.addEventListener("change", () => { state.extraTime = etEl.checked; });
   pensEl.addEventListener("input", () => { state.pens = pensEl.value; });
+  sourceEl.addEventListener("input", () => { state.source = sourceEl.value; });
 
   function refresh() {
     const info = ntStatusMeta(state.status);
@@ -5047,6 +5084,7 @@ function drawNTMatch(match, state) {
       p_status: state.status,
       p_extra_time: state.extraTime,
       p_penalty_shootout: state.pens.trim(),
+      p_source_ref: state.source.trim(),
     });
     state.busy = false;
     if (error) { refresh(); flash(humanError(error), "error"); return; }  // rule 1
@@ -5059,6 +5097,67 @@ function drawNTMatch(match, state) {
   });
 
   refresh();
+}
+
+/** Moving an international to another day or ground.
+ *
+ *  One button rather than club football's two: update_nt_fixture (0012)
+ *  already writes date, kickoff, venue, city and country together — nt_matches
+ *  has no venues table to resolve a name against, so there is no second RPC to
+ *  split the save across. Competition and opponent travel along unchanged;
+ *  this screen has no box for either, so the values already on the match are
+ *  sent straight back rather than exposed as editable here. */
+function wireNTReschedule(match, state) {
+  const dateEl = view.querySelector("[data-nt-rs-date]");
+  const save = view.querySelector("[data-nt-rs-save]");
+  if (!dateEl || !save) return;
+
+  const kickoffEl = view.querySelector("[data-nt-rs-kickoff]");
+  const venueEl = view.querySelector("[data-nt-rs-venue]");
+  const cityEl = view.querySelector("[data-nt-rs-city]");
+  const countryEl = view.querySelector("[data-nt-rs-country]");
+
+  save.addEventListener("click", async () => {
+    if (save.disabled) return;                  // rule 2: never submit twice
+    clearFlash();
+
+    const date = dateEl.value || "";
+    const kickoff = kickoffEl.value || "";
+    if (!date && kickoff) {
+      flash("Set a date as well, or clear the kick-off time.", "error");
+      return;
+    }
+
+    save.disabled = true;
+    save.textContent = "Saving…";
+
+    const { data, error } = await supabase.rpc("update_nt_fixture", {
+      p_match_id: match.match_id,
+      p_competition: match.competition,
+      p_opponent: match.opponent,
+      p_date: date,
+      p_kickoff: kickoff,
+      p_home_away: match.home_away,
+      p_neutral: Boolean(match.neutral),
+      p_venue: venueEl.value.trim(),
+      p_city: cityEl.value.trim(),
+      p_country: countryEl.value.trim(),
+    });
+
+    save.disabled = false;
+    save.textContent = "Save date and ground";
+
+    if (error) {
+      // Rule 1: the inputs are untouched, so nothing typed is lost.
+      flash(humanError(error), "error");
+      return;
+    }
+
+    Object.assign(match, (data || [])[0] || {});
+    flash("Saved.", "ok");
+    drawNTMatch(match, state);
+    requestRebuild();
+  });
 }
 
 // ── The team sheet ───────────────────────────────────────────────────────────
@@ -6002,6 +6101,71 @@ function wireSheet(root, ctx, redraw) {
   });
 }
 
+// ── Officials, coaches and notes (0033) ──────────────────────────────────────
+// The same three optional sections a league match has had since 0023–0025,
+// reusing the identical registry and the identical pickers: wireOfficialPickers
+// only ever reads data-official/data-kind off whatever is on screen, so it
+// needs nothing NT-specific to work here too.
+
+const NT_OFFICIAL_ROLES = [
+  ["referee", "Referee", "referee"],
+  ["assistant_referee_1", "Assistant referee 1", "referee"],
+  ["assistant_referee_2", "Assistant referee 2", "referee"],
+  ["fourth_official", "Fourth official", "referee"],
+];
+const NT_OFFICIAL_COACHES = ["coach", "opponent_coach"];
+const NT_OFFICIAL_KEYS = NT_OFFICIAL_ROLES.map(([key]) => key).concat(NT_OFFICIAL_COACHES);
+const NT_OFFICIAL_COLUMNS = NT_OFFICIAL_KEYS
+  .concat(NT_OFFICIAL_KEYS.map((key) => `${key}_id`))
+  .join(",");
+
+function ntOfficialsForm(match, officials, teamName) {
+  const box = (name, label, kind) => `
+    <label class="rp-label" for="nt-off-${name}">${esc(label)}</label>
+    <div class="rp-pick" data-official="${name}" data-kind="${kind}">
+      <input class="rp-input" id="nt-off-${name}" name="${name}"
+             value="${esc(officials[name] || "")}" placeholder="${esc(label)}"
+             role="combobox" aria-expanded="false" aria-autocomplete="list"
+             autocomplete="off" autocapitalize="words" maxlength="80">
+      <input type="hidden" name="${name}_id"
+             value="${esc(officials[`${name}_id`] || "")}">
+      <ul class="rp-suggest" role="listbox" data-suggest hidden></ul>
+    </div>`;
+  return `
+    <form data-nt-officials-form autocomplete="off">
+      ${NT_OFFICIAL_ROLES.map(([key, label, kind]) => box(key, label, kind)).join("")}
+      ${box("coach", `${teamName} head coach`, "coach")}
+      ${box("opponent_coach", `${match.opponent || "Opponent"} head coach`, "coach")}
+      <button class="rp-btn is-ghost" type="submit">Save officials</button>
+      <p class="rp-hint" data-official-note>Every box is optional and an empty one
+        shows nothing on everyleague.co — fill in whatever the graphic or the post
+        actually says. Tap a name from the list and it becomes a link to that
+        person's page. Clearing a box and saving removes that name.</p>
+    </form>`;
+}
+
+/** ntDetailAction mirrors detailAction (see drawDetail) but redraws the
+ *  national-team detail block, not the league one — the two screens keep
+ *  separate cached state (state.detail vs state.ntDetail). */
+async function ntDetailAction(button, busyLabel, fn, match, state) {
+  if (button.disabled) return;                    // no double submits
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = busyLabel;
+  try {
+    const error = await fn();
+    if (error) { flash(humanError(error), "error"); return; }
+    flash("Saved.", "ok", 2500);
+    state.ntDetail = null;
+    await drawNTDetail(match, state);
+  } catch (err) {
+    flash(humanError(err), "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
 // ── Scorers and the team sheet ───────────────────────────────────────────────
 
 async function drawNTDetail(match, state, { local = false } = {}) {
@@ -6011,19 +6175,25 @@ async function drawNTDetail(match, state, { local = false } = {}) {
   const open = state.open || {};
 
   if (!local || !state.ntDetail) {
-    const [goalsRes, lineRes] = await Promise.all([
+    const [goalsRes, lineRes, officialsRes] = await Promise.all([
       supabase.from("nt_goals")
         .select("goal_id,team_id,player_name,minute,goal_type")
         .eq("match_id", match.match_id).order("ord"),
       supabase.from("nt_lineups").select("*")
         .eq("match_id", match.match_id).order("ord"),
+      // The officials AND the reporter's private notes, riding along for the
+      // same reason the league match's detail query pairs them: one column on
+      // the same row, one query that already reads it. See drawDetail.
+      supabase.from("nt_matches").select(`${NT_OFFICIAL_COLUMNS},notes`)
+        .eq("match_id", match.match_id).limit(1),
     ]);
     state.ntDetail = {
       goals: goalsRes.data || [],
       lineup: lineRes.data || [],
+      officials: (officialsRes.data || [])[0] || {},
     };
   }
-  const { goals, lineup } = state.ntDetail;
+  const { goals, lineup, officials } = state.ntDetail;
   // The team sheet is edited as a whole, so it lives in state once loaded and
   // is only re-read from the database after a save.
   const sheetKey = match.team_code;
@@ -6076,6 +6246,22 @@ async function drawNTDetail(match, state, { local = false } = {}) {
     ${section("ntsheet", "Team sheet", sheet.rows.length,
       sheetHtml({ key: sheetKey, teamName: state.teamName, sheet, squad }),
       open.ntsheet)}
+
+    ${section("nt-officials", "Officials and coaches",
+      NT_OFFICIAL_ROLES.filter(([key]) => officials[key]).length,
+      ntOfficialsForm(match, officials, state.teamName), open["nt-officials"])}
+
+    ${section("nt-notes", "Notes", officials.notes ? 1 : 0, `
+      <form data-nt-notes-form>
+        <textarea class="rp-input rp-textarea" name="notes" rows="4"
+                  maxlength="4000" autocapitalize="sentences"
+                  placeholder="Anything you are not sure about, or want to check later"
+                  >${esc(officials.notes || "")}</textarea>
+        <button class="rp-btn is-ghost" type="submit">Save notes</button>
+        <p class="rp-hint">Only reporters see this — it is never shown on
+          everyleague.co and it is not in the public data files. Clearing the
+          box and saving deletes it.</p>
+      </form>`, open["nt-notes"])}
     </div>`;
 
   wireNTDetail(match, state, { sheetKey, sheet, squad });
@@ -6142,6 +6328,34 @@ function wireNTDetail(match, state, { sheetKey, sheet, squad }) {
       drawNTDetail(match, state);
     },
   }], () => drawNTDetail(match, state, { local: true }));
+
+  wireOfficialPickers(host);
+
+  host.querySelector("[data-nt-officials-form]")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    ntDetailAction(f.querySelector('button[type="submit"]'), "Saving…", async () => {
+      const args = { p_match_id: match.match_id };
+      NT_OFFICIAL_KEYS.forEach((key) => {
+        args[`p_${key}`] = f[key].value.trim();
+        args[`p_${key}_id`] = f[`${key}_id`].value.trim();
+      });
+      const { error } = await supabase.rpc("set_nt_match_officials", args);
+      return error;
+    }, match, state);
+  });
+
+  host.querySelector("[data-nt-notes-form]")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    ntDetailAction(f.querySelector('button[type="submit"]'), "Saving…", async () => {
+      const { error } = await supabase.rpc("set_nt_match_notes", {
+        p_match_id: match.match_id, p_notes: f.notes.value,
+      });
+      // NO requestRebuild: a note changes nothing on the public site.
+      return error;
+    }, match, state);
+  });
 }
 
 /** "10 Tabitha Chawinga FW" -> {shirt_number, player_name, position}.

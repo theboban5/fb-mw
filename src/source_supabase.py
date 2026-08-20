@@ -108,7 +108,16 @@ COLUMNS = {
     "nt_matches": ("match_id", "team_code", "date", "competition", "opponent",
                    "home_away", "neutral", "venue", "kickoff", "city",
                    "country", "team_score", "opponent_score", "status", "coach",
-                   "extra_time", "penalty_shootout", "extra_time_result"),
+                   "extra_time", "penalty_shootout", "extra_time_result",
+                   # 0033, mirroring matches' 0008/0023/0024 columns exactly.
+                   # `notes` is deliberately NOT here, for the same reason
+                   # matches.notes (0025) is not: a reporter's private note
+                   # about people has no business in a public git history.
+                   "source_ref", "referee", "assistant_referee_1",
+                   "assistant_referee_2", "fourth_official", "opponent_coach",
+                   "referee_id", "assistant_referee_1_id",
+                   "assistant_referee_2_id", "fourth_official_id", "coach_id",
+                   "opponent_coach_id"),
     "nt_goals": ("goal_id", "match_id", "team_id", "player_name", "player_id",
                  "minute", "stoppage", "period", "goal_type",
                  "assist_player_id", "source_type", "source_ref", "reported_by",
