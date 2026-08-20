@@ -698,7 +698,6 @@ MW_SRFA_2627_G-0177,MW_SRFA_2627_084,MW_MW_M2,Amin Yusuf,,CAF_MW_000010,,,,,,fac
 MW_SRFA_2627_G-0178,MW_SRFA_2627_084,MW_MW_M2,Amin Yusuf,,CAF_MW_000010,,,,,,facebook,https://www.facebook.com/share/p/191sP5bTaT/,,2026-08-13T18:04:03+00:00,confirmed,,
 MW_SRFA_2627_G-0179,MW_SRFA_2627_084,MW_ZU_M1,Yohane Mambo,,CAF_MW_000249,,,,,,facebook,https://www.facebook.com/share/p/191sP5bTaT/,,2026-08-13T18:04:07+00:00,confirmed,,
 MW_SL_2627_G-0204,MW_SL_2627_097,MW_CU_M1,Olamba Ngese,,CAF_MW_000183,60,,2h,penalty,,facebook,https://www.facebook.com/share/p/1EZ3ksBHns/,,2026-08-15T16:01:11+00:00,confirmed,,
-MW_SL_2627_G-0208,MW_SL_2627_099,MW_REDL_M1,Mphatso Magaleta,,CAF_MW_000178,50,,2h,penalty,,facebook,https://www.facebook.com/share/p/1EZ3ksBHns/,,2026-08-15T16:01:31+00:00,confirmed,,
 MW_SL_2627_G-0209,MW_SL_2627_100,MW_MAFC_M1,Chifundo Molosen,,CAF_MW_000462,75,,2h,,,facebook,https://www.facebook.com/share/p/1EZ3ksBHns/,,2026-08-15T16:01:41+00:00,confirmed,,
 MW_SL_2627_G-0210,MW_SL_2627_100,MW_MFC_M1,Luke Chima,,CAF_MW_000463,25,,1h,,,facebook,https://www.facebook.com/share/p/1EZ3ksBHns/,,2026-08-15T16:01:46+00:00,confirmed,,
 MW_NDL_2627_G-0138,MW_NDL_2627_060,MW_EXFC_M1,Mathews Mtalakwesi,,CAF_MW_000158,4,,1h,,,facebook,https://www.facebook.com/share/p/18qatGsBFM/,,2026-08-15T16:03:13+00:00,confirmed,,
@@ -801,3 +800,4 @@ MW_SL_2627_003_G2,MW_SL_2627_003,MW_SS_M1,,Festus Duwe,CAF_MW_000074,34,,,,CAF_M
 MW_SRFA_2627_091_G1,MW_SRFA_2627_091,MW_MWU_M1,,Yankho Mafuta,CAF_MW_000248,40,,,header,,reporter,,MW_REP_001,2026-08-20T12:37:36.164744+00:00,unconfirmed,,
 MW_SRFA_2627_091_G2,MW_SRFA_2627_091,MW_MWU_M1,,Jussa Samson,CAF_MW_000732,46,,,penalty,,reporter,,MW_REP_001,2026-08-20T12:38:04.805997+00:00,unconfirmed,,
 MW_SRFA2_2627_028_G1,MW_SRFA2_2627_028,MW_LIM_M1,,Robert Kapinga,CAF_MW_000750,72,,,header,CAF_MW_000757,reporter,,MW_REP_001,2026-08-20T12:55:47.108654+00:00,unconfirmed,,
+MW_SL_2627_099_G1,MW_SL_2627_099,MW_REDL_M1,,Mphatso Magaleta,CAF_MW_000178,50,,,penalty,,reporter,,MW_REP_001,2026-08-20T13:17:07.082552+00:00,unconfirmed,,
