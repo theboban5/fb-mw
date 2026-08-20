@@ -664,26 +664,92 @@ def check_nt(ntd):
     return errors
 
 
+def _deletable_fixture(match_id, previous_rows, previous_texts):
+    """Could delete_fixture (0032) have removed this match_id?
+
+    The RPC is admin-only and refuses anything that carries a result: the row
+    must be `scheduled`, and no goal and no line-up row may reference it. It
+    checks that against the live database at the moment of the delete; the
+    previous snapshot IS that database as the RPC saw it, so re-asking the same
+    three questions here answers "was this deletion the sanctioned one?" with
+    no extra table to keep in step and nothing to fetch.
+
+    Stale in the safe direction. If the snapshot is several publishes behind,
+    the goals it holds are a subset of the goals the RPC saw, never a superset
+    — so this can refuse a deletion that was in fact legitimate, and can never
+    wave through one that was not.
+    """
+    row = previous_rows.get(match_id)
+    if row is None or row.get("status") != "scheduled":
+        return False
+    for tab in ("goals", "lineups"):
+        text = previous_texts.get(tab)
+        if text is None:
+            # No snapshot of that tab to clear the fixture against. Something
+            # may well have referenced it; refuse rather than guess.
+            return False
+        for _i, ref in _non_blank_rows(text):
+            if ref.get("match_id") == match_id:
+                return False
+    return True
+
+
 def check_drift(texts, canonical_dir):
     """Check 8: every ID present in the previous snapshot must still exist.
 
-    Catches accidental row deletion in the sheet. First run (no snapshot yet)
-    passes vacuously.
+    Catches accidental row deletion, which under the spreadsheet was the only
+    way a row ever vanished. First run (no snapshot yet) passes vacuously.
+
+    WHAT WAS WRONG. Migration 0032 gave an admin a Delete button for a fixture
+    nobody should have entered, and this check had no idea: the deletion was
+    real, deliberate, and permanently fatal. Every subsequent build failed on
+    the same drift error — including the ones a reporter triggered by publishing
+    an unrelated result — so one tap on Delete stopped the site updating for
+    everybody until a human ran a build with --allow-deletions by hand.
+
+    WHAT THIS DOES. A missing `matches` row that delete_fixture would have been
+    allowed to remove is reported as a WARNING and the build carries on. Every
+    other disappearance is still an ERROR: a played match, a club, a player, a
+    national-team match (nothing can legally delete one), or a fixture that had
+    a scorer or a team sheet against it. The trade: an admin who deletes a
+    scheduled fixture by mistake now loses it silently at the next build rather
+    than being stopped. That is the smaller loss — the row held a date and two
+    team ids and nothing a reporter typed, and `data/canonical/` keeps it in
+    the audit log either way.
     """
     errors = []
+    warnings = []
+    previous_texts = {}
+    for tab in ("goals", "lineups"):
+        path = os.path.join(canonical_dir, f"{tab}.csv")
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                previous_texts[tab] = fh.read()
+
     for tab, id_col in DRIFT_IDS.items():
         path = os.path.join(canonical_dir, f"{tab}.csv")
         if tab not in texts or not os.path.exists(path):
             continue
         with open(path, encoding="utf-8") as fh:
-            previous = {row.get(id_col, "") for _i, row in _non_blank_rows(fh.read())}
+            previous = {row.get(id_col, ""): row
+                        for _i, row in _non_blank_rows(fh.read())}
         current = {row.get(id_col, "") for _i, row in _non_blank_rows(texts[tab])}
-        missing = sorted(previous - current - {""})
+        missing = sorted(set(previous) - current - {""})
         for value in missing:
+            if tab == "matches" and _deletable_fixture(value, previous,
+                                                       previous_texts):
+                warnings.append(
+                    f"drift: matches match_id {value!r} was deleted since the "
+                    f"previous snapshot — a scheduled fixture with no goals and "
+                    f"no team sheet, which is what delete_fixture removes"
+                )
+                continue
             errors.append(
                 f"drift: {tab} {id_col} {value!r} was in the previous snapshot "
                 f"but is gone from the sheet (use --allow-deletions if intended)"
             )
+    for line in warnings:
+        print(f"WARNING: {line}", file=sys.stderr)
     return errors
 
 
