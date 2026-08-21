@@ -243,7 +243,7 @@ MW_BDU14_2627_012,MW_BDU14,MW_2026_27,md_2,2,,,,MW_FU_M1,MW_LB_M1,0,0,played,,re
 MW_SRFA_2627_031,MW_SRFA,MW_2026_27,md_5,5,2026-06-27,,MW_B_001,MW_LBTY_M1,MW_IFC_M1,1,2,played,,facebook,,,,confirmed,,,,,,,,,,,,,,,,,
 MW_BDU14_2627_013,MW_BDU14,MW_2026_27,md_2,2,,,,MW_ASSIMA_M1,MW_MTOPWA_M1,1,1,played,,reporter,WhatsApp,MW_REP_003,2026-08-21T11:57:25.502729+00:00,confirmed,MW_REP_003,2026-08-21T11:57:25.502729+00:00,,,,,,,,,,,,,,,
 MW_SRFA_2627_032,MW_SRFA,MW_2026_27,md_5,5,2026-06-28,,MW_B_001,MW_EFC_M2,MW_ZU_M1,6,1,played,,facebook,,,,confirmed,,,,,,,,,,,,,,,,,
-MW_BDU14_2627_014,MW_BDU14,MW_2026_27,md_2,2,,,,MW_CHIG_M1,MW_ZA_M1,,,scheduled,,reporter,WhatsApp,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_BDU14_2627_014,MW_BDU14,MW_2026_27,md_2,2,,,,MW_CHIG_M1,MW_ZA_M1,1,4,played,,reporter,WhatsApp,MW_REP_003,2026-08-21T14:06:27.234271+00:00,confirmed,MW_REP_003,2026-08-21T14:06:27.234271+00:00,,,,,,,,,,,,,,,
 MW_SRFA_2627_033,MW_SRFA,MW_2026_27,md_5,5,2026-06-28,,MW_CRZ_001,MW_CHIR_M1,MW_BULL_M2,0,0,played,,facebook,,,,confirmed,,,,,,,,,,,,,,,,,
 MW_BDU14_2627_015,MW_BDU14,MW_2026_27,md_2,2,,,,MW_RE_M1,MW_JA_M1,,,scheduled,,reporter,WhatsApp,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_SRFA_2627_034,MW_SRFA,MW_2026_27,md_5,5,2026-06-28,,MW_CHL_001,MW_TB_M1,MW_MW_M2,2,1,played,,facebook,,,,confirmed,,,,,,,,,,,,,,,,,
