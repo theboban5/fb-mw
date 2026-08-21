@@ -11,8 +11,8 @@ MW_CHIB_G,Chibavi Ground,,
 MW_CHL_001,Chilomoni Stadium,Chilomoni,20000
 MW_CHITE_G,Chiteko Ground,,
 MW_CHI_001,Chitipa Stadium,Chitipa,
-MW_MKANDA,Mkanda Primary School,,
 MW_MAF_001,Chitowe Stadium,Mafupa,1000
+MW_MKANDA,Mkanda Primary School,,
 MW_CWZA_G,Chiwaza Ground,,
 MW_L_001,Civo Stadium,Lilongwe,25000
 MW_D_001,Dedza Stadium,Dedza,
@@ -28,6 +28,7 @@ MW_LUVI_G,Luviri Ground,,
 MW_MAJA_G,Majaliro Ground,,
 MW_KATOTO,Katoto Ground,,
 MW_MCJ_003,Mchinji Mini Stadium,Mchinji,
+MW_RTC,RTC Ground,,
 MW_CRZ_001,Mkhwai Ground,Chiradzulu,
 MW_B_004,Moneymen Ground,Blantyre,
 MW_B_001,Mpira Stadium,Blantyre,10000
