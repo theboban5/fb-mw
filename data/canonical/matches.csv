@@ -311,7 +311,7 @@ MW_MDU20_2627_001,MW_MDU20,MW_2026_27,md_1,1,2026-07-11,08:00,MW_CHIB_G,MW_CRS2_
 MW_WP_2526_003,MW_WP,MW_2025_26,md_1,1,2025-07-27,,,MW_MDF_W1,MW_SS_W1,1,2,played,,fa,,,,confirmed,,,,,,,,,,,,,,,,,
 MW_MDU20_2627_002,MW_MDU20,MW_2026_27,md_1,1,2026-07-11,10:00,MW_CHIB_G,MW_MCHY_M1,MW_MA_M1,,,scheduled,,reporter,https://www.facebook.com/share/p/19F8tRTs45/,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_WP_2526_004,MW_WP,MW_2025_26,md_1,1,2025-07-27,,,MW_MKA_W1,MW_CSUW_W1,0,0,played,,fa,,,,confirmed,,,,,,,,,,,,,,,,,
-MW_MDU20_2627_003,MW_MDU20,MW_2026_27,md_1,1,2026-07-11,08:00,MW_BOTA_G,MW_VA_M1,MW_KU2_M1,,,scheduled,,reporter,https://www.facebook.com/share/p/19F8tRTs45/,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_MDU20_2627_003,MW_MDU20,MW_2026_27,md_1,1,2026-07-11,08:00,MW_BOTA_G,MW_VA_M1,MW_KU2_M1,3,0,played,,reporter,"https://www.facebook.com/share/p/19F8tRTs45/, https://www.facebook.com/share/p/18DYwqCDcY/",MW_REP_001,2026-08-21T12:45:54.619543+00:00,confirmed,MW_REP_001,2026-08-21T12:45:54.619543+00:00,,,,,,,,,,,,,,,
 MW_WP_2526_005,MW_WP,MW_2025_26,md_1,1,2025-07-27,,,MW_ASA_W1,MW_TA_W1,6,0,played,,fa,,,,confirmed,,,,,,,,,,,,,,,,,
 MW_MDU20_2627_004,MW_MDU20,MW_2026_27,md_1,1,2026-07-11,10:00,MW_BOTA_G,MW_CU2_M1,MW_MMM_M1,,,scheduled,,reporter,https://www.facebook.com/share/p/19F8tRTs45/,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_WP_2526_006,MW_WP,MW_2025_26,md_2,2,2025-08-02,,,MW_MW_W1,MW_ASA_W1,0,2,played,,fa,,,,confirmed,,,,,,,,,,,,,,,,,
