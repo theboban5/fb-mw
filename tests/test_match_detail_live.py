@@ -66,9 +66,20 @@ class MatchDetailTest(unittest.TestCase):
                         "p_player_name": name, "p_minute": minute,
                         "p_goal_type": goal_type, "p_player_id": player_id})
 
-    def create_player(self, label, name):
+    def create_player(self, label, name, force=False):
         return call("rpc/create_player", token=self.tokens[label],
-                    method="POST", body={"p_full_name": name})
+                    method="POST",
+                    body={"p_full_name": name, "p_force": force})
+
+    def search_players(self, label, term):
+        return call("rpc/search_players", token=self.tokens[label],
+                    method="POST", body={"p_term": term})
+
+    def found(self, label, term, player_id):
+        """One player's row out of a search, or None."""
+        status, body = self.search_players(label, term)
+        self.assertEqual(status, 200, body)
+        return next((r for r in body if r["player_id"] == player_id), None)
 
     @staticmethod
     def drop_player(player_id):
@@ -200,6 +211,82 @@ class MatchDetailTest(unittest.TestCase):
         again = self.create_player("admin", "  zzztest KACHALA ")
         self.assertEqual(again[0], 200, again[1])
         self.assertEqual(again[1][0]["player_id"], body[0]["player_id"])
+
+    # ── Two people, one name (0034) ──────────────────────────────────────────
+    # The Mzuzu District U20 league produced the first pair the registry could
+    # not hold: Steve Phiri of Mzuzu City Hammers Youth and Steven Phiri of
+    # Chizumulu United, two people, whose goals landed on one page. What makes
+    # a second player under an existing name safe is not the force flag — it is
+    # the club beside the name in the picker, so these two tests belong
+    # together.
+
+    def team_name(self, team_id):
+        return sb.select("teams", columns="team_id,display_name",
+                         params={"team_id": f"eq.{team_id}"},
+                         require_secret=True)[0]["display_name"]
+
+    def test_force_creates_a_second_player_under_one_name(self):
+        """Two real people may share a name, and both must be reachable."""
+        status, body = self.create_player("a", "Zzztest Phiri")
+        self.assertEqual(status, 200, body)
+        first = body[0]["player_id"]
+        self.addCleanup(self.drop_player, first)
+
+        status, body = self.create_player("a", "Zzztest Phiri", force=True)
+        self.assertEqual(status, 200, body)
+        second = body[0]["player_id"]
+        self.addCleanup(self.drop_player, second)
+
+        self.assertNotEqual(second, first)
+        self.assertEqual(body[0]["full_name"], "Zzztest Phiri")
+        # Both findable. A second player the search cannot reach is worse than
+        # no second player: it is a page nobody can link a goal to.
+        found = {r["player_id"] for r in self.search_players("a", "Zzztest Phiri")[1]}
+        self.assertLessEqual({first, second}, found)
+
+    def test_search_names_the_club_a_player_has_played_for(self):
+        """The fact that tells two players of one name apart."""
+        status, body = self.create_player("a", "Zzztest Mkandawire")
+        self.assertEqual(status, 200, body)
+        player_id = body[0]["player_id"]
+        self.addCleanup(self.drop_player, player_id)
+
+        # Before he has played for anyone the honest answer is nothing at all,
+        # never a placeholder.
+        row = self.found("a", "Zzztest Mkandawire", player_id)
+        self.assertIsNotNone(row)
+        self.assertEqual(row["teams"], "")
+        self.assertEqual(row["team_ids"], [])
+
+        team_id = self.match_a["home_team_id"]
+        self.publish("a", self.match_a, 1, 0)
+        self.assertEqual(self.add_goal("a", self.match_a, team_id,
+                                       "Zzztest Mkandawire", minute="20",
+                                       player_id=player_id)[0], 200)
+
+        row = self.found("a", "Zzztest Mkandawire", player_id)
+        self.assertEqual(row["team_ids"], [team_id])
+        self.assertEqual(row["teams"], self.team_name(team_id))
+
+    def test_an_own_goal_does_not_file_a_player_at_the_other_club(self):
+        """goals.team_id names the BENEFICIARY, so an own goal's is the
+        opponent. Counting it would put a player at the club he scored
+        against — the one answer worse than no answer at all."""
+        status, body = self.create_player("a", "Zzztest Nyirenda")
+        self.assertEqual(status, 200, body)
+        player_id = body[0]["player_id"]
+        self.addCleanup(self.drop_player, player_id)
+
+        # 0-1: the goal belongs to the away side, the player is a home player.
+        self.publish("a", self.match_a, 0, 1)
+        self.assertEqual(self.add_goal("a", self.match_a,
+                                       self.match_a["away_team_id"],
+                                       "Zzztest Nyirenda", minute="33",
+                                       goal_type="own_goal",
+                                       player_id=player_id)[0], 200)
+
+        row = self.found("a", "Zzztest Nyirenda", player_id)
+        self.assertEqual(row["team_ids"], [])
 
     def test_a_created_player_can_be_named_as_a_scorer(self):
         status, body = self.create_player("a", "Zzztest Chirwa")
