@@ -168,6 +168,37 @@ fixture and clean up, and they never mutate a real match.
 
 ## Recent work (Aug 2026)
 
+Two people, one name, migration `0034`:
+
+- The Mzuzu District U20 league broke the assumption every player tool rests
+  on. Steve Phiri (Mzuzu City Hammers Youth) and Steven Phiri (Chizumulu
+  United, NRFA) are two people; the U20 scorer table credited one's goals to
+  the other's page. Gift Phiri appeared in that table twice — once linked to
+  the National Division player of that name, once unlinked, which is a
+  reporter doing the only thing the portal left them.
+- **The picker showed a name and nothing else, so there was no fact to choose
+  BY.** `search_players` now also returns the clubs a player has been named
+  for, derived from `lineups` and `goals` at query time — the record already
+  existed, it had just never been shown to the person who needed it. Own goals
+  are excluded: `goals.team_id` is the beneficiary, so counting one files a
+  player at the club he scored against.
+- **And when they did know, they could not act.** `create_player` is
+  idempotent on the name and the portal hid "＋ Add as a new player" whenever
+  the typed name matched exactly, so a second Gift Phiri was unreachable.
+  `create_player(name, force)` inserts anyway — offered only from a list of
+  the people who already hold that name, with their clubs beside them.
+- The club hint is what makes the force flag safe, not the other way round.
+  The trade: the guarantee drops from "the database will not let you" to "the
+  reporter can see who they are choosing between", because the database cannot
+  know whether two Gift Phiris are one person and the reporter can.
+- Three places asked the question and only one of them can now get it wrong
+  silently: the scorer picker, the team-sheet link box, and the squad chip
+  "＋ Add", which used to call `create_player` blind — the chip list is one
+  club's squad, so its silence never meant the name was free. It asks first.
+- `knownScorers` is gone. It was a query per match screen that read goals
+  alone; `team_ids` says the same thing from the same call and counts team
+  sheets too, so a defender with nine appearances is no longer invisible to it.
+
 Team-sheet entry, no migration — four things that made filling one in slow:
 
 - **A `change` fires when a box loses focus, which on a phone is the same

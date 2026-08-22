@@ -272,6 +272,33 @@ SURNAME with agreeing initials — so "Andrew Josephy" finds the existing
 "A. Josephy" instead of offering to create a second one. The `/report` screen
 for all of this is `#/players`.
 
+## Two people, one name (0034)
+
+Everything above assumes a name that repeats is a person filed twice. The
+Mzuzu District U20 league produced the case where it is not: Steve Phiri of
+Mzuzu City Hammers Youth and Steven Phiri of Chizumulu United are two people,
+and the picker — which showed names and nothing else — had no way to say so.
+
+- **`search_players` also returns `teams` and `team_ids`**: up to two squads
+  the player has actually been named for, most recent first. Derived at query
+  time from `lineups` and `goals`, never stored — `players` has no club
+  column and must not get one. **Own goals are excluded**, because
+  `goals.team_id` is the beneficiary and counting one would file a player at
+  the club he scored against. Empty for anyone who has not played yet, which
+  renders as nothing.
+- **`create_player(full_name, force)`** — `force=false` (the default) keeps
+  the idempotence every other caller relies on. `force=true` inserts a second
+  row under a name that already exists. The portal offers it only from a list
+  of the people who already hold that name, with their clubs beside them.
+- Nothing here is admin-gated: creating a row is not destructive, and
+  `merge_players` is the undo. `rename_player` still refuses to rename INTO an
+  existing name — renaming into a collision is nearly always the mistake 0022
+  describes, and a genuinely different person now has a front door of its own.
+
+The guarantee is therefore weaker than "the database will not let you", and
+deliberately so: the database cannot know whether two Gift Phiris are one
+person, and the reporter looking at both clubs can.
+
 ## Officials (0024)
 
 Referees and coaches went in as free text in 0023, and that migration argued

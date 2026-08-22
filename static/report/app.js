@@ -2185,6 +2185,41 @@ async function searchPlayersByName(q) {
 
 const playerLabel = (p) => p.known_as || p.full_name || p.player_id;
 
+/** The line under a name in every player picker: WHICH ONE IS THIS?
+ *
+ *  A picker that shows names and nothing else is how the Mzuzu District U20
+ *  scorer table ended up crediting Steve Phiri's goals to a senior player at
+ *  Chizumulu United. The reporter did nothing wrong — there was one row on
+ *  screen, it read "Steve Phiri", and no fact on it could have said otherwise.
+ *
+ *  So the club comes first, because it is the fact that separates two people.
+ *  The alias below it explains why a row is in the list at all (a surname
+ *  match is trustworthy once you can see it was filed as "S. Phiri" before),
+ *  and matters most for the players who have no club yet — which is exactly
+ *  when it is free to show.
+ *
+ *  Everything here is optional and every omission renders as nothing: a player
+ *  created a minute ago has never been named on a sheet, and the honest answer
+ *  to "which one is this" is then silence, not a placeholder. `teams` is also
+ *  absent when search_players predates 0034 or the ilike fallback ran. */
+function playerHint(p) {
+  if (p.teams) return p.teams;
+  const name = playerLabel(p);
+  if (p.matched && p.matched !== name) return `also filed as ${p.matched}`;
+  if (p.known_as && p.full_name && p.known_as !== p.full_name) return p.full_name;
+  return "";
+}
+
+/** Has this player been named for either side of the match on screen?
+ *
+ *  Replaces knownScorers, a query per match screen that read goals alone. The
+ *  team sheets say the same thing and say it earlier — a defender who has
+ *  played nine games and scored none was invisible to it — and search_players
+ *  now returns both (0034), so the answer arrives with the search rather than
+ *  beside it. */
+const playsHere = (p, match) => (p.team_ids || []).some(
+  (id) => id === match.home_team_id || id === match.away_team_id);
+
 /** One scorer, saved. Returns the error rather than throwing, like every other
  *  save on this screen. */
 async function saveGoal(match, entry) {
@@ -2253,21 +2288,6 @@ function scoreFor(match, state, teamId) {
 function goalsNamedFor(saved, state, teamId) {
   return saved.filter((g) => g.team_id === teamId).length
     + (state.pendingGoals || []).filter((g) => g.team_id === teamId).length;
-}
-
-/** player_id -> team_id for everyone who has already scored for either side in
- *  this match. Two players share a name often enough that "has scored for
- *  Ekhaya" is usually the whole answer to which one the reporter means, and it
- *  is one query per match screen. */
-function knownScorers(match) {
-  return once(`scorers:${match.match_id}`, async () => {
-    const { data } = await supabase.from("goals").select("player_id,team_id")
-      .in("team_id", [match.home_team_id, match.away_team_id])
-      .neq("player_id", UNKNOWN_PLAYER).limit(500);
-    const seen = {};
-    (data || []).forEach((g) => { seen[g.player_id] = g.team_id; });
-    return seen;
-  });
 }
 
 /** Which side did it. `checked` keeps the reporter's choice across the redraw
@@ -2808,36 +2828,48 @@ function wirePlayerPicker(wrap, host, match) {
   // Read by the one document listener wirePlayerPickers installs.
   wrap._closePicker = close;
 
-  function render(players, term, known) {
+  function render(players, term) {
     const rows = players.map((p) => {
       const name = playerLabel(p);
-      const teamId = known[p.player_id];
-      // Why this row is in the list, in descending order of usefulness.
-      // `matched` comes back from search_players when the hit was on an ALIAS
-      // — a spelling this player used to be filed under — and saying so is
-      // what makes a surname match trustworthy instead of surprising.
-      const hint = teamId
-        ? `has scored for ${teamId === match.home_team_id
-            ? (match.home?.display_name || "the home team")
-            : (match.away?.display_name || "the away team")}`
-        : (p.matched && p.matched !== name ? `also filed as ${p.matched}`
-          : (p.known_as && p.full_name && p.known_as !== p.full_name
-              ? p.full_name : ""));
+      const hint = playerHint(p);
+      // A player already named for one of THESE two teams is almost always the
+      // one meant, so the club reads in the accent colour rather than grey.
+      // The rows are sorted on the same fact; the colour is what makes the
+      // sort legible instead of merely lucky.
+      const here = playsHere(p, match);
       return `<li role="option"><button type="button" class="rp-suggest-btn"
         data-player="${esc(p.player_id)}" data-name="${esc(name)}">
-        <span>${esc(name)}</span>${hint ? `<em>${esc(hint)}</em>` : ""}</button></li>`;
+        <span>${esc(name)}</span>${hint
+          ? `<em${here ? ' class="is-here"' : ""}>${esc(hint)}</em>` : ""}</button></li>`;
     });
 
-    // Offered unless the typed name IS one of the answers: a reporter looking
-    // straight at "Thandiwe Phiri" in the list must not also be invited to
-    // create a second one.
-    const exact = players.some(
-      (p) => playerLabel(p).toLowerCase() === term.trim().toLowerCase());
-    if (!exact) {
+    // TWO DIFFERENT BUTTONS, BECAUSE THEY ARE TWO DIFFERENT CLAIMS.
+    //
+    // With no exact match, "add a new player" is the ordinary end of the list
+    // and create_player's idempotence is the safety net under it: a name that
+    // ranked too low to be shown is still found rather than cloned.
+    //
+    // With an exact match the old code offered nothing at all, on the
+    // reasoning that a reporter looking straight at "Gift Phiri" must not be
+    // invited to create a second one. That reasoning held right up until the
+    // second Gift Phiri turned out to exist — and then it left the reporter
+    // with no move but to save the goal unlinked, which is what the U20
+    // scorer table now shows. So the offer is made, and it is a different
+    // offer: it says SECOND, it says check the club, and it forces the insert
+    // past the idempotence that would otherwise hand back the first one.
+    const typed = term.trim();
+    const exact = players.filter(
+      (p) => playerLabel(p).toLowerCase() === typed.toLowerCase());
+    if (!exact.length) {
       rows.push(`<li role="option"><button type="button"
-        class="rp-suggest-btn is-new" data-create="${esc(term.trim())}">
-        <span>＋ Add “${esc(term.trim())}” as a new player</span>
+        class="rp-suggest-btn is-new" data-create="${esc(typed)}">
+        <span>＋ Add “${esc(typed)}” as a new player</span>
         <em>only if they are not in the list above</em></button></li>`);
+    } else {
+      rows.push(`<li role="option"><button type="button"
+        class="rp-suggest-btn is-new" data-create="${esc(typed)}" data-force="1">
+        <span>＋ Add a second “${esc(typed)}”</span>
+        <em>a different person — check the club above first</em></button></li>`);
     }
     list.innerHTML = rows.join("");
     list.hidden = false;
@@ -2856,15 +2888,14 @@ function wirePlayerPicker(wrap, host, match) {
     timer = setTimeout(async () => {
       const mine = ++latest;
       try {
-        const [players, known] = await Promise.all([
-          searchPlayers(term), knownScorers(match),
-        ]);
+        const players = await searchPlayers(term);
         if (mine !== latest) return;
-        // Familiar faces first: someone who has scored for one of these two
-        // teams is far more likely to be the person meant.
+        // Familiar faces first: someone already named for one of these two
+        // teams is far more likely to be the person meant. A stable sort, so
+        // search_players' own ranking still decides the order within each half.
         players.sort((a, b) =>
-          Number(Boolean(known[b.player_id])) - Number(Boolean(known[a.player_id])));
-        render(players, term, known);
+          Number(playsHere(b, match)) - Number(playsHere(a, match)));
+        render(players, term);
       } catch (err) {
         if (mine !== latest) return;
         // Rule 3, and the reason the picker is optional: a failed lookup must
@@ -2891,10 +2922,11 @@ function wirePlayerPicker(wrap, host, match) {
     }
     const name = button.dataset.create;
     if (!name || button.disabled) return;
+    const force = button.dataset.force === "1";
     button.disabled = true;
     button.querySelector("span").textContent = "Adding…";
     const { data, error } = await supabase.rpc("create_player", {
-      p_full_name: name,
+      p_full_name: name, p_force: force,
     });
     if (error) {
       button.disabled = false;
@@ -2905,8 +2937,9 @@ function wirePlayerPicker(wrap, host, match) {
       return;
     }
     const created = (data || [])[0];
-    // create_player is idempotent on the name, so this may be a player who
-    // already existed under a spelling the search did not surface.
+    // Without force, create_player is idempotent on the name, so this may be a
+    // player who already existed under a spelling the search did not surface.
+    // With it, it is always a new row and always a deliberate one.
     choose(created.player_id, playerLabel(created));
   });
 
@@ -3298,10 +3331,14 @@ function playerCard(p) {
   const name = playerLabel(p);
   const alias = p.matched && p.matched !== name
     ? `<p class="rp-hint">Also filed as “${esc(p.matched)}”.</p>` : "";
+  // On the summary line, beside the id, because this screen's whole job is
+  // telling people apart and a search for "Phiri" returns a column of them.
+  const clubs = p.teams ? `<span class="rp-sec-note">${esc(p.teams)}</span>` : "";
   return `
     <details class="rp-sec" data-player-card data-player-id="${esc(p.player_id)}"
              data-player-name="${esc(name)}">
-      <summary>${esc(name)}<span class="rp-sec-count">${esc(p.player_id.replace(/^CAF_MW_/, ""))}</span></summary>
+      <summary><span class="rp-sec-name">${esc(name)}</span>${clubs}<span
+        class="rp-sec-count">${esc(p.player_id.replace(/^CAF_MW_/, ""))}</span></summary>
       <div class="rp-sec-body">
         ${alias}
         <p class="rp-hint" data-player-activity>Counting what is attached…</p>
@@ -3433,12 +3470,16 @@ function wireMergePicker(wrap, loserId, loserName, redraw) {
         return;
       }
       if (mine !== latest) return;
+      // The club matters more here than anywhere else in the portal: this
+      // list ends in a DELETE, and two players of one name are now a thing
+      // the portal deliberately allows. "Keep this one" beside the wrong club
+      // is how the fix for a split record becomes a worse split record.
       const rows = players
         .filter((p) => p.player_id !== loserId)
         .map((p) => `<li role="option"><button type="button" class="rp-suggest-btn"
           data-winner="${esc(p.player_id)}" data-winner-name="${esc(playerLabel(p))}">
           <span>${esc(playerLabel(p))}</span>
-          <em>keep this one</em></button></li>`);
+          <em>keep this one${p.teams ? ` — ${esc(p.teams)}` : ""}</em></button></li>`);
       list.innerHTML = rows.length ? rows.join("")
         : '<li><button type="button" class="rp-suggest-btn" disabled><span>Nobody else found</span></button></li>';
       list.hidden = false;
@@ -5402,9 +5443,11 @@ function sheetState(state, key, saved) {
     // `adding` is which end of the sheet a tapped name lands on. It starts
     // wherever the saved sheet left off — a sheet reopened with eleven
     // starters is being added to at the back, not the front.
+    // `samename` is the "there is already a Steve Phiri — is this him?"
+    // question, held open until it is answered, or null.
     const rows = (saved || []).map((r) => ({ ...r }));
     state.sheets[key] = {
-      rows, filter: "", linking: null,
+      rows, filter: "", linking: null, samename: null,
       adding: rows.filter((r) => r.role === "starting").length >= STARTING_XI
         ? "unused_sub" : "starting",
     };
@@ -5416,7 +5459,49 @@ const onSheet = (sheet, entry) => sheet.rows.some((r) =>
   (entry.player_id && r.player_id === entry.player_id)
   || r.player_name.toLowerCase() === entry.name.toLowerCase());
 
+/** "＋ Add “Steve Phiri”" turned out to mean two things. Which one?
+ *
+ *  The chip list is this CLUB's squad, so a name missing from it reads as
+ *  "nobody here yet" — and the button under it used to go straight to
+ *  create_player, which is idempotent on the name and therefore handed back
+ *  whichever Steve Phiri the database already held. On an U20 sheet that is a
+ *  senior player at another club, linked silently, with the reporter told
+ *  nothing. It is where the Mzuzu District U20 mis-links came from.
+ *
+ *  So when the name already belongs to somebody, the chips are replaced by
+ *  the question itself: here are the people of that name and the clubs they
+ *  play for, or add a new one. Nothing is created until it is answered.
+ *
+ *  Only EXACT name matches get here. A near miss stays on the old path, where
+ *  create_player's idempotence is still the right safety net — it is the thing
+ *  that finds a player the search ranked too low to show. */
+function samenameHtml(sheet, key) {
+  const { name, players } = sheet.samename;
+  const rows = players.map((p) => {
+    const hint = playerHint(p);
+    // The club this sheet is for. Almost always the answer when it is there,
+    // and almost always absent — which is itself the answer.
+    const here = (p.team_ids || []).includes(key);
+    return `
+      <button type="button" class="rp-squad-chip${here ? " is-here" : ""}"
+              data-samename-pick="${esc(p.player_id)}"
+              data-samename-name="${esc(playerLabel(p))}"
+              data-sheet-key="${esc(key)}">
+        ${esc(playerLabel(p))}${hint ? `<em>${esc(hint)}</em>` : ""}
+      </button>`;
+  }).join("");
+  return `
+    <p class="rp-hint">There is already a <b>${esc(name)}</b>. Is this him?</p>
+    <div class="rp-squad-chips is-samename">${rows}
+      <button type="button" class="rp-squad-chip is-new"
+              data-samename-new="${esc(name)}" data-sheet-key="${esc(key)}">
+        ＋ No — a different ${esc(name)}
+      </button>
+    </div>`;
+}
+
 function squadListHtml(sheet, squad, key) {
+  if (sheet.samename) return samenameHtml(sheet, key);
   const term = sheet.filter.trim().toLowerCase();
   const free = squad.filter((p) => !onSheet(sheet, p));
   const shown = term ? free.filter((p) => p.name.toLowerCase().includes(term)) : free;
@@ -5733,6 +5818,9 @@ function wireSheet(root, ctx, redraw) {
     const box = e.target.closest("[data-sheet-filter]");
     if (box) {
       sheet.filter = box.value;
+      // Typing again withdraws the question: it was asked about a name that
+      // is no longer the one in the box.
+      sheet.samename = null;
       const list = root.querySelector("[data-squad-list]");
       if (list) list.innerHTML = squadListHtml(sheet, squad, ctx.key);
       return;
@@ -5767,11 +5855,23 @@ function wireSheet(root, ctx, redraw) {
         return;
       }
       if (mine !== linkLatest) return;
-      const rows = players.map((p) => `<li role="option"><button type="button"
-        class="rp-suggest-btn" data-sheet-link-pick="${esc(p.player_id)}"
-        data-link-name="${esc(playerLabel(p))}">
-        <span>${esc(playerLabel(p))}</span>${p.matched && p.matched !== playerLabel(p)
-          ? `<em>also filed as ${esc(p.matched)}</em>` : ""}</button></li>`);
+      // The same hint the scorer picker shows, for the same reason and from
+      // the same call. This list used to show the alias and nothing else, so
+      // linking a name on an U20 sheet to a senior player of that name looked
+      // exactly like linking it to the right one.
+      const rows = players.map((p) => {
+        const hint = playerHint(p);
+        // This side's own club, not the match's two: a team sheet is one
+        // side, so "has played for THIS club" is the whole question. On a
+        // national-team sheet ctx.key is a team_code and matches nothing,
+        // which is right — a country is not one of a player's clubs.
+        const here = (p.team_ids || []).includes(ctx.key);
+        return `<li role="option"><button type="button"
+          class="rp-suggest-btn" data-sheet-link-pick="${esc(p.player_id)}"
+          data-link-name="${esc(playerLabel(p))}">
+          <span>${esc(playerLabel(p))}</span>${hint
+            ? `<em${here ? ' class="is-here"' : ""}>${esc(hint)}</em>` : ""}</button></li>`;
+      });
       const exact = players.some(
         (p) => playerLabel(p).toLowerCase() === term.toLowerCase());
       if (!exact) {
@@ -5779,6 +5879,12 @@ function wireSheet(root, ctx, redraw) {
           class="rp-suggest-btn is-new" data-sheet-link-create="${esc(term)}">
           <span>＋ Add “${esc(term)}” as a new player</span>
           <em>only if they are not in the list above</em></button></li>`);
+      } else {
+        rows.push(`<li role="option"><button type="button"
+          class="rp-suggest-btn is-new" data-sheet-link-create="${esc(term)}"
+          data-force="1">
+          <span>＋ Add a second “${esc(term)}”</span>
+          <em>a different person — check the club above first</em></button></li>`);
       }
       list.innerHTML = rows.join("");
       list.hidden = false;
@@ -5825,6 +5931,7 @@ function wireSheet(root, ctx, redraw) {
     // to close it rather than leave it pointing at whoever moved into that
     // slot. See sheetRowHtml.
     sheet.linking = null;
+    sheet.samename = null;
     redraw();
   }
 
@@ -5848,31 +5955,82 @@ function wireSheet(root, ctx, redraw) {
       return;
     }
 
-    const create = e.target.closest("[data-squad-create]");
-    if (create) {
-      if (create.disabled) return;
-      const name = create.dataset.squadCreate;
-      create.disabled = true;
-      create.textContent = "Adding…";
-      const { data, error } = await supabase.rpc("create_player", { p_full_name: name });
+    /** The end of every path below: this id is who that name is. A blank id
+     *  is legal and means the name goes on the sheet unlinked. */
+    function addToSheet(playerId, name) {
+      if (playerId && !squad.some((p) => p.player_id === playerId)) {
+        squad.push({ player_id: playerId, name, shirt_number: "", position: "" });
+      }
+      put(blankSheetRow({ player_id: playerId, name }));
+    }
+
+    /** create_player, and Rule 3 around it: a lookup that fails must not cost
+     *  the entry. The name goes on the sheet unlinked and can be linked later,
+     *  which is strictly better than losing it. */
+    async function createAndAdd(button, name, force) {
+      button.disabled = true;
+      button.textContent = "Adding…";
+      const { data, error } = await supabase.rpc("create_player",
+        { p_full_name: name, p_force: force });
       const made = (data || [])[0];
       if (error || !made) {
-        // Rule 3 again: a lookup that fails must not cost the entry. The name
-        // goes on the sheet unlinked, and can be linked later.
         console.warn("[everyleague] create_player failed:", error);
         flash("Could not add that player — the name goes on the sheet unlinked.",
               "warn");
       }
-      // create_player is idempotent on the name, so a player created here may
-      // be one who already existed; either way they belong in the squad now.
-      if (made && !squad.some((p) => p.player_id === made.player_id)) {
-        squad.push({ player_id: made.player_id, name: playerLabel(made),
-                     shirt_number: "", position: "" });
+      addToSheet(made ? made.player_id : "", made ? playerLabel(made) : name);
+    }
+
+    const create = e.target.closest("[data-squad-create]");
+    if (create) {
+      if (create.disabled) return;
+      const name = create.dataset.squadCreate;
+      // ASK BEFORE CREATING, WHEN THERE IS SOMETHING TO ASK ABOUT.
+      //
+      // This used to call create_player straight away, and because that is
+      // idempotent on the name, tapping "＋ Add “Steve Phiri”" on an U20 sheet
+      // silently linked the row to a senior Steve Phiri at another club. The
+      // chip list is only this club's squad, so its silence never meant the
+      // name was free — it only meant nobody here had it.
+      //
+      // One search, once, on a tap the reporter makes at most a handful of
+      // times a sheet. If it fails we fall through and create as before:
+      // losing the entry to a failed lookup would be the worse trade.
+      let clash = [];
+      try {
+        create.disabled = true;
+        create.textContent = "Checking…";
+        clash = (await searchPlayers(name)).filter(
+          (p) => playerLabel(p).toLowerCase() === name.toLowerCase());
+      } catch (err) {
+        console.warn("[everyleague] same-name check failed:", err);
       }
-      put(blankSheetRow({
-        player_id: made ? made.player_id : "",
-        name: made ? playerLabel(made) : name,
-      }));
+      if (clash.length) {
+        sheet.samename = { name, players: clash };
+        redraw();
+        return;
+      }
+      await createAndAdd(create, name, false);
+      return;
+    }
+
+    // "Yes, that is him" — an existing player, chosen with his club in view.
+    const same = e.target.closest("[data-samename-pick]");
+    if (same) {
+      sheet.samename = null;
+      addToSheet(same.dataset.samenamePick, same.dataset.samenameName);
+      return;
+    }
+
+    // "No, a different one" — reachable only from a list of the people who
+    // already hold that name, with their clubs on it. Same claim as the two
+    // pickers' "Add a second …", made in the one place that had to ask before
+    // it could offer it.
+    const sameNew = e.target.closest("[data-samename-new]");
+    if (sameNew) {
+      if (sameNew.disabled) return;
+      sheet.samename = null;
+      await createAndAdd(sameNew, sameNew.dataset.samenameNew, true);
       return;
     }
 
@@ -5900,7 +6058,7 @@ function wireSheet(root, ctx, redraw) {
       linkNew.disabled = true;
       linkNew.querySelector("span").textContent = "Adding…";
       const { data, error } = await supabase.rpc("create_player",
-        { p_full_name: name });
+        { p_full_name: name, p_force: linkNew.dataset.force === "1" });
       const made = (data || [])[0];
       if (error || !made) {
         linkNew.disabled = false;
