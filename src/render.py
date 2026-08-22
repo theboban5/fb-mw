@@ -6,12 +6,14 @@ import hashlib
 import os
 import shutil
 
-# This module has been import-free apart from the standard library. Two
-# additions, both of them data-model facts rather than layers: `lineups` is the
-# team-sheet markup the national-team page and this one now share, and
-# `dataset` supplies the reserved unknown-player id — the one player_id that
-# must never become a link, because no page is written for it.
-from . import dataset, lineups
+# This module has been import-free apart from the standard library. Three
+# additions, all of them data-model facts rather than layers: `lineups` is the
+# team-sheet markup the national-team page and this one now share, `dataset`
+# supplies the reserved unknown-player id — the one player_id that must never
+# become a link, because no page is written for it — and `standings` says how
+# a set of rows is cut into tables, so a clustered competition is split the
+# same way here as on the season overview.
+from . import dataset, lineups, standings
 
 # ── Site identity / link previews ────────────────────────────────────────────
 
@@ -575,40 +577,31 @@ RELEGATION_SPOTS = {"sl": 3, "ndl": 4}
 NDL_PROMOTION_SPOTS = 3
 
 
-def render_standings(rows, season="", league_name="", total_goals=0, goals_per_game=0.0,
-                     updated="", form=None, changes=None, crest=None, league_logo="",
-                     league_slug="", promotion_spots=None, relegation_spots=None,
-                     withdrawn=None, adjustment_reasons=None, club_hrefs=None):
-    # promotion/relegation spots come from competition_seasons in the new
-    # schema; None falls back to the per-slug constants for old callers.
-    # `withdrawn` maps code -> withdrawn|expelled; `adjustment_reasons` maps
-    # code -> footnote text for a non-zero points adjustment. `club_hrefs`
-    # maps code -> href (the club hub); default is the per-league club page.
-    form = form or {}
-    changes = changes or {}
-    withdrawn = withdrawn or {}
-    adjustment_reasons = adjustment_reasons or {}
-    club_hrefs = club_hrefs or {}
-    crest = crest or (lambda code: None)
-    gpg_str = f"{goals_per_game:.1f}" if total_goals > 0 else "0.0"
-    v2 = [
-        '<div class="v2-content">',
-        '<div class="v2-hero">',
-        f'<img class="v2-hero-logo" src="{escape(league_logo)}" alt="">' if league_logo else "",
-        f'<p class="v2-season">SEASON {escape(season)}</p>',
-        f'<h2 class="v2-league-name">{escape(league_name.upper())}</h2>',
-        '<div class="v2-stats">',
-        f'<div class="v2-stat">'
-        f'<span class="v2-stat-num">{total_goals}</span>'
-        f'<span class="v2-stat-label">GOALS</span>'
-        f'</div>',
-        f'<div class="v2-stat">'
-        f'<span class="v2-stat-num">{gpg_str}</span>'
-        f'<span class="v2-stat-label">GOALS/GAME</span>'
-        f'</div>',
-        "</div>",  # /v2-stats
-        f'<p class="v2-updated">{escape(updated)}</p>' if updated else "",
-        "</div>",  # /v2-hero
+def _group_chips(labels):
+    """Chip text per group label — the part that actually distinguishes them.
+
+    Four chips reading "Cluster A"…"Cluster D" push each other off a 390px
+    strip and repeat a word the heading above already says. When every label
+    starts with the same word, the chip is what is left after it ("A"); when
+    they do not, it is the whole label, because then the whole label is the
+    distinguishing part.
+    """
+    parts = [label.split() for label in labels]
+    if len(labels) > 1 and all(len(p) > 1 for p in parts):
+        firsts = {p[0].lower() for p in parts}
+        if len(firsts) == 1:
+            return {label: " ".join(p[1:]) for label, p in zip(labels, parts)}
+    return {label: label for label in labels}
+
+
+def _standings_table(rows, form, changes, crest, club_hrefs, withdrawn,
+                     adjustment_reasons, promotion_spots, relegation_spots,
+                     footnotes):
+    """One table body — the whole table for a league, one cluster's for a
+    competition played in groups. Zones are read INSIDE the rows given: the
+    bottom two of a cluster of eight are the bottom two, not rows 31 and 32 of
+    a competition of thirty-two."""
+    out = [
         '<div class="v2-table-outer">',
         '<table class="v2-standings">',
         "<thead><tr>",
@@ -622,12 +615,11 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
         "<tbody>",
     ]
     total = len(rows)
-    if relegation_spots is None:
-        relegation_spots = RELEGATION_SPOTS.get(league_slug, 0)
-    if promotion_spots is None:
-        promotion_spots = NDL_PROMOTION_SPOTS if league_slug == "ndl" else 0
-    footnotes = []
-    for i, s in enumerate(rows, start=1):
+    for s in rows:
+        # The rank comes off the row (standings.Standing.position), never from
+        # the loop counter: in a grouped competition the loop counter is a
+        # position in a concatenation and nobody holds it.
+        i = s.position
         gd = f"+{s.gd}" if s.gd > 0 else str(s.gd)
         tor = f"{s.gf}:{s.ga}"
         if i == 1:
@@ -656,7 +648,7 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
             if reason:
                 note += f" ({escape(reason)})"
             footnotes.append("* " + note)
-        v2.append(
+        out.append(
             f'<tr class="pos-{i}">'
             f'<td class="v2-pos{zone_cls}"><span class="v2-arrow {arrow_cls}">{arrow_glyph}</span> {i}.</td>'
             f'<td class="v2-team-name">'
@@ -667,10 +659,93 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
             f'<td class="v2-form">{_form_cell(form.get(s.code, []))}</td>'
             "</tr>"
         )
-    v2 += [
+    out += [
         "</tbody></table>",
         "</div>",  # /v2-table-outer
     ]
+    return out
+
+
+def render_standings(rows, season="", league_name="", total_goals=0, goals_per_game=0.0,
+                     updated="", form=None, changes=None, crest=None, league_logo="",
+                     league_slug="", promotion_spots=None, relegation_spots=None,
+                     withdrawn=None, adjustment_reasons=None, club_hrefs=None):
+    # promotion/relegation spots come from competition_seasons in the new
+    # schema; None falls back to the per-slug constants for old callers.
+    # `withdrawn` maps code -> withdrawn|expelled; `adjustment_reasons` maps
+    # code -> footnote text for a non-zero points adjustment. `club_hrefs`
+    # maps code -> href (the club hub); default is the per-league club page.
+    #
+    # A competition played in clusters (entries."group", carried on every
+    # Standing) renders one table per cluster, in group order, under a chip
+    # strip that filters between them. The strip is the matchday pager's
+    # bargain exactly: it ships hidden, JS reveals it (see templates/base.html),
+    # and with no JS every cluster shows under its own heading — which is a
+    # perfectly good page, just a longer one.
+    form = form or {}
+    changes = changes or {}
+    withdrawn = withdrawn or {}
+    adjustment_reasons = adjustment_reasons or {}
+    club_hrefs = club_hrefs or {}
+    crest = crest or (lambda code: None)
+    gpg_str = f"{goals_per_game:.1f}" if total_goals > 0 else "0.0"
+    v2 = [
+        '<div class="v2-content">',
+        '<div class="v2-hero">',
+        f'<img class="v2-hero-logo" src="{escape(league_logo)}" alt="">' if league_logo else "",
+        f'<p class="v2-season">SEASON {escape(season)}</p>',
+        f'<h2 class="v2-league-name">{escape(league_name.upper())}</h2>',
+        '<div class="v2-stats">',
+        f'<div class="v2-stat">'
+        f'<span class="v2-stat-num">{total_goals}</span>'
+        f'<span class="v2-stat-label">GOALS</span>'
+        f'</div>',
+        f'<div class="v2-stat">'
+        f'<span class="v2-stat-num">{gpg_str}</span>'
+        f'<span class="v2-stat-label">GOALS/GAME</span>'
+        f'</div>',
+        "</div>",  # /v2-stats
+        f'<p class="v2-updated">{escape(updated)}</p>' if updated else "",
+        "</div>",  # /v2-hero
+    ]
+    if relegation_spots is None:
+        relegation_spots = RELEGATION_SPOTS.get(league_slug, 0)
+    if promotion_spots is None:
+        promotion_spots = NDL_PROMOTION_SPOTS if league_slug == "ndl" else 0
+    footnotes = []
+
+    def table(subset):
+        return _standings_table(
+            subset, form, changes, crest, club_hrefs, withdrawn,
+            adjustment_reasons, promotion_spots, relegation_spots, footnotes)
+
+    tables = standings.by_group(rows)
+    if standings.has_groups(rows):
+        labels = [label for label, _ in tables]
+        chips = _group_chips(labels)
+        # "All" first, and the default: no cluster in this competition is the
+        # one a reader is presumed to want, and a table that opens showing a
+        # quarter of itself would hide three tables from anyone who never taps.
+        v2.append('<div class="v2-md-pager v2-grp-pager" data-grp-pager hidden>')
+        v2.append('<div class="v2-md-strip" data-grp-strip>')
+        v2.append('<button type="button" class="v2-md-chip" data-grp-chip="">All</button>')
+        for label in labels:
+            v2.append(f'<button type="button" class="v2-md-chip" '
+                      f'data-grp-chip="{escape(label, quote=True)}">'
+                      f'{escape(chips[label] or label)}</button>')
+        v2.append("</div>")  # /v2-md-strip
+        v2.append("</div>")  # /v2-grp-pager
+        for label, subset in tables:
+            v2.append(f'<section class="v2-grp" data-grp="{escape(label, quote=True)}">')
+            # An unlabelled group only ever appears beside labelled ones (see
+            # standings.group_key), so it needs a heading of its own rather
+            # than passing itself off as part of the cluster above it.
+            v2.append(f'<h3 class="v2-grp-head">{escape(label or "Other teams")}</h3>')
+            v2 += table(subset)
+            v2.append("</section>")
+    else:
+        v2 += table(rows)
+
     if footnotes:
         notes = "".join(f'<li class="v2-footnote">{n}</li>' for n in footnotes)
         v2.append(f'<ul class="v2-footnotes">{notes}</ul>')
@@ -1188,8 +1263,11 @@ def render_club(code, matches, teams, rows, season="", league_name="", crest=Non
     show_scorers = bool(goals_by_match)
 
     # Current league position + record, pulled from this team's standings row.
+    # The position is ON the row: in a competition played in clusters it is the
+    # rank inside this team's cluster, and counting down the list would give
+    # the rank inside a concatenation of four tables.
     standing = next((s for s in rows if s.code == code), None)
-    position = next((i for i, s in enumerate(rows, start=1) if s.code == code), None)
+    position = standing.position if standing is not None else None
 
     crest_img = (
         f'<img class="v2-mini-logo" src="{escape(club_logo)}" alt="">' if club_logo else ""
@@ -1211,11 +1289,15 @@ def render_club(code, matches, teams, rows, season="", league_name="", crest=Non
         "</div>",  # /v2-mini-banner
     ]
 
-    if standing is not None and position is not None:
+    if standing is not None and position:
         gd = f"+{standing.gd}" if standing.gd > 0 else str(standing.gd)
+        # "NRFA Division Two &middot; Cluster A &middot; 3rd" — the cluster is
+        # named because 3rd means nothing without saying 3rd of what.
+        where = escape(league_name) + (
+            f' &middot; {escape(standing.group)}' if standing.group else "")
         v2 += [
             '<div class="v2-club-summary">',
-            f'<p class="v2-club-standing">{escape(league_name)} &middot; '
+            f'<p class="v2-club-standing">{where} &middot; '
             f'{_ordinal(position)} &middot; {standing.points} pts</p>',
             f'<p class="v2-club-record">P{standing.played} &middot; '
             f'{standing.won}W {standing.drawn}D {standing.lost}L &middot; GD {gd}</p>',
@@ -1317,16 +1399,27 @@ def _overview_legend(rows, color):
 
 def render_overview(matches, teams, days, history, rows, season="", league_name="", league_logo=""):
     played = bool(days) and bool(rows)
-    if played:
-        color = {s.code: _PALETTE[i % len(_PALETTE)] for i, s in enumerate(rows)}
-        chart = (
-            f'<div class="ov-chart-wrap">{_overview_svg(days, history, rows, color)}</div>'
-            f"{_overview_legend(rows, color)}"
-        )
-    else:
-        chart = '<p class="empty">No matches have been played yet.</p>'
-
     caption = '<p class="ov-caption">League position after each matchday &middot; position 1 is top.</p>'
+
+    charts = []
+    if played:
+        # One chart per cluster. The y-axis of this chart IS the table, so
+        # four clusters on one pair of axes would draw four different 1st
+        # places on the same line — the same reason the table itself splits.
+        # An ungrouped competition is the single-table case of the same loop.
+        grouped = standings.has_groups(rows)
+        for label, subset in standings.by_group(rows):
+            color = {s.code: _PALETTE[i % len(_PALETTE)] for i, s in enumerate(subset)}
+            if grouped:
+                charts.append(
+                    f'<h3 class="v2-grp-head">{escape(label or "Other teams")}</h3>')
+            charts.append(
+                f'<div class="ov-chart-wrap">'
+                f'{_overview_svg(days, history, subset, color)}</div>'
+                f"{_overview_legend(subset, color)}"
+            )
+    else:
+        charts.append('<p class="empty">No matches have been played yet.</p>')
 
     v2 = [
         '<div class="v2-content">',
@@ -1337,7 +1430,7 @@ def render_overview(matches, teams, days, history, rows, season="", league_name=
         "</div>",  # /v2-mini-banner
         '<div class="ov-outer">',
         caption,
-        chart,
+        *charts,
         "</div>",  # /ov-outer
         "</div>",  # /v2-content
     ]

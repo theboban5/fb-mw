@@ -16,6 +16,17 @@ class Standing:
     points_win: int = 3
     points_draw: int = 1
     adjustment: int = 0    # entries.points_adjustment; can be negative
+    # entries."group" — the cluster/group this team plays its table in, "" for
+    # a league that is one table. A team is ranked against its own group only.
+    group: str = ""
+    # Rank WITHIN the group, 1-based, filled in by compute_standings. It used
+    # to be the row's index in the returned list, worked out again by every
+    # caller (the standings table, the club page, the club hub). That was the
+    # same fact derived three times, and it was only ever right because the
+    # list was one table: with four clusters in one competition, the ninth row
+    # of the list is the first row of Cluster B, and "9th" is a position
+    # nobody holds. The rank is a fact about the row, so it lives on the row.
+    position: int = 0
 
     @property
     def gd(self) -> int:
@@ -26,21 +37,42 @@ class Standing:
         return self.won * self.points_win + self.drawn * self.points_draw + self.adjustment
 
 
+def group_key(label: str) -> "tuple[bool, str]":
+    """Sort key for a group label: named groups A-Z, then the unlabelled one.
+
+    A team with no group in a competition that has them is not an error — the
+    house rule is that missing data renders as nothing, never as a build
+    failure — so it gets a table of its own at the bottom rather than being
+    dropped or silently filed under Cluster A.
+    """
+    return (label == "", label.lower())
+
+
 def compute_standings(matches, teams, points_win=3, points_draw=1,
-                      adjustments=None) -> "list[Standing]":
-    """Return standings rows, fully sorted.
+                      adjustments=None, groups=None) -> "list[Standing]":
+    """Return standings rows, fully sorted, each carrying its rank.
 
     Points per win/draw default to 3/1 but come from competition_seasons in
     the new schema; `adjustments` maps team code -> points_adjustment. Only
     matches with both goal values present are counted. Sort: points desc,
     GD desc, GF desc, then name (A-Z). Teams with no played matches still
     appear, with zeros.
+
+    `groups` maps team code -> group label (entries."group"), for a
+    competition played as clusters that share one fixture list and one set of
+    rules but not one table. The rows come back in group order, and every
+    row's `.position` is its rank INSIDE its group — the whole point of a
+    cluster is that a team is only ever measured against the seven others in
+    it. With no groups every row carries the group "" and the ranking is the
+    single table it has always been.
     """
     adjustments = adjustments or {}
+    groups = groups or {}
     table = {
         code: Standing(code, t.name, points_win=points_win,
                        points_draw=points_draw,
-                       adjustment=adjustments.get(code, 0))
+                       adjustment=adjustments.get(code, 0),
+                       group=groups.get(code, ""))
         for code, t in teams.items()
     }
     for m in matches:
@@ -64,10 +96,33 @@ def compute_standings(matches, teams, points_win=3, points_draw=1,
             home.drawn += 1
             away.drawn += 1
 
-    return sorted(
+    rows = sorted(
         table.values(),
-        key=lambda s: (-s.points, -s.gd, -s.gf, s.name.lower()),
+        key=lambda s: (group_key(s.group), -s.points, -s.gd, -s.gf, s.name.lower()),
     )
+    seen: "dict[str, int]" = {}
+    for s in rows:
+        seen[s.group] = seen.get(s.group, 0) + 1
+        s.position = seen[s.group]
+    return rows
+
+
+def by_group(rows) -> "list[tuple[str, list]]":
+    """[(group label, its rows)] in table order; [("", rows)] when there are none.
+
+    One place decides what "the tables on this page" means, so the standings
+    page, the season overview and anything later that ranks a team all cut the
+    same list the same way.
+    """
+    out: "dict[str, list]" = {}
+    for s in rows:
+        out.setdefault(s.group, []).append(s)
+    return sorted(out.items(), key=lambda kv: group_key(kv[0]))
+
+
+def has_groups(rows) -> bool:
+    """True when this competition is played as clusters rather than one table."""
+    return any(s.group for s in rows)
 
 
 def _outcome(home_goals, away_goals):
@@ -101,7 +156,10 @@ def _positions_through(matches, teams, matchday, **table_kwargs):
     """Rank of every team (1-based) using only matches up to `matchday`."""
     subset = [m for m in matches if m.matchday <= matchday]
     rows = compute_standings(subset, teams, **table_kwargs)
-    return {s.code: i for i, s in enumerate(rows, start=1)}
+    # s.position, not the index: with clusters the list is four tables end to
+    # end, and the index would compare a Cluster A team's rank against a
+    # Cluster C team's place in the concatenation.
+    return {s.code: s.position for s in rows}
 
 
 def position_changes(matches, teams, **table_kwargs):

@@ -109,6 +109,11 @@ def _build_league(ds, cs, dist_root, updated, player_pages=frozenset(),
             "points_win": league.points_win,
             "points_draw": league.points_draw,
             "adjustments": league.adjustments,
+            # entries."group". Empty for every competition that is one table;
+            # for one played in clusters it is what makes every rank below —
+            # the table, the arrows, the position graph — a rank inside a
+            # cluster rather than inside a list of four tables end to end.
+            "groups": league.groups,
         }
         rows = standings.compute_standings(league.matches, league.teams, **table_kwargs)
         form = standings.recent_form(league.matches, league.teams)

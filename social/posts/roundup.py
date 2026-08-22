@@ -155,7 +155,12 @@ def _table_line(ctx, matches) -> str:
         return ""
     top = rows[0]
     name = ctx.competition_name(cid, ctx.season_for(cid))
-    return (f"{top.team.name} lead the {name} on {top.points} points "
+    # rows[0] is the top of the FIRST table, which in a competition played in
+    # clusters is one of several leaders — so the cluster is named. Saying
+    # "lead the NRFA Division Two League" of a team that leads Cluster A would
+    # be a claim about thirty-one teams it has not played.
+    where = f"{top.group} of the {name}" if top.group else f"the {name}"
+    return (f"{top.team.name} lead {where} on {top.points} points "
             f"from {top.played} matches.")
 
 

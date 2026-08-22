@@ -937,8 +937,13 @@ async function renderAddFixture(params) {
   async function loadTeams() {
     state.teams = null;
     drawAddFixture();
+    // entries."group" comes back with the name because a clustered
+    // competition puts thirty-two teams behind one box, and the cluster is
+    // what tells a reporter that the fixture they are entering is the right
+    // one. Same fix, same reason, as the club hints in the scorer picker
+    // (0034): the fact was already in the database, just not on the row.
     const { data, error } = await supabase.from("entries")
-      .select("team_id,team:teams(display_name)")
+      .select("team_id,group,team:teams(display_name)")
       .eq("competition_id", state.competition.competition_id)
       .eq("season_id", season.season_id);
     if (error) {
@@ -946,8 +951,12 @@ async function renderAddFixture(params) {
       flash(humanError(error), "error");
     } else {
       state.teams = (data || [])
-        .map((e) => ({ id: e.team_id, name: e.team?.display_name || e.team_id }))
-        .sort((a, b) => a.name.localeCompare(b.name));
+        .map((e) => ({ id: e.team_id, name: e.team?.display_name || e.team_id,
+                       group: (e.group || "").trim() }))
+        // Cluster first, so browsing the list by tapping an empty box walks
+        // one cluster at a time — which is the order a fixture list arrives in.
+        .sort((a, b) => a.group.localeCompare(b.group)
+                        || a.name.localeCompare(b.name));
     }
     drawAddFixture();
   }
@@ -1222,7 +1231,8 @@ async function renderAddFixture(params) {
               data-team="${esc(t.id)}" data-name="${esc(t.name)}"${
                 t.id === opposite ? " disabled" : ""}>
               <span>${esc(t.name)}</span>${t.id === opposite
-                ? "<em>already the other side of this match</em>" : ""}
+                ? "<em>already the other side of this match</em>"
+                : (t.group ? `<em>${esc(t.group)}</em>` : "")}
             </button></li>`).join("")
         // Not a dead end, and not phrased as one: the reason a name is absent
         // is almost always that the team is not entered in this competition
@@ -1455,6 +1465,12 @@ const AGE_GROUPS = [
   "senior", "u20", "u19", "u17", "u16", "u15", "u14", "u13", "u12", "u11", "u10",
 ];
 
+// A cluster's name is a heading and a filter chip on the site, never an id,
+// so anything typed here is fine — but two blocks called the same thing would
+// silently become one table, which is the one mistake worth refusing.
+const CLUSTER_NAMES = ["Cluster A", "Cluster B", "Cluster C", "Cluster D",
+                       "Cluster E", "Cluster F", "Cluster G", "Cluster H"];
+
 async function renderNewLeague() {
   if (!context.isAdmin) {
     h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
@@ -1470,113 +1486,272 @@ async function renderNewLeague() {
     return;
   }
 
-  h(`
-    <a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
-    <h1 class="rp-login-head">New league</h1>
-    <p class="rp-login-sub">Creates the competition, its teams and their
-      entries for ${esc(season.label)} — ready for fixtures straight away.</p>
+  // Everything typed lives here, because this form is now redrawn — adding a
+  // cluster, or switching between one table and several, rebuilds it — and
+  // rule 1 says a redraw must never cost the reporter a name they typed.
+  // Only structural taps redraw: a select changing, a button. A text box is
+  // never redrawn out from under a thumb (see the team-sheet notes in
+  // CLAUDE.md for what that costs on a phone).
+  const state = {
+    name: "", code: "", type: "league", gender: "m", age: "senior",
+    tier: "", region: "",
+    shape: "single",
+    teams: "",
+    clusters: [{ name: CLUSTER_NAMES[0], teams: "" },
+               { name: CLUSTER_NAMES[1], teams: "" }],
+    busy: false,
+  };
 
-    <form class="rp-form" data-league>
-      <label class="rp-label" for="lg-name">Name</label>
-      <input class="rp-input" id="lg-name" name="name" required
-             placeholder="SRFA Division 3" autocapitalize="words">
+  const lines = (text) => (text || "").split("\n")
+    .map((line) => line.trim()).filter(Boolean);
 
-      <label class="rp-label" for="lg-code">Short code</label>
-      <input class="rp-input" id="lg-code" name="code" required maxlength="12"
-             placeholder="SRFA3" autocapitalize="characters" autocorrect="off"
-             spellcheck="false">
-      <p class="rp-hint">Letters and numbers, used in the competition's
-        permanent id. It cannot be changed later.</p>
+  /** Read the form back into state before anything that redraws it.
+   *
+   *  A box that is NOT on screen keeps what it had. Only one of the two team
+   *  lists is drawn at a time, so reading a missing box as "" would mean
+   *  switching Shape to look at the other one threw away everything typed
+   *  into this one — which is rule 1, on the screen where the typing is a
+   *  division's worth of names. */
+  function syncFromDom() {
+    const form = view.querySelector("[data-league]");
+    if (!form) return;
+    const read = (key, name) => {
+      const el = form.querySelector(`[name="${name}"]`);
+      if (el) state[key] = el.value;
+    };
+    ["name", "code", "type", "gender", "age", "tier", "region", "shape",
+     "teams"].forEach((key) => read(key, key));
+    form.querySelectorAll("[data-cluster-name]").forEach((el) => {
+      const cluster = state.clusters[Number(el.dataset.clusterName)];
+      if (cluster) cluster.name = el.value;
+    });
+    form.querySelectorAll("[data-cluster-teams]").forEach((el) => {
+      const cluster = state.clusters[Number(el.dataset.clusterTeams)];
+      if (cluster) cluster.teams = el.value;
+    });
+  }
 
-      <label class="rp-label" for="lg-type">Type</label>
-      <select class="rp-select" id="lg-type" name="type">
-        <option value="league" selected>League</option>
-        <option value="cup">Cup</option>
-      </select>
-
-      <label class="rp-label" for="lg-gender">Gender</label>
-      <select class="rp-select" id="lg-gender" name="gender">
-        <option value="m" selected>Men</option>
-        <option value="w">Women</option>
-      </select>
-
-      <label class="rp-label" for="lg-age">Age group</label>
-      <select class="rp-select" id="lg-age" name="age">
-        ${AGE_GROUPS.map((a) => `<option value="${a}">${
-          a === "senior" ? "Senior" : a.toUpperCase()}</option>`).join("")}
-      </select>
-
-      <label class="rp-label" for="lg-tier">Tier</label>
-      <input class="rp-input" id="lg-tier" name="tier" type="number" min="1"
-             max="10" step="1" inputmode="numeric" placeholder="3">
-      <p class="rp-hint">Optional. 1 is the top division.</p>
-
-      <label class="rp-label" for="lg-region">Region</label>
-      <input class="rp-input" id="lg-region" name="region" placeholder="SRFA">
-      <p class="rp-hint">Optional.</p>
-
-      <label class="rp-label" for="lg-teams">Teams</label>
-      <textarea class="rp-input rp-textarea" id="lg-teams" name="teams" rows="10"
-                required placeholder="One team per line, e.g.&#10;Chilomoni United&#10;Bangwe All Stars&#10;Ndirande Sparrows"></textarea>
-      <p class="rp-hint">One per line. A club already in the database is
-        reused; anything new gets a club and a team created for it.</p>
-
-      <button class="rp-btn" type="submit" data-submit>Create league</button>
-    </form>
-  `);
-
-  const form = view.querySelector("[data-league]");
-  const button = form.querySelector("[data-submit]");
-  let busy = false;
-
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    if (busy) return;                          // rule 2
-    clearFlash();
-
-    const teams = form.teams.value.split("\n")
-      .map((line) => line.trim()).filter(Boolean);
-    // Said here as well as in the RPC so the reporter is not made to wait for
-    // a round trip to learn something the page already knew.
-    const unique = new Set(teams.map((t) => t.toLowerCase()));
-    if (unique.size < 2) {
-      flash("Add at least two different teams, one per line.", "error");
-      return;
+  /** The teams as the RPC wants them: one flat list, and the cluster each
+   *  line belongs to running alongside it. A single-table league sends no
+   *  second list at all, which is what create_league defaults to. */
+  function payload() {
+    if (state.shape !== "clusters") {
+      return { teams: lines(state.teams), groups: null };
     }
+    const teams = [];
+    const groups = [];
+    state.clusters.forEach((cluster) => {
+      lines(cluster.teams).forEach((name) => {
+        teams.push(name);
+        groups.push(cluster.name.trim());
+      });
+    });
+    return { teams, groups };
+  }
 
-    busy = true;
-    button.disabled = true;
-    button.textContent = "Creating…";
+  function draw() {
+    const clustered = state.shape === "clusters";
+    const clusterBlocks = state.clusters.map((cluster, i) => `
+      <div class="rp-cluster">
+        <div class="rp-fx-head">
+          <span class="rp-fx-no">Cluster ${i + 1}</span>
+          ${state.clusters.length > 1
+            ? `<button class="rp-fx-drop" type="button" data-drop-cluster="${i}">Remove</button>`
+            : ""}
+        </div>
+        <input class="rp-input" type="text" data-cluster-name="${i}"
+               value="${esc(cluster.name)}" maxlength="40"
+               placeholder="Cluster name" autocapitalize="words"
+               aria-label="Name of cluster ${i + 1}">
+        <textarea class="rp-input rp-textarea" rows="8" data-cluster-teams="${i}"
+                  placeholder="One team per line"
+                  aria-label="Teams in cluster ${i + 1}">${esc(cluster.teams)}</textarea>
+      </div>`).join("");
 
-    const { data, error } = await supabase.rpc("create_league", {
-      p_name: form.name.value.trim(),
-      p_short_code: form.code.value.trim(),
-      p_teams: teams,
-      p_type: form.type.value,
-      p_gender: form.gender.value,
-      p_age_group: form.age.value,
-      p_tier: form.tier.value ? Number(form.tier.value) : null,
-      p_region: form.region.value.trim(),
+    h(`
+      <a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+      <h1 class="rp-login-head">New league</h1>
+      <p class="rp-login-sub">Creates the competition, its teams and their
+        entries for ${esc(season.label)} — ready for fixtures straight away.</p>
+
+      <form class="rp-form" data-league>
+        <label class="rp-label" for="lg-name">Name</label>
+        <input class="rp-input" id="lg-name" name="name" required
+               value="${esc(state.name)}"
+               placeholder="SRFA Division 3" autocapitalize="words">
+
+        <label class="rp-label" for="lg-code">Short code</label>
+        <input class="rp-input" id="lg-code" name="code" required maxlength="12"
+               value="${esc(state.code)}"
+               placeholder="SRFA3" autocapitalize="characters" autocorrect="off"
+               spellcheck="false">
+        <p class="rp-hint">Letters and numbers, used in the competition's
+          permanent id. It cannot be changed later.</p>
+
+        <label class="rp-label" for="lg-type">Type</label>
+        <select class="rp-select" id="lg-type" name="type">
+          <option value="league"${state.type === "league" ? " selected" : ""}>League</option>
+          <option value="cup"${state.type === "cup" ? " selected" : ""}>Cup</option>
+        </select>
+
+        <label class="rp-label" for="lg-gender">Gender</label>
+        <select class="rp-select" id="lg-gender" name="gender">
+          <option value="m"${state.gender === "m" ? " selected" : ""}>Men</option>
+          <option value="w"${state.gender === "w" ? " selected" : ""}>Women</option>
+        </select>
+
+        <label class="rp-label" for="lg-age">Age group</label>
+        <select class="rp-select" id="lg-age" name="age">
+          ${AGE_GROUPS.map((a) => `<option value="${a}"${
+            a === state.age ? " selected" : ""}>${
+            a === "senior" ? "Senior" : a.toUpperCase()}</option>`).join("")}
+        </select>
+
+        <label class="rp-label" for="lg-tier">Tier</label>
+        <input class="rp-input" id="lg-tier" name="tier" type="number" min="1"
+               max="10" step="1" inputmode="numeric" value="${esc(state.tier)}"
+               placeholder="3">
+        <p class="rp-hint">Optional. 1 is the top division.</p>
+
+        <label class="rp-label" for="lg-region">Region</label>
+        <input class="rp-input" id="lg-region" name="region"
+               value="${esc(state.region)}" placeholder="SRFA">
+        <p class="rp-hint">Optional.</p>
+
+        <label class="rp-label" for="lg-shape">Shape</label>
+        <select class="rp-select" id="lg-shape" name="shape">
+          <option value="single"${!clustered ? " selected" : ""}>One table</option>
+          <option value="clusters"${clustered ? " selected" : ""}>Clusters</option>
+        </select>
+        <p class="rp-hint">Clusters are for a league played as several tables
+          at once — the NRFA Division Two League is four clusters of eight, and
+          each one has its own table on the site. They share one fixture list,
+          one set of scorers and one page.</p>
+
+        ${clustered ? `
+          <h2 class="rp-field-head">The clusters</h2>
+          <p class="rp-hint" style="margin-top:0">One team per line, as in the
+            single list. A club already in the database is reused; anything new
+            gets a club and a team created for it.</p>
+          ${clusterBlocks}
+          <button class="rp-btn is-ghost" type="button" data-add-cluster>＋ Add another cluster</button>
+        ` : `
+          <label class="rp-label" for="lg-teams">Teams</label>
+          <textarea class="rp-input rp-textarea" id="lg-teams" name="teams" rows="10"
+                    required placeholder="One team per line, e.g.&#10;Chilomoni United&#10;Bangwe All Stars&#10;Ndirande Sparrows">${esc(state.teams)}</textarea>
+          <p class="rp-hint">One per line. A club already in the database is
+            reused; anything new gets a club and a team created for it.</p>
+        `}
+
+        <button class="rp-btn" type="submit" data-submit>Create league</button>
+      </form>
+    `);
+    wire();
+  }
+
+  function wire() {
+    const form = view.querySelector("[data-league]");
+    const button = form.querySelector("[data-submit]");
+
+    // A <select> is safe to redraw on: its change lands when the picker
+    // closes, so the next tap is on a node this redraw drew.
+    form.querySelector('[name="shape"]').addEventListener("change", () => {
+      syncFromDom();
+      draw();
     });
 
-    busy = false;
-    button.disabled = false;
-    button.textContent = "Create league";
+    form.querySelector("[data-add-cluster]")?.addEventListener("click", () => {
+      syncFromDom();
+      state.clusters.push({
+        name: CLUSTER_NAMES[state.clusters.length] || "", teams: "",
+      });
+      draw();
+      view.querySelector(
+        `[data-cluster-name="${state.clusters.length - 1}"]`)?.focus();
+    });
 
-    if (error) {
-      // Rule 1: everything typed — including a long team list — is still here.
-      flash(humanError(error), "error");
-      return;
-    }
+    form.querySelectorAll("[data-drop-cluster]").forEach((el) => {
+      el.addEventListener("click", () => {
+        syncFromDom();
+        state.clusters.splice(Number(el.dataset.dropCluster), 1);
+        draw();
+      });
+    });
 
-    // A new competition changes what the home screen and the fixture form can
-    // offer, and the assignment list the context was built from.
-    invalidateHome();
-    invalidateReference();
-    context = await loadContext().catch(() => context);
-    flash(`Created ${unique.size} teams. Now add its fixtures.`, "ok", 8000);
-    location.hash = `#/add?comp=${encodeURIComponent(data)}`;
-  });
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (state.busy) return;                    // rule 2
+      clearFlash();
+      syncFromDom();
+
+      const { teams, groups } = payload();
+      // Said here as well as in the RPC so the reporter is not made to wait for
+      // a round trip to learn something the page already knew.
+      const unique = new Set(teams.map((t) => t.toLowerCase()));
+      if (unique.size < 2) {
+        flash("Add at least two different teams, one per line.", "error");
+        return;
+      }
+      if (groups) {
+        const named = state.clusters.filter((c) => lines(c.teams).length);
+        if (named.some((c) => !c.name.trim())) {
+          flash("Give every cluster with teams in it a name — it is the"
+                + " heading on the site.", "error");
+          return;
+        }
+        // Two clusters under one name are one table on the site, which is not
+        // what anyone typing them into two boxes meant.
+        const labels = named.map((c) => c.name.trim().toLowerCase());
+        if (new Set(labels).size < labels.length) {
+          flash("Two clusters have the same name — they would end up as one"
+                + " table.", "error");
+          return;
+        }
+      }
+
+      state.busy = true;
+      button.disabled = true;
+      button.textContent = "Creating…";
+
+      const { data, error } = await supabase.rpc("create_league", {
+        p_name: state.name.trim(),
+        p_short_code: state.code.trim(),
+        p_teams: teams,
+        p_groups: groups,
+        p_type: state.type,
+        p_gender: state.gender,
+        p_age_group: state.age,
+        p_tier: state.tier ? Number(state.tier) : null,
+        p_region: state.region.trim(),
+      });
+
+      state.busy = false;
+      button.disabled = false;
+      button.textContent = "Create league";
+
+      if (error) {
+        // Rule 1: everything typed — including four lists of eight — is still
+        // here, because the screen is drawn from state and state was never
+        // touched.
+        flash(humanError(error), "error");
+        return;
+      }
+
+      // A new competition changes what the home screen and the fixture form can
+      // offer, and the assignment list the context was built from.
+      invalidateHome();
+      invalidateReference();
+      context = await loadContext().catch(() => context);
+      const where = groups
+        ? ` in ${state.clusters.filter((c) => lines(c.teams).length).length} clusters`
+        : "";
+      flash(`Created ${unique.size} teams${where}. Now add its fixtures.`,
+            "ok", 8000);
+      location.hash = `#/add?comp=${encodeURIComponent(data)}`;
+    });
+  }
+
+  draw();
 }
 
 async function renderMatch(publicId, params) {

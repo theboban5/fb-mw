@@ -168,6 +168,42 @@ fixture and clean up, and they never mutate a real match.
 
 ## Recent work (Aug 2026)
 
+A league that is four tables, migration `0035`:
+
+- The 2026 NRFA Division Two League is 32 clubs in four clusters of eight,
+  each playing its own round-robin, top two into a quarter-final later in the
+  season. `entries."group"` has been in the schema since 0001 and had never
+  once been written, so the only shape a competition could be created in was
+  a single table.
+- **The label is a heading and a filter chip, never an id.** Free text, capped
+  at 40 characters. Nothing joins on it, nothing parses it; the tables sort by
+  it (`standings.group_key`) and that is the whole of its meaning.
+- **A rank is a rank inside a cluster.** `Standing` carries `group` and
+  `position`, and `compute_standings` fills the position in per group. It used
+  to be the row's index in the returned list, worked out again by the
+  standings table, the club page and the club hub — the same fact derived
+  three times, right only while a competition was one table. Every consumer
+  reads it off the row now.
+- The standings page is one table per cluster under a chip strip; the strip
+  ships `hidden` and JS reveals it, the matchday pager's bargain exactly, so
+  with no JS every cluster shows under its own heading. It opens on **All** —
+  no cluster is the one a reader is presumed to have come for. The season
+  overview draws one chart per cluster, because that chart's y-axis IS the
+  table.
+- A team with no cluster is not an error: it gets an "Other teams" table at
+  the bottom rather than being dropped or filed under Cluster A.
+- `/report` → New league gained a **Shape** select and a cluster block per
+  table (name + team list, add/remove). The screen is redrawn now, so it keeps
+  everything in state — and only a `<select>` or a button redraws it, never a
+  text box losing focus. The fixture picker shows the cluster beside each team
+  name, which is 0034's club hints for the same reason: thirty-two teams
+  behind one box.
+- `set_entry_group` moves one team between clusters (admin). It has **no
+  screen yet** — the state `rename_official` has been in since 0024.
+- Not built: the quarter-finals. A `qf` stage on a `type=league` match is an
+  ERROR from check 7, and an ERROR deploys nothing, so that is its own
+  migration — and it is not needed until the cluster stage ends.
+
 Two people, one name, migration `0034`:
 
 - The Mzuzu District U20 league broke the assumption every player tool rests

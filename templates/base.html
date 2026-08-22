@@ -80,6 +80,31 @@
   pager.hidden=false;
   select(di>=0?di:mds.length-1); // open on the live edge (next unplayed round)
 })();
+
+/* The cluster filter on a standings page. Same bargain as the pager above:
+   it ships hidden, this reveals it, and with JS off every cluster shows
+   under its own heading — a longer page, not a broken one. Opens on "All"
+   because no cluster is the one a reader is presumed to have come for. */
+(function(){
+  var pager=document.querySelector('.v2-content [data-grp-pager]');
+  if(!pager) return;
+  var sections=[].slice.call(document.querySelectorAll('.v2-content .v2-grp'));
+  var chips=[].slice.call(pager.querySelectorAll('[data-grp-chip]'));
+  if(sections.length<2) return; // one cluster is just a table
+  function select(chip){
+    var want=chip.dataset.grpChip;
+    sections.forEach(function(s){s.hidden=(want!=='' && s.dataset.grp!==want);});
+    chips.forEach(function(c){
+      var on=(c===chip);
+      c.classList.toggle('active',on);
+      if(on){c.setAttribute('aria-current','true');}
+      else{c.removeAttribute('aria-current');}
+    });
+  }
+  chips.forEach(function(c){c.addEventListener('click',function(){select(c);});});
+  pager.hidden=false;
+  select(chips[0]);
+})();
 </script>
 </body>
 </html>

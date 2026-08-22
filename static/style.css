@@ -1629,6 +1629,31 @@ table.v2-results-compact { table-layout: fixed; width: 100%; }
 }
 .v2-footnote { padding: 2px 0; }
 
+/* Clusters — a competition played as several tables that share one fixture
+   list (the NRFA Division Two League: four clusters of eight, top two of each
+   into the quarter-finals). The chip strip reuses the matchday pager's own
+   classes because it IS that control: a horizontal strip of chips filtering
+   what is below it. Only what is particular to clusters lives here. */
+.v2-grp-pager { margin-bottom: 4px; }
+.v2-grp[hidden] { display: none; }
+.v2-grp-head {
+  margin: 18px 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  /* --accent, not a fixed green: this heading is one of the few things on a
+     standings page that sits on the PAGE background rather than on the white
+     of a table, so it is the one that has to follow the reader's theme. */
+  color: var(--accent);
+}
+/* ...and the same heading inside the season overview's white panel, where the
+   page background is not what is behind it (see .ov-outer .v2-sec-title). */
+.ov-outer .v2-grp-head { color: #0b6b3a; }
+/* The first heading sits right under the chips, which already separate it
+   from the hero. */
+.v2-grp:first-of-type .v2-grp-head { margin-top: 10px; }
+
 /* Shootout / extra-time note beside a knockout score — "(4–3 pens)". Block so
    it sits under the score inside the narrow RESULT cell instead of widening it. */
 .v2-res-note {
