@@ -51,6 +51,7 @@ TIER_LABELS = {
     "MW_CRFA": "Division One",
     "MW_NRFA": "League One",
     "MW_SRFA2": "Division Two",
+    "MW_NRFA2": "Division Two",
     "MW_CRFA2": "Division Two",
     "MW_WP": "Women&#x2019;s First Division",
     "MW_KU19": "Under-19",

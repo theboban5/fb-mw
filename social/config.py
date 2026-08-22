@@ -154,7 +154,7 @@ HASHTAGS_BY_COMPETITION = {
     "MW_U16": ("#U16",),
     "MW_SRFA": ("#SRFA",), "MW_SRFA2": ("#SRFA",),
     "MW_CRFA": ("#CRFA",), "MW_CRFA2": ("#CRFA",),
-    "MW_NRFA": ("#NRFA",),
+    "MW_NRFA": ("#NRFA",), "MW_NRFA2": ("#NRFA",),
 }
 
 # Per platform, because the norms differ: Instagram tolerates a block of them,
