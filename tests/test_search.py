@@ -6,6 +6,7 @@ agrees with what the other builders actually emit, and the rest pin the
 normalisation rules that static/search.js has to match.
 """
 
+import gzip
 import json
 import os
 import re
@@ -232,10 +233,32 @@ class IndexContentTest(unittest.TestCase):
             self.assertLess(ku19, sl)
 
     def test_index_stays_small_enough_to_ship(self):
+        """A tripwire against indexing a whole category that does not belong,
+        which is what "adding all the matches" would be. NOT a budget for
+        ordinary growth.
+
+        It was 80,000 bytes, written when the index held ~680 records, and it
+        went red at 1,016 — three quarters of them players. Nothing had gone
+        wrong: a player earns a row by scoring, so the index grows every
+        weekend the site does its job, and a tripwire that fires on success is
+        one someone eventually raises without reading.
+
+        How fast it grows is the point. Between writing this and committing
+        it the snapshot gained another 106 records and 9KB, in a day. So the
+        ceiling is not set just above today's number — it is set where the
+        mistake it guards against still trips it: every match indexed would
+        cost ~52KB more, landing past 140KB.
+
+        The gzip assertion is the one that reflects what a reader on an
+        expensive connection actually pays, and it is the reason the raw
+        number can afford to be generous: Pages serves this compressed, and
+        the 92KB above is 16KB on the wire.
+        """
         payload = json.dumps({"v": 1, "types": list(search.TYPES), "docs": self.rows},
                              ensure_ascii=False, separators=(",", ":"))
-        # A tripwire: adding all 1,316 matches would blow straight through this.
-        self.assertLess(len(payload.encode("utf-8")), 80_000)
+        raw = payload.encode("utf-8")
+        self.assertLess(len(raw), 120_000)
+        self.assertLess(len(gzip.compress(raw, 9)), 40_000)
 
 
 if __name__ == "__main__":
