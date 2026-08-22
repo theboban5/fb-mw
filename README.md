@@ -173,6 +173,7 @@ The whole migration, done and verified:
 | Debounce gap | `0011_consume_rebuild_pending.sql` + the Rebuild follow-up workflow |
 | Match detail | `0007_match_detail.sql` — scorers, cards, subs, line-ups, photos |
 | Entry | `0008`/`0009` — `create_fixture`, `create_league`, `reschedule_match` |
+| Clusters | `0035` — `create_league(p_groups)`, `set_entry_group` |
 | Fixture lists | `0014_fixture_batch.sql` — `create_fixtures`, `resolve_venue`, a whole week in one submission |
 | Grounds | `0015_match_venue.sql` — `set_match_venue`, the third narrow door beside `reschedule_match` |
 | Scorer identity | `0010_scorer_players.sql` — `create_player`, scorers resolve to a `player_id` |
@@ -560,7 +561,8 @@ close that, at two different levels of privilege:
 | `create_fixtures` | the same | a whole fixture list, one call, reported line by line |
 | `reschedule_match` | any reporter who may report that match | moves it — `date` and `kickoff`, nothing else |
 | `set_match_venue` | the same | moves it to another ground — `venue_id`, nothing else |
-| `create_league` | **admin only** | a competition, its season row, and a club + team + entry per pasted name |
+| `create_league` | **admin only** | a competition, its season row, and a club + team + entry per pasted name (in clusters, if it has them) |
+| `set_entry_group` | **admin only** | moves one team into a cluster of a competition it is already entered in |
 
 **Why creating a league is admin-only and adding a fixture is not.** It is not
 caution about typos. `create_league` is the one call that *mints ids* — a
@@ -670,6 +672,19 @@ split its identity across the site permanently), and ids are minted to the
 documented conventions — `MW_<initials>` for a club, `<club_id>_<gender><squad>`
 for a team. Fewer than two distinct teams rolls the whole thing back: a
 competition that cannot hold a fixture is not a thing to have created.
+
+**Clusters** (`0035`). Some leagues are played as several tables at once — the
+2026 NRFA Division Two League is four clusters of eight, top two of each into a
+quarter-final at the end of the season. The **Shape** select on that screen
+turns the single team list into one block per cluster (a name and its teams),
+and `create_league` writes the label onto `entries."group"`: one label per line
+of the team list, or none at all for the single-table league everything else
+is. It stays one competition — one slug, one fixture list, one scorer chart —
+and the standings page renders a table per cluster behind a filter. See
+"Clusters" in DATA_MODEL.md for what the label may be and what reads it.
+`set_entry_group` (admin) moves one team between clusters and has no screen
+yet. The knockout stage is not built: a `qf` stage on a `type=league` match is
+an ERROR from validator check 7, so it needs its own migration.
 
 `scripts/season.py` remains the better tool for a whole division with venues,
 badges and a full fixture list from one reviewed file. The portal is for the

@@ -30,13 +30,30 @@ class Table(base.PostType):
     def build(self, ctx):
         cid = self._competition(ctx)
         season_id = ctx.season_for(cid)
-        rows = ctx.table(cid)
         slug = ctx.competition_slug(cid)
         competition = ctx.competition_name(cid, season_id)
+        # A competition played in clusters is several tables, so it is several
+        # posts: one graphic of thirty-two rows would be a ranking between
+        # teams that never play each other. `clusters()` is [] for the
+        # ordinary case, which makes that the one-post version of this loop.
+        clusters = ctx.clusters(cid, season_id)
+        drafts = [self._draft(ctx, cid, season_id, slug, competition, label)
+                  for label in (clusters or [None])]
+        return [d for d in drafts if d is not None]
+
+    def _draft(self, ctx, cid, season_id, slug, competition, cluster):
+        rows = ctx.table(cid, season_id, group=cluster)
+        if not rows:
+            return None
+        # The cluster is named everywhere the competition is: a table headed
+        # only "NRFA Division Two League" is eight of its thirty-two teams
+        # with nothing saying which eight.
+        title = f"{competition} — {cluster}" if cluster else competition
+        key = f"table-{slug}" + (f"-{_label_slug(cluster)}" if cluster else "")
         stat = _stat_line(rows)
 
         payload = captions.Payload(
-            headline=f"{competition} table",
+            headline=f"{title} table",
             lines=[_caption_line(r) for r in rows],
             note=stat,
             campaign="table",
@@ -44,23 +61,28 @@ class Table(base.PostType):
             competition_ids=(cid,),
             emoji=config.EMOJI["chart"],
         )
-        return [base.Draft(
-            key=f"table-{slug}",
+        return base.Draft(
+            key=key,
             post_type=self.name,
             template="table.html",
             context={
-                "eyebrow": competition,
+                "eyebrow": title,
                 "kind": "Table",
-                "standfirst_left": "Standings",
+                "standfirst_left": cluster or "Standings",
                 "standfirst_right": f"After {max(r.played for r in rows)} matches",
                 "rows": rows,
                 "stat": stat,
                 "season_label": _season_label_for(ctx, season_id),
             },
             payload=payload,
-            alt_text=_alt_text(competition, rows),
+            alt_text=_alt_text(title, rows),
             warnings=(),
-        )]
+        )
+
+
+def _label_slug(label: str) -> str:
+    """"Cluster A" -> "cluster-a", for the draft key and its filename."""
+    return "".join(c if c.isalnum() else "-" for c in label.lower()).strip("-")
 
 
 def _season_label_for(ctx, season_id) -> str:

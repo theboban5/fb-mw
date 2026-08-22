@@ -57,8 +57,10 @@ matches (home/away team_id, venue_id, competition_id, season_id)
   places, `teams_count`, `status`.
 - **entries** — a team's participation in a competition+season. Standings
   iterate entries (a team with 0 matches still appears). Carries
-  `points_adjustment` (can be negative) + `adjustment_reason`, and `status`
-  (blank/active | withdrawn | expelled).
+  `points_adjustment` (can be negative) + `adjustment_reason`, `status`
+  (blank/active | withdrawn | expelled), and `group` — the cluster whose
+  table this team plays in, blank for a competition that is one table
+  (see "Clusters" below).
 - **venues**, **matches**, **goals**, **players** — as named.
 - **lineups** — one row per named player per side per match: the starting XI,
   the bench, who came on for whom, the cards, the armband and the man of the
@@ -379,6 +381,46 @@ CI, so it was changed roughly never and the front of the site aged in public.
   committed to a public repository and this tab goes there with the rest, so
   an unpublished card is unannounced rather than secret. `created_by` and the
   timestamps are held back, the way `matches.notes` is.
+
+## Clusters (`entries.group`, 0035)
+
+A competition can be played as **several tables at once**. The 2026 NRFA
+Division Two League is thirty-two clubs in four clusters of eight; each cluster
+plays its own round-robin and the top two of each go into a quarter-final at
+the end of the season. It is **one competition** — one `competition_id`, one
+slug, one fixture list, one scorer chart, one page — and `entries."group"` is
+the only thing that says which table a team is in.
+
+- **The label is a heading, never an id.** Free text, capped at 40 characters
+  by the RPCs. Nothing joins on it, nothing parses it; a competition that
+  calls them Groups or Pools gets exactly what it typed. Tables sort by it
+  (`standings.group_key`): named labels A-Z, then the unlabelled one.
+- **Blank is the normal case and means "one table".** Every other competition
+  in the data has it blank on every entry, and `adapt.LeagueData.groups` is
+  then `{}` — the ungrouped path renders byte-identically to before 0035.
+- **A rank is a rank inside a cluster.** `standings.Standing` carries `group`
+  and `position`, and `position` is filled in by `compute_standings` per
+  group. Every consumer reads it off the row — the standings table, the club
+  page, the club hub, the arrows, the position graph. Deriving it by counting
+  down the returned list is what produces "19th" for a team playing seven
+  others.
+- **A team with no cluster in a clustered competition is not an error.** It
+  gets an "Other teams" table at the bottom. Missing data renders as nothing,
+  never as a build failure — and never as a silent filing under Cluster A.
+- The standings page renders one table per cluster under a chip strip that
+  filters between them (All first, and the default). The strip ships `hidden`
+  and JS reveals it, exactly as the matchday pager does: with JavaScript off
+  every cluster shows under its own heading. The season overview draws one
+  position chart per cluster, for the same reason the table splits — the
+  y-axis IS the table.
+- Written by `create_league(p_groups)` (one label per line of `p_teams`) and
+  `set_entry_group` (admin, one team). Nothing else writes it; nothing
+  validates it.
+- **The knockout stage is not built.** `validate.py` check 7 reads the
+  knockout stage vocabulary off `competitions.type`, so `qf` on a match in a
+  `type=league` competition is an ERROR — and an ERROR deploys nothing. The
+  quarter-finals need their own migration, and are not needed until the
+  cluster stage finishes.
 
 ## Cups (`competitions.type = cup`)
 

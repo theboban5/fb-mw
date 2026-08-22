@@ -269,6 +269,10 @@ class LeagueData:
     adjustment_reasons: "dict[str, str]"    # code -> reason (for footnotes)
     withdrawn: "dict[str, str]"             # code -> withdrawn|expelled
     own_goal_total: int                     # includes unknown-player own goals
+    # code -> entries."group": the cluster a team plays its table in, present
+    # only for the teams that have one. Empty for every competition that is a
+    # single table, which is all of them but the NRFA Division Two League.
+    groups: "dict[str, str]" = field(default_factory=dict)
     promotion_places: int = 0
     relegation_places: int = 0
     kind: str = "league"                    # competitions.type: league | cup
@@ -342,6 +346,7 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
     adjustments: "dict[str, int]" = {}
     adjustment_reasons: "dict[str, str]" = {}
     withdrawn: "dict[str, str]" = {}
+    groups: "dict[str, str]" = {}
     for e in entries:
         team = ds.teams[e.team_id]
         club = ds.clubs[team.club_id]
@@ -357,6 +362,8 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
                 adjustment_reasons[code] = e.adjustment_reason
         if e.status in ("withdrawn", "expelled"):
             withdrawn[code] = e.status
+        if e.group.strip():
+            groups[code] = e.group.strip()
 
     kept: "list[tuple[int, dataset.Match]]" = []
     for i, m in enumerate(ds.matches.values(), start=2):
@@ -531,6 +538,7 @@ def league_data(ds: "dataset.Dataset", competition_id: str, season_id: str) -> L
         adjustment_reasons=adjustment_reasons,
         withdrawn=withdrawn,
         own_goal_total=own_goal_total,
+        groups=groups,
         promotion_places=cs.promotion_places or 0,
         relegation_places=cs.relegation_places or 0,
         kind="cup" if is_cup else "league",

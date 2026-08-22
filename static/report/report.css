@@ -753,6 +753,18 @@ a { color: var(--accent); }
 .rp-fx-drop:active { color: var(--danger); }
 
 .rp-fx .rp-select, .rp-fx .rp-input { background: var(--bg); }
+
+/* A cluster of a clustered league: a name and its list of teams, boxed the
+   same way a fixture line is, because it is the same idea — one of several
+   repeated blocks the administrator adds and removes. Its textarea is shorter
+   than the single-list one: eight names, not a whole division. */
+.rp-cluster {
+  padding: 10px 12px 12px; margin-top: 10px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--row-alt);
+}
+.rp-cluster .rp-input { background: var(--bg); }
+.rp-cluster .rp-textarea { min-height: 150px; }
 .rp-fx > .rp-input { margin-top: 8px; }
 
 /* The two team boxes are the scorer picker reused: type to narrow, tap to

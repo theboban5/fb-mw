@@ -141,9 +141,13 @@ def render_club_hub(club, club_teams, crest_url, goals_by_slug=None,
     if club_teams:
         rows = []
         for team, league, standing, position, _played, _recent, code in club_teams:
+            # In a competition played in clusters the position is a rank
+            # inside one, so the cluster is named: "Cluster A · 3rd · 12 pts".
+            cluster = (f"{escape(standing.group)} &middot; "
+                       if standing is not None and standing.group else "")
             pos_txt = (
-                f"{render._ordinal(position)} &middot; {standing.points} pts"
-                if standing is not None and position is not None else "&ndash;"
+                f"{cluster}{render._ordinal(position)} &middot; {standing.points} pts"
+                if standing is not None and position else "&ndash;"
             )
             # Cups emit no per-competition club pages, so their row links to
             # the competition itself instead of a clubs/ URL that never exists.
@@ -253,8 +257,11 @@ def build_club_hubs(dist, templates_dir, static_dir, ds, leagues, standings_by_s
             for league, code in leagues_of_team.get(team.team_id, []):
                 rows = standings_by_slug.get(league.slug, [])
                 standing = next((s for s in rows if s.code == code), None)
-                position = next(
-                    (i for i, s in enumerate(rows, start=1) if s.code == code), None)
+                # The rank is on the row (standings.Standing.position), which
+                # in a competition played in clusters is the rank inside this
+                # team's cluster rather than its place in a list of four
+                # tables laid end to end.
+                position = standing.position if standing is not None else None
                 played = [m for m in league.matches
                           if code in (m.home_code, m.away_code) and m.played]
                 played.sort(key=lambda m: (m.date, m.matchday), reverse=True)

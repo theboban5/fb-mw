@@ -176,6 +176,9 @@ class TableRow:
     goal_difference: int
     points: int
     form: "tuple[str, ...]" = ()   # ("W", "D", "L", ...) oldest first
+    # entries."group" — the cluster whose table this row belongs to, "" for a
+    # competition played as one table. The position is a rank INSIDE it.
+    group: str = ""
 
 
 @dataclass
@@ -329,20 +332,32 @@ class Ctx:
             return self.season.season_id
         return max(seasons, key=lambda sid: self.ds.seasons[sid].start_date)
 
-    def table(self, competition_id: str, season_id: str = "") -> "list[TableRow]":
-        """Standings computed from matches by the site's own module."""
+    def table(self, competition_id: str, season_id: str = "",
+              group: "str | None" = None) -> "list[TableRow]":
+        """Standings computed from matches by the site's own module.
+
+        A competition played in clusters comes back as every cluster's table
+        end to end, in cluster order, each row ranked inside its own — pass
+        `group` for one of them. `clusters()` lists what there is to ask for.
+        """
         league = self.league(competition_id, season_id)
         rows = standings.compute_standings(
             league.matches, league.teams,
             points_win=league.points_win, points_draw=league.points_draw,
-            adjustments=league.adjustments,
+            adjustments=league.adjustments, groups=league.groups,
         )
+        if group is not None:
+            rows = [r for r in rows if r.group == group]
         form = standings.recent_form(league.matches, league.teams)
         by_code = {code: view.team_id for code, view in league.teams.items()}
         out = []
-        for i, r in enumerate(rows, start=1):
+        for r in rows:
             out.append(TableRow(
-                position=i,
+                # The rank is on the row, not the loop counter: counting down
+                # a clustered competition's list gives a team playing seven
+                # others a position out of thirty-two.
+                position=r.position,
+                group=r.group,
                 team=self.team(by_code[r.code]),
                 played=r.played, won=r.won, drawn=r.drawn, lost=r.lost,
                 goals_for=r.gf, goals_against=r.ga,
@@ -350,6 +365,15 @@ class Ctx:
                 form=tuple(form.get(r.code, ())),
             ))
         return out
+
+    def clusters(self, competition_id: str, season_id: str = "") -> "list[str]":
+        """The cluster labels this competition is played in, in table order.
+
+        [] for the ordinary case of one table — which is what makes "one post
+        per cluster" and "one post" the same loop.
+        """
+        league = self.league(competition_id, season_id)
+        return sorted(set(league.groups.values()), key=standings.group_key)
 
     def top_scorers(self, competition_id: str, season_id: str = "",
                     top_n: int = 8) -> "list[ScorerStanding]":
