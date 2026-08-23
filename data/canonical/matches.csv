@@ -485,7 +485,7 @@ MW_MDU20_2627_056,MW_MDU20,MW_2026_27,md_7,7,2026-08-17,,,MW_MA_M1,MW_GS2_M1,1,1
 MW_CRFA_2627_015,MW_CRFA,MW_2026_27,md_4,4,2026-07-15,,MW_MCJ_004,MW_MV_M1,MW_KFC_M1,2,1,played,,facebook,,,2026-07-16T01:28:00+00:00,confirmed,,,,,,,,,,,,,,,,,
 MW_MDU20_2627_057,MW_MDU20,MW_2026_27,md_7,7,2026-08-17,,,MW_KU2_M1,MW_VFA_M1,2,5,played,,reporter,https://www.facebook.com/share/p/1V7ZED3B9q/,MW_REP_001,2026-08-23T11:31:31.97825+00:00,confirmed,MW_REP_001,2026-08-23T11:31:31.97825+00:00,,,,,,,,,,,,,,,
 MW_CRFA_2627_016,MW_CRFA,MW_2026_27,md_5,5,2026-07-19,14:30:00,MW_MALINJ,MW_NAA_M1,MW_MPFC_M1,1,0,played,,reporter,"https://www.facebook.com/share/p/1BhR2WSYH5/, https://www.facebook.com/share/p/1GM5fW3quK/",MW_REP_001,2026-08-21T08:36:10.123449+00:00,confirmed,MW_REP_001,2026-08-21T08:36:10.123449+00:00,,,,,,,,,,,,,,,
-MW_KU19_2627_050,MW_KU19,MW_2026_27,,,2026-08-22,08:00,MW_CHIWE,MW_RU_MU19,MW_YY_MU19,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_KU19_2627_050,MW_KU19,MW_2026_27,,,2026-08-22,08:00,MW_CHIWE,MW_RU_MU19,MW_YY_MU19,1,1,played,,reporter,,MW_REP_003,2026-08-23T15:13:38.286559+00:00,confirmed,MW_REP_003,2026-08-23T15:13:38.286559+00:00,,,,,,,,,,,,,,,
 MW_CRFA_2627_017,MW_CRFA,MW_2026_27,md_5,5,2026-07-18,14:30:00,MW_GOLF_C,MW_LFC_M1,MW_AB_M1,3,1,played,,facebook,https://www.facebook.com/share/p/195DjCbnWo/,,2026-07-19T09:50:50+00:00,confirmed,,,,,,,,,,,,,,,,,
 MW_KU19_2627_051,MW_KU19,MW_2026_27,,,2026-08-22,09:30,MW_CHIWE,MW_MW_U19,MW_CCS_MU19,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_CRFA_2627_018,MW_CRFA,MW_2026_27,md_5,5,2026-07-20,14:30,MW_MCJ_004,MW_MV_M1,MW_MC_M1,3,3,played,,reporter,"https://www.facebook.com/share/p/19no8kfkwD/, https://www.facebook.com/share/p/18gpehKhu3/",MW_REP_001,2026-08-20T19:40:13.849193+00:00,confirmed,MW_REP_001,2026-08-20T19:40:13.849193+00:00,,,,,,,,Tumpale Kasote,Laston Phiri,,,,,MW_OFF_000044,MW_OFF_000043
@@ -496,6 +496,7 @@ MW_KU19_2627_054,MW_KU19,MW_2026_27,,,2026-08-24,08:00,MW_B_002,MW_EH_MU19,MW_NU
 MW_CRFA_2627_021,MW_CRFA,MW_2026_27,md_5,5,2026-07-19,14:30:00,MW_CHIVALA,MW_CSFC_M1,MW_MCHS_M1,,,scheduled,,facebook,,,2026-07-16T01:35:00+00:00,confirmed,,,,,,,,,,,,,,,,,
 MW_KU19_2627_055,MW_KU19,MW_2026_27,,,2026-08-24,09:30,,MW_BULL_U19,MW_EFC_U19,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_CRFA_2627_022,MW_CRFA,MW_2026_27,md_2,2,2026-07-12,,MW_MANGO,MW_AB_M1,MW_BLUE_M2,0,2,played,,facebook,https://www.facebook.com/share/p/18uEhFeVVz/,,2026-07-16T01:44:00+00:00,confirmed,,,,,,,,,,,,,,,,,
+MW_KU19_2627_056,MW_KU19,MW_2026_27,,,,11:00,,MW_MM_MU19,MW_ND_MU19,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_CRFA_2627_023,MW_CRFA,MW_2026_27,md_2,2,2026-07-12,,MW_MPON_CG,MW_MPFC_M1,MW_TNS_M1,2,0,played,,facebook,https://www.facebook.com/share/p/18uEhFeVVz/,,2026-07-16T01:44:00+00:00,confirmed,,,,,,,,,,,,,,,,,
 MW_CRFA_2627_024,MW_CRFA,MW_2026_27,md_2,2,2026-07-12,,MW_KAMIRA,MW_MC_M1,MW_MU_M1,2,0,played,,facebook,https://www.facebook.com/share/p/18uEhFeVVz/,,2026-07-16T01:44:00+00:00,confirmed,,,,,,,,,,,,,,,,,
 MW_CRFA_2627_025,MW_CRFA,MW_2026_27,md_2,2,2026-07-12,,,MW_NAA_M1,MW_MCHS_M1,1,0,played,,facebook,https://www.facebook.com/share/p/18uEhFeVVz/,,2026-07-16T01:44:00+00:00,confirmed,,,,,,,,,,,,,,,,,
