@@ -7137,6 +7137,7 @@ const OPS_TABS = [
     head: "Missing sources", blank: "Every result cites a source." },
   { key: "verification", label: "Verification", flag: "is_unconfirmed",
     head: "Unconfirmed results", blank: "Nothing is waiting on confirmation." },
+  { key: "reporters",    label: "Reporters",    flag: null },
   { key: "crests",       label: "Crests",       flag: null,
     head: "Clubs without a crest", blank: "Every club has a crest." },
 ];
@@ -7432,6 +7433,86 @@ async function opsCrests() {
   return { rows, total: info.counts?.clubs_with_page || 0 };
 }
 
+// ── The Reporters tab ────────────────────────────────────────────────────────
+// "Who is actually filing results, and how much of it?" — the roster question
+// operations answers nowhere else. #/reporters (0026) says who has access to
+// what; this says what they have done with it.
+//
+// reported_by is set on every submit_match_report call (0003), overwritten
+// each time, so it names whoever last tapped Publish on a match — not
+// necessarily who filed it first. A correction someone else picks up moves
+// the credit, on purpose: this is a coverage view, not a byline.
+//
+// Scoped to ops_match_flags, so it inherits the same season and league/cup
+// boundary as the rest of this dashboard — a national-team result has no
+// reported_by to begin with, since #/nt reports through a different path.
+
+async function loadOpsReporterActivity() {
+  const [reporters, { data: matches, error }] = await Promise.all([
+    loadReporters(),
+    supabase.from("ops_match_flags")
+      .select("match_id,public_id,competition_id,competition_type,round_key," +
+              "date,kickoff,status,home_name,away_name,home_goals,away_goals," +
+              "source_type,is_pre_tracker,reported_by,reported_at")
+      .not("reported_by", "is", null)
+      .order("reported_at", { ascending: false })
+      .limit(4000),
+  ]);
+  if (error) throw error;
+  const byReporter = {};
+  (matches || []).forEach((m) => {
+    (byReporter[m.reported_by] ||= []).push(m);
+  });
+  return reporters
+    .map((r) => ({ ...r, matches: byReporter[r.reporter_id] || [] }))
+    .sort((a, b) => b.matches.length - a.matches.length
+                 || a.name.localeCompare(b.name));
+}
+
+function opsReporterRow(r) {
+  const total = r.matches.length;
+  // Flagged, not hidden: an active reporter with nothing filed this season is
+  // exactly the row an administrator opened this tab to find.
+  const attn = r.active && total === 0;
+  return `
+    <a class="ops-glance-row${attn ? " is-attn" : total ? "" : " is-good"}"
+       href="#/ops?tab=reporters&rep=${encodeURIComponent(r.reporter_id)}">
+      <div class="ops-glance-comp">
+        <span class="ops-comp">${esc(r.name)}${r.active ? "" : ' <span class="ops-tag">inactive</span>'}</span>
+        <span class="ops-sub">${r.competitions.length} competition${r.competitions.length === 1 ? "" : "s"} assigned</span>
+      </div>
+      <div class="ops-glance-status">
+        <span class="ops-glance-chip ${total ? "is-ok" : "is-bad"}">${total} match${total === 1 ? "" : "es"}</span>
+      </div>
+    </a>`;
+}
+
+function opsReporterDetail(r, names) {
+  const byComp = {};
+  r.matches.forEach((m) => { (byComp[m.competition_id] ||= []).push(m); });
+  const compIds = Object.keys(byComp).sort((a, b) =>
+    byComp[b].length - byComp[a].length
+    || (names[a] || a).localeCompare(names[b] || b));
+
+  const body = compIds.length
+    ? compIds.map((cid) => {
+        const rows = byComp[cid].slice()
+          .sort((a, b) => (b.reported_at || "").localeCompare(a.reported_at || ""));
+        return section(`rep-${cid}`, names[cid] || cid, rows.length,
+          rows.map((m) => opsMatchRow(m, names)).join(""),
+          compIds.length === 1);
+      }).join("")
+    : '<p class="rp-empty">No matches reported this season.</p>';
+
+  return `
+    <a class="rp-btn is-ghost" href="#/ops?tab=reporters">&larr; Reporters</a>
+    <h2 class="rp-group-head">${esc(r.name)}
+      <span class="rp-count">${r.matches.length}</span></h2>
+    <p class="ops-sub">${esc(r.email || "")}${r.active ? "" : " · inactive"}
+      · ${r.competitions.length} competition${r.competitions.length === 1 ? "" : "s"} assigned</p>
+    ${body}`;
+}
+
 // ── Site freshness panel ─────────────────────────────────────────────────────
 
 function opsSitePanel(fresh) {
@@ -7538,6 +7619,26 @@ async function renderOps(params) {
                 <code>static/logos/clubs/</code> named for the club id or a
                 team's legacy code.</p>
               ${rows || '<p class="rp-empty">Every club has a crest.</p>'}`);
+      return;
+    }
+
+    if (tab === "reporters") {
+      const activity = await loadOpsReporterActivity();
+      const repId = params.get("rep");
+      if (repId) {
+        const r = activity.find((x) => x.reporter_id === repId);
+        header(r ? opsReporterDetail(r, names)
+                 : '<p class="rp-empty">Reporter not found.</p>');
+        return;
+      }
+      const rows = activity.map((r) => opsReporterRow(r)).join("");
+      header(`<h2 class="rp-group-head">Reporter activity
+                <span class="rp-count">${activity.length}</span></h2>
+              <p class="rp-hint">Matches reported this season, credited to
+                whoever last tapped Publish on each one — not necessarily who
+                filed it first.</p>
+              <div class="ops-glance">${rows
+                || '<p class="rp-empty">No reporters yet.</p>'}</div>`);
       return;
     }
 
