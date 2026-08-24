@@ -494,7 +494,7 @@ MW_CRFA_2627_019,MW_CRFA,MW_2026_27,md_5,5,2026-07-19,14:30:00,MW_ADL_G,MW_SS_M2
 MW_KU19_2627_053,MW_KU19,MW_2026_27,,,2026-08-23,09:30,MW_CHIWE,MW_BIA_MU19,MW_A_MU19,2,1,played,,reporter,,MW_REP_003,2026-08-23T15:59:24.653018+00:00,confirmed,MW_REP_003,2026-08-23T15:59:24.653018+00:00,,,,,,,,,,,,,,,
 MW_KU19_2627_054,MW_KU19,MW_2026_27,,,2026-08-24,08:00,MW_B_002,MW_EH_MU19,MW_NU_MU19,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_CRFA_2627_021,MW_CRFA,MW_2026_27,md_5,5,2026-07-19,14:30:00,MW_CHIVALA,MW_CSFC_M1,MW_MCHS_M1,,,scheduled,,facebook,,,2026-07-16T01:35:00+00:00,confirmed,,,,,,,,,,,,,,,,,
-MW_KU19_2627_055,MW_KU19,MW_2026_27,,,2026-08-24,09:30,,MW_BULL_U19,MW_EFC_U19,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_KU19_2627_055,MW_KU19,MW_2026_27,,,2026-08-24,09:30,,MW_BULL_U19,MW_EFC_U19,0,0,played,,reporter,,MW_REP_003,2026-08-24T11:27:50.118735+00:00,confirmed,MW_REP_003,2026-08-24T11:27:50.118735+00:00,,,,,,,,,,,,,,,
 MW_CRFA_2627_022,MW_CRFA,MW_2026_27,md_2,2,2026-07-12,,MW_MANGO,MW_AB_M1,MW_BLUE_M2,0,2,played,,facebook,https://www.facebook.com/share/p/18uEhFeVVz/,,2026-07-16T01:44:00+00:00,confirmed,,,,,,,,,,,,,,,,,
 MW_KU19_2627_056,MW_KU19,MW_2026_27,,,,11:00,,MW_MM_MU19,MW_ND_MU19,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_CRFA_2627_023,MW_CRFA,MW_2026_27,md_2,2,2026-07-12,,MW_MPON_CG,MW_MPFC_M1,MW_TNS_M1,2,0,played,,facebook,https://www.facebook.com/share/p/18uEhFeVVz/,,2026-07-16T01:44:00+00:00,confirmed,,,,,,,,,,,,,,,,,
