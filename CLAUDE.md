@@ -168,6 +168,34 @@ fixture and clean up, and they never mutate a real match.
 
 ## Recent work (Aug 2026)
 
+Who a player plays for, no migration:
+
+- A profile could name a club only from a team sheet, and 1007 of the 1060
+  identified goals in this dataset belong to a match that has no sheet. So a
+  ten-goal U20 scorer's page opened with his name and a table saying "10 —
+  Mzuzu District FCB Katswiri U20 League", and never said who for. All 971
+  pages name a club now.
+- **A goal is evidence of a side.** `goals.team_id` was in every row the
+  goals table was already counting — the same "who has actually worn this
+  shirt" rule 0034 built for the portal's club hints. The scorer and the
+  assister are teammates by definition; an own goal is read INVERTED (it
+  names the beneficiary, so it says which side the scorer was not on, and a
+  league match has only two), which is the whole record of seven players.
+- `hubs.TeamCredit` is that fact and is deliberately weaker than an
+  `Appearance`: which side and when, nothing about starting, so it can never
+  be counted as a game played. `Career.side` picks between them — club over
+  country, a team sheet over a goal, newest first.
+- The competition under the club is a **level, not the last thing they
+  played in**: a Super League season ends in the Airtel Top 8, which
+  introduced nine players by a cup. `Career._level` prefers a league.
+- `player_goal_credits` keys on (season, competition, **team**), so Goals by
+  Competition names the club under each competition — a second line in the
+  cell, never a fourth column, because that table is `table-layout: fixed`
+  on a phone and the GOALS figure is what must stay visible. A player who
+  moved mid-season is two rows now instead of one merged total.
+- Switch Player works in a league that has never had a team sheet, which is
+  where it was empty and most needed.
+
 Browsing `#/players`, migration `0037`:
 
 - `search_players` (0022/0034) only ever ranks a typed guess against a name —

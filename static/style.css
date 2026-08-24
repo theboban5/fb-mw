@@ -2129,6 +2129,28 @@ table.nt-table {
 }
 .pl-pos { font-weight: 700; letter-spacing: 0.06em; color: #9aa1ab; }
 .pl-club { margin: 4px 0 0; font-size: 0.82rem; font-weight: 600; }
+/* The competition under the club: the level they play at. Quieter than the
+   club and allowed to wrap — "Mzuzu District FCB Katswiri U20 League" is two
+   lines at 360px and truncating it would lose the half that identifies it. */
+.pl-comp {
+  margin: 2px 0 0;
+  font-size: 0.72rem;
+  color: #9aa1ab;
+  line-height: 1.3;
+}
+
+/* The club a season's goals were scored for, on its own line inside the
+   competition cell — see hubs._goal_row_team for why it is not a column. */
+.pl-goal-team {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.74rem;
+  font-weight: 500;
+  /* A fixed grey, not var(--muted): this table sits on a card that stays
+     white in dark mode, where --muted flips to a pale grey and disappears
+     into it. The rank column next to it is hard-coded for the same reason. */
+  color: #666;
+}
 
 /* Summary tiles. They wrap rather than scroll: a row that scrolls sideways
    hides the number on the end, and these are the page's headline figures. */

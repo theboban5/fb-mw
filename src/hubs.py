@@ -7,7 +7,7 @@ goals by season and competition. Both reuse the site's existing CSS classes
 so they inherit the league pages' styling.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from html import escape
 import os
 
@@ -287,11 +287,19 @@ def build_club_hubs(dist, templates_dir, static_dir, ds, leagues, standings_by_s
 def player_goal_credits(ds):
     """(credits, own_goals) — who gets a player page, and what is on it.
 
-    `credits` is player_id -> (season_id, competition_id) -> goals; `own_goals`
-    is player_id -> count. CAF_MW_UNKNOWN and goals from placeholder matches
-    are skipped. Split out of build_player_pages because src/search.py has to
-    index exactly the set of players that gets a page — deriving that twice is
-    how a search result ends up pointing at a 404.
+    `credits` is player_id -> (season_id, competition_id, team_id) -> goals;
+    `own_goals` is player_id -> count. CAF_MW_UNKNOWN and goals from placeholder
+    matches are skipped. Split out of build_player_pages because src/search.py
+    has to index exactly the set of players that gets a page — deriving that
+    twice is how a search result ends up pointing at a 404.
+
+    WHAT WAS WRONG. The key was (season, competition) alone, so the goals table
+    on a profile said "10 goals in the Mzuzu District U20 League" and could not
+    say who they were scored FOR — the one fact a reader of a league of thirty
+    clubs actually needs. `goals.team_id` was in every row being counted; it
+    was simply thrown away on the way in. A player who moved club mid-season
+    now gets a row per side rather than one merged total, which is the honest
+    shape and was previously impossible to see.
     """
     credits = {}
     own_goals = {}
@@ -301,10 +309,12 @@ def player_goal_credits(ds):
         m = ds.matches.get(g.match_id)
         if m is None or m.is_placeholder:
             continue
-        key = (m.season_id, m.competition_id)
         if g.is_own_goal:
+            # No team key: goals.team_id is the BENEFICIARY, so filing an own
+            # goal by it would say the scorer played for the opposition.
             own_goals[g.player_id] = own_goals.get(g.player_id, 0) + 1
         else:
+            key = (m.season_id, m.competition_id, g.team_id)
             credits.setdefault(g.player_id, {})
             credits[g.player_id][key] = credits[g.player_id].get(key, 0) + 1
     return credits, own_goals
@@ -359,11 +369,49 @@ class Appearance:
     # total means something only once enough matches carry one, and on the day
     # this shipped none of them did.
     motm: bool = False
+    # Was this a league match? Only the profile header asks, to name the level
+    # a player plays at rather than the last competition they happened to
+    # appear in — see Career.side. An international is false: a tournament is
+    # not a level either.
+    league: bool = False
 
     @property
     def sort_key(self):
         # Newest first, and a match with no date sorts last rather than first:
         # a blank date is an unscheduled fixture, not the dawn of time.
+        return (self.date != "", self.date)
+
+
+@dataclass(frozen=True)
+class TeamCredit:
+    """A side a player turned out for, and the date that proves it.
+
+    WHAT WAS WRONG. Every fact about which club a player belongs to was read
+    off a team sheet, and most of this dataset has no team sheets — so a
+    profile with ten goals on it opened with a name, a number and nothing
+    else, and could not answer "who does he play for". The evidence was
+    already there: a goal row carries a `team_id`, which for anything but an
+    own goal is the scorer's own side. That is the same "who has actually worn
+    this shirt" rule 0034 built for the reporter portal's club hints — with
+    the one difference that an own goal is read here rather than thrown away:
+    it names the beneficiary, so it says which side the scorer was NOT on,
+    and a league match has only two.
+
+    Weaker than an Appearance on purpose: it says which side and when, and
+    nothing about whether they started, so it can never be counted as a game
+    played. It is a label for the header, not a statistic.
+    """
+    date: str
+    team_id: str
+    team_label: str
+    club_id: str          # "" for a national team, and for a team with no club
+    competition: str      # label, not an id
+    national: bool = False
+    league: bool = False  # a cup tie is an event, a league is a level
+
+    @property
+    def sort_key(self):
+        # Same rule as Appearance: a blank date sorts last, not first.
         return (self.date != "", self.date)
 
 
@@ -381,6 +429,9 @@ class Career:
     goals: int
     assists: int
     bench: "list[Appearance]" = field(default_factory=list)
+    # Sides evidenced by a goal or an assist rather than by a team sheet,
+    # newest first. Never counted anywhere — see TeamCredit.
+    teams: "list[TeamCredit]" = field(default_factory=list)
 
     @property
     def starts(self) -> int:
@@ -411,6 +462,51 @@ class Career:
         club = [a for a in self.appearances if not a.national]
         return (club or self.appearances or self.bench or [None])[0]
 
+    @property
+    def side(self) -> "TeamCredit | None":
+        """Who this player plays FOR — the one line the header has to get right.
+
+        `latest` answers it from team sheets only, which is right when there is
+        one and silent when there is not. This falls through to the sides a
+        goal proves, so a scorer nobody has entered a line-up for is still
+        named at his club rather than floating free.
+
+        A club outranks a national team for the reason `latest` prefers one:
+        "Civil Service United" is the answer to "who does she play for", and
+        the Flames are somewhere you are picked for. A bench call outranks a
+        goal credit — being named on a sheet is the stronger statement — and
+        both are read newest first.
+        """
+        sheets = self.appearances + self.bench
+        for rows in ([a for a in sheets if not a.national],
+                     [t for t in self.teams if not t.national],
+                     [a for a in sheets if a.national],
+                     [t for t in self.teams if t.national]):
+            row = max(rows, key=lambda r: r.sort_key, default=None)
+            if row is None:
+                continue
+            comp = self._level(row.team_id) or row.competition
+            if isinstance(row, TeamCredit):
+                return replace(row, competition=comp)
+            return TeamCredit(date=row.date, team_id=row.team_id,
+                              team_label=row.team_label, club_id=row.club_id,
+                              competition=comp, national=row.national,
+                              league=row.league)
+        return None
+
+    def _level(self, team_id) -> str:
+        """The most recent LEAGUE this side played in, or "".
+
+        The header names a competition to say what level a player plays at,
+        and the newest row is not always that: a Super League season ends in
+        the Airtel Top 8, so nine profiles introduced their player by a cup.
+        A cup tie is an event; the league is the answer to "who is this".
+        """
+        rows = [r for r in self.appearances + self.bench + self.teams
+                if r.team_id == team_id and r.league and r.competition]
+        row = max(rows, key=lambda r: r.sort_key, default=None)
+        return row.competition if row else ""
+
 
 def _outcome(ours, theirs) -> "tuple[str, str]":
     """("2-1", "W") from one side's perspective, or ("", "") with no score."""
@@ -433,6 +529,11 @@ def _playable(row) -> bool:
 
 def _identified(player_id: str) -> bool:
     return bool(player_id) and player_id != dataset.UNKNOWN_PLAYER_ID
+
+
+def _is_league(ds, competition_id) -> bool:
+    comp = ds.competitions.get(competition_id)
+    return comp is not None and comp.type == "league"
 
 
 def _club_appearances(ds):
@@ -476,10 +577,88 @@ def _club_appearances(ds):
             goals=goals_by.get((r.player_id, r.match_id), 0),
             assists=assists_by.get((r.player_id, r.match_id), 0),
             played=_playable(r), motm=getattr(r, "motm", False),
+            league=_is_league(ds, m.competition_id),
             yellow_card=r.yellow_card, yellow_red_card=r.yellow_red_card,
             red_card=r.red_card, scoreline=scoreline, outcome=outcome,
         ))
     return out, bench, goals_by, assists_by
+
+
+def _club_team_credits(ds):
+    """player_id -> [TeamCredit] from `goals` — a side proved by a goal.
+
+    Both ends of the goal count: the scorer and the assister are teammates by
+    definition, so `goals.team_id` names the side of each.
+
+    An own goal proves the same thing INVERTED — it is the one row on this tab
+    where the player was on the other side — and a league match has exactly two
+    of those, so the side is the one that is not the beneficiary. That is the
+    whole of what is known about seven players in this dataset: an own goal and
+    nothing else, whose pages carried a name and a line of apology for it.
+    Nothing is credited when the beneficiary is neither of the two sides,
+    because then "the other one" is a guess.
+
+    Deduplicated per (match, side), because a hat-trick is one afternoon at one
+    club and three copies of that fact sort no differently from one.
+    """
+    out = {}
+    for g in ds.goals.values():
+        m = ds.matches.get(g.match_id)
+        if m is None or m.is_placeholder:
+            continue
+        sides = (m.home_team_id, m.away_team_id)
+        if g.is_own_goal:
+            if g.team_id not in sides:
+                continue
+            team_id = sides[0] if g.team_id == sides[1] else sides[1]
+            # Only the scorer: nobody assists an own goal, so a name in that
+            # column is a mis-entry and not evidence of anything.
+            scorers_of = (g.player_id,)
+        else:
+            team_id = g.team_id
+            scorers_of = (g.player_id, g.assist_player_id)
+        team = ds.teams.get(team_id)
+        club = ds.clubs.get(team.club_id) if team else None
+        credit = TeamCredit(
+            date=m.date, team_id=team_id,
+            team_label=team.display_name if team else team_id,
+            club_id=club.club_id if club else "",
+            competition=ds.league_display_name(m.competition_id, m.season_id),
+            league=_is_league(ds, m.competition_id))
+        for player_id in scorers_of:
+            if _identified(player_id):
+                out.setdefault(player_id, {})[(g.match_id, team_id)] = credit
+    return {pid: sorted(by_match.values(), key=lambda c: c.sort_key, reverse=True)
+            for pid, by_match in out.items()}
+
+
+def _national_team_credits(ntd):
+    """The same, from `nt_goals` — our own sides only, as everywhere else here.
+
+    No own-goal inversion: the other side of an international is an opponent
+    NAME, not a team this site holds an id for, so there is nothing to credit
+    a player to. Such a row fails the `ours` test below and drops out anyway.
+    """
+    if ntd is None:
+        return {}
+    ours = set(ntd.nt_teams)
+    out = {}
+    for g in ntd.nt_goals.values():
+        if g.is_own_goal or g.team_id not in ours:
+            continue
+        m = ntd.nt_matches.get(g.match_id)
+        if m is None:
+            continue
+        team = ntd.nt_teams.get(g.team_id)
+        credit = TeamCredit(
+            date=m.date, team_id=g.team_id,
+            team_label=team.team_name if team else g.team_id,
+            club_id="", competition=m.competition, national=True)
+        for player_id in (g.player_id, g.assist_player_id):
+            if _identified(player_id):
+                out.setdefault(player_id, {})[(g.match_id, g.team_id)] = credit
+    return {pid: sorted(by_match.values(), key=lambda c: c.sort_key, reverse=True)
+            for pid, by_match in out.items()}
 
 
 def _national_appearances(ntd):
@@ -545,6 +724,8 @@ def player_careers(ds, ntd=None):
     """
     club_apps, club_bench, club_goals, club_assists = _club_appearances(ds)
     nt_apps, nt_bench, nt_goals, nt_assists = _national_appearances(ntd)
+    club_teams = _club_team_credits(ds)
+    nt_teams = _national_team_credits(ntd)
 
     goals_by = {**club_goals, **nt_goals}
     assists_by = {**club_assists, **nt_assists}
@@ -552,6 +733,12 @@ def player_careers(ds, ntd=None):
     player_ids = set(club_apps) | set(nt_apps) | set(club_bench) | set(nt_bench)
     player_ids |= {pid for pid, _mid in goals_by}
     player_ids |= {pid for pid, _mid in assists_by}
+    # An own goal is the only mark some players have left on this dataset, and
+    # it counts in none of the sets above. They already had a page (see
+    # player_page_ids); without this they had a page with no Career behind it,
+    # so the one thing known about them — which side they were playing for —
+    # was thrown away on the way to it.
+    player_ids |= set(club_teams) | set(nt_teams)
 
     goal_totals, assist_totals = {}, {}
     for (pid, _mid), n in goals_by.items():
@@ -565,11 +752,14 @@ def player_careers(ds, ntd=None):
         appearances.sort(key=lambda a: a.sort_key, reverse=True)
         bench = club_bench.get(player_id, []) + nt_bench.get(player_id, [])
         bench.sort(key=lambda a: a.sort_key, reverse=True)
+        teams = club_teams.get(player_id, []) + nt_teams.get(player_id, [])
+        teams.sort(key=lambda c: c.sort_key, reverse=True)
         careers[player_id] = Career(
             appearances=appearances,
             goals=goal_totals.get(player_id, 0),
             assists=assist_totals.get(player_id, 0),
             bench=bench,
+            teams=teams,
         )
     return careers
 
@@ -636,10 +826,19 @@ def _profile_header(player, career, ds, club_hub_ids) -> str:
 
     players.position, .dob and .nationality are empty for every row in this
     dataset today, so each line here has to disappear rather than render an
-    em-dash. The shirt, the position and the club come from the most recent
-    team sheet instead, which is where that information actually lives.
+    em-dash. The shirt and the position come from the most recent team sheet
+    instead, which is where that information actually lives.
+
+    The club does NOT: it comes from `career.side`, which falls back to the
+    side a goal proves. Reading it off the sheet alone left the header of a
+    ten-goal scorer in a league with no team sheets saying nothing but his
+    name — and the club is the single most useful thing a profile can say
+    about a player, because it is what tells two people of the same name
+    apart. The competition under it is the level he plays at, which is the
+    second.
     """
     latest = career.latest
+    side = career.side
     bits = []
     if latest and latest.shirt_number:
         bits.append(f'<span class="pl-shirt">#{escape(latest.shirt_number)}</span>')
@@ -647,21 +846,23 @@ def _profile_header(player, career, ds, club_hub_ids) -> str:
     if position:
         bits.append(f'<span class="pl-pos">{escape(position.upper())}</span>')
 
-    club_line = ""
-    if latest:
-        name = escape(latest.team_label)
+    club_line = comp_line = ""
+    if side:
+        name = escape(side.team_label)
         club_line = (
             f'<p class="pl-club"><a class="club-link" '
-            f'href="../clubs/{escape(latest.club_id)}.html">{name}</a></p>'
-            if latest.club_id and latest.club_id in club_hub_ids
+            f'href="../clubs/{escape(side.club_id)}.html">{name}</a></p>'
+            if side.club_id and side.club_id in club_hub_ids
             else f'<p class="pl-club">{name}</p>')
+        if side.competition:
+            comp_line = f'<p class="pl-comp">{escape(side.competition)}</p>'
 
     meta = f'<p class="pl-meta">{" ".join(bits)}</p>' if bits else ""
     return (
         '<div class="v2-mini-banner">'
         '<p class="v2-season">PLAYER</p>'
         f'<h2 class="v2-mini-league">{escape(player.display_name.upper())}</h2>'
-        f"{meta}{club_line}"
+        f"{meta}{club_line}{comp_line}"
         "</div>"
     )
 
@@ -735,17 +936,29 @@ def squads_by_team(careers, page_ids):
 
     The shirt is the one from their most recent match for THAT side, which is
     also the one their own profile header shows.
+
+    A side proved only by a goal counts too, and it is the whole squad in a
+    league with no team sheets: without it "Switch Player" was empty on every
+    profile in the Mzuzu District U20 League, where a reader has ten scorers
+    and no way between them. Such a row can never win the shirt — a goal does
+    not carry one — so a sheet outranks it whatever the dates say.
     """
     best: "dict[tuple[str, str], tuple]" = {}
+
+    def keep(team_id, player_id, rank, shirt):
+        if not team_id:
+            return
+        key = (team_id, player_id)
+        if key not in best or rank > best[key][0]:
+            best[key] = (rank, shirt)
+
     for player_id, career in careers.items():
         if player_id not in page_ids:
             continue
+        for c in career.teams:
+            keep(c.team_id, player_id, (0, c.sort_key), "")
         for a in career.appearances + career.bench:
-            if not a.team_id:
-                continue
-            key = (a.team_id, player_id)
-            if key not in best or a.sort_key > best[key][0]:
-                best[key] = (a.sort_key, a.shirt_number)
+            keep(a.team_id, player_id, (1, a.sort_key), a.shirt_number)
     out: "dict[str, list]" = {}
     for (team_id, player_id), (_key, shirt) in best.items():
         out.setdefault(team_id, []).append((player_id, shirt))
@@ -760,15 +973,15 @@ def _switch_player(player_id, career, squads, ds) -> str:
     — who else played, who scored, who came on. Getting there meant leaving the
     profile and finding the match again.
 
-    One squad, not all of them: the side from `career.latest`, which is the
+    One squad, not all of them: the side from `career.side`, which is the
     same side the header names. A player who has moved club still reaches the
     old squad through the match-stats table below, and listing every squad
     they have ever been in would bury the current one.
     """
-    latest = career.latest
-    if latest is None:
+    side = career.side
+    if side is None:
         return ""
-    mates = [(pid, shirt) for pid, shirt in squads.get(latest.team_id, [])
+    mates = [(pid, shirt) for pid, shirt in squads.get(side.team_id, [])
              if pid != player_id]
     if not mates:
         return ""
@@ -785,7 +998,7 @@ def _switch_player(player_id, career, squads, ds) -> str:
         for pid, shirt in mates[:SWITCH_PLAYER_MAX])
     return (
         '<h3 class="v2-sec-title">Switch Player</h3>'
-        f'<p class="pl-switch-team">{escape(latest.team_label)}</p>'
+        f'<p class="pl-switch-team">{escape(side.team_label)}</p>'
         f'<div class="pl-switch">{links}</div>'
     )
 
@@ -847,6 +1060,27 @@ def _match_stats(career) -> str:
     return "".join(out)
 
 
+def _goal_row_team(ds, team_id, club_hub_ids) -> str:
+    """The side those goals were scored for, under the competition name.
+
+    A second line inside the same cell rather than a fourth column: the phone
+    rule for this table is `table-layout: fixed`, and a fourth column takes its
+    width from the GOALS figure, which is the one thing that must stay visible.
+    The competition leads because the section is Goals by Competition; the club
+    is the answer to the question that reading it raises.
+    """
+    team = ds.teams.get(team_id)
+    if team is None:
+        # An id from no teams row resolves to nobody, and a bare id under a
+        # competition name is worse than the silence that came before it.
+        return ""
+    name = escape(team.display_name)
+    if team.club_id and team.club_id in club_hub_ids:
+        name = (f'<a class="club-link" href="../clubs/'
+                f'{escape(team.club_id)}.html">{name}</a>')
+    return f'<span class="pl-goal-team">{name}</span>'
+
+
 def build_player_pages(dist, templates_dir, static_dir, ds, updated,
                        club_hub_ids=frozenset(), ntd=None):
     """Write /players/{player_id}.html for everyone who has done something.
@@ -857,7 +1091,8 @@ def build_player_pages(dist, templates_dir, static_dir, ds, updated,
     which src/search.py uses for exactly the same set.
 
     Three sections: what is known about the player, a summary of their career,
-    and the per-match table. Goals by competition stays underneath, unchanged.
+    and the per-match table, with goals by season, competition and club
+    underneath.
     """
     base = render._read(os.path.join(templates_dir, "base.html"))
     css_ver = render.css_version(static_dir)
@@ -879,9 +1114,10 @@ def build_player_pages(dist, templates_dir, static_dir, ds, updated,
 
         rows = []
         total = 0
-        for (season_id, competition_id), n in sorted(
+        for (season_id, competition_id, team_id), n in sorted(
                 by_comp.items(),
-                key=lambda kv: (ds.seasons[kv[0][0]].start_date, kv[0][1]),
+                key=lambda kv: (ds.seasons[kv[0][0]].start_date, kv[0][1],
+                                kv[0][2]),
                 reverse=True):
             season = ds.seasons[season_id]
             comp_name = ds.league_display_name(competition_id, season_id)
@@ -891,7 +1127,8 @@ def build_player_pages(dist, templates_dir, static_dir, ds, updated,
             rows.append(
                 f'<tr><td class="scr-player">{escape(season.label)}</td>'
                 f'<td class="scr-team"><a class="club-link" href="../{escape(slug)}/">'
-                f'{escape(comp_name)}</a></td>'
+                f'{escape(comp_name)}</a>'
+                f'{_goal_row_team(ds, team_id, club_hub_ids)}</td>'
                 f'<td class="scr-goals">{n}</td></tr>'
             )
         if total:
