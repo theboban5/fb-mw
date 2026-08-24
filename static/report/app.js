@@ -745,6 +745,7 @@ async function renderHome(params) {
     <div class="rp-actions">
       ${canAdd ? '<a class="rp-btn is-ghost" href="#/add">＋ Add fixtures</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/league/new">＋ New league</a>' : ""}
+      <a class="rp-btn is-ghost" href="#/players">Players</a>
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/ops">Operations</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/trending">Homepage</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/reporters">Reporters</a>' : ""}
@@ -3442,12 +3443,6 @@ async function renderAccount() {
       <p class="rp-hint">At least 8 characters.</p>
       <button class="rp-btn" type="submit" data-submit>Change password</button>
     </form>
-
-    <h2 class="rp-field-head">Players</h2>
-    <p class="rp-hint">Fix a name that was entered short — "A. Josephy" off a
-      graphic, before anyone knew the first name — or merge two ids that turned
-      out to be one person.</p>
-    <a class="rp-btn is-ghost" href="#/players">Find a player</a>
 
     ${context.isAdmin ? `
     <h2 class="rp-field-head">Reporters</h2>
