@@ -869,6 +869,44 @@ function venueNames() {
   });
 }
 
+/** Every competition, for the League filter on #/players. Unlike
+ *  entryCompetitions this is not narrowed to this account's assignments —
+ *  renaming and merging a player is any reporter's job regardless of which
+ *  leagues they file scores for (see the header on renderPlayers). */
+function allCompetitions() {
+  return once("allComps", async () => {
+    const [{ data: comps, error }, names] = await Promise.all([
+      supabase.from("competitions").select("competition_id,name"),
+      competitionNames(),
+    ]);
+    if (error) throw error;
+    const list = (comps || []).map((c) => ({
+      id: c.competition_id, label: names[c.competition_id] || c.name,
+    }));
+    list.sort((a, b) => a.label.localeCompare(b.label));
+    return list;
+  });
+}
+
+/** Every team ever entered in one competition, any season — for the Team
+ *  filter once a League is chosen. Any season, not just the active one,
+ *  because a duplicate player id can date from a season that already ended
+ *  and the point of browsing is finding it regardless of when it happened. */
+function competitionTeams(competitionId) {
+  return once(`compTeams:${competitionId}`, async () => {
+    const { data, error } = await supabase.from("entries")
+      .select("team_id,team:teams(display_name)")
+      .eq("competition_id", competitionId);
+    if (error) throw error;
+    const byId = new Map();
+    (data || []).forEach((e) => {
+      if (!byId.has(e.team_id)) byId.set(e.team_id, e.team?.display_name || e.team_id);
+    });
+    return Array.from(byId, ([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  });
+}
+
 // `home`/`away` are team_ids — the answer. `homeText`/`awayText` are what is
 // half-typed in the box beside them, kept because adding or removing a line
 // redraws every other line, and a name someone was in the middle of typing
@@ -2358,6 +2396,38 @@ async function searchPlayersByName(q) {
   return data || [];
 }
 
+/** The #/players screen's listing (0037): optional name filter, optional
+ *  team/competition filter, paginated. Unlike searchPlayers this never
+ *  ranks — an empty term lists everyone alphabetically, which is what makes
+ *  browsing (rather than guessing a spelling) possible at all.
+ *
+ *  Same deploy-ordering fallback as searchPlayers, and for the same reason:
+ *  a migration is a separate deploy from git, so this file can reach a phone
+ *  before browse_players exists in the database. The fallback drops the
+ *  team/competition filter and the running total rather than the screen.
+ */
+async function browsePlayers({ term, teamId, competitionId, limit, offset }) {
+  const q = (term || "").trim().replace(FILTER_UNSAFE, " ").replace(/\s+/g, " ").trim();
+  const { data, error } = await supabase.rpc("browse_players", {
+    p_term: q || null,
+    p_team_id: teamId || null,
+    p_competition_id: competitionId || null,
+    p_limit: limit,
+    p_offset: offset,
+  });
+  if (!error) return data || [];
+  console.warn("[everyleague] browse_players unavailable:", error);
+  let query = supabase.from("players")
+    .select("player_id,full_name,known_as")
+    .neq("player_id", UNKNOWN_PLAYER)
+    .order("full_name")
+    .range(offset, offset + limit - 1);
+  if (q) query = query.or(`full_name.ilike.*${q}*,known_as.ilike.*${q}*`);
+  const { data: rows, error: err2 } = await query;
+  if (err2) throw err2;
+  return (rows || []).map((r) => ({ ...r, teams: "", team_ids: [], total_count: null }));
+}
+
 const playerLabel = (p) => p.known_as || p.full_name || p.player_id;
 
 /** The line under a name in every player picker: WHICH ONE IS THIS?
@@ -3421,85 +3491,204 @@ async function renderAccount() {
 // id resolves (see src/lineups.py). So the first name turning up later is not
 // a problem, PROVIDED there is somewhere to say so. This is that somewhere.
 //
-// Two operations, and the split in who may run them is deliberate:
+// Three ways in, and browsing (0037) is the one that does not require already
+// knowing a spelling: League then Team narrows the list to who has actually
+// been named for that team or in that competition (derived from lineups and
+// goals, same as search_players' club hints), and an empty search box lists
+// everyone alphabetically. That is what makes "walk the whole U20 roster and
+// see what looks wrong" possible instead of only "search for a name someone
+// already suspects is wrong".
+//
+// Two operations on the player found, and the split in who may run them is
+// deliberate:
 //
 //   * Rename — any reporter. It is the other half of create_player, which
 //     they already have, and it is reversible.
 //   * Merge  — admins only. It deletes a row and repoints history across
-//     seven tables, and nothing in this portal can undo it.
+//     seven tables, and nothing in this portal can undo it. The admin picks
+//     which of the two names survives by picking which player is the winner.
 
+const PLAYERS_PAGE_SIZE = 30;
+
+// Used only by the merge picker below (searchPlayers ranks a typed guess and
+// one letter matches most of the database). The main listing has no such
+// floor: an empty term is what makes browsing possible.
 const PLAYER_SEARCH_MIN = 2;
 
 async function renderPlayers(params) {
-  const term = params.get("q") || "";
-  h(`
-    <h1 class="rp-login-head">Players</h1>
-    <p class="rp-login-sub">Correct a name, or merge two ids that turned out to
-      be one person. A rename reaches every team sheet, scorer line and profile
-      at the next build.</p>
-    <form class="rp-form" data-player-search autocomplete="off">
-      <input class="rp-input" name="q" value="${esc(term)}" autocomplete="off"
-             autocapitalize="words" placeholder="Search by name">
-    </form>
-    <div data-player-results></div>
-    <div class="rp-btn-row" style="margin-top:24px">
-      <a class="rp-btn is-ghost" href="#/">My matches</a>
-    </div>
-  `);
+  const state = {
+    term: params.get("q") || "",
+    compId: params.get("comp") || "",
+    teamId: params.get("team") || "",
+    teams: null,        // null until a league is chosen (or while loading)
+    results: [],
+    totalCount: null,   // null = unknown (fallback path or not yet run)
+    lastBatchSize: 0,
+    busy: false,
+  };
 
-  const form = view.querySelector("[data-player-search]");
-  const input = form.querySelector('input[name="q"]');
-  let timer = null;
-  // Only the most recent search may paint — the same rule the scorer picker
+  let competitions;
+  try {
+    competitions = await allCompetitions();
+  } catch (error) {
+    competitions = [];
+  }
+
+  let searchTimer = null;
+  // Only the most recent request may paint — the same rule the scorer picker
   // follows, and for the same reason: a list that rewinds under a moving
-  // finger is worse than no list.
+  // finger, or under a filter someone already changed, is worse than no list.
   let latest = 0;
 
-  async function run() {
-    const q = input.value.trim();
-    // The URL carries the term so a back button, or a reload after a rename,
-    // comes back to the same list rather than to an empty box.
-    history.replaceState(null, "",
-      `#/players${q ? "?q=" + encodeURIComponent(q) : ""}`);
-    const host = view.querySelector("[data-player-results]");
-    if (q.length < PLAYER_SEARCH_MIN) {
-      host.innerHTML = '<p class="rp-hint">Type at least two letters.</p>';
-      return;
-    }
-    const mine = ++latest;
-    let players;
+  function syncUrl() {
+    const q = new URLSearchParams();
+    if (state.term) q.set("q", state.term);
+    if (state.compId) q.set("comp", state.compId);
+    if (state.teamId) q.set("team", state.teamId);
+    const qs = q.toString();
+    // A back button, or a reload after a rename, comes back to the same
+    // filtered list rather than to an empty one.
+    history.replaceState(null, "", `#/players${qs ? "?" + qs : ""}`);
+  }
+
+  async function loadTeamsFor(compId) {
+    state.teams = null;
+    drawScreen();
     try {
-      players = await searchPlayers(q);
+      state.teams = await competitionTeams(compId);
+    } catch (error) {
+      state.teams = [];
+      flash(humanError(error), "error");
+    }
+    drawScreen();
+  }
+
+  async function runSearch(reset) {
+    if (reset) { state.results = []; state.totalCount = null; }
+    syncUrl();
+    const mine = ++latest;
+    state.busy = true;
+    drawResults();
+    let rows;
+    try {
+      rows = await browsePlayers({
+        term: state.term, teamId: state.teamId, competitionId: state.compId,
+        limit: PLAYERS_PAGE_SIZE, offset: state.results.length,
+      });
     } catch (error) {
       if (mine !== latest) return;
-      host.innerHTML = "";
+      state.busy = false;
+      drawResults();
       flash(humanError(error), "error");
       return;
     }
     if (mine !== latest) return;
-    if (!players.length) {
-      host.innerHTML = `<p class="rp-empty">Nobody found for
-        “${esc(q)}”. Players are created from the match screen, never here.</p>`;
-      return;
-    }
-    host.innerHTML = players.map(playerCard).join("");
-    wirePlayerCards(host, run);
+    state.busy = false;
+    state.lastBatchSize = rows.length;
+    state.totalCount = rows.length ? rows[0].total_count : state.totalCount;
+    state.results = state.results.concat(rows);
+    drawResults();
   }
 
-  form.addEventListener("submit", (e) => { e.preventDefault(); run(); });
-  input.addEventListener("input", () => {
-    clearTimeout(timer);
-    timer = setTimeout(run, 250);
-  });
-  // A tap anywhere outside a merge box means "not that list" — one listener
-  // for the screen rather than one per card, the same arrangement the scorer
-  // pickers use. route() clears it on the way out.
-  dismissPicker = (event) => {
-    view.querySelectorAll("[data-merge]").forEach((wrap) => {
-      if (!wrap.contains(event.target)) wrap._closeMerge?.();
+  function drawResults() {
+    const host = view.querySelector("[data-player-results]");
+    if (!host) return;
+    if (state.busy && !state.results.length) {
+      host.innerHTML = '<p class="rp-hint">Searching…</p>';
+      return;
+    }
+    if (!state.results.length) {
+      host.innerHTML = `<p class="rp-empty">Nobody found${
+        state.term ? ` for “${esc(state.term)}”` : ""
+      }. Players are created from the match screen, never here.</p>`;
+      return;
+    }
+    // total_count is only known once the RPC (not the fallback) has answered;
+    // a full last page with no count yet just means "there may be more".
+    const hasMore = typeof state.totalCount === "number"
+      ? state.results.length < state.totalCount
+      : state.lastBatchSize === PLAYERS_PAGE_SIZE;
+    const countLine = typeof state.totalCount === "number"
+      ? `<p class="rp-hint">${state.totalCount} player${state.totalCount === 1 ? "" : "s"}.</p>`
+      : "";
+    host.innerHTML = state.results.map(playerCard).join("")
+      + (hasMore ? `<button class="rp-btn is-ghost" type="button" data-load-more
+           ${state.busy ? "disabled" : ""}>${state.busy ? "Loading…" : "Load more"}</button>` : "")
+      + countLine;
+    wirePlayerCards(host, () => runSearch(true));
+    host.querySelector("[data-load-more]")
+      ?.addEventListener("click", () => runSearch(false));
+  }
+
+  function drawScreen() {
+    const compOptions = ['<option value="">All leagues</option>'].concat(
+      competitions.map((c) => `<option value="${esc(c.id)}"${
+        c.id === state.compId ? " selected" : ""}>${esc(c.label)}</option>`)
+    ).join("");
+    const teamOptions = state.compId
+      ? ['<option value="">All teams</option>'].concat(
+          (state.teams || []).map((t) => `<option value="${esc(t.id)}"${
+            t.id === state.teamId ? " selected" : ""}>${esc(t.name)}</option>`)
+        ).join("")
+      : '<option value="">All teams</option>';
+
+    h(`
+      <h1 class="rp-login-head">Players</h1>
+      <p class="rp-login-sub">Correct a name, or merge two ids that turned out
+        to be one person. A rename reaches every team sheet, scorer line and
+        profile at the next build. Leave the search box blank to browse.</p>
+      <form class="rp-form" data-player-search autocomplete="off">
+        <input class="rp-input" name="q" value="${esc(state.term)}"
+               autocomplete="off" autocapitalize="words" placeholder="Search by name">
+        <label class="rp-label" for="player-league">League</label>
+        <select class="rp-input" id="player-league" data-league>${compOptions}</select>
+        <label class="rp-label" for="player-team">Team</label>
+        <select class="rp-input" id="player-team" data-team
+                ${state.compId ? "" : "disabled"}>${teamOptions}</select>
+        ${state.compId ? "" : '<p class="rp-hint">Choose a league to filter by team too.</p>'}
+      </form>
+      <div data-player-results></div>
+      <div class="rp-btn-row" style="margin-top:24px">
+        <a class="rp-btn is-ghost" href="#/">My matches</a>
+      </div>
+    `);
+
+    const form = view.querySelector("[data-player-search]");
+    const input = form.querySelector('input[name="q"]');
+    input.addEventListener("input", () => {
+      state.term = input.value;
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => runSearch(true), 250);
     });
-  };
-  run();
+    form.addEventListener("submit", (e) => { e.preventDefault(); runSearch(true); });
+
+    form.querySelector("[data-league]").addEventListener("change", (e) => {
+      state.compId = e.target.value;
+      state.teamId = "";
+      if (state.compId) loadTeamsFor(state.compId);
+      else { state.teams = null; drawScreen(); }
+      runSearch(true);
+    });
+    form.querySelector("[data-team]").addEventListener("change", (e) => {
+      state.teamId = e.target.value;
+      runSearch(true);
+    });
+
+    // A tap anywhere outside a merge box means "not that list" — one listener
+    // for the screen rather than one per card, the same arrangement the scorer
+    // pickers use. route() clears it on the way out.
+    dismissPicker = (event) => {
+      view.querySelectorAll("[data-merge]").forEach((wrap) => {
+        if (!wrap.contains(event.target)) wrap._closeMerge?.();
+      });
+    };
+
+    drawResults();
+  }
+
+  if (state.compId) loadTeamsFor(state.compId);
+  else drawScreen();
+  runSearch(true);
 }
 
 function playerCard(p) {

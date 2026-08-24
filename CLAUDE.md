@@ -168,6 +168,29 @@ fixture and clean up, and they never mutate a real match.
 
 ## Recent work (Aug 2026)
 
+Browsing `#/players`, migration `0037`:
+
+- `search_players` (0022/0034) only ever ranks a typed guess against a name —
+  the right shape for "confirm this is the person the reporter meant", the
+  wrong one for "walk this roster and see what looks wrong", which had no way
+  in at all short of already knowing a misspelled name to search for.
+- `browse_players` is a listing, not a ranking: an optional term (blank lists
+  everyone alphabetically), optional League and Team filters, paginated with a
+  running `total_count` for "Load more". League narrows to a competition's
+  whole player pool; League + Team narrows to one squad — both derived from
+  `lineups`/`goals` joined through `matches`, the same "who has actually worn
+  this shirt" logic 0034 built for `search_players`' club hints, own goals
+  excluded for the same reason (`goals.team_id` is the beneficiary).
+- The `#/players` screen keeps its search box but gains the two filter
+  `<select>`s beside it; picking a League populates Team from `entries` for
+  that competition, any season, so a duplicate from a season that already
+  ended is still findable by team. `searchPlayers`/`search_players` are
+  unchanged — the merge picker still needs a ranked guess, not a filtered
+  list — and `browsePlayers` falls back to an unfiltered `ilike` listing if
+  the RPC is not yet live, the same deploy-ordering trade 0034 made.
+- Not built: a season filter. A player's whole history at a club is treated as
+  the useful browsing unit.
+
 A league that is four tables, migration `0035`:
 
 - The 2026 NRFA Division Two League is 32 clubs in four clusters of eight,

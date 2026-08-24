@@ -349,6 +349,15 @@ it deletes a row). The picker itself matches surname-with-initial, so typing
 "Andrew Josephy" finds the existing "A. Josephy" rather than offering to make a
 second one.
 
+Finding the player to fix does not require already knowing a spelling either.
+`browse_players` (`0037`) backs the same screen with League and Team filters —
+League alone lists a competition's whole player pool, League + Team narrows to
+one squad, and an empty search box lists everyone alphabetically, paginated —
+so an admin can walk a suspect roster looking for something that looks wrong
+instead of only searching for a name someone already flagged. It filters on
+who has actually been named for a team or in a competition, derived from
+`lineups` and `goals` the same way `search_players`' club hints are (0034).
+
 Cards are one control with four states — none, yellow, second yellow, red —
 cycled by tapping, rather than three checkboxes that could express "yellow AND
 red AND second yellow", which is not a thing that can happen and which the
