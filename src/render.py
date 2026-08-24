@@ -897,7 +897,14 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
             v2.append('<th class="v2-res-th-venue">VENUE</th>')
         v2 += ["</tr></thead>"]
         for md in sorted(by_day, reverse=True):
-            day_matches = sorted(by_day[md], key=lambda x: (x.date, x.home_code))
+            # Chronological within a matchday: date, then kickoff time (a
+            # blank kickoff — not yet announced — sorts after a known one on
+            # the same date rather than before it), home_code as a stable
+            # tiebreaker for same-day matches with no announced kickoff.
+            day_matches = sorted(
+                by_day[md],
+                key=lambda x: (x.date, x.kickoff == "", x.kickoff, x.home_code),
+            )
             v2.append(f'<tbody class="v2-md-group" data-md="{md}">')
             header = (md_labels or {}).get(md)
             header = escape(header.upper()) if header else f"MATCHDAY {md}"
