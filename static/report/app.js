@@ -1895,6 +1895,10 @@ function drawMatch(match, names, state) {
       <span>${esc(s.label)}</span>
     </label>`).join("");
 
+  // A cup tie's round IS its stage (DATA_MODEL.md) — the sheet's matchday
+  // column is ignored for cups, so the field below has no meaning there.
+  const isCupTie = CUP_ROUNDS.some((r) => r.value === match.stage);
+
   // Walking a matchday: the next fixture in the list they came from that still
   // needs a result. Offered only after publishing, because before that the
   // reporter is still on the job in front of them.
@@ -1954,10 +1958,10 @@ function drawMatch(match, names, state) {
       <p class="rp-publish-note" data-note></p>
     </div>
 
-    ${section("reschedule", "Change date or ground", 0, `
+    ${section("reschedule", "Change date, matchday or ground", 0, `
       <p class="rp-hint" style="margin-top:0">The fixture list said one thing
         and it happened another way? Change it here. Each of these saves on its
-        own — neither is part of publishing the score.</p>
+        own — none of them is part of publishing the score.</p>
       <label class="rp-label" for="rs-date">Date</label>
       <input class="rp-input" id="rs-date" type="date" data-rs-date
              value="${esc(match.date || "")}">
@@ -1967,6 +1971,16 @@ function drawMatch(match, names, state) {
              value="${esc((match.kickoff || "").slice(0, 5))}">
       <p class="rp-hint">Malawi time.</p>
       <button class="rp-btn is-ghost" type="button" data-rs-save>Save new date</button>
+
+      ${isCupTie ? "" : `
+      <label class="rp-label" for="rs-matchday">Matchday</label>
+      <input class="rp-input" id="rs-matchday" type="number" data-rs-matchday
+             min="0" step="1" inputmode="numeric"
+             value="${esc(match.matchday ?? "")}">
+      <p class="rp-hint">Filed under the wrong round? Move it here rather than
+        re-entering the fixture — this keeps its score and team sheet.</p>
+      <button class="rp-btn is-ghost" type="button" data-rs-matchday-save>Save matchday</button>
+      `}
 
       <label class="rp-label" for="rs-venue">Ground</label>
       <input class="rp-input" id="rs-venue" type="text" list="rp-venues"
@@ -2153,6 +2167,7 @@ function wireReschedule(match, names, state) {
   const lock = { busy: false };
 
   wireVenue(match, names, state, lock);
+  wireMatchday(match, names, state, lock);
 
   save.addEventListener("click", async () => {
     if (lock.busy) return;                     // rule 2: never submit twice
@@ -2203,6 +2218,65 @@ function wireReschedule(match, names, state) {
     drawMatch(match, names, state);
     // Only a published result is live on the site; moving an unplayed fixture
     // still changes the fixture list, so both are worth a rebuild.
+    requestRebuild();
+  });
+}
+
+
+/** Moving a fixture to another matchday.
+ *
+ *  Its own button and its own RPC, next to the date for the same reason the
+ *  ground is: set_match_matchday writes matchday (and the md_<n> stage it
+ *  implies) and nothing else, so a fixture entered under the wrong round can
+ *  be moved without re-entering it — its score, scorers and team sheet stay
+ *  put. The field is absent for a cup tie in the first place (drawMatch),
+ *  because a cup round IS its stage and there is nothing here to move. */
+function wireMatchday(match, names, state, lock) {
+  const mdEl = view.querySelector("[data-rs-matchday]");
+  const save = view.querySelector("[data-rs-matchday-save]");
+  if (!mdEl || !save) return;
+
+  save.addEventListener("click", async () => {
+    if (lock.busy) return;                     // rule 2: never submit twice
+    clearFlash();
+
+    const raw = mdEl.value.trim();
+    const matchday = raw === "" ? null : Number(raw);
+    if (raw !== "" && (!Number.isInteger(matchday) || matchday < 0)) {
+      flash("Matchday must be a whole number.", "error");
+      return;
+    }
+    if (matchday === (match.matchday ?? null)) {
+      flash(matchday === null ? "No matchday is set."
+                               : "That is already the matchday.", "warn");
+      return;
+    }
+
+    lock.busy = true;
+    save.disabled = true;
+    save.textContent = "Saving…";
+
+    const { data, error } = await supabase.rpc("set_match_matchday", {
+      p_match_id: match.match_id,
+      p_matchday: matchday,
+    });
+
+    lock.busy = false;
+    save.disabled = false;
+    save.textContent = "Save matchday";
+
+    if (error) {
+      // Rule 1: the box is untouched, so nothing typed is lost.
+      flash(humanError(error), "error");
+      return;
+    }
+
+    Object.assign(match, (data || [])[0] || { matchday });
+    // The match has probably moved between matchday filters on the home screen.
+    invalidateHome();
+    flash(matchday !== null ? `Moved to Matchday ${matchday}.`
+                             : "Matchday removed.", "ok");
+    drawMatch(match, names, state);
     requestRebuild();
   });
 }
