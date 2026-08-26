@@ -168,6 +168,44 @@ fixture and clean up, and they never mutate a real match.
 
 ## Recent work (Aug 2026)
 
+Comparing levels, migration `0039` — `#/ops?tab=compare`:
+
+- The reporters asked how district football compares with regional and
+  national, and youth with women's and men's. Nothing in the database could
+  answer it: **`tier` is a rung inside one pyramid**, so the Super League and
+  the Blantyre District U16 League are both tier 1; `region` names the regional
+  FA and reads SRFA on both Blantyre *district* leagues; `governing_body` was
+  blank on eight of twenty rows, all of them the district youth leagues the
+  question was about. So `competitions.level` — `national | regional |
+  district`, nullable, backfilled by id. Category needed nothing: `gender` +
+  `age_group` already are the answer, and women's beats youth where both apply.
+- **A competition with no level renders in an Unclassified bucket with a Level
+  select beside it** (`set_competition_level`), because the only thing that can
+  go wrong with a nullable column is a competition created without it, and the
+  screen that notices should be the screen that fixes it. `create_league` takes
+  `p_level` too. Nothing validates the value — the DB `CHECK` is the guard, and
+  a wrong level is a wrong bar on one admin screen, never a failed build.
+- `ops_competition_stats` / `ops_team_stats` are 0016's pattern exactly, with
+  two differences that carry weight. They **span every season**, because every
+  other `ops_*` view scopes to the active one and the Women's Premiership's
+  only season is complete — scoping it the same way would drop the entire
+  women's dataset from the screen built to compare women's football. And they
+  **emit counts, never rates**: every figure on the tab is a ratio of two sums,
+  so the browser regroups by level, category or season with no second
+  round-trip and no second SQL definition of "goals per match" to drift.
+- **A clean sheet belongs to a SIDE**, so a 0-0 is two and the denominator is
+  `played * 2`. Counting matches would make the column mean something different
+  in a league with more goalless draws.
+- **The one visualisation is a bar** — label, track, figure — and that is the
+  whole budget. A plotted axis is unreadable at 390px and a six-column table is
+  worse; three elements with no script still read as text if the CSS never
+  arrives. Every bar is one accent except Coverage, the only block where a
+  short bar is a job rather than a fact about football.
+- Not built: top scorers by segment. Scorer coverage is 100% in the Super
+  League and **0% in the Women's Premiership** (260 goals, no goal rows), so
+  that panel would render an empty women's column. Coverage says so instead.
+  Discipline, positions, assists and attendance are out for the same reason.
+
 Who a player plays for, no migration:
 
 - A profile could name a club only from a team sheet, and 1007 of the 1060

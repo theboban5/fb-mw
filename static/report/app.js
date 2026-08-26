@@ -1533,7 +1533,7 @@ async function renderNewLeague() {
   // CLAUDE.md for what that costs on a phone).
   const state = {
     name: "", code: "", type: "league", gender: "m", age: "senior",
-    tier: "", region: "",
+    tier: "", region: "", level: "",
     shape: "single",
     teams: "",
     clusters: [{ name: CLUSTER_NAMES[0], teams: "" },
@@ -1558,8 +1558,8 @@ async function renderNewLeague() {
       const el = form.querySelector(`[name="${name}"]`);
       if (el) state[key] = el.value;
     };
-    ["name", "code", "type", "gender", "age", "tier", "region", "shape",
-     "teams"].forEach((key) => read(key, key));
+    ["name", "code", "type", "gender", "age", "tier", "region", "level",
+     "shape", "teams"].forEach((key) => read(key, key));
     form.querySelectorAll("[data-cluster-name]").forEach((el) => {
       const cluster = state.clusters[Number(el.dataset.clusterName)];
       if (cluster) cluster.name = el.value;
@@ -1657,6 +1657,18 @@ async function renderNewLeague() {
                value="${esc(state.region)}" placeholder="SRFA">
         <p class="rp-hint">Optional.</p>
 
+        <label class="rp-label" for="lg-level">Level</label>
+        <select class="rp-select" id="lg-level" name="level">
+          <option value=""${state.level === "" ? " selected" : ""}>Not set</option>
+          <option value="national"${state.level === "national" ? " selected" : ""}>National</option>
+          <option value="regional"${state.level === "regional" ? " selected" : ""}>Regional</option>
+          <option value="district"${state.level === "district" ? " selected" : ""}>District</option>
+        </select>
+        <p class="rp-hint">Optional, and not the same thing as tier — tier is a
+          rung inside one pyramid, so a district U16 league and the Super League
+          are both tier 1. This is what groups competitions on the Compare tab
+          in Operations, and it can be set there later.</p>
+
         <label class="rp-label" for="lg-shape">Shape</label>
         <select class="rp-select" id="lg-shape" name="shape">
           <option value="single"${!clustered ? " selected" : ""}>One table</option>
@@ -1752,7 +1764,7 @@ async function renderNewLeague() {
       button.disabled = true;
       button.textContent = "Creating…";
 
-      const { data, error } = await supabase.rpc("create_league", {
+      const args = {
         p_name: state.name.trim(),
         p_short_code: state.code.trim(),
         p_teams: teams,
@@ -1762,7 +1774,16 @@ async function renderNewLeague() {
         p_age_group: state.age,
         p_tier: state.tier ? Number(state.tier) : null,
         p_region: state.region.trim(),
-      });
+      };
+      // p_level is added only when one was chosen, so this form still works
+      // against a database where 0039 has not been applied yet. PostgREST
+      // resolves an RPC by the names it is sent, and an argument the function
+      // does not have is a hard failure rather than a default — sending it
+      // unconditionally would break creating a league entirely for the window
+      // between this file reaching a phone and the migration reaching Postgres.
+      if (state.level) args.p_level = state.level;
+
+      const { data, error } = await supabase.rpc("create_league", args);
 
       state.busy = false;
       button.disabled = false;
@@ -7383,6 +7404,12 @@ function wireNTCompetition(state) {
 // reporter gets a sentence instead of an empty screen; it is not the boundary.
 
 const OPS_TABS = [
+  // First, immediately after Overview, and deliberately ahead of the backlog.
+  // The backlog tabs are the daily job and are reached by muscle memory or by
+  // tapping a count on the overview; this one has to be found to be used at
+  // all, and burying the answer to "how is Malawian football doing" behind
+  // eight maintenance screens is how it never gets opened.
+  { key: "compare",      label: "Compare",      flag: null },
   { key: "results",      label: "Results",      flag: "is_overdue",
     head: "Overdue results", blank: "Every past fixture has a result." },
   { key: "fixtures",     label: "Fixtures",     flag: null,
@@ -7800,6 +7827,456 @@ function opsSitePanel(fresh) {
 
 // ── The screen ───────────────────────────────────────────────────────────────
 
+// ── Compare: how each level and category is faring ───────────────────────────
+//
+// Every other tab on this screen asks "what needs doing". This one asks "how
+// are we doing", which is a different question with a different shape: it
+// aggregates rather than lists, and the row it draws is a whole competition
+// rather than one match.
+//
+// It exists because the question the reporters asked could not be asked of the
+// site at all — is district youth football higher-scoring than the Super
+// League, how much women's football are we actually covering, which club has
+// the better scoring average. The answer to the first is yes, emphatically
+// (3.29 goals a match against 2.11), and none of it was visible anywhere.
+//
+// THE VIEWS SPAN EVERY SEASON AND SO DOES THIS SCREEN. The Women's Premiership
+// is the only women's competition in the dataset and its season is complete,
+// so a default of "active season" would open the comparison screen with the
+// women's row already missing. Season is a filter here, defaulted to all.
+//
+// EVERY RATE PRINTS ITS DENOMINATOR. A goals-per-match figure computed over
+// four matches looks exactly like one computed over four hundred, and half the
+// competitions here have played fewer than fifty. The number under each bar is
+// what stops the screen from being confidently wrong.
+
+const COMPARE_LEVELS = [
+  { key: "", label: "All levels" },
+  { key: "national", label: "National" },
+  { key: "regional", label: "Regional" },
+  { key: "district", label: "District" },
+  { key: "none", label: "Unclassified" },
+];
+
+const COMPARE_CATEGORIES = [
+  { key: "", label: "All football" },
+  { key: "men", label: "Men's" },
+  { key: "women", label: "Women's" },
+  { key: "youth", label: "Youth" },
+];
+
+// A metric is a numerator, a denominator and a sentence saying what they were.
+// Nothing here is a rate already computed in SQL, which is what lets the same
+// definition serve a single competition, a level, and the whole dataset.
+const COMPARE_METRICS = [
+  { key: "gpg", label: "Goals per match", pct: false,
+    num: (r) => r.goals_total, den: (r) => r.played,
+    detail: (n, d) => `${n} goals in ${d} matches` },
+  { key: "clean", label: "Clean sheet %", pct: true,
+    num: (r) => r.clean_sheet_sides, den: (r) => r.sides,
+    // A clean sheet belongs to a side, so a 0-0 is two of them and the
+    // denominator is every side that took the field, not every match.
+    detail: (n, d) => `${n} of ${d} sides kept one` },
+  { key: "home", label: "Home win %", pct: true,
+    num: (r) => r.home_wins, den: (r) => r.played,
+    detail: (n, d) => `${n} of ${d} matches` },
+  { key: "draw", label: "Draw %", pct: true,
+    num: (r) => r.draws, den: (r) => r.played,
+    detail: (n, d) => `${n} of ${d} matches` },
+  { key: "rout", label: "Won by 3+ %", pct: true,
+    num: (r) => r.big_wins, den: (r) => r.played,
+    detail: (n, d) => `${n} of ${d} matches` },
+  { key: "margin", label: "Average margin", pct: false,
+    num: (r) => r.margin_total, den: (r) => r.played,
+    detail: (n, d) => `${n} goals of margin over ${d} matches` },
+  { key: "scorers", label: "Scorer coverage %", pct: true,
+    num: (r) => r.goal_rows, den: (r) => r.goals_total,
+    detail: (n, d) => `${n} of ${d} goals have a scorer` },
+];
+
+// The leaderboard's metrics are per-team and deliberately separate: two of
+// them (fewest conceded, best record) are not magnitudes a bar can encode
+// honestly, which is why this block renders compact rows and not bars.
+const COMPARE_TEAM_METRICS = [
+  { key: "attack", label: "Best attack", asc: false,
+    value: (t) => t.gf / t.played,
+    text: (t) => (t.gf / t.played).toFixed(2),
+    detail: (t) => `${t.gf} scored in ${t.played}` },
+  { key: "defence", label: "Best defence", asc: true,
+    value: (t) => t.ga / t.played,
+    text: (t) => (t.ga / t.played).toFixed(2),
+    detail: (t) => `${t.ga} conceded in ${t.played}` },
+  { key: "clean", label: "Most clean sheets", asc: false,
+    value: (t) => t.clean_sheets / t.played,
+    text: (t) => `${Math.round(100 * t.clean_sheets / t.played)}%`,
+    detail: (t) => `${t.clean_sheets} of ${t.played} matches` },
+  { key: "record", label: "Best record", asc: false,
+    value: (t) => (3 * t.won + t.drawn) / t.played,
+    text: (t) => ((3 * t.won + t.drawn) / t.played).toFixed(2),
+    detail: (t) => `${t.won}W ${t.drawn}D ${t.lost}L · ${t.played} played` },
+];
+
+// A two-game team topping "best attack" is noise, not a finding. Six is the
+// default because it is roughly a third of a Malawian league season — enough
+// that one 5-0 cannot carry the average, few enough that the district leagues,
+// which have played the least, still have teams that qualify.
+const COMPARE_MIN_PLAYED = [4, 6, 10];
+
+const compareSum = (rows, fn) => rows.reduce((n, r) => n + (fn(r) || 0), 0);
+
+/** A metric over a set of competition rows, or null when nothing was played.
+ *  Null rather than zero on purpose: "0.00 goals per match" is a claim about
+ *  football, and "no matches played yet" is the truth. */
+function compareRate(rows, metric) {
+  const den = compareSum(rows, metric.den);
+  if (!den) return null;
+  const num = compareSum(rows, metric.num);
+  return {
+    num, den,
+    value: metric.pct ? (100 * num) / den : num / den,
+    text: metric.pct ? `${Math.round((100 * num) / den)}%` : (num / den).toFixed(2),
+  };
+}
+
+const compareTone = (pct) => (pct >= 90 ? "is-ok" : pct >= 50 ? "is-warn" : "is-bad");
+
+/** The one visualisation on this screen: label, track, figure.
+ *
+ *  A bar and not a chart, and the whole budget for this tab. The reading width
+ *  here is a phone held in one hand at a touchline, where a plotted axis is
+ *  unreadable and a table of six columns is worse. A bar answers "which of
+ *  these is bigger" at a glance and degrades to a legible row of text if the
+ *  CSS never arrives. */
+function compareBars(rows) {
+  if (!rows.length) return '<p class="rp-empty">Nothing to compare here yet.</p>';
+  return `<div class="ops-bars">${rows.map((r) => {
+    const share = Math.max(0, Math.min(1, r.share || 0));
+    return `<div class="ops-bar-row">
+      <span class="ops-bar-label">${esc(r.label)}${
+        r.sub ? `<span class="ops-sub">${esc(r.sub)}</span>` : ""}</span>
+      <span class="ops-bar-track" aria-hidden="true"><span
+        class="ops-bar-fill${r.tone ? ` ${r.tone}` : ""}"
+        style="width:${(share * 100).toFixed(1)}%"></span></span>
+      <span class="ops-bar-val">${esc(r.text)}</span>
+    </div>`;
+  }).join("")}</div>`;
+}
+
+/** Bars for one grouping (level, category, competition) under one metric.
+ *  Percentages are scaled against 100 so two segments are comparable between
+ *  screens; everything else is scaled against the largest bar drawn, because
+ *  a goals-per-match axis has no natural ceiling. */
+function compareMetricBars(groups, metric) {
+  const measured = groups.map((g) => ({ ...g, rate: compareRate(g.rows, metric) }));
+  const peak = Math.max(...measured.map((g) => (g.rate ? g.rate.value : 0)), 0);
+  return compareBars(measured.map((g) => ({
+    label: g.label,
+    sub: g.rate ? metric.detail(g.rate.num, g.rate.den) : "no matches played yet",
+    text: g.rate ? g.rate.text : "—",
+    share: g.rate ? (metric.pct ? g.rate.value / 100 : (peak ? g.rate.value / peak : 0)) : 0,
+  })));
+}
+
+function compareSelect(name, options, value, label) {
+  return `<label class="rp-filter">
+    <span class="rp-filter-label">${esc(label)}</span>
+    <select class="rp-select" data-compare-select="${esc(name)}">
+      ${options.map((o) => `<option value="${esc(o.key)}"${
+        o.key === value ? " selected" : ""}>${esc(o.label)}</option>`).join("")}
+    </select></label>`;
+}
+
+function compareChips(name, options, value) {
+  return `<div class="rp-chip-row">${options.map((o) => `
+    <button class="rp-chip${o.key === value ? " is-on" : ""}" type="button"
+            data-compare-chip="${esc(name)}" data-value="${esc(o.key)}"
+            aria-pressed="${o.key === value}">${esc(o.label)}</button>`).join("")}</div>`;
+}
+
+/** Both views in one round-trip, cached for the session.
+ *
+ *  Seventeen competition rows and a few hundred team rows is small enough to
+ *  hold and regroup in the browser, and holding it is the point: every chip on
+ *  this screen then costs nothing on a connection where a round-trip can cost
+ *  seconds. Regrouping locally is also what makes emitting counts rather than
+ *  rates from Postgres worth anything.
+ *
+ *  Returns null — not an error — when the views are not there yet. A migration
+ *  is a separate deploy from git, so this file can reach a phone first, and an
+ *  admin arriving early should get a sentence rather than a broken screen. */
+function loadOpsCompare() {
+  return once("ops-compare", async () => {
+    const [comps, teams] = await Promise.all([
+      supabase.from("ops_competition_stats").select("*"),
+      supabase.from("ops_team_stats").select("*"),
+    ]);
+    const missing = [comps.error, teams.error].find(
+      (e) => e && (e.code === "42P01" || e.code === "PGRST205"
+                   || /ops_competition_stats|ops_team_stats/.test(e.message || "")));
+    if (missing) {
+      console.warn("[everyleague] compare views unavailable:", missing);
+      return null;
+    }
+    if (comps.error) throw comps.error;
+    if (teams.error) throw teams.error;
+    return { comps: comps.data || [], teams: teams.data || [] };
+  });
+}
+
+/** The Compare tab. Local state with history.replaceState rather than a route
+ *  per filter, the pattern #/players uses: a chip tap must not scroll the
+ *  screen back to the top, and renderOps resets the scroll on every route. The
+ *  hash still carries every filter, so a view of one segment stays linkable. */
+async function renderOpsCompare(params, header) {
+  const data = await loadOpsCompare();
+  if (!data) {
+    header(`<h2 class="rp-group-head">Compare</h2>
+      <p class="rp-empty">The comparison views are not in the database yet.
+        Apply migration <code>0039_competition_level.sql</code> and reload.</p>`);
+    return;
+  }
+
+  const metricKey = (k) => COMPARE_METRICS.find((m) => m.key === k) || COMPARE_METRICS[0];
+  const teamMetricKey = (k) =>
+    COMPARE_TEAM_METRICS.find((m) => m.key === k) || COMPARE_TEAM_METRICS[0];
+
+  const state = {
+    level: COMPARE_LEVELS.some((l) => l.key === params.get("level"))
+      ? params.get("level") : "",
+    cat: COMPARE_CATEGORIES.some((c) => c.key === params.get("cat"))
+      ? params.get("cat") : "",
+    season: params.get("season") || "",
+    metric: metricKey(params.get("metric")).key,
+    tmetric: teamMetricKey(params.get("tmetric")).key,
+    min: COMPARE_MIN_PLAYED.includes(Number(params.get("min")))
+      ? Number(params.get("min")) : 6,
+  };
+
+  const seasons = [...new Set(data.comps.map((r) => r.season_id))].sort().reverse();
+  if (state.season && !seasons.includes(state.season)) state.season = "";
+
+  const seasonOptions = [{ key: "", label: "All seasons" }]
+    .concat(seasons.map((s) => ({ key: s, label: s })));
+
+  const syncUrl = () => {
+    const q = new URLSearchParams({ tab: "compare" });
+    if (state.level) q.set("level", state.level);
+    if (state.cat) q.set("cat", state.cat);
+    if (state.season) q.set("season", state.season);
+    if (state.metric !== COMPARE_METRICS[0].key) q.set("metric", state.metric);
+    if (state.tmetric !== COMPARE_TEAM_METRICS[0].key) q.set("tmetric", state.tmetric);
+    if (state.min !== 6) q.set("min", String(state.min));
+    history.replaceState(null, "", `#/ops?${q.toString()}`);
+  };
+
+  // "none" is the Unclassified chip: a competition with no level is filtered
+  // FOR, never filtered away, so the rows that need a decision are reachable.
+  const inScope = (r) =>
+    (!state.season || r.season_id === state.season)
+    && (!state.level || (r.level || "none") === state.level)
+    && (!state.cat || r.category === state.cat);
+
+  header(`<h2 class="rp-group-head">Compare</h2>
+    <p class="rp-hint">Every figure below comes from a validated scoreline, so
+      it holds for every played match. Anything that depends on a reporter
+      having named the scorers is in Coverage at the bottom, with what it is
+      missing.</p>
+    <div data-compare></div>`);
+
+  const host = view.querySelector("[data-compare]");
+
+  function draw() {
+    const rows = data.comps.filter(inScope);
+    const metric = metricKey(state.metric);
+    const tmetric = teamMetricKey(state.tmetric);
+    const played = compareSum(rows, (r) => r.played);
+    const gpg = compareRate(rows, COMPARE_METRICS[0]);
+
+    // ── Tiles. "Team entries" and not "teams" because a club that fields a
+    //    first team and a reserve side in two competitions is two entries, and
+    //    these are per-competition counts with no way to dedupe a club across
+    //    them. Saying "teams" would overstate the number of clubs covered.
+    const tiles = [
+      [rows.length, rows.length === 1 ? "competition" : "competitions"],
+      [compareSum(rows, (r) => r.teams), "team entries"],
+      [played, "matches played"],
+      [compareSum(rows, (r) => r.goals_total), "goals"],
+      [gpg ? gpg.text : "—", "goals a match"],
+    ].map(([n, label]) => `<span class="ops-urgent-item is-plain">
+        <span class="ops-urgent-n">${esc(String(n))}</span>
+        <span class="ops-urgent-l">${esc(label)}</span></span>`).join("");
+
+    // ── The two cross-tabs. Only groups that actually have a competition are
+    //    drawn, so filtering to Women's does not leave three empty bars.
+    const byLevel = COMPARE_LEVELS.filter((l) => l.key)
+      .map((l) => ({ label: l.label, rows: rows.filter((r) => (r.level || "none") === l.key) }))
+      .filter((g) => g.rows.length);
+    const byCat = COMPARE_CATEGORIES.filter((c) => c.key)
+      .map((c) => ({ label: c.label, rows: rows.filter((r) => r.category === c.key) }))
+      .filter((g) => g.rows.length);
+
+    // ── One bar per competition, sorted by the chosen metric. A competition
+    //    with fixtures and no results yet sorts last and says so rather than
+    //    scoring zero.
+    const compGroups = rows.map((r) => ({
+      label: r.competition_name,
+      sub: [r.level || "unclassified", r.category,
+            seasons.length > 1 ? r.season_id : ""].filter(Boolean).join(" · "),
+      rows: [r],
+    }));
+    const compMeasured = compGroups
+      .map((g) => ({ ...g, rate: compareRate(g.rows, metric) }))
+      .sort((a, b) => (b.rate ? b.rate.value : -1) - (a.rate ? a.rate.value : -1));
+    const compPeak = Math.max(...compMeasured.map((g) => (g.rate ? g.rate.value : 0)), 0);
+    const compBars = compareBars(compMeasured.map((g) => ({
+      label: g.label,
+      sub: g.rate ? `${g.sub} · ${metric.detail(g.rate.num, g.rate.den)}`
+                  : `${g.sub} · no matches played yet`,
+      text: g.rate ? g.rate.text : "—",
+      share: g.rate ? (metric.pct ? g.rate.value / 100
+                                  : (compPeak ? g.rate.value / compPeak : 0)) : 0,
+    })));
+
+    // ── The leaderboard. Scoped by exactly the same filters, then by matches
+    //    played, because an average over two games is not an average.
+    const compIds = new Set(rows.map((r) => `${r.competition_id}|${r.season_id}`));
+    const teams = data.teams
+      .filter((t) => compIds.has(`${t.competition_id}|${t.season_id}`))
+      .filter((t) => t.played >= state.min);
+    const ranked = teams.slice()
+      // asc means "lower is better" (fewest conceded), so it is the ONLY case
+      // that sorts ascending. Everything else puts the biggest number first.
+      .sort((a, b) => (tmetric.asc ? -1 : 1) * (tmetric.value(b) - tmetric.value(a)))
+      .slice(0, 10);
+    const teamRows = ranked.map((t, i) => `
+      <div class="ops-row">
+        <span class="ops-row-teams"><span class="ops-rank">${i + 1}</span>
+          ${esc(t.team_name)}</span>
+        <span class="ops-row-score">${esc(tmetric.text(t))}</span>
+        <span class="ops-row-meta">${esc(t.competition_name)} ·
+          ${esc(tmetric.detail(t))}</span>
+      </div>`).join("");
+
+    // ── Coverage. The one block where a low bar is a job rather than a fact
+    //    about football, so this is the only place a colour means anything.
+    const goalsTotal = compareSum(rows, (r) => r.goals_total);
+    const coverage = [
+      ["Scorers named", compareSum(rows, (r) => r.goal_rows), goalsTotal, "goals"],
+      ["Team sheets", compareSum(rows, (r) => r.matches_with_sheet), played, "matches"],
+      ["Venues", compareSum(rows, (r) => r.matches_with_venue), played, "matches"],
+      ["Sources", compareSum(rows, (r) => r.matches_with_source), played, "matches"],
+      ["Confirmed", compareSum(rows, (r) => r.matches_confirmed), played, "matches"],
+    ].map(([label, num, den, noun]) => {
+      const pct = den ? (100 * num) / den : null;
+      return {
+        label,
+        sub: den ? `${num} of ${den} ${noun}` : `no ${noun} yet`,
+        text: pct === null ? "—" : `${Math.round(pct)}%`,
+        share: pct === null ? 0 : pct / 100,
+        tone: pct === null ? "" : compareTone(pct),
+      };
+    });
+
+    // ── Unclassified. Only ever rendered when there is something to fix, and
+    //    it is fixed here rather than noted here — set_competition_level is
+    //    the reason this bucket is a screen and not a warning.
+    const unset = data.comps.filter((r) => !r.level)
+      .filter((r, i, all) => all.findIndex((x) => x.competition_id === r.competition_id) === i);
+    const unsetPanel = unset.length ? `
+      <h3 class="rp-group-head">Unclassified
+        <span class="rp-count">${unset.length}</span></h3>
+      <p class="rp-hint">These are missing a level, so they sit outside the
+        comparison above. Setting one takes effect on the next reload.</p>
+      ${unset.map((r) => `<div class="ops-glance-row">
+         <div class="ops-glance-comp"><span class="ops-comp">${esc(r.competition_name)}</span>
+           <span class="ops-sub">${esc(r.competition_id)} · ${esc(r.category)}</span></div>
+         <select class="rp-select" data-set-level="${esc(r.competition_id)}">
+           <option value="">Not set</option>
+           <option value="national">National</option>
+           <option value="regional">Regional</option>
+           <option value="district">District</option>
+         </select></div>`).join("")}` : "";
+
+    host.innerHTML = `
+      ${compareChips("level", COMPARE_LEVELS, state.level)}
+      ${compareChips("cat", COMPARE_CATEGORIES, state.cat)}
+      ${seasons.length > 1
+        ? `<div class="rp-filters">${compareSelect("season", seasonOptions, state.season, "Season")}</div>`
+        : ""}
+
+      ${rows.length ? `<div class="ops-urgent">${tiles}</div>` : ""}
+
+      ${!rows.length
+        ? '<p class="rp-empty">No competition matches those filters.</p>'
+        : !played
+          ? '<p class="rp-empty">No matches have been played in this segment yet.</p>'
+          : `
+      ${byLevel.length > 1 ? `<h3 class="rp-group-head">By level</h3>
+        ${compareMetricBars(byLevel, metric)}` : ""}
+      ${byCat.length > 1 ? `<h3 class="rp-group-head">By category</h3>
+        ${compareMetricBars(byCat, metric)}` : ""}
+
+      <h3 class="rp-group-head">By competition
+        <span class="rp-count">${rows.length}</span></h3>
+      <div class="rp-filters">${compareSelect("metric", COMPARE_METRICS, state.metric, "Metric")}</div>
+      ${compBars}
+
+      <h3 class="rp-group-head">Teams</h3>
+      <div class="rp-filters">
+        ${compareSelect("tmetric", COMPARE_TEAM_METRICS, state.tmetric, "Ranked by")}
+        ${compareSelect("min", COMPARE_MIN_PLAYED.map((n) => ({ key: String(n), label: `${n}+ played` })), String(state.min), "Minimum")}
+      </div>
+      ${teamRows || `<p class="rp-empty">No team has played ${state.min}
+         matches in this segment yet.</p>`}
+
+      <h3 class="rp-group-head">Coverage</h3>
+      <p class="rp-hint">What this segment is missing. Goals, results and
+        clean sheets above do not depend on any of it — a scorer nobody named
+        still counts in the score.</p>
+      ${compareBars(coverage)}`}
+
+      ${unsetPanel}`;
+  }
+
+  draw();
+
+  host.addEventListener("click", (event) => {
+    const chip = event.target.closest("[data-compare-chip]");
+    if (!chip) return;
+    state[chip.dataset.compareChip] = chip.dataset.value;
+    syncUrl();
+    draw();
+  });
+
+  host.addEventListener("change", async (event) => {
+    const sel = event.target.closest("[data-compare-select]");
+    if (sel) {
+      const key = sel.dataset.compareSelect;
+      state[key] = key === "min" ? Number(sel.value) : sel.value;
+      syncUrl();
+      draw();
+      return;
+    }
+    const lvl = event.target.closest("[data-set-level]");
+    if (!lvl) return;
+    lvl.disabled = true;
+    try {
+      await supabase.rpc("set_competition_level", {
+        p_competition_id: lvl.dataset.setLevel,
+        p_level: lvl.value,
+      });
+      // The whole reference cache goes, not just this screen's entry: a level
+      // is on the competition row several other loaders have already read.
+      invalidateReference();
+      flash("Level saved. Reload to see it in the comparison.", "ok");
+    } catch (error) {
+      flash(humanError(error), "error");
+    } finally {
+      lvl.disabled = false;
+    }
+  });
+}
+
 function opsTabBar(active, comp) {
   const q = comp ? `&comp=${encodeURIComponent(comp)}` : "";
   const tabs = [{ key: "", label: "Overview" }]
@@ -7851,6 +8328,11 @@ async function renderOps(params) {
                 <span class="rp-count">${rows.length}</span></h2>
               ${rows.map((m) => opsMatchRow(m, names)).join("")
                 || '<p class="rp-empty">No fixtures in this round.</p>'}`);
+      return;
+    }
+
+    if (tab === "compare") {
+      await renderOpsCompare(params, header);
       return;
     }
 

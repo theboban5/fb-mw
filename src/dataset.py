@@ -327,6 +327,11 @@ class Competition:
     region: str
     governing_body: str
     logo: str
+    # national | regional | district, or "" for not yet classified (0039).
+    # Defaulted, and NOT run through _enum: nothing on the site renders it, the
+    # database's CHECK is the guard, and an unrecognised value must degrade to
+    # a string nobody reads rather than abort a build for everyone.
+    level: str = ""
 
 
 @dataclass(frozen=True)
@@ -863,6 +868,7 @@ def parse_competitions(text: str) -> "dict[str, Competition]":
             _enum(_require(r, "age_group", "competitions", i), AGE_GROUPS,
                   "age_group", "competitions", i),
             r.get("region", ""), r.get("governing_body", ""), r.get("logo", ""),
+            r.get("level", ""),
         ), "competitions", i)
     return out
 

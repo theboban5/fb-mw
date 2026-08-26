@@ -1094,19 +1094,25 @@ It writes **no** football data. Every row links back to its ordinary
 `#/m/<public_id>` screen, so corrections go through the existing reporter flow
 and there stays exactly one write path into `matches`.
 
-Ten questions, one screen:
+Eleven questions, one screen:
 
 | Tab | Answers |
 |---|---|
 | Overview | Urgent totals, then one row per active competition |
+| Compare | How each level and category is faring (0039, below) |
 | Results | Results overdue — `scheduled` with a date now past |
 | Fixtures | Round sizes, surpluses and deficits, and what is due next |
 | Scorers | Played matches with fewer goal rows than the score |
 | Venues | Fixtures with no ground |
 | Sources | Published results with no `source_ref` |
 | Verification | Results still `confidence = 'unconfirmed'` |
+| Reporters | Matches reported this season, by reporter |
 | Crests | Clubs whose hub page renders without a logo |
 | Site | Whether everyleague.co is up to date |
+
+Every tab but Compare asks *what needs doing*. Compare asks *how are we doing*,
+which is a different question with a different shape — it aggregates rather
+than lists, and its row is a whole competition rather than one match.
 
 **A matchday is a logical round, not a weekend.** A fixture postponed out of its
 weekend keeps its matchday and changes only its date, so every matchday of a
@@ -1152,6 +1158,94 @@ It signs in as anon, a reporter and an administrator, then recomputes every
 count in Python from the raw rows rather than re-running the view's own SQL —
 which is what catches a predicate that is subtly wrong, such as a 0-0 draw
 counted as missing its scorers.
+
+### Compare: district, regional and national side by side
+
+`/report/#/ops?tab=compare`, administrators only. `0039_competition_level.sql`.
+
+The question the reporters asked, and the site could not answer: how is
+district football faring against regional and national, in youth against
+women's against men's? Which district scores most, which club has the better
+scoring average, who keeps clean sheets — and where the gaps are.
+
+**Level had to become a column, because none of the three that looked like it
+was one.** `tier` is a rung inside its own pyramid, so the Super League and the
+Blantyre District U16 League are both tier 1. `region` says which regional FA
+runs a competition and reads `SRFA` on both Blantyre *district* leagues. And
+`governing_body`, the best of the three, was blank on eight of twenty rows —
+all of them the most recently added, which is to say the district youth leagues
+this was being asked about. So `competitions.level` is
+`national | regional | district`, nullable, backfilled by id.
+
+Category needed nothing: `gender` + `age_group` have been constrained enums
+since 0001. Women's beats youth where both apply, because when a women's youth
+competition arrives the row that answers "how is women's football faring" is
+that one.
+
+**A competition with no level is not an error.** It falls into an Unclassified
+bucket at the bottom of the tab with a Level `<select>` beside it, calling
+`set_competition_level`. Unlike `set_entry_group` (0035), which shipped without
+a screen, this one gets one on purpose: the only thing that can go wrong with a
+nullable column is a competition created without it, and the screen that
+notices should be the screen that fixes it. `create_league` also takes
+`p_level`, so a new one arrives already classified.
+
+Two views, `ops_competition_stats` (per competition-season) and
+`ops_team_stats` (per team per competition-season). Both follow 0016 exactly:
+`security_invoker`, the `is_admin()` predicate repeated inside each body, anon
+revoked outright.
+
+Two things they do differently, and both matter:
+
+* **They span EVERY season.** Every view in 0016 scopes to the active one,
+  because a backlog is about what is late now. This is the record, not a
+  backlog — and scoping it the same way would silently drop the Women's
+  Premiership, whose only season is complete. That is the whole women's
+  dataset, missing from the screen built to compare women's football. Season is
+  a filter on the tab, defaulted to all.
+* **They emit counts, never rates.** Every figure the tab draws — goals per
+  match, clean sheet %, home win %, scorer coverage — is a ratio of two sums.
+  Emitting the sums lets the browser regroup by level, category, region, tier
+  or season with no second round-trip and, more to the point, no second SQL
+  definition of "goals per match" to drift away from the first. A view that
+  returned 2.11 could only ever be regrouped by asking Postgres again.
+
+Both views land in one fetch, cached for the session, so every chip tap after
+the first costs nothing — which is the point on a connection where a
+round-trip costs seconds.
+
+**What is sound and what is not.** Scores are validated and complete on every
+played match (checks 4 and 5), so goals, results, margins and clean sheets hold
+everywhere. Goal rows, team sheets and minutes do not: scorer coverage is 100%
+in the Super League and **0% in the Women's Premiership**, which has 260 goals
+and not one goal row. So there is deliberately no top-scorers-by-segment panel
+— it would render an empty women's column and a misleading youth one. The
+Coverage block says that instead, in five bars with their denominators printed,
+which is the more useful fact today. Discipline (35 yellow cards in the whole
+dataset), positions (blank on 93% of line-up rows), assists (2.6% of goals) and
+attendance (no column exists) are all out for the same reason.
+
+**A clean sheet belongs to a side, not a match**, so a 0-0 is two of them and
+the denominator is `played * 2`. Counting matches instead would make the column
+mean something different in a league with more goalless draws, which is the
+opposite of what it is being asked to compare.
+
+The one visualisation is a bar: label, track, figure. That is the whole budget.
+The reading width is a phone held at a touchline, where a plotted axis is
+unreadable and a six-column table is worse — and three elements with no script
+still say "Super League · 2.11" if the stylesheet never arrives. Every bar is
+the same accent except in Coverage, the one block where a short bar is a job
+rather than a fact about football.
+
+Verify the boundary and the arithmetic:
+
+```bash
+RLS_LIVE=1 python3 -m unittest tests.test_ops_compare_live
+```
+
+It recomputes every count in Python from raw rows rather than re-running the
+view's SQL, and asserts the two identities that catch a drifting `sides` CTE:
+two side-rows per match, and one side's goals for are the other's goals against.
 
 ### How authorization works
 

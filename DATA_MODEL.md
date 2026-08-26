@@ -50,7 +50,13 @@ matches (home/away team_id, venue_id, competition_id, season_id)
   `MW_BULL_M2` the reserves). `legacy_code` carries the old per-league sheet
   code (`SL_NBB`) that public club-page URLs and historic logo filenames use.
 - **competitions** — a league or cup (`MW_SL`), with `type`, `tier`,
-  `gender`, `age_group`, `region`, `governing_body`.
+  `gender`, `age_group`, `region`, `governing_body`, and `level` —
+  `national | regional | district`, blank for not yet classified (0039).
+  `level` is **not** `tier`: tier is a rung inside one pyramid, so the Super
+  League and the Blantyre District U16 League are both tier 1. Nothing on the
+  site renders `level`; it exists so the Compare tab in `/report` can group
+  competitions, and nothing validates it — a wrong value is a wrong bar on one
+  admin screen, never a failed build.
 - **seasons** — `MW_2025_26` (complete), `MW_2026_27` (active).
 - **competition_seasons** — one competition in one season: `sponsor_name`
   (display-name override), `points_win`/`points_draw`, promotion/relegation

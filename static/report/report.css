@@ -905,6 +905,74 @@ a { color: var(--accent); }
    lines via flex-wrap, so no separate collapse rule is needed here. */
 
 
+/* ─── Compare (#/ops?tab=compare) ─────────────────────────────────────────
+   Segmented totals: district against regional against national, youth against
+   women's against men's.
+
+   The bar below is the ENTIRE visualisation budget for this tab, and that is a
+   decision rather than a shortcut. The reading width here is a phone held in
+   one hand, where a plotted axis is unreadable and a six-column table is
+   worse; a bar answers "which of these is bigger" without being read at all.
+   It is also three elements and no script, so it survives a slow connection
+   that has not finished the stylesheet — the row still says
+   "Super League · 2.11" in plain text with no bar drawn. */
+
+.ops-urgent-item.is-plain { background: var(--row-alt); }
+
+.ops-bars { margin: 4px 0 18px; }
+
+/* Two rows in a two-column grid: the name and its denominator on the left, the
+   figure pinned top-right, the track spanning underneath. Putting the track on
+   its own line is what keeps a long sponsor-laden competition name legible at
+   390px — sharing a line with the bar leaves neither enough room. */
+.ops-bar-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.ops-bar-label { grid-column: 1; grid-row: 1; font-weight: 600; }
+.ops-bar-val {
+  grid-column: 2; grid-row: 1;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.ops-bar-track {
+  grid-column: 1 / -1;
+  height: 8px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+.ops-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+/* Colour means something in exactly one block on this screen — Coverage, where
+   a short bar is a job someone has to do. Everywhere else every bar is the one
+   accent, because those bars compare magnitudes and a palette would imply the
+   segments are different kinds of thing rather than different sizes. */
+.ops-bar-fill.is-ok   { background: var(--accent); }
+.ops-bar-fill.is-warn { background: var(--warn); }
+.ops-bar-fill.is-bad  { background: var(--danger); }
+
+/* The leaderboard reuses .ops-row rather than a bar: two of its four metrics
+   (fewest conceded, best record) are ones where a longer bar would mean worse,
+   and there is no honest way to draw that beside three that mean better. */
+.ops-rank {
+  display: inline-block;
+  min-width: 1.6em;
+  color: var(--muted);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+
 /* ─── Homepage cards (#/trending) ──────────────────────────────────────────
    The lite CMS behind the carousel at the top of everyleague.co (0030).
 

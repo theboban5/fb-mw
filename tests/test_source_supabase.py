@@ -95,6 +95,45 @@ class ColumnCoverageTest(unittest.TestCase):
             set(dataset.TABS) | set(dataset.NT_TABS))
 
 
+class CompetitionLevelTest(unittest.TestCase):
+    """competitions.level (0039) — national | regional | district, or blank.
+
+    Deliberately a plain passthrough on the dataset side: no enum check, no
+    validate.py rule. The database's CHECK constraint is the guard, and an
+    unrecognised value must degrade to a string nobody renders rather than
+    abort a build for everyone. What is worth pinning here is that the column
+    is OPTIONAL — the snapshot predates it, and a competitions.csv without the
+    header must still parse.
+    """
+
+    def test_level_is_read_when_present(self):
+        text = ("competition_id,country,name,type,tier,gender,age_group,"
+                "region,governing_body,logo,level\n"
+                "MW_X,mw,Example League,league,3,m,senior,SRFA,SRFA,,district\n")
+        comp = dataset.parse_competitions(text)["MW_X"]
+        self.assertEqual(comp.level, "district")
+
+    def test_a_snapshot_without_the_column_still_parses(self):
+        """The trap this exists for: adding a column to the emitter and then
+        parsing a CSV written before it. A required column would have made
+        every offline build fail until the next real fetch."""
+        text = ("competition_id,country,name,type,tier,gender,age_group,"
+                "region,governing_body,logo\n"
+                "MW_X,mw,Example League,league,3,m,senior,SRFA,SRFA,\n")
+        comp = dataset.parse_competitions(text)["MW_X"]
+        self.assertEqual(comp.level, "")
+
+    def test_an_unknown_level_is_carried_not_refused(self):
+        text = ("competition_id,country,name,type,tier,gender,age_group,"
+                "region,governing_body,logo,level\n"
+                "MW_X,mw,Example League,league,3,m,senior,,,,continental\n")
+        self.assertEqual(
+            dataset.parse_competitions(text)["MW_X"].level, "continental")
+
+    def test_the_emitter_writes_the_column(self):
+        self.assertIn("level", source_supabase.COLUMNS["competitions"])
+
+
 class RoundTripTest(unittest.TestCase):
     """The parsed result must be identical, tab by tab, row for row."""
 
