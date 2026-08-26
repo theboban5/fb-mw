@@ -1,21 +1,21 @@
-competition_id,country,name,type,tier,gender,age_group,region,governing_body,logo
-MW_SL,mw,Super League of Malawi,league,1,m,senior,,FAM,sl.png
-MW_NDL,mw,National Division League,league,2,m,senior,,FAM,ndl.png
-MW_WP,mw,Women's Premiership,league,1,w,senior,,FAM,wp.png
-MW_SRFA,mw,SRFA Division League 1,league,3,m,senior,SRFA,SRFA,srfa.png
-MW_CRFA,mw,CRFA Division One League,league,3,m,senior,CRFA,CRFA,crfa.png
-MW_NRFA,mw,NRFA League One,league,3,m,senior,NRFA,NRFA,nrfa.png
-MW_SRFA2,mw,SRFA Division 2,league,3,m,senior,SRFA,SRFA,srfa2.png
-MW_KU19,mw,Blantyre District Katswiri U19 League,league,1,m,u19,SRFA,BDYFC,ku19.png
-MW_U16,mw,U16 Development League,league,1,m,u16,SRFA,BDYFC,
-MW_CRFA2,mw,CRFA Division Two League,league,4,m,senior,CRFA,CRFA,crfa.png
-MW_TOP8,mw,Airtel Top 8,cup,,m,senior,,FAM,top8.png
-MW_BDU16,mw,Blantyre District U16 League,league,1,m,u16,SRFA,BDYFC,MW_BDU16.png
-MW_BDU14,MW,Blantyre District Nthanda U14 League,league,,m,u14,SRFA,,
-MW_MDU20,MW,Mzuzu District FCB Katswiri U20 League,league,,m,u20,,,
-MW_MDU14,MW,Mzuzu District Nthanda U14 FAM League,league,,m,u14,,,
-MW_MDU16,MW,Mzuzu District Mmera Mpoyamba U16 FAM League,league,,m,u16,,,
-MW_NRFA2,MW,NRFA Division Two League,league,4,m,senior,NRFA,,
-MW_MGDU14,MW,Mangochi District Nthanda U14 League,league,,m,u14,,,
-MW_MGDU20,MW,Mangochi District Katswiri U20 League,league,,m,u20,,,
-MW_MGDU16,MW,Mangochi District Mmera Mpoyamba U16 League,league,,m,u16,,,
+competition_id,country,name,type,tier,gender,age_group,region,governing_body,logo,level
+MW_SL,mw,Super League of Malawi,league,1,m,senior,,FAM,sl.png,national
+MW_NDL,mw,National Division League,league,2,m,senior,,FAM,ndl.png,national
+MW_WP,mw,Women's Premiership,league,1,w,senior,,FAM,wp.png,national
+MW_SRFA,mw,SRFA Division League 1,league,3,m,senior,SRFA,SRFA,srfa.png,regional
+MW_CRFA,mw,CRFA Division One League,league,3,m,senior,CRFA,CRFA,crfa.png,regional
+MW_NRFA,mw,NRFA League One,league,3,m,senior,NRFA,NRFA,nrfa.png,regional
+MW_SRFA2,mw,SRFA Division 2,league,3,m,senior,SRFA,SRFA,srfa2.png,regional
+MW_KU19,mw,Blantyre District Katswiri U19 League,league,1,m,u19,SRFA,BDYFC,ku19.png,district
+MW_U16,mw,U16 Development League,league,1,m,u16,SRFA,BDYFC,,
+MW_CRFA2,mw,CRFA Division Two League,league,4,m,senior,CRFA,CRFA,crfa.png,regional
+MW_TOP8,mw,Airtel Top 8,cup,,m,senior,,FAM,top8.png,national
+MW_BDU16,mw,Blantyre District U16 League,league,1,m,u16,SRFA,BDYFC,MW_BDU16.png,district
+MW_BDU14,MW,Blantyre District Nthanda U14 League,league,,m,u14,SRFA,BDYFC,,district
+MW_MDU20,MW,Mzuzu District FCB Katswiri U20 League,league,,m,u20,NRFA,,,district
+MW_MDU14,MW,Mzuzu District Nthanda U14 FAM League,league,,m,u14,NRFA,,,district
+MW_MDU16,MW,Mzuzu District Mmera Mpoyamba U16 FAM League,league,,m,u16,NRFA,,,district
+MW_NRFA2,MW,NRFA Division Two League,league,4,m,senior,NRFA,NRFA,,regional
+MW_MGDU14,MW,Mangochi District Nthanda U14 League,league,,m,u14,SRFA,,,district
+MW_MGDU20,MW,Mangochi District Katswiri U20 League,league,,m,u20,SRFA,,,district
+MW_MGDU16,MW,Mangochi District Mmera Mpoyamba U16 League,league,,m,u16,SRFA,,,district
