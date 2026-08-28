@@ -624,6 +624,32 @@ function graphicsTeams() {
   });
 }
 
+/** competition_id -> accent_color, for competitions that have one set.
+ *  Read directly from `competitions` rather than folded into
+ *  allCompetitions() — that function is shared by screens with no stake in
+ *  this column, and a "column not there yet" error there would break the
+ *  whole portal rather than just leave every card the house green. Resolves
+ *  to {} on a not-yet-migrated database, the same defensive shape
+ *  loadOpsCompare() uses for its own views (a migration is a separate
+ *  deploy from git). */
+function competitionAccents() {
+  return once("competition-accents", async () => {
+    const { data, error } = await supabase.from("competitions")
+      .select("competition_id,accent_color");
+    if (error) {
+      const missing = error.code === "42703" || /accent_color/.test(error.message || "");
+      if (missing) {
+        console.warn("[everyleague] competitions.accent_color not available yet:", error);
+        return {};
+      }
+      throw error;
+    }
+    const map = {};
+    (data || []).forEach((r) => { if (r.accent_color) map[r.competition_id] = r.accent_color; });
+    return map;
+  });
+}
+
 /** The season one competition is currently building: its active row, else
  *  its most recent by start date — the browser twin of social/data.py's
  *  season_for(), needed because the Top scorers board has to name a season
@@ -4789,6 +4815,88 @@ const GRAPHICS_TABS = [
   ["editorial", "Announcement"],
 ];
 
+// ── Drafts gallery ───────────────────────────────────────────────────────────
+// The last few generated cards, remembered in localStorage so a reporter can
+// reopen and tweak one instead of re-entering everything. Deliberately
+// client-only: this is personal scratch space, not shared newsroom state, and
+// storage is optional everywhere it is touched — a quota failure or private
+// browsing must never stop a card from being generated.
+
+const GRAPHICS_DRAFTS_KEY = "el-graphics-drafts-v1";  // versioned: a schema
+  // change just picks a new key and abandons old entries, rather than migrating them
+const GRAPHICS_DRAFTS_MAX = 8;
+
+function loadGraphicsDrafts() {
+  try {
+    const raw = localStorage.getItem(GRAPHICS_DRAFTS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveGraphicsDraft(entry) {
+  try {
+    const drafts = [entry, ...loadGraphicsDrafts()].slice(0, GRAPHICS_DRAFTS_MAX);
+    localStorage.setItem(GRAPHICS_DRAFTS_KEY, JSON.stringify(drafts));
+  } catch (error) {
+    console.warn("[everyleague] could not save a graphics draft:", error);
+  }
+}
+
+function deleteGraphicsDraft(id) {
+  try {
+    const drafts = loadGraphicsDrafts().filter((d) => d.id !== id);
+    localStorage.setItem(GRAPHICS_DRAFTS_KEY, JSON.stringify(drafts));
+  } catch (error) {
+    console.warn("[everyleague] could not delete a graphics draft:", error);
+  }
+}
+
+function graphicsDraftId() {
+  return `d_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/** A draft opened from the gallery, carried across the navigation
+ *  #/graphics?type=X triggers (a different template tab is a fresh
+ *  renderGraphics()/wireGraphics() call, so the values can't just sit in a
+ *  closure) — consumed once at the top of wireGraphics(). */
+let pendingDraftRestore = null;
+
+function graphicsDraftLabel(type) {
+  return (GRAPHICS_TABS.find(([k]) => k === type) || [, type])[1];
+}
+
+function graphicsDraftAge(iso) {
+  const ms = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(ms / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+function graphicsDraftsGalleryHtml() {
+  const drafts = loadGraphicsDrafts();
+  if (!drafts.length) return "";
+  return `
+    <section class="rp-graphics-drafts" data-drafts-gallery>
+      <h2 class="rp-group-head">Recent</h2>
+      <div class="rp-draft-grid">
+        ${drafts.map((d) => `
+          <div class="rp-draft-tile" data-draft-open="${esc(d.id)}">
+            <img src="${d.thumbnail}" alt="" class="rp-draft-thumb">
+            <button class="rp-draft-del" type="button" data-draft-del="${esc(d.id)}"
+              aria-label="Delete this draft">&times;</button>
+            <span class="rp-draft-caption">${esc(graphicsDraftLabel(d.type))} ·
+              ${esc(graphicsDraftAge(d.savedAt))}</span>
+          </div>`).join("")}
+      </div>
+    </section>`;
+}
+
 /** '15:00:00'/'15:00' -> '15:00'; anything else -> ''. Board space is tight,
  *  so unlike formatKickoff() this omits ' CAT' — the board is understood to
  *  be Malawi time the way every other kickoff on the site is. */
@@ -4971,10 +5079,11 @@ async function renderGraphics(params) {
   h(`<div class="rp-loading"><span class="rp-spinner" aria-hidden="true"></span>
        <p>Loading…</p></div>`);
 
-  let competitions, teams;
+  let competitions, teams, accents;
   try {
-    [competitions, teams] = await Promise.all([
+    [competitions, teams, accents] = await Promise.all([
       allCompetitions(), type === "editorial" ? graphicsTeams() : Promise.resolve([]),
+      competitionAccents(),
     ]);
   } catch (error) {
     h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
@@ -4991,6 +5100,17 @@ async function renderGraphics(params) {
     : type === "scorers" ? graphicsScorerFields(competitions)
     : graphicsMatchFields(type, competitions);
 
+  const format = params.get("format") === "story" ? "story" : "square";
+  const formatChips = ["square", "story"].map((f) =>
+    `<button class="rp-chip${f === format ? " is-on" : ""}" type="button"
+       data-format="${f}">${f === "square" ? "Square" : "Story"}</button>`).join("");
+
+  const swatches = graphics.BACKGROUND_SWATCHES.map((s, i) =>
+    `<button class="rp-swatch${i === 0 ? " is-on" : ""}" type="button"
+       data-swatch="${esc(s.key)}"
+       style="background:${s.value || graphics.TOKENS.ground}"
+       aria-pressed="${i === 0}" aria-label="${esc(s.label)}"></button>`).join("");
+
   h(`
     <a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
     <h1 class="rp-login-head">Graphics</h1>
@@ -4999,32 +5119,82 @@ async function renderGraphics(params) {
       send it straight to the homepage as a draft.</p>
 
     <nav class="ops-tabs">${tabs}</nav>
+    <div class="rp-chip-row" data-format-chips>${formatChips}</div>
 
     <form class="rp-form" data-graphics-form autocomplete="off">
       ${fields}
     </form>
 
-    <div class="rp-canvas-wrap"><canvas data-board width="${graphics.BOARD}"
-      height="${graphics.BOARD}" aria-label="Graphic preview"></canvas></div>
+    <div class="rp-swatch-row" data-bg-swatches>${swatches}</div>
+    <div class="rp-canvas-wrap"><canvas data-board
+      width="${graphics.BOARD_FORMATS.square.w}"
+      height="${graphics.BOARD_FORMATS.square.h}"
+      aria-label="Graphic preview"></canvas></div>
 
     <div class="rp-btn-row">
       <button class="rp-btn is-ghost" type="button" data-download disabled
         >Download PNG</button>
+      <button class="rp-btn is-ghost" type="button" data-copy-image disabled
+        hidden>Copy</button>
       <button class="rp-btn" type="button" data-save-draft disabled
         >Save as homepage draft</button>
     </div>
     <p class="rp-hint" data-graphics-status>Loading fonts…</p>
+
+    <div data-drafts-host>${graphicsDraftsGalleryHtml()}</div>
   `);
 
-  wireGraphics(type, competitions, teams);
+  wireGraphics(type, competitions, teams, accents, format);
 }
 
-function wireGraphics(type, competitions, teams) {
+function wireGraphics(type, competitions, teams, accents, format) {
   const canvas = view.querySelector("[data-board]");
   const status = view.querySelector("[data-graphics-status]");
   const downloadBtn = view.querySelector("[data-download]");
+  const copyBtn = view.querySelector("[data-copy-image]");
   const saveBtn = view.querySelector("[data-save-draft]");
   const form = view.querySelector("[data-graphics-form]");
+
+  let bgColor = null;
+
+  // Story format has no counterpart in the homepage carousel's fixed 16:9
+  // media box (static/style.css) — uploading a 9:16 image there would be
+  // aggressively centre-cropped, so Save-as-draft is square-only.
+  function syncSaveAvailability() {
+    saveBtn.title = format === "story"
+      ? "Story-format cards don't fit the homepage's 16:9 image box — switch to Square to save one there."
+      : "";
+  }
+  syncSaveAvailability();
+
+  const clipboardOk = window.isSecureContext
+    && typeof navigator.clipboard?.write === "function"
+    && typeof window.ClipboardItem === "function";
+  copyBtn.hidden = !clipboardOk;
+
+  view.querySelectorAll("[data-format-chips] [data-format]").forEach((chip) => {
+    chip.onclick = () => {
+      if (chip.dataset.format === format) return;
+      format = chip.dataset.format;
+      view.querySelectorAll("[data-format-chips] [data-format]")
+        .forEach((c) => c.classList.toggle("is-on", c === chip));
+      history.replaceState(null, "", `#/graphics?type=${type}&format=${format}`);
+      syncSaveAvailability();
+      redraw();
+    };
+  });
+
+  view.querySelectorAll("[data-bg-swatches] [data-swatch]").forEach((btn, i) => {
+    btn.onclick = () => {
+      const swatch = graphics.BACKGROUND_SWATCHES[i];
+      bgColor = swatch.value;
+      view.querySelectorAll("[data-bg-swatches] [data-swatch]").forEach((b, j) => {
+        b.classList.toggle("is-on", j === i);
+        b.setAttribute("aria-pressed", String(j === i));
+      });
+      redraw();
+    };
+  });
 
   // Resolved once per screen visit and reused across redraws — a crest is
   // the same image whichever field triggered this one.
@@ -5039,6 +5209,30 @@ function wireGraphics(type, competitions, teams) {
 
   let currentMatches = [];
   let selected = new Set();
+  let draftSelection = null;
+
+  // A draft reopened from the gallery navigates here (#/graphics?type=X, a
+  // fresh renderGraphics()/wireGraphics() call) with the entry stashed on
+  // this module-level variable rather than passed as a parameter, since a
+  // new screen visit is exactly what a different template tab already is.
+  if (pendingDraftRestore && pendingDraftRestore.type === type) {
+    const draft = pendingDraftRestore;
+    pendingDraftRestore = null;
+    bgColor = draft.background || null;
+    Object.entries(draft.fields || {}).forEach(([key, value]) => {
+      if (key === "selectedMatchIds") return;
+      if (form.elements.namedItem(key)) form[key].value = value ?? "";
+    });
+    if (Array.isArray(draft.fields?.selectedMatchIds)) {
+      draftSelection = draft.fields.selectedMatchIds;
+    }
+    const swatchIdx = Math.max(0,
+      graphics.BACKGROUND_SWATCHES.findIndex((s) => s.value === bgColor));
+    view.querySelectorAll("[data-bg-swatches] [data-swatch]").forEach((b, j) => {
+      b.classList.toggle("is-on", j === swatchIdx);
+      b.setAttribute("aria-pressed", String(j === swatchIdx));
+    });
+  }
 
   async function buildMatchState() {
     const compId = form.comp.value;
@@ -5073,6 +5267,7 @@ function wireGraphics(type, competitions, teams) {
       standfirstLeft: range, standfirstRight: "",
       seasonLabel: season?.label || "", matches,
       headline: form.headline.value.trim(), subtext: form.subtext.value.trim(),
+      background: bgColor, accent: isAll ? null : (accents[compId] || null),
     };
   }
 
@@ -5082,7 +5277,7 @@ function wireGraphics(type, competitions, teams) {
     const subtext = form.subtext.value.trim();
     if (!compId) {
       return { competitionName: "", standfirstLeft: "", standfirstRight: "",
-        seasonLabel: "", rows: [], headline, subtext };
+        seasonLabel: "", rows: [], headline, subtext, background: bgColor, accent: null };
     }
     const compLabel = competitions.find((c) => c.id === compId)?.label || "";
     const topN = Number(form.topn.value) || 8;
@@ -5094,6 +5289,7 @@ function wireGraphics(type, competitions, teams) {
     return {
       competitionName: compLabel, standfirstLeft: "", standfirstRight: "",
       seasonLabel, rows: withCrests, headline, subtext,
+      background: bgColor, accent: accents[compId] || null,
     };
   }
 
@@ -5108,7 +5304,7 @@ function wireGraphics(type, competitions, teams) {
       eyebrow: form.eyebrow.value.trim(),
       headline: form.headline.value.trim(),
       subtext: form.subtext.value.trim(),
-      team,
+      team, background: bgColor, accent: null,
     };
   }
 
@@ -5118,12 +5314,15 @@ function wireGraphics(type, competitions, teams) {
     const state = type === "editorial" ? await buildEditorialState()
       : type === "scorers" ? await buildScorerState()
       : await buildMatchState();
-    graphics.drawBoard(canvas, type, state);
+    graphics.drawBoard(canvas, type, state, format);
     const hasContent = type === "editorial" ? Boolean(state.headline)
       : type === "scorers" ? state.rows.length > 0
       : state.matches.length > 0;
     downloadBtn.disabled = !hasContent;
-    saveBtn.disabled = !hasContent;
+    copyBtn.disabled = !hasContent;
+    // Story-format PNGs don't fit the homepage carousel's fixed 16:9 image
+    // box — see syncSaveAvailability() above.
+    saveBtn.disabled = !hasContent || format !== "square";
     status.textContent = hasContent ? "" : (
       type === "editorial" ? "Add a headline to see a full preview."
       : type === "scorers" ? "Choose a competition with recorded goals this season."
@@ -5180,8 +5379,13 @@ function wireGraphics(type, competitions, teams) {
         if (token !== loadToken) return;  // a newer request already landed
         currentMatches = rows;
         // A weekend preview defaults to its first three — roomy density,
-        // legible on a phone thumbnail. Trimming or adding is one tap.
-        selected = new Set(rows.slice(0, 3).map((m) => m.match_id));
+        // legible on a phone thumbnail. Trimming or adding is one tap. A
+        // reopened draft's selection wins on this first load only — any id
+        // that no longer appears in this range is silently dropped by
+        // matchListHtml's own selected.has() check, no special-casing needed.
+        selected = draftSelection ? new Set(draftSelection)
+          : new Set(rows.slice(0, 3).map((m) => m.match_id));
+        draftSelection = null;
         const compLabelOf = compId === GRAPHICS_ALL_COMPS
           ? (id) => competitions.find((c) => c.id === id)?.label || id : null;
         list.innerHTML = matchListHtml(type, rows, selected, compLabelOf);
@@ -5217,14 +5421,83 @@ function wireGraphics(type, competitions, teams) {
     loadMatches();
   }
 
+  // What the drafts gallery remembers of the current form — varies by
+  // template, but always enough to fully repopulate it on reopen.
+  function collectDraftFields() {
+    if (type === "editorial") {
+      return { eyebrow: form.eyebrow.value, headline: form.headline.value,
+        subtext: form.subtext.value, team: form.team.value };
+    }
+    if (type === "scorers") {
+      return { headline: form.headline.value, subtext: form.subtext.value,
+        comp: form.comp.value, topn: form.topn.value };
+    }
+    return { eyebrow: form.eyebrow.value, headline: form.headline.value,
+      subtext: form.subtext.value, comp: form.comp.value,
+      from: form.from.value, to: form.to.value, selectedMatchIds: [...selected] };
+  }
+
+  function renderDraftsGallery() {
+    const host = view.querySelector("[data-drafts-host]");
+    if (!host) return;
+    host.innerHTML = graphicsDraftsGalleryHtml();
+    host.querySelectorAll("[data-draft-del]").forEach((btn) => {
+      btn.onclick = (event) => {
+        event.stopPropagation();
+        deleteGraphicsDraft(btn.dataset.draftDel);
+        renderDraftsGallery();
+      };
+    });
+    host.querySelectorAll("[data-draft-open]").forEach((tile) => {
+      tile.onclick = () => {
+        const draft = loadGraphicsDrafts().find((d) => d.id === tile.dataset.draftOpen);
+        if (!draft) return;
+        pendingDraftRestore = draft;
+        const target = `#/graphics?type=${draft.type}&format=${draft.format}`;
+        if (location.hash === target) route(); else location.hash = target;
+      };
+    });
+  }
+
+  // Recorded after a successful export, not on every debounced redraw — a
+  // draft is a card someone actually reached for, not every keystroke.
+  function recordDraft() {
+    try {
+      const dims = graphics.BOARD_FORMATS[format] || graphics.BOARD_FORMATS.square;
+      saveGraphicsDraft({
+        id: graphicsDraftId(), savedAt: new Date().toISOString(),
+        type, format, background: bgColor,
+        fields: collectDraftFields(),
+        thumbnail: graphics.exportThumbnail(canvas, dims),
+      });
+      renderDraftsGallery();
+    } catch (error) {
+      console.warn("[everyleague] could not record a graphics draft:", error);
+    }
+  }
+
   downloadBtn.onclick = async () => {
-    const blob = await graphics.exportPng(canvas);
+    const blob = await graphics.exportPng(canvas, graphics.BOARD_FORMATS[format]);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = `everyleague-${type}-${todayIso()}.png`;
     a.click();
     URL.revokeObjectURL(url);
+    recordDraft();
+  };
+
+  copyBtn.onclick = async () => {
+    try {
+      const blob = await graphics.exportPng(canvas, graphics.BOARD_FORMATS[format]);
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      const original = copyBtn.textContent;
+      copyBtn.textContent = "Copied";
+      setTimeout(() => { copyBtn.textContent = original; }, 2000);
+      recordDraft();
+    } catch (error) {
+      flash("Could not copy the image — try Download instead.", "error");
+    }
   };
 
   saveBtn.onclick = async () => {
@@ -5232,7 +5505,7 @@ function wireGraphics(type, competitions, teams) {
       const state = type === "editorial" ? await buildEditorialState()
         : type === "scorers" ? await buildScorerState()
         : await buildMatchState();
-      const blob = await graphics.exportPng(canvas);
+      const blob = await graphics.exportPng(canvas, graphics.BOARD_FORMATS.square);
       const file = new File([blob], "graphic.png", { type: "image/png" });
       const imagePath = await uploadTrendingImage(file);
       // A typed headline (fixtures/results/scorers all offer one now, same as
@@ -5262,6 +5535,7 @@ function wireGraphics(type, competitions, teams) {
     }
   };
 
+  renderDraftsGallery();  // wires the gallery's own click/delete handlers
   redraw();
 }
 
@@ -8667,7 +8941,9 @@ function loadOpsCompare() {
  *  screen back to the top, and renderOps resets the scroll on every route. The
  *  hash still carries every filter, so a view of one segment stays linkable. */
 async function renderOpsCompare(params, header) {
-  const data = await loadOpsCompare();
+  const [data, accents, allComps] = await Promise.all([
+    loadOpsCompare(), competitionAccents(), allCompetitions(),
+  ]);
   if (!data) {
     header(`<h2 class="rp-group-head">Compare</h2>
       <p class="rp-empty">The comparison views are not in the database yet.
@@ -8836,6 +9112,25 @@ async function renderOpsCompare(params, header) {
            <option value="district">District</option>
          </select></div>`).join("")}` : "";
 
+    // ── Card colours. Unlike Unclassified, this is never a to-do list — no
+    //    accent set is the correct steady state for a competition nobody has
+    //    branded, not a gap to close — so every competition is listed here,
+    //    unconditionally, rather than only the ones with something "wrong".
+    const accentPanel = `
+      <h3 class="rp-group-head">Card colours</h3>
+      <p class="rp-hint">The accent colour #/graphics draws that
+        competition's cards in. Optional — an unset competition uses the
+        house green.</p>
+      ${allComps.map((c) => `<div class="ops-glance-row">
+         <div class="ops-glance-comp"><span class="ops-comp">${esc(c.label)}</span>
+           <span class="ops-sub">${esc(c.id)}</span></div>
+         <span class="rp-accent-control">
+           <input type="color" class="rp-accent-input" data-set-accent="${esc(c.id)}"
+                  value="${esc(accents[c.id] || graphics.TOKENS.accent)}">
+           ${accents[c.id] ? `<button type="button" class="rp-link"
+                  data-clear-accent="${esc(c.id)}">Clear</button>` : ""}
+         </span></div>`).join("")}`;
+
     host.innerHTML = `
       ${compareChips("level", COMPARE_LEVELS, state.level)}
       ${compareChips("cat", COMPARE_CATEGORIES, state.cat)}
@@ -8874,17 +9169,36 @@ async function renderOpsCompare(params, header) {
         still counts in the score.</p>
       ${compareBars(coverage)}`}
 
-      ${unsetPanel}`;
+      ${unsetPanel}
+      ${accentPanel}`;
   }
 
   draw();
 
-  host.addEventListener("click", (event) => {
+  host.addEventListener("click", async (event) => {
     const chip = event.target.closest("[data-compare-chip]");
-    if (!chip) return;
-    state[chip.dataset.compareChip] = chip.dataset.value;
-    syncUrl();
-    draw();
+    if (chip) {
+      state[chip.dataset.compareChip] = chip.dataset.value;
+      syncUrl();
+      draw();
+      return;
+    }
+    const clearBtn = event.target.closest("[data-clear-accent]");
+    if (!clearBtn) return;
+    const compId = clearBtn.dataset.clearAccent;
+    clearBtn.disabled = true;
+    try {
+      await supabase.rpc("set_competition_accent_color", {
+        p_competition_id: compId, p_accent_color: "",
+      });
+      delete accents[compId];
+      invalidateReference();
+      flash("Card colour cleared.", "ok");
+      draw();
+    } catch (error) {
+      flash(humanError(error), "error");
+      clearBtn.disabled = false;
+    }
   });
 
   host.addEventListener("change", async (event) => {
@@ -8894,6 +9208,27 @@ async function renderOpsCompare(params, header) {
       state[key] = key === "min" ? Number(sel.value) : sel.value;
       syncUrl();
       draw();
+      return;
+    }
+    const acc = event.target.closest("[data-set-accent]");
+    if (acc) {
+      const compId = acc.dataset.setAccent;
+      acc.disabled = true;
+      try {
+        await supabase.rpc("set_competition_accent_color", {
+          p_competition_id: compId, p_accent_color: acc.value,
+        });
+        accents[compId] = acc.value;
+        // The whole reference cache goes, not just this screen's entry — an
+        // accent is on the competition row #/graphics has already cached.
+        invalidateReference();
+        flash("Card colour saved.", "ok");
+        draw();
+      } catch (error) {
+        flash(humanError(error), "error");
+      } finally {
+        acc.disabled = false;
+      }
       return;
     }
     const lvl = event.target.closest("[data-set-level]");

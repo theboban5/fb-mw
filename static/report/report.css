@@ -1105,8 +1105,10 @@ a { color: var(--accent); }
 }
 
 /* ─── Graphics (#/graphics) ───────────────────────────────────────────────────
-   The canvas is always drawn at graphics.BOARD (1080) regardless of its CSS
-   size — width:100% here is a display scale, not the export resolution. */
+   The canvas is drawn at graphics.BOARD_FORMATS[format] — 1080x1080 (Square)
+   or 1080x1920 (Story) — regardless of its CSS size; width:100%/height:auto
+   here is a display scale, not the export resolution, and holds for either
+   shape unchanged. */
 .rp-canvas-wrap {
   margin: 12px 0;
   border: 1px solid var(--line);
@@ -1141,4 +1143,97 @@ a { color: var(--accent); }
   font-style: normal;
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+/* The curated background-colour swatches — a small, deliberately short list
+   (graphics.BACKGROUND_SWATCHES) rather than a free-form <input type=color>,
+   so a card can never end up with white text over an unreadable background. */
+.rp-swatch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 4px 0 12px;
+}
+.rp-swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  /* A fixed dark ring rather than var(--line): the swatch's own fill ranges
+     from near-black to a light cream, and a theme-matched border would all
+     but disappear against either the page background or the lightest fill. */
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  padding: 0;
+  cursor: pointer;
+}
+.rp-swatch.is-on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
+.rp-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The drafts gallery: the last few generated cards, remembered in the
+   browser (localStorage, not the database — see app.js's
+   GRAPHICS_DRAFTS_KEY) so reopening one doesn't mean retyping every field. */
+.rp-graphics-drafts { margin-top: 20px; }
+.rp-draft-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+}
+.rp-draft-tile {
+  position: relative;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #15171a;
+}
+.rp-draft-thumb { display: block; width: 100%; height: auto; }
+.rp-draft-caption {
+  display: block;
+  padding: 4px 6px;
+  font-size: 0.68rem;
+  color: var(--muted);
+  background: var(--row-alt);
+}
+.rp-draft-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+/* The per-competition accent-colour control on #/ops?tab=compare — a plain
+   text-styled button for "Clear" (only rendered once a colour is actually
+   set), beside the native colour swatch. */
+.rp-accent-control { display: flex; align-items: center; gap: 10px; }
+.rp-accent-input {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+}
+.rp-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
 }
