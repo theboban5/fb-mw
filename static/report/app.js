@@ -28,6 +28,7 @@
 
 import { createClient } from "./vendor/supabase.min.js";
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "./config.js";
+import * as graphics from "./graphics.js";
 
 const view = document.querySelector("[data-view]");
 const flashEl = document.querySelector("[data-flash]");
@@ -564,6 +565,148 @@ async function loadHome(filters) {
   return homeCache;
 }
 
+// A separate field list from MATCH_FIELDS: #/graphics needs club_id and
+// legacy_code to draw a crest (graphics.loadCrest's lookup order) and venue
+// name for the fixture sub-line, which the home list has no use for and
+// MATCH_FIELDS is relied on elsewhere for its exact (narrower) shape.
+const GRAPHICS_MATCH_FIELDS =
+  "match_id,competition_id,date,kickoff,status,home_goals,away_goals," +
+  "home:teams!matches_home_team_id_fkey(display_name,club_id,legacy_code)," +
+  "away:teams!matches_away_team_id_fkey(display_name,club_id,legacy_code)," +
+  "venue:venues(name)";
+
+// A real competition_id never collides with this — every id in the sheet is
+// upper-snake-case with no double underscore. Chosen over "" so "nothing
+// picked yet" and "picked, on purpose, every competition" stay distinguishable
+// in the <select> and in loadMatches().
+const GRAPHICS_ALL_COMPS = "__all__";
+
+// Every competition at once is still one query, capped the same way the home
+// list caps an unfiltered one (see RESULT_LIMIT) — a phone building a weekend
+// roundup does not need the 60th match past what fits on a board.
+const GRAPHICS_MATCH_CAP = 60;
+
+/** Scheduled matches for one competition (or every one, for GRAPHICS_ALL_COMPS),
+ *  soonest first, for the fixture board template's match picker. */
+async function loadUpcomingMatches(compId, from, to) {
+  let query = supabase.from("matches").select(GRAPHICS_MATCH_FIELDS)
+    .eq("status", "scheduled").gte("date", from).lte("date", to)
+    .order("date", { ascending: true }).order("kickoff", { ascending: true })
+    .limit(GRAPHICS_MATCH_CAP);
+  if (compId !== GRAPHICS_ALL_COMPS) query = query.eq("competition_id", compId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+/** Played (or awarded) matches for one competition (or every one), most
+ *  recent first, for the results board template's match picker. */
+async function loadRecentResults(compId, from, to) {
+  let query = supabase.from("matches").select(GRAPHICS_MATCH_FIELDS)
+    .in("status", ["played", "awarded"]).gte("date", from).lte("date", to)
+    .order("date", { ascending: false }).order("kickoff", { ascending: false })
+    .limit(GRAPHICS_MATCH_CAP);
+  if (compId !== GRAPHICS_ALL_COMPS) query = query.eq("competition_id", compId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+/** Every team, for the Announcement template's optional single-crest picker.
+ *  A flat list rather than filtered by competition — an announcement is not
+ *  always about a team that currently has a fixture. */
+function graphicsTeams() {
+  return once("graphicsTeams", async () => {
+    const { data, error } = await supabase.from("teams")
+      .select("team_id,display_name,club_id,legacy_code").order("display_name");
+    if (error) throw error;
+    return data || [];
+  });
+}
+
+/** The season one competition is currently building: its active row, else
+ *  its most recent by start date — the browser twin of social/data.py's
+ *  season_for(), needed because the Top scorers board has to name a season
+ *  and a competition with no active row (a completed one-off) still has to
+ *  resolve to something. */
+async function seasonForCompetition(compId) {
+  const { data, error } = await supabase.from("competition_seasons")
+    .select("season_id,seasons(label,status,start_date)")
+    .eq("competition_id", compId);
+  if (error) throw error;
+  const rows = data || [];
+  const active = rows.find((r) => r.seasons?.status === "active");
+  if (active) return { season_id: active.season_id, label: active.seasons.label };
+  const byRecency = rows.slice()
+    .sort((a, b) => (b.seasons?.start_date || "").localeCompare(a.seasons?.start_date || ""));
+  const latest = byRecency[0];
+  return latest ? { season_id: latest.season_id, label: latest.seasons?.label || "" } : null;
+}
+
+/** Top N scorers in one competition's current season, ties kept whole past
+ *  the cut — the same rule social/data.py's top_scorers() follows: showing
+ *  four of six players level on 5 goals would assert an order the data does
+ *  not have. Own goals and the unnamed-scorer placeholder are excluded from
+ *  the ranking, exactly the house rule (CLAUDE.md: "Own goals never appear in
+ *  scorer tables"). A player's crest is their most-scored-for team in this
+ *  filtered set — the simple case of Career.side's "newest/most" tie-break,
+ *  good enough for a leaderboard where nobody reads it as a transfer record. */
+async function loadTopScorers(compId, topN) {
+  const season = await seasonForCompetition(compId);
+  if (!season) return { rows: [], seasonLabel: "" };
+  const { data, error } = await supabase.from("goals")
+    .select("player_id,team_id,goal_type," +
+      // goals has two FKs into players (player_id, assist_player_id), so the
+      // embed has to name which one — otherwise PostgREST rejects the whole
+      // query as ambiguous (PGRST201) rather than guessing.
+      "player:players!goals_player_id_fkey(known_as,full_name)," +
+      "team:teams(display_name,club_id,legacy_code)," +
+      "match:matches!inner(competition_id,season_id)")
+    .eq("match.competition_id", compId).eq("match.season_id", season.season_id)
+    .neq("player_id", "CAF_MW_UNKNOWN").neq("goal_type", "own_goal");
+  if (error) throw error;
+
+  const tally = new Map();
+  (data || []).forEach((g) => {
+    if (!tally.has(g.player_id)) {
+      tally.set(g.player_id, {
+        name: g.player?.known_as || g.player?.full_name || g.player_id,
+        goals: 0, teams: new Map(),
+      });
+    }
+    const entry = tally.get(g.player_id);
+    entry.goals += 1;
+    if (g.team) {
+      const t = entry.teams.get(g.team_id) || { team: g.team, count: 0 };
+      t.count += 1;
+      entry.teams.set(g.team_id, t);
+    }
+  });
+
+  const ranked = [...tally.values()].map((t) => {
+    let team = null, best = -1;
+    t.teams.forEach((entry) => { if (entry.count > best) { best = entry.count; team = entry.team; } });
+    return { name: t.name, goals: t.goals, team };
+  }).sort((a, b) => b.goals - a.goals);
+
+  let rank = 0, prevGoals = null;
+  ranked.forEach((r, i) => {
+    if (r.goals !== prevGoals) rank = i + 1;
+    r.position = rank;
+    prevGoals = r.goals;
+  });
+  const kept = ranked.slice(0, topN);
+  for (let i = topN; i < ranked.length; i++) {
+    if (kept.length && ranked[i].goals === kept[kept.length - 1].goals) kept.push(ranked[i]);
+    else break;
+  }
+  const counts = {};
+  kept.forEach((r) => { counts[r.position] = (counts[r.position] || 0) + 1; });
+  kept.forEach((r) => { r.joint = counts[r.position] > 1; });
+
+  return { rows: kept, seasonLabel: season.label };
+}
+
 /** Which bucket a match falls in. One function so the filter dropdown and the
  *  section headings can never disagree about what "awaiting" means. */
 function bucketOf(match, today) {
@@ -748,6 +891,7 @@ async function renderHome(params) {
       <a class="rp-btn is-ghost" href="#/players">Players</a>
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/ops">Operations</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/trending">Homepage</a>' : ""}
+      ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/graphics">Graphics</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/reporters">Reporters</a>' : ""}
       ${hasNT ? '<a class="rp-btn is-ghost" href="#/nt">National teams</a>' : ""}
       <button class="rp-btn is-quiet" type="button" data-refresh>Refresh</button>
@@ -4626,6 +4770,501 @@ function wireTrending(tab) {
 }
 
 
+// ── Graphics ─────────────────────────────────────────────────────────────────
+// On-brand "news card" images — a weekend preview, a results board, a plain
+// announcement — drawn client-side (graphics.js, a <canvas> renderer with the
+// same design tokens and row/crest layout as social/'s Jinja2+Playwright
+// pipeline) so either admin can make one from a phone with no local Python
+// install. Exports a PNG for download, or hands it straight to the EXISTING,
+// unmodified trending upload path (uploadTrendingImage/save_trending_card) so
+// a generated card can go from "drawn" to "draft on the homepage" in one tap.
+//
+// This screen owns fetching data and wiring the DOM; graphics.js owns only
+// drawing pixels from plain state objects — it imports nothing from Supabase.
+
+const GRAPHICS_TABS = [
+  ["fixtures", "Fixtures"],
+  ["results", "Results"],
+  ["scorers", "Top scorers"],
+  ["editorial", "Announcement"],
+];
+
+/** '15:00:00'/'15:00' -> '15:00'; anything else -> ''. Board space is tight,
+ *  so unlike formatKickoff() this omits ' CAT' — the board is understood to
+ *  be Malawi time the way every other kickoff on the site is. */
+function boardKickoff(kickoff) {
+  const v = (kickoff || "").trim();
+  if (!/^\d{1,2}:\d{2}/.test(v)) return "";
+  const [hh, mm] = v.split(":");
+  return `${String(Number(hh)).padStart(2, "0")}:${mm.slice(0, 2)}`;
+}
+
+const WEEKDAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** '2026-08-15' -> 'Sat 15 Aug' — absolute, because a board gets re-shared
+ *  with no caption and 'this weekend' would go stale the moment it is. */
+function formatShortDate(iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  return `${WEEKDAYS_SHORT[dt.getDay()]} ${d} ${MONTHS[m - 1]}`;
+}
+
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-`
+    + `${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function addDaysIso(iso, n) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + n);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-`
+    + `${String(dt.getDate()).padStart(2, "0")}`;
+}
+
+/** The coming Saturday and Sunday — today if today already is one. */
+function weekendRange() {
+  const today = todayIso();
+  const dow = new Date(today).getDay(); // 0 Sun .. 6 Sat
+  const toSat = dow === 6 ? 0 : (6 - dow) % 7;
+  const from = addDaysIso(today, toSat);
+  return { from, to: addDaysIso(from, 1) };
+}
+
+function resultsRange() {
+  return { from: addDaysIso(todayIso(), -7), to: todayIso() };
+}
+
+/** The optional headline + subtext overlay, shared by the fixtures, results
+ *  and scorers fields — the words for "this weekend is the Airtel Top 8
+ *  final" printed over the real fixture, not a separate blank card the way
+ *  the Announcement template is. Reuses the trending headline/body limits
+ *  (TRENDING_HEADLINE_MAX/TRENDING_BODY_MAX) since a typed headline here
+ *  becomes the homepage card's headline on save — see wireGraphics. */
+function graphicsHeadlineFields() {
+  return `
+    <label class="rp-label" for="gx-headline">Headline (optional)</label>
+    <input class="rp-input" id="gx-headline" name="headline"
+           maxlength="${TRENDING_HEADLINE_MAX}" data-headline
+           autocapitalize="sentences"
+           placeholder="e.g. This weekend is the Airtel Top 8 final">
+    <label class="rp-label" for="gx-subtext">Subtext (optional)</label>
+    <textarea class="rp-input" id="gx-subtext" name="subtext"
+              maxlength="${TRENDING_BODY_MAX}" rows="2" data-subtext
+              autocapitalize="sentences"></textarea>
+  `;
+}
+
+function graphicsMatchFields(type, competitions) {
+  const range = type === "fixtures" ? weekendRange() : resultsRange();
+  return `
+    <label class="rp-label" for="gx-eyebrow">Label</label>
+    <input class="rp-input" id="gx-eyebrow" name="eyebrow" maxlength="40"
+           data-eyebrow autocapitalize="sentences"
+           placeholder="Leave blank to use the competition name">
+    ${graphicsHeadlineFields()}
+    <label class="rp-label" for="gx-comp">Competition</label>
+    <select class="rp-input" id="gx-comp" name="comp" data-comp>
+      <option value="">Choose a competition…</option>
+      <option value="${GRAPHICS_ALL_COMPS}">All competitions</option>
+      ${competitions.map((c) =>
+        `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join("")}
+    </select>
+    <div class="rp-btn-row">
+      <button class="rp-btn is-ghost" type="button"
+        data-range="${type === "fixtures" ? "weekend" : "7d"}"
+        >${type === "fixtures" ? "This weekend" : "Last 7 days"}</button>
+      <button class="rp-btn is-ghost" type="button" data-range="14d">
+        ${type === "fixtures" ? "Next 14 days" : "Last 14 days"}</button>
+    </div>
+    <div class="rp-row">
+      <div><label class="rp-label" for="gx-from">From</label>
+        <input class="rp-input" id="gx-from" name="from" type="date"
+               value="${esc(range.from)}" data-from></div>
+      <div><label class="rp-label" for="gx-to">To</label>
+        <input class="rp-input" id="gx-to" name="to" type="date"
+               value="${esc(range.to)}" data-to></div>
+    </div>
+    <p class="rp-hint">Pick a competition — or All competitions for a mixed
+      board — then choose which matches to include below. One becomes a big
+      single-match card, up to six fit as a list.</p>
+    <div data-match-list><p class="rp-hint">Choose a competition to see its
+      matches.</p></div>
+  `;
+}
+
+function graphicsScorerFields(competitions) {
+  return `
+    ${graphicsHeadlineFields()}
+    <label class="rp-label" for="gx-comp">Competition</label>
+    <select class="rp-input" id="gx-comp" name="comp" data-comp>
+      <option value="">Choose a competition…</option>
+      ${competitions.map((c) =>
+        `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join("")}
+    </select>
+    <label class="rp-label" for="gx-topn">Show</label>
+    <select class="rp-input" id="gx-topn" name="topn" data-topn>
+      <option value="5">Top 5</option>
+      <option value="8" selected>Top 8</option>
+      <option value="10">Top 10</option>
+    </select>
+    <p class="rp-hint">Ranked for the competition's current season (its
+      active one, or its most recent). Own goals and unnamed scorers are
+      never counted here — the same rule the site's own scorer tables
+      follow.</p>
+  `;
+}
+
+function graphicsEditorialFields(teams) {
+  return `
+    <label class="rp-label" for="gx-eyebrow">Label</label>
+    <input class="rp-input" id="gx-eyebrow" name="eyebrow" maxlength="40"
+           data-eyebrow placeholder="Announcement" autocapitalize="sentences">
+    <label class="rp-label" for="gx-headline">Headline</label>
+    <input class="rp-input" id="gx-headline" name="headline" maxlength="90"
+           data-headline autocapitalize="sentences"
+           placeholder="e.g. Malizwe named Player of the Month">
+    <label class="rp-label" for="gx-subtext">Subtext</label>
+    <textarea class="rp-input" id="gx-subtext" name="subtext" maxlength="200"
+              rows="3" data-subtext autocapitalize="sentences"></textarea>
+    <label class="rp-label" for="gx-team">Team (optional)</label>
+    <input class="rp-input" id="gx-team" name="team" list="gx-team-list"
+           data-team autocomplete="off" placeholder="Start typing a team name">
+    <datalist id="gx-team-list">
+      ${teams.map((t) => `<option value="${esc(t.display_name)}">`).join("")}
+    </datalist>
+  `;
+}
+
+/** `compLabelOf` is only passed in All-competitions mode — a single-league
+ *  board already says which one in its own eyebrow, so naming it a second
+ *  time on every row would just be noise. */
+function matchListHtml(type, matches, selected, compLabelOf) {
+  if (!matches.length) {
+    return `<p class="rp-hint">No matches in that range.</p>`;
+  }
+  return `<div data-match-checks>${matches.map((m) => `
+    <label class="rp-match-check">
+      <input type="checkbox" value="${esc(m.match_id)}"
+             ${selected.has(m.match_id) ? "checked" : ""}>
+      <span>${esc(m.home.display_name)} v ${esc(m.away.display_name)}
+        <em>${compLabelOf ? `${esc(compLabelOf(m.competition_id))} · ` : ""}${
+          esc(formatShortDate(m.date))} · ${
+          type === "results" ? `${m.home_goals}-${m.away_goals}`
+          : esc(boardKickoff(m.kickoff)) || "TBC"
+        }</em></span>
+    </label>`).join("")}</div>`;
+}
+
+async function renderGraphics(params) {
+  if (!context.isAdmin) {
+    h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+       <p class="rp-empty">Only an administrator can create graphics.</p>`);
+    return;
+  }
+
+  const type = GRAPHICS_TABS.some(([k]) => k === params.get("type"))
+    ? params.get("type") : "fixtures";
+
+  h(`<div class="rp-loading"><span class="rp-spinner" aria-hidden="true"></span>
+       <p>Loading…</p></div>`);
+
+  let competitions, teams;
+  try {
+    [competitions, teams] = await Promise.all([
+      allCompetitions(), type === "editorial" ? graphicsTeams() : Promise.resolve([]),
+    ]);
+  } catch (error) {
+    h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+       <p class="rp-empty">Could not load the data this screen needs.</p>`);
+    flash(humanError(error), "error");
+    return;
+  }
+
+  const tabs = GRAPHICS_TABS.map(([key, label]) =>
+    `<a class="ops-tab${key === type ? " is-on" : ""}" href="#/graphics?type=${key}"
+       >${esc(label)}</a>`).join("");
+
+  const fields = type === "editorial" ? graphicsEditorialFields(teams)
+    : type === "scorers" ? graphicsScorerFields(competitions)
+    : graphicsMatchFields(type, competitions);
+
+  h(`
+    <a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+    <h1 class="rp-login-head">Graphics</h1>
+    <p class="rp-login-sub">On-brand cards for WhatsApp, Facebook and the
+      homepage. Fill in the fields, watch the preview, then download it or
+      send it straight to the homepage as a draft.</p>
+
+    <nav class="ops-tabs">${tabs}</nav>
+
+    <form class="rp-form" data-graphics-form autocomplete="off">
+      ${fields}
+    </form>
+
+    <div class="rp-canvas-wrap"><canvas data-board width="${graphics.BOARD}"
+      height="${graphics.BOARD}" aria-label="Graphic preview"></canvas></div>
+
+    <div class="rp-btn-row">
+      <button class="rp-btn is-ghost" type="button" data-download disabled
+        >Download PNG</button>
+      <button class="rp-btn" type="button" data-save-draft disabled
+        >Save as homepage draft</button>
+    </div>
+    <p class="rp-hint" data-graphics-status>Loading fonts…</p>
+  `);
+
+  wireGraphics(type, competitions, teams);
+}
+
+function wireGraphics(type, competitions, teams) {
+  const canvas = view.querySelector("[data-board]");
+  const status = view.querySelector("[data-graphics-status]");
+  const downloadBtn = view.querySelector("[data-download]");
+  const saveBtn = view.querySelector("[data-save-draft]");
+  const form = view.querySelector("[data-graphics-form]");
+
+  // Resolved once per screen visit and reused across redraws — a crest is
+  // the same image whichever field triggered this one.
+  const crestRefs = new Map();
+  async function teamRef(team, key) {
+    if (crestRefs.has(key)) return crestRefs.get(key);
+    const img = await graphics.loadCrest(team.legacy_code, team.club_id);
+    const ref = { name: team.display_name || "?", img };
+    crestRefs.set(key, ref);
+    return ref;
+  }
+
+  let currentMatches = [];
+  let selected = new Set();
+
+  async function buildMatchState() {
+    const compId = form.comp.value;
+    const isAll = compId === GRAPHICS_ALL_COMPS;
+    const rows = currentMatches.filter((m) => selected.has(m.match_id));
+    const matches = await Promise.all(rows.map(async (m) => ({
+      home: await teamRef(m.home, `${m.match_id}-h`),
+      away: await teamRef(m.away, `${m.match_id}-a`),
+      kickoff: boardKickoff(m.kickoff),
+      homeGoals: m.home_goals, awayGoals: m.away_goals,
+      dateLabel: formatShortDate(m.date),
+      venue: m.venue?.name || "",
+      // Undefined (not null) in single-competition mode: graphics.js's own
+      // `m.when != null` check then falls through to its date/venue default,
+      // which is the one place that default still belongs.
+      when: isAll
+        ? [competitions.find((c) => c.id === m.competition_id)?.label,
+           formatShortDate(m.date)].filter(Boolean).join(" · ")
+        : undefined,
+    })));
+    const dates = rows.map((m) => m.date).filter(Boolean).sort();
+    const range = !dates.length ? "" : dates[0] === dates[dates.length - 1]
+      ? formatShortDate(dates[0])
+      : `${formatShortDate(dates[0])} – ${formatShortDate(dates[dates.length - 1])}`;
+    // A mixed board has no one competition's season to name on the watermark
+    // — better silent than picking one of several arbitrarily.
+    const season = isAll ? null : await activeSeason().catch(() => null);
+    const autoEyebrow = isAll ? (type === "fixtures" ? "This weekend" : "Results")
+      : competitions.find((c) => c.id === compId)?.label || "";
+    return {
+      competitionName: form.eyebrow.value.trim() || autoEyebrow,
+      standfirstLeft: range, standfirstRight: "",
+      seasonLabel: season?.label || "", matches,
+      headline: form.headline.value.trim(), subtext: form.subtext.value.trim(),
+    };
+  }
+
+  async function buildScorerState() {
+    const compId = form.comp.value;
+    const headline = form.headline.value.trim();
+    const subtext = form.subtext.value.trim();
+    if (!compId) {
+      return { competitionName: "", standfirstLeft: "", standfirstRight: "",
+        seasonLabel: "", rows: [], headline, subtext };
+    }
+    const compLabel = competitions.find((c) => c.id === compId)?.label || "";
+    const topN = Number(form.topn.value) || 8;
+    const { rows, seasonLabel } = await loadTopScorers(compId, topN);
+    const withCrests = await Promise.all(rows.map(async (r) => ({
+      ...r,
+      team: r.team ? await teamRef(r.team, r.team.legacy_code || r.team.club_id) : null,
+    })));
+    return {
+      competitionName: compLabel, standfirstLeft: "", standfirstRight: "",
+      seasonLabel, rows: withCrests, headline, subtext,
+    };
+  }
+
+  async function buildEditorialState() {
+    const typed = form.team.value.trim();
+    let team = null;
+    if (typed) {
+      const match = teams.find((t) => t.display_name.toLowerCase() === typed.toLowerCase());
+      if (match) team = await teamRef(match, match.team_id);
+    }
+    return {
+      eyebrow: form.eyebrow.value.trim(),
+      headline: form.headline.value.trim(),
+      subtext: form.subtext.value.trim(),
+      team,
+    };
+  }
+
+  async function redraw() {
+    if (type === "scorers" && form.comp.value) status.textContent = "Loading…";
+    await graphics.ensureFonts();
+    const state = type === "editorial" ? await buildEditorialState()
+      : type === "scorers" ? await buildScorerState()
+      : await buildMatchState();
+    graphics.drawBoard(canvas, type, state);
+    const hasContent = type === "editorial" ? Boolean(state.headline)
+      : type === "scorers" ? state.rows.length > 0
+      : state.matches.length > 0;
+    downloadBtn.disabled = !hasContent;
+    saveBtn.disabled = !hasContent;
+    status.textContent = hasContent ? "" : (
+      type === "editorial" ? "Add a headline to see a full preview."
+      : type === "scorers" ? "Choose a competition with recorded goals this season."
+      : "Choose a competition and at least one match.");
+    return state;
+  }
+
+  const debounce = (fn, ms = 150) => {
+    let timer;
+    return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+  };
+
+  if (type === "editorial") {
+    const redrawSoon = debounce(redraw);
+    ["eyebrow", "headline", "subtext", "team"].forEach((name) => {
+      form[name].addEventListener("input", redrawSoon);
+    });
+  } else if (type === "scorers") {
+    const redrawSoon = debounce(redraw);
+    form.comp.addEventListener("change", redraw);
+    form.topn.addEventListener("change", redraw);
+    form.headline.addEventListener("input", redrawSoon);
+    form.subtext.addEventListener("input", redrawSoon);
+  } else {
+    const list = view.querySelector("[data-match-list]");
+    let loadToken = 0;
+    const redrawSoon = debounce(redraw);  // the Label/Headline/Subtext fields are free text
+
+    function wireMatchChecks() {
+      list.querySelectorAll('[data-match-checks] input[type="checkbox"]').forEach((box) => {
+        box.addEventListener("change", () => {
+          if (box.checked) selected.add(box.value); else selected.delete(box.value);
+          redraw();
+        });
+      });
+    }
+
+    async function loadMatches() {
+      const compId = form.comp.value;
+      const from = form.from.value;
+      const to = form.to.value;
+      if (!compId || !from || !to) {
+        currentMatches = []; selected = new Set();
+        list.innerHTML = `<p class="rp-hint">Choose a competition to see its matches.</p>`;
+        await redraw();
+        return;
+      }
+      const token = ++loadToken;
+      list.innerHTML = `<p class="rp-hint">Loading matches…</p>`;
+      try {
+        const rows = type === "fixtures"
+          ? await loadUpcomingMatches(compId, from, to)
+          : await loadRecentResults(compId, from, to);
+        if (token !== loadToken) return;  // a newer request already landed
+        currentMatches = rows;
+        // A weekend preview defaults to its first three — roomy density,
+        // legible on a phone thumbnail. Trimming or adding is one tap.
+        selected = new Set(rows.slice(0, 3).map((m) => m.match_id));
+        const compLabelOf = compId === GRAPHICS_ALL_COMPS
+          ? (id) => competitions.find((c) => c.id === id)?.label || id : null;
+        list.innerHTML = matchListHtml(type, rows, selected, compLabelOf);
+        wireMatchChecks();
+      } catch (error) {
+        if (token !== loadToken) return;
+        list.innerHTML = `<p class="rp-empty">Could not load matches.</p>`;
+        flash(humanError(error), "error");
+      }
+      await redraw();
+    }
+
+    form.eyebrow.addEventListener("input", redrawSoon);
+    form.headline.addEventListener("input", redrawSoon);
+    form.subtext.addEventListener("input", redrawSoon);
+    form.comp.addEventListener("change", loadMatches);
+    form.from.addEventListener("change", loadMatches);
+    form.to.addEventListener("change", loadMatches);
+    form.querySelectorAll("[data-range]").forEach((button) => {
+      button.onclick = () => {
+        const days = button.dataset.range === "14d" ? 14 : 7;
+        const sign = type === "fixtures" ? 1 : -1;
+        const range = button.dataset.range === "weekend" ? weekendRange()
+          : type === "fixtures"
+            ? { from: todayIso(), to: addDaysIso(todayIso(), sign * days) }
+            : { from: addDaysIso(todayIso(), sign * days), to: todayIso() };
+        form.from.value = range.from;
+        form.to.value = range.to;
+        loadMatches();
+      };
+    });
+
+    loadMatches();
+  }
+
+  downloadBtn.onclick = async () => {
+    const blob = await graphics.exportPng(canvas);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `everyleague-${type}-${todayIso()}.png`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  saveBtn.onclick = async () => {
+    const ok = await trendingAction(saveBtn, "Saving…", async () => {
+      const state = type === "editorial" ? await buildEditorialState()
+        : type === "scorers" ? await buildScorerState()
+        : await buildMatchState();
+      const blob = await graphics.exportPng(canvas);
+      const file = new File([blob], "graphic.png", { type: "image/png" });
+      const imagePath = await uploadTrendingImage(file);
+      // A typed headline (fixtures/results/scorers all offer one now, same as
+      // Announcement) says more than the auto-generated one and becomes the
+      // homepage card's actual headline; its subtext becomes the card body.
+      const autoHeadline = type === "scorers"
+        ? `${state.competitionName || "Top scorers"}`
+          + `${state.seasonLabel ? ` — ${state.seasonLabel}` : ""}`
+        : `${state.competitionName || (type === "fixtures" ? "Fixtures" : "Results")}`
+          + `${state.standfirstLeft ? ` — ${state.standfirstLeft}` : ""}`;
+      const headline = (type === "editorial" ? state.headline
+        : state.headline || autoHeadline).slice(0, TRENDING_HEADLINE_MAX);
+      const body = type === "editorial" ? "" : (state.subtext || "").slice(0, TRENDING_BODY_MAX);
+      const eyebrow = type === "editorial" ? state.eyebrow
+        : type === "scorers" ? "Top scorers"
+        : type === "fixtures" ? "Weekend preview" : "Results";
+      const { error } = await supabase.rpc("save_trending_card", {
+        p_card_id: null, p_eyebrow: eyebrow, p_headline: headline, p_body: body,
+        p_link_url: "", p_link_label: "", p_image_path: imagePath,
+        p_image_alt: "", p_image_credit: "",
+      });
+      if (error) throw error;
+    });
+    if (ok) {
+      flash("Saved as a homepage draft — add a link and publish it from there.", "ok");
+      location.hash = "#/trending?tab=draft";
+    }
+  };
+
+  redraw();
+}
+
 // ── Reporters ────────────────────────────────────────────────────────────────
 // THE SCREEN THAT MEANS A NEW REPORTER DOES NOT HAVE TO WAIT FOR A LAPTOP.
 //
@@ -8483,6 +9122,7 @@ async function route() {
   if (path === "/account") return renderAccount();
   if (path === "/players") return renderPlayers(params);
   if (path === "/trending") return renderTrending(params);
+  if (path === "/graphics") return renderGraphics(params);
   if (path === "/reporters") return renderReporters();
   if (path === "/login") { location.hash = "#/"; return; }
   return renderHome(params);

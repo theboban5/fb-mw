@@ -1103,3 +1103,42 @@ a { color: var(--accent); }
   color: var(--muted);
   opacity: 0.85;
 }
+
+/* ─── Graphics (#/graphics) ───────────────────────────────────────────────────
+   The canvas is always drawn at graphics.BOARD (1080) regardless of its CSS
+   size — width:100% here is a display scale, not the export resolution. */
+.rp-canvas-wrap {
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #15171a; /* graphics.TOKENS.ground — the board's own surface,
+                           kept solid so a loading canvas never flashes white */
+}
+.rp-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+/* One row per candidate match in the fixture/results picker. A checkbox big
+   enough to tap reliably, the fixture as the label so tapping the text also
+   toggles it. */
+.rp-match-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.88rem;
+}
+.rp-match-check:last-child { border-bottom: 0; }
+.rp-match-check input { width: 20px; height: 20px; flex: 0 0 auto; }
+.rp-match-check em {
+  display: block;
+  font-style: normal;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
