@@ -200,7 +200,6 @@ MW_MW2_M1,MW_MW2,m,u14,1,Mseteka Welding U14,,
 MW_CA_M1,MW_CA,m,u14,1,Cyclones Academy U14,,
 MW_HY_M1,MW_HY,m,u14,1,Hammers Youth U14,,
 MW_HU_M1,MW_HU,m,u14,1,Hilltop United U14,,
-MW_MC2_M1,MW_MC2,m,u16,1,Mzuzu city U16,,
 MW_NU2_M1,MW_NU2,m,senior,1,Nthalire United,,
 MW_MZWA_M1,MW_MZWA,m,senior,1,Mzwawa FC,,
 MW_WOVW_M1,MW_WOVW,m,senior,1,Wovwe FC,,
@@ -269,11 +268,9 @@ MW_EAU_M1,MW_EAU,m,u16,1,El'Simango Academy U16,,
 MW_YWRU_M1,MW_YWRU,m,u16,1,Young Warriors Reserve U16,,
 MW_CA_MU16,MW_CA,m,u16,1,Cyclones Academy U16,,active
 MW_CRS2_MU16,MW_CRS2,m,u16,1,Chibavi Real stars U16,,active
-MW_HY_MU16,MW_HY,m,u16,1,Hammers Youth U16,,active
 MW_MW2_MU16,MW_MW2,m,u16,1,Mseteka Welding U16,,active
 MW_GS2_MU16,MW_GS2,m,u16,1,Golden Stars U16,,active
 MW_TA_MU16,MW_TA,m,u16,1,Topik Academy U16,,active
-MW_HU_MU16,MW_HU,m,u16,1,Hilltop United U16,,active
 MW_A1A_MU16,MW_A1A,m,u16,1,Area 1B Academy U16,,active
 MW_VSA2_MU16,MW_VSA2,m,u16,1,Vision Soccer Academy U16,,active
 MW_MA2_MU16,MW_MA2,m,u16,1,Mzuzu Academy U16,,active
@@ -290,3 +287,6 @@ MW_YB_MU14,MW_YB,m,u14,1,Young Buffaloes U14,,active
 MW_TA_MU14,MW_TA,m,u14,1,Topik Academy U14,,active
 MW_GS2_MU14,MW_GS2,m,u14,1,Golden Stars U14,,active
 MW_CRS2_MU14,MW_CRS2,m,u14,1,Chibavi Real stars U14,,active
+MW_KU2_MU16,MW_KU2,m,u16,1,Katoto United U16,,active
+MW_MCHY_MU16,MW_MCHY,m,u16,1,Mzuzu City Hammers U16,,active
+MW_MMM_MU16,MW_MMM,m,u16,1,Mpira mmudzi mwathu U16,,active
