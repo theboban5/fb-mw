@@ -807,7 +807,7 @@ def _unconfirmed_legend(matches):
 def render_results(matches, teams, season="", league_name="", crest=None, league_logo="",
                    goals_by_match=None, compact=False, club_hrefs=None,
                    md_labels=None, md_chips=None, lineups_by_match=None,
-                   player_pages=None, official_pages=None):
+                   player_pages=None, official_pages=None, groups=None):
     # `md_labels`/`md_chips` (cup pages) override the round header and the
     # pager chip text per matchday — "SEMI-FINALS"/"SF" instead of
     # "MATCHDAY 1"/"1". Leagues never pass them.
@@ -817,9 +817,19 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
     # `lineups_by_match` is {match_id: (home sheet, away sheet)} from
     # adapt.league_data — absent, or empty for a match nobody has entered one
     # for, which is still almost every match. The block simply does not render.
+    # `groups` is the same code -> entries."group" map render_standings reads
+    # (empty for every competition but the NRFA Division Two League): every
+    # match already sits under a MATCHDAY heading, and a cluster is a second,
+    # independent cut across the same fixture list, so it renders as a label
+    # on each row plus its own chip filter rather than a second nested table.
     crest = crest or (lambda code: None)
     club_hrefs = club_hrefs or {}
     lineups_by_match = lineups_by_match or {}
+    groups = groups or {}
+    has_groups = bool(groups)
+
+    def cluster_of(m):
+        return groups.get(m.home_code) or groups.get(m.away_code, "")
     # Group every match by matchday — played results and not-yet-played fixtures
     # alike. A row with blank goals is a fixture (Match.played is False): it shows
     # kickoff info instead of a score, and standings/scorers already ignore it.
@@ -881,6 +891,20 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
         v2.append('<button type="button" class="v2-md-nav" data-md-next '
                   'aria-label="Later matchday">&rsaquo;</button>')
         v2.append("</div>")  # /v2-md-pager
+        if has_groups:
+            grp_labels = sorted({g for g in groups.values() if g},
+                                key=standings.group_key)
+            chip_text = _group_chips(grp_labels)
+            v2.append('<div class="v2-cluster-pager" data-cluster-pager hidden>')
+            v2.append('<div class="v2-md-strip" data-cluster-strip>')
+            v2.append('<button type="button" class="v2-md-chip" '
+                      'data-cluster-chip="">All</button>')
+            for label in grp_labels:
+                v2.append(f'<button type="button" class="v2-md-chip" '
+                          f'data-cluster-chip="{escape(label, quote=True)}">'
+                          f'{escape(chip_text[label] or label)}</button>')
+            v2.append("</div>")  # /v2-md-strip
+            v2.append("</div>")  # /v2-cluster-pager
         v2.append('<div class="v2-results-outer">')
         colspan = 3 if compact else (5 if has_venue else 4)
         table_cls = "v2-results-table v2-results-compact" if compact else "v2-results-table"
@@ -900,10 +924,15 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
             # Chronological within a matchday: date, then kickoff time (a
             # blank kickoff — not yet announced — sorts after a known one on
             # the same date rather than before it), home_code as a stable
-            # tiebreaker for same-day matches with no announced kickoff.
+            # tiebreaker for same-day matches with no announced kickoff. A
+            # clustered competition sorts by cluster first, so a matchday
+            # reads as its clusters' blocks rather than an interleaved shuffle
+            # — the same order a reader with no JS (so no chip filter) gets.
             day_matches = sorted(
                 by_day[md],
-                key=lambda x: (x.date, x.kickoff == "", x.kickoff, x.home_code),
+                key=lambda x: (
+                    standings.group_key(cluster_of(x)) if has_groups else (False, ""),
+                    x.date, x.kickoff == "", x.kickoff, x.home_code),
             )
             v2.append(f'<tbody class="v2-md-group" data-md="{md}">')
             header = (md_labels or {}).get(md)
@@ -937,24 +966,33 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                 kickoff = escape(getattr(m, "kickoff_label", ""))
                 date_cell = date + (f'<span class="v2-res-time">{kickoff}</span>'
                                     if kickoff else "")
+                # The cluster, when this competition has any: every row this
+                # match produces (meta/result/scorers/line-ups) carries the
+                # same data-cluster, so the chip filter hides them together.
+                grp = cluster_of(m) if has_groups else ""
+                grp_attr = f' data-cluster="{escape(grp, quote=True)}"' if grp else ""
                 if compact:
                     meta = _match_meta(m, date)
+                    if grp:
+                        meta = f"{meta} &middot; {escape(grp)}" if meta else escape(grp)
                     # No date and no venue (e.g. matchday-only leagues): skip the
                     # caption row entirely rather than render an empty line.
                     if meta:
                         v2.append(
-                            f'<tr class="v2-res-meta-row{alt_cls}">'
+                            f'<tr class="v2-res-meta-row{alt_cls}"{grp_attr}>'
                             f'<td colspan="3"><span class="v2-res-meta">{meta}</span></td></tr>'
                         )
                     v2.append(
-                        f'<tr class="v2-res-row v2-res-row-compact{fix_cls}{alt_cls}">'
+                        f'<tr class="v2-res-row v2-res-row-compact{fix_cls}{alt_cls}"{grp_attr}>'
                         f'<td class="v2-res-home">{home_cell}</td>'
                         f'{score_cell}'
                         f'<td class="v2-res-away">{away_cell}</td></tr>'
                     )
                 else:
+                    if grp:
+                        date_cell += f'<span class="v2-res-time">{escape(grp)}</span>'
                     row = (
-                        f'<tr class="v2-res-row{fix_cls}{alt_cls}">'
+                        f'<tr class="v2-res-row{fix_cls}{alt_cls}"{grp_attr}>'
                         f'<td class="v2-res-date">{date_cell}</td>'
                         f'<td class="v2-res-home">{home_cell}</td>'
                         f'{score_cell}'
@@ -967,7 +1005,7 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                 scorers_html = _scorers_block(m, goals_by_match)
                 if scorers_html:
                     v2.append(
-                        f'<tr class="v2-scorers-row{alt_cls}">'
+                        f'<tr class="v2-scorers-row{alt_cls}"{grp_attr}>'
                         f'<td colspan="{colspan}">{scorers_html}</td></tr>'
                     )
                 home_sheet, away_sheet = lineups_by_match.get(
@@ -978,6 +1016,10 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                     player_href=player_href_for("../", player_pages),
                     colspan=colspan, officials=m.officials,
                     official_href=official_href_for("../", official_pages))
+                if lineup_html and grp_attr:
+                    lineup_html = lineup_html.replace(
+                        '<tr class="el-lineup-row">',
+                        f'<tr class="el-lineup-row"{grp_attr}>', 1)
                 if lineup_html:
                     v2.append(lineup_html)
             v2.append("</tbody>")  # /v2-md-group
@@ -1528,6 +1570,10 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
         f'<img class="site-logo" src="{escape(league_logo)}" alt="">' if league_logo else ""
     )
 
+    # code -> cluster, the same map render_standings reads off `rows` —
+    # empty for every competition but the NRFA Division Two League.
+    groups = {s.code: s.group for s in rows if s.group}
+
     results_page = ("Matches", render_results(
         matches, teams, season=season, league_name=league_name,
         crest=crest, league_logo=league_logo,
@@ -1539,7 +1585,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
         goals_by_match=goals_by_match, compact=True, club_hrefs=club_hrefs,
         md_labels=md_labels, md_chips=md_chips,
         lineups_by_match=lineups_by_match, player_pages=player_pages,
-        official_pages=official_pages,
+        official_pages=official_pages, groups=groups,
     ))
 
     if kind == "cup":

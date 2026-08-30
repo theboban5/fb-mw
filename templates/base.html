@@ -105,6 +105,39 @@
   pager.hidden=false;
   select(chips[0]);
 })();
+
+/* The cluster filter on a results page. Every row of a match (its date/venue
+   caption, the score row, scorers, line-ups) carries the same data-cluster,
+   so one hide/show pass handles all of them; a matchday's own heading hides
+   too when nothing under it survives the filter (a cluster with a bye that
+   round). Opens on "All" for the same reason the standings one does. */
+(function(){
+  var pager=document.querySelector('.v2-content [data-cluster-pager]');
+  if(!pager) return;
+  var chips=[].slice.call(pager.querySelectorAll('[data-cluster-chip]'));
+  var real=chips.filter(function(c){return c.dataset.clusterChip!=='';});
+  if(real.length<2) return; // one cluster is just the whole list
+  var rows=[].slice.call(document.querySelectorAll('.v2-content [data-cluster]'));
+  var heads=[].slice.call(document.querySelectorAll('.v2-content .v2-md-row'));
+  function select(chip){
+    var want=chip.dataset.clusterChip;
+    rows.forEach(function(r){r.hidden=(want!=='' && r.dataset.cluster!==want);});
+    heads.forEach(function(h){
+      var tbody=h.closest('tbody');
+      var any=[].slice.call(tbody.querySelectorAll('[data-cluster]')).some(function(r){return !r.hidden;});
+      h.hidden=!any;
+    });
+    chips.forEach(function(c){
+      var on=(c===chip);
+      c.classList.toggle('active',on);
+      if(on){c.setAttribute('aria-current','true');}
+      else{c.removeAttribute('aria-current');}
+    });
+  }
+  chips.forEach(function(c){c.addEventListener('click',function(){select(c);});});
+  pager.hidden=false;
+  select(chips[0]);
+})();
 </script>
 </body>
 </html>

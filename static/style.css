@@ -597,6 +597,19 @@ table.v2-standings {
   border-bottom: 1px solid #e4e4e4;
 }
 .v2-md-pager[hidden] { display: none; }
+
+/* The cluster filter on a results page (NRFA Division Two League): a second,
+   independent cut across the same matchday list, so it sits right under the
+   matchday pager rather than reusing its sticky positioning — two elements
+   both pinned at top:0 would overlap, since sticky doesn't know about the
+   other one's height. Same chip strip/chip classes as the matchday pager. */
+.v2-cluster-pager {
+  display: flex;
+  padding: 6px 0 8px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid #e4e4e4;
+}
+.v2-cluster-pager[hidden] { display: none; }
 .v2-md-strip {
   flex: 1;
   display: flex;
