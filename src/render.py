@@ -607,8 +607,15 @@ def _standings_table(rows, form, changes, crest, club_hrefs, withdrawn,
         "<thead><tr>",
         '<th class="v2-th-pos">POS</th>',
         '<th class="v2-th-team">TEAM</th>',
-        "<th>P</th><th>W</th><th>D</th><th>L</th>",
-        "<th>GOALS</th><th>DIFF</th>",
+        # v2-hide-narrow is the phone's column budget, spelled out on the cells
+        # rather than counted off in CSS. DIFF is deliberately not in it: it is
+        # the number that breaks a tie on points, so a table without it cannot
+        # be checked by the reader, and it is the cheapest of the five to keep.
+        "<th>P</th>",
+        '<th class="v2-hide-narrow">W</th>'
+        '<th class="v2-hide-narrow">D</th>'
+        '<th class="v2-hide-narrow">L</th>',
+        '<th class="v2-hide-narrow">GOALS</th><th class="v2-th-gd">DIFF</th>',
         '<th class="v2-th-pts">PTS</th>',
         '<th class="v2-th-form">FORM</th>',
         "</tr></thead>",
@@ -653,8 +660,12 @@ def _standings_table(rows, form, changes, crest, club_hrefs, withdrawn,
             f'<td class="v2-pos{zone_cls}"><span class="v2-arrow {arrow_cls}">{arrow_glyph}</span> {i}.</td>'
             f'<td class="v2-team-name">'
             f'<a class="{name_cls}" href="{escape(href)}">{c}{escape(s.name)}</a></td>'
-            f"<td>{s.played}</td><td>{s.won}</td><td>{s.drawn}</td><td>{s.lost}</td>"
-            f'<td class="v2-tor">{tor}</td><td>{gd}</td>'
+            f"<td>{s.played}</td>"
+            f'<td class="v2-hide-narrow">{s.won}</td>'
+            f'<td class="v2-hide-narrow">{s.drawn}</td>'
+            f'<td class="v2-hide-narrow">{s.lost}</td>'
+            f'<td class="v2-tor v2-hide-narrow">{tor}</td>'
+            f'<td class="v2-gd">{gd}</td>'
             f'<td class="v2-pts">{pts}</td>'
             f'<td class="v2-form">{_form_cell(form.get(s.code, []))}</td>'
             "</tr>"

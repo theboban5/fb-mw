@@ -500,6 +500,7 @@ table.v2-standings {
 }
 .v2-th-pts { text-align: center; }
 .v2-tor { font-variant-numeric: tabular-nums; }
+.v2-gd { font-variant-numeric: tabular-nums; }
 
 /* dynamic position-change arrows (override the neutral base, but never the
    leader row whose arrow stays light against the green fill) */
@@ -783,22 +784,28 @@ table.v2-results-table {
 
 /* ─── V2 mobile (≤ 540px) ───────────────────────────── */
 @media (max-width: 540px) {
-  /* standings: hide W, D, L, GOALS, DIFF — show POS TEAM P PTS FORM.
-     :not(.scorers-table) so the goalscorers table (which shares .v2-standings
-     but has GOALS as its 4th column) keeps every column. */
-  .v2-standings:not(.scorers-table) th:nth-child(4),
-  .v2-standings:not(.scorers-table) th:nth-child(5),
-  .v2-standings:not(.scorers-table) th:nth-child(6),
-  .v2-standings:not(.scorers-table) th:nth-child(7),
-  .v2-standings:not(.scorers-table) th:nth-child(8),
-  .v2-standings:not(.scorers-table) td:nth-child(4),
-  .v2-standings:not(.scorers-table) td:nth-child(5),
-  .v2-standings:not(.scorers-table) td:nth-child(6),
-  .v2-standings:not(.scorers-table) td:nth-child(7),
-  .v2-standings:not(.scorers-table) td:nth-child(8) { display: none; }
+  /* standings: hide W, D, L, GOALS — show POS TEAM P DIFF PTS FORM.
+     DIFF used to be hidden with them and readers kept asking for it back: it
+     is what separates two clubs level on points, so a table without it cannot
+     be checked, and at two or three characters it is the cheapest column of
+     the five to buy back. The team name absorbs the width (it already wraps).
+
+     WHAT WAS WRONG: this hid columns 4 through 8 BY POSITION, and every other
+     table that borrows .v2-standings has different columns in those slots —
+     it was hiding a player's G and A on their own profile, and a referee's
+     role. `:not(.scorers-table)` was the first patch for exactly that, one
+     table at a time. The cells say which ones are optional now. */
+  .v2-standings .v2-hide-narrow { display: none; }
+  /* The number is 1-3 chars ("+12", "0", "-7") and must not be what wraps. */
+  .v2-th-gd, .v2-gd { width: 2rem; }
+  /* A pixel off each side of every cell and a pixel off each badge gap: the
+     column has to come from somewhere, and this is the only place it can come
+     from that nobody can see. It buys back most of DIFF's width, so on a 390px
+     phone only the longest names ("Goshen City Dedza Dynamos") wrap to a
+     second line — which they are already allowed to do, three rules down. */
   .v2-standings th,
-  .v2-standings td { padding: 11px 4px; }
-  .v2-form-badge { width: 16px; height: 16px; line-height: 16px; }
+  .v2-standings td { padding: 11px 3px; }
+  .v2-form-badge { width: 16px; height: 16px; line-height: 16px; margin: 0 1px; }
   .v2-th-pos { width: 3rem; }
   .v2-th-team,
   .v2-team-name { padding-left: 8px !important; }
@@ -1837,8 +1844,11 @@ table.v2-results-compact { table-layout: fixed; width: 100%; }
   color: #666;
 }
 
-/* Group-table snapshot. Its own table class, not .v2-standings: the league
-   table's narrow-screen rules hide columns 4-8, which here are W/D/L/PTS. */
+/* Group-table snapshot. Its own table class, not .v2-standings — originally
+   because the league table's narrow-screen rules hid columns 4-8 by position,
+   which here are W/D/L/PTS. Those rules hide named cells now (.v2-hide-narrow)
+   so borrowing the class would be safe; the separate one stays because a
+   group table is styled differently anyway, and every column fits. */
 table.nt-table {
   width: 100%;
   border-collapse: collapse;
