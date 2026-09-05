@@ -11,3 +11,9 @@ staging-*/
 # Generated post packs. Every run can be rebuilt from the sheet, and the PNGs
 # are large — nothing here belongs in git.
 out/
+
+# Supabase CLI scratch. `cli-latest` is a version cache and
+# `linked-project.json` records which project THIS machine is linked to —
+# both are local state that npx rewrites on every run, so they showed up as
+# spurious modifications in every diff after a db push.
+supabase/.temp/

@@ -1,0 +1,9 @@
+{
+  "name": "fb-mw",
+  "private": true,
+  "type": "module",
+  "description": "Not a Node project. This file exists so that `node --test` can load the reporter portal's ES modules directly — Node treats a bare .js file as CommonJS unless the nearest package.json says otherwise, and the portal's modules are ESM because browsers load them that way. There are no dependencies and there is no build step; see CLAUDE.md.",
+  "scripts": {
+    "test": "node --test 'tests/js/*.mjs'"
+  }
+}

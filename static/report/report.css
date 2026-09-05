@@ -1237,3 +1237,151 @@ a { color: var(--accent); }
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* ─── The matchday grid (#/results) ───────────────────────────────────────────
+
+   Eight results on one screen, on a 390px phone. It is CALLED a grid and it is
+   deliberately not laid out as one: team / score / score / team / status in
+   five columns is unreadable at this width and scrolls sideways, which the
+   site's own rule forbids. Each match is a small stacked card — a side per
+   line with its score box beside it — so the pairing is never ambiguous and
+   nothing has to be scrolled to.
+
+   Three states a row can be in, and they must be tellable apart at a glance
+   without reading: saved (plain), changed but not published (amber edge), and
+   already carries a result that is being replaced (red edge, and it holds a
+   confirmation the reporter has to tap through). */
+
+/* The primary way into the app now, so it is the one full-width button above
+   the row of ghosts rather than one more of them. */
+.rp-btn.is-lead { margin-top: 0; margin-bottom: 8px; font-size: 1.02rem; }
+
+.rp-grid-list { list-style: none; margin: 10px 0 0; padding: 0; }
+
+.rp-gr {
+  padding: 10px 12px 12px; margin-top: 10px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--row-alt);
+}
+/* Additive, never reflowing: the border colour changes and the box does not
+   move, so a score being typed does not shift the line under the thumb. */
+.rp-gr.is-edit { border-color: var(--warn); background: var(--warn-wash); }
+.rp-gr.is-bad  { border-color: var(--danger); background: var(--danger-wash); }
+
+.rp-gr-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; min-height: 20px; margin-bottom: 4px;
+}
+.rp-gr-meta { color: var(--muted); font-size: 0.76rem; }
+
+/* One side of the match. The name takes the room it needs and the score box is
+   a fixed 64px on the right, so every box on the screen lines up in one column
+   and a reporter working down a matchday hits the same spot every time. */
+.rp-gr-side {
+  display: flex; align-items: center; gap: 10px;
+  padding: 4px 0;
+}
+.rp-gr-team {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 1rem; font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.rp-gr-score {
+  flex: 0 0 64px; width: 64px;
+  min-height: var(--tap);
+  padding: 8px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--bg); color: var(--ink);
+  font-family: inherit; font-size: 1.25rem; font-weight: 800;
+  font-variant-numeric: tabular-nums; text-align: center;
+}
+.rp-gr-score:focus {
+  outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent);
+}
+/* A match that was not played has no score to enter. Dimmed rather than
+   removed: the boxes vanishing would reflow every row below it. */
+.rp-gr-score[disabled] { opacity: 0.4; background: var(--row-alt); }
+
+/* Quiet, because on nine rows out of ten it says "Full time" and the reporter
+   never touches it. */
+.rp-gr-status {
+  margin-top: 6px; min-height: 40px; padding: 6px 10px;
+  font-size: 0.85rem; background: var(--bg);
+}
+
+.rp-gr-conflict { margin-top: 10px; }
+.rp-gr-conflict p { margin: 0 0 8px; font-size: 0.82rem; color: var(--danger); }
+.rp-gr-conflict .rp-btn { margin-top: 0; min-height: 44px; font-size: 0.85rem; }
+
+/* The source chips. Four canned answers plus "Direct report by me", each one
+   tap, with the free-text box under them that always wins. */
+.rp-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.rp-chip {
+  min-height: 40px; padding: 6px 12px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--bg); color: var(--ink);
+  font-family: inherit; font-size: 0.84rem; cursor: pointer;
+}
+.rp-chip.is-on {
+  border-color: var(--accent); background: var(--accent-wash);
+  color: var(--accent); font-weight: 700;
+}
+.rp-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Shipped in the markup and revealed by JS (the carousel-dots pattern), so a
+   row becoming a conflict does not have to be redrawn under the thumb that is
+   typing into it. Explicit, because `hidden` loses to any display rule. */
+.rp-gr-conflict[hidden] { display: none; }
+
+/* ─── Reading results off a picture (#/import) ────────────────────────────────
+
+   The review screen is the matchday grid with a header on each row, so almost
+   everything here is that header: the confidence chip, what the model read,
+   and why the match is uncertain. The row itself — the score boxes, the status
+   select, the conflict block — is .rp-gr and is not restyled, because an
+   imported row and a typed one must not look like different kinds of thing. */
+
+.rp-btn.is-lead.is-alt {
+  background: var(--bg); color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.rp-imp-preview {
+  display: block; width: 100%; height: auto; margin-top: 10px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+}
+
+.rp-imp-group + .rp-imp-group { margin-top: 22px; }
+
+.rp-imp-head {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px;
+  margin-bottom: 6px;
+}
+
+/* Colour is never the only signal — each chip carries its own word, because a
+   green dot and an amber one are the same dot to a colour-blind reporter and
+   to anyone reading a phone in direct sun. */
+.rp-conf {
+  flex: none;
+  padding: 2px 8px; border-radius: 999px;
+  font-size: 0.68rem; font-weight: 800; letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.rp-conf.is-green  { background: var(--accent-wash); color: var(--accent); }
+.rp-conf.is-yellow { background: var(--warn-wash);   color: var(--warn); }
+.rp-conf.is-red    { background: var(--danger-wash); color: var(--danger); }
+
+/* What the model actually read, kept beside the row it produced — it is what
+   a reporter checks against the picture when something looks wrong. */
+.rp-imp-raw { margin: 0; color: var(--muted); font-size: 0.76rem; }
+.rp-imp-raw span { color: var(--ink); font-weight: 600; }
+
+.rp-imp-why {
+  margin: 0 0 8px; color: var(--warn);
+  font-size: 0.78rem; line-height: 1.45;
+}
+
+/* The offer on a yellow row. Full width and a proper tap target: it is the
+   one gesture that turns a suggestion into something that will be published,
+   so it should not be a link-sized thing to hit with a thumb. */
+.rp-imp-use {
+  width: 100%; margin: 0 0 10px; min-height: 44px; font-size: 0.9rem;
+}

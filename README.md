@@ -497,6 +497,8 @@ the ordinary static tree copy. No framework, no bundler, no build step.
 /report/#/              today · awaiting result · upcoming · recently reported
 /report/#/login         email + password (no public signup)
 /report/#/m/<public-id> the reporting screen — this is the WhatsApp link
+/report/#/results       a whole matchday's scores on one screen, published at once
+/report/#/import        read those results off a screenshot, post or pasted text
 /report/#/add           add a whole fixture list to a competition you cover
 /report/#/league/new    create a competition and its teams (admin only)
 /report/#/reporters     the reporter pool: create, assign, promote (admin only)
@@ -807,6 +809,131 @@ invents is named `ZZ *`, and `TeardownAuditTest` — named to sort last — fail
 loudly if any of it survived. A failed teardown would otherwise put a fake
 league on everyleague.co at the next build with nothing to complain about it.
 
+### A matchday is not a match (`#/results`)
+
+A matchday arrives the way a fixture list arrives: one graphic, eight results,
+read off a phone at a bus stage. The portal only ever knew how to report one
+match, so that was eight screens — open, tap the steppers, type the source,
+publish, go back, find the next one — eight round trips on one bar of signal,
+with the **same** source typed eight times. `#/results` is that afternoon as
+one screen and one button, and it is deliberately the shape of `#/add`: the
+things the whole matchday shares said once at the top, a line per match, one
+submission, per-line answers.
+
+**Choose a competition, then a matchday or a date.** Arriving from a filtered
+home screen carries the context across (`#/results?comp=…&md=…&date=…` — the
+same parameter names as the home filters), and the "＋ Add matchday results"
+button on the home screen builds that link from whatever is already filtered.
+With nothing to go on the grid opens on the earliest matchday that still has a
+fixture with no result, which is what a reporter came to fill in.
+
+**It looks like a grid and is laid out as cards.** Team / score / score / team
+/ status in five columns is unreadable at 390px and scrolls sideways, which the
+site's own rule forbids. Each match is a small stacked card, a side per line
+with its score box beside it, so the pairing is never ambiguous.
+
+Three row states, tellable apart without reading:
+
+| | |
+|---|---|
+| plain | saved data, unchanged, and not in the submission |
+| amber, "Not published yet" | changed and about to be published |
+| red, "Already has a result" | a correction, held back until confirmed |
+
+**Typing a score marks the match full time.** `scheduled` is the state a
+fixture is in before anyone has said anything, and typing the score is how it
+leaves that state — so a scheduled row's boxes accept input and the status
+follows. Only a match somebody has said did *not* happen (postponed, abandoned,
+cancelled) has its boxes disabled; choosing one of those clears any score,
+because `apply_match_report` refuses a postponed row carrying one rather than
+silently discarding it.
+
+**Only changed rows are submitted**, so opening the screen and pressing publish
+cannot re-attribute a matchday somebody else reported. A row that publishes
+becomes the new saved state, which is what makes the retry after a dropped
+connection send only the lines that did not land.
+
+**One shared source, four canned answers and a free-text box.** "At the match",
+"League official", "Club official", "WhatsApp", plus "Direct report by me",
+which records an attributed, dated sentence. Free text wins over a chip. A
+blank source is a real answer meaning *leave each row's own alone* — that is
+what stops a matchday published from a screen with an empty box erasing links
+recorded last week. A **new** result with no source anywhere is refused before
+the network is used: it is one tap to answer, and the reporter is the only
+person who will ever know.
+
+**Conflicts cost one tap.** Reporting onto a scheduled fixture needs no
+ceremony. Changing a result somebody already published is a correction, and one
+made by accident — a mistyped digit on a line the reporter was scrolling past —
+is invisible afterwards to everyone except `match_change_log`. So the row shows
+what it would replace and holds itself out of the batch until "Replace 2–1" is
+tapped. Editing again after confirming asks again: 2–1 was agreed to, 4–1 is a
+different claim.
+
+#### `submit_match_reports`
+
+`0041` did not open a second write path. It lifted the rules out of
+`submit_match_report` into an internal `apply_match_report()` and gave them two
+callers — exactly what `insert_fixture` is to `create_fixture` and
+`create_fixtures`, and for the same reason: every rule in the reporting path is
+load-bearing somewhere else (the score/status agreement is validate.py check 4,
+and an ERROR there deploys nothing for anyone), so a second copy maintained by
+hand is a bug with a date on it.
+
+```
+submit_match_reports(competition_id, reports jsonb, source_ref, season_id)
+  → one row per input row: idx, ok, match_id, home_goals, away_goals,
+                           status, message
+```
+
+Partial success is the point, as it was in `0014`: each row runs in its own
+exception block, so one already-published match does not throw away seven
+correct results and the typing that produced them. The client puts `message`
+back on the line `idx` names.
+
+**Authorization is done once, before the loop** — and each row is then pinned
+to that competition and season. Without the pin the single check would be a
+check on the competition the *client named* rather than on the match it sent,
+and a reporter assigned to one league could publish into another by putting its
+`match_id` on a line. With it, the one check is exactly as strong as
+`can_report_match()` asked per row, and no stronger.
+
+**`expect` is an optional conflict guard.** A row may carry
+`expect: {status, home, away}` saying what the client believed was saved. If
+the database has moved since the screen was drawn — someone else published one
+of the same matches — that row alone is refused with a sentence *naming* the
+result that is actually there, and the rest still publish. A deliberate
+correction omits `expect` and overwrites, which is what `submit_match_report`
+has always done; the grid's "Replace" tap is what drops it.
+
+```bash
+RLS_LIVE=1 python3 -m unittest tests.test_results_grid_live
+```
+
+27 tests: several results together, partial failure, unauthorized competition,
+the cross-competition pin, the conflict guard both ways, postponed-with-a-score,
+shared source, blank source preserving an existing one, retry adding no audit
+noise, and that `submit_match_report`'s own contract did not move under the
+refactor.
+
+#### The grid's rules are testable without a browser
+
+`static/report/results_grid.js` holds every decision the grid makes about a
+reporter's typing — which lines changed, which are safe to send, what to do
+with the answer, whether a result has any provenance — as plain functions over
+plain objects. It imports nothing. That is what lets the one question that
+matters most be asked automatically instead of by a person turning aeroplane
+mode on:
+
+```bash
+npm test            # or: node --test 'tests/js/*.mjs'
+```
+
+29 tests, no dependencies and no build step. The root `package.json` exists
+only so Node loads the portal's ES modules as ES modules; there is nothing to
+install. It caught a real one: gating the score boxes on `isScored()` disabled
+them on `scheduled`, the single row every reporter opens the screen to fill in.
+
 ### Automatic rebuild after a publish
 
 everyleague.co is static HTML on GitHub Pages, so a result saved to Postgres is
@@ -995,6 +1122,250 @@ browser and confirm `rebuild_state.dispatch_count` moved. That is the only test
 that exercises the path reporters actually use.
 
 Rotate the PAT by re-running `secrets set`; no redeploy is needed.
+
+### The import review screen (`#/import`)
+
+A reporter already has the results — on a Facebook graphic, in a WhatsApp
+message, on a printed sheet. The work is the retyping. This removes the typing
+and keeps every decision.
+
+**It publishes through the grid, not beside it.** The rows on the review screen
+are the same objects `#/results` uses, drawn by the same `gridRowHtml`, wired by
+the same `wireGridRows`, and published by the same `submit_match_reports`. There
+is no path here that can put a result on the site a reporter could not have
+typed by hand — which is what makes "nothing is published because the AI is
+confident" a property of the architecture rather than a promise in a comment.
+
+The flow is four calls, and only the first two cost anything:
+
+```
+create_report_import   open the row BEFORE the model runs, so a failure
+                       still leaves a record of what was submitted
+import-extract         the Edge Function: reads it (needs the Anthropic key)
+resolve_and_save_import  matches it (needs the REPORTER's identity)
+submit_match_reports   publishes, exactly as the manual grid does
+```
+
+#### Three confidences, and only one is pre-filled
+
+| | |
+|---|---|
+| **green** | the proposal is applied to the row, so it is a *changed* row and will publish — the reporter is confirming a filled-in grid |
+| **yellow** | the fixture is shown and the score is **not** applied. A button offers it. That is what "confirmation required" means here: one tap, on the row, with the reason beside it |
+| **red** | no fixture, or several. Listed with what the model read and what the database offered, and not publishable at all |
+
+A yellow row that is never tapped simply does not publish, and the green ones
+around it still do. That is the brief's "publish the confident results without
+losing the unresolved one", achieved with the rule the grid already had —
+changed rows publish — rather than with a second concept.
+
+Every row shows **"Read as: …"**, the raw names and score the model returned.
+It is what a reporter checks against the picture when a row looks wrong, and it
+is the reason a bad reading is diagnosable at all.
+
+#### The fixture decides which side is home
+
+When the matcher reports `sides_swapped`, the scores are swapped back to the
+fixture's orientation rather than the fixture being redescribed the way the
+picture drew it — so an imported row reads like every other row on the site.
+The row says so: *"Read as: Civil Service United 1–3 Kamuzu Barracks"* above a
+button offering *"Use 3–1"*. The swap is visible, not silent.
+
+#### More than one competition
+
+A submission spanning two leagues is a real thing — a district page posting
+both — so the review screen groups by competition and publishes each group with
+its own `submit_match_reports` call. Forcing one competition would file half the
+results in the wrong place. The calls are sequential, not parallel: on the
+connection this app is written for, three requests at once is how all three time
+out.
+
+#### A fixture list
+
+Recognised and **not** processed: the screen says fixture import is coming next
+and offers `#/add`. The extraction is kept, so the same submission can be
+reprocessed when fixture import ships — the reporter is not asked to send it
+again later.
+
+#### An unreadable link
+
+Expected, not an error. The link is already saved as the source, and the
+message asks for a screenshot which can be added to the *same* import rather
+than starting again.
+
+#### The grid's row markup is shared, and that is the safety argument
+
+`gridRowHtml`, `patchGridRow`, `syncGridFromDom` and `wireGridRows` sit at
+module scope in `app.js` precisely because two screens draw them. An imported
+result and a typed one have to be the same object, on the same row, published
+by the same button, or the safety story becomes a claim about two code paths
+instead of a property of one.
+
+### Reading results from a screenshot (`import-extract`)
+
+The importer's one rule: **the model reads, the database resolves.** A model
+asked to pick an Everyleague id will produce one — well-formed, plausible, and
+wrong in a way nothing downstream can detect. So it is never asked. There is no
+`match_id`, `team_id`, `competition_id` or `season_id` anywhere in the
+extraction schema, and `normalizeItem()` copies fields across by name, so an
+invented one is not so much stripped as never picked up.
+
+Everything after extraction is joins against rows we already have
+(`resolve_import_candidates`, migration `0043`), scoped to competitions the
+caller may report.
+
+#### The four files
+
+| | |
+|---|---|
+| `extract.js` | the schema, the prompt, and what we accept back |
+| `provider.js` | the model seam, the fake, and the escalation |
+| `fetch_page.js` | the SSRF-guarded link reader |
+| `index.ts` | the Deno HTTP wrapper — the only part that touches secrets |
+
+The first three are **plain `.js`, importing nothing**, which is what lets
+`node --test` load them. `index.ts` cannot be loaded outside Deno, so nothing
+that matters lives in it.
+
+#### It does not match, and that is deliberate
+
+Matching needs `auth.uid()` — which competitions may be proposed is a fact
+about the *caller* — and this function cannot call PostgREST as the caller: the
+platform injects `SUPABASE_ANON_KEY`, and on a project using the new API keys
+that slot holds a digest rather than a usable key. `trigger-rebuild`'s header
+records the day that cost.
+
+So the client calls `resolve_and_save_import` (migration `0045`) with its own
+session afterwards. The seam is right, not merely convenient: **this function
+does the part needing the Anthropic secret, the client does the part needing
+the reporter's identity.**
+
+#### Secrets
+
+```bash
+npx --yes supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+npx --yes supabase secrets set EVERYLEAGUE_IMPORT_MODEL=claude-sonnet-5
+npx --yes supabase secrets set EVERYLEAGUE_IMPORT_FALLBACK_MODEL=claude-opus-5
+npx --yes supabase functions deploy import-extract
+```
+
+| variable | default | |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | — | required; **absent = feature off** |
+| `EVERYLEAGUE_IMPORT_MODEL` | `claude-sonnet-5` | the cheap first pass |
+| `EVERYLEAGUE_IMPORT_FALLBACK_MODEL` | `claude-opus-5` | `""` disables escalation |
+
+**Sonnet 5 is the default for a reason that is not the sticker price.** The
+minimum cacheable prefix is model-dependent and not monotonic — 512 tokens on
+Opus 5, 1024 on Sonnet 5, but **4096 on Haiku 4.5** — so the ~1.5K system
+prompt silently would not cache on the cheapest model, and the saving is
+smaller than it looks. At ~500 imports/month the whole spread is roughly
+$4–$19.
+
+**To turn the importer off and keep the manual grid**, unset the key:
+
+```bash
+npx --yes supabase secrets unset ANTHROPIC_API_KEY
+```
+
+The function then answers `503 import_disabled` with a plain sentence, the
+client hides the entry point, and `#/results` is untouched. That is the kill
+switch, and it is also the default state before anything is configured.
+
+#### Cost
+
+One low-cost call per import. The escalation to the stronger model fires on
+**the document**, never on the model's own confidence — which is not consulted
+anywhere in this system. `shouldEscalate()` asks whether the first pass
+visibly failed: nothing came back, it could not be parsed, or rows were dropped
+as incomplete. A clean read of a clean graphic pays once.
+
+A refusal and an over-long response are **not** retried: neither is a reading
+problem, so neither is worth paying twice for.
+
+Reopening a processed import returns the stored extraction rather than calling
+again — which is most of why `report_imports.extracted` exists. Both attempts
+are recorded separately in `usage`, because "this import cost twice" is the
+fact worth seeing when deciding whether escalation earns its place. The dollar
+figure is an estimate and says so; the tokens and model name are the durable
+record.
+
+Per-reporter rate limit: 40 imports/hour, enforced in `create_report_import`.
+Not a security boundary — an authorized reporter is not the threat — but every
+import is a paid call and a retry loop on a flaky connection is not.
+
+#### Links, and Facebook
+
+`fetch_page.js` accepts only http/https, refuses credentials in the URL, and
+refuses private, loopback, link-local and reserved addresses — including
+IPv4-mapped IPv6, which is subtler than it looks: `new URL()` **canonicalizes**
+`[::ffff:127.0.0.1]` to `[::ffff:7f00:1]`, so a pattern looking for dotted
+quads never fires. The address is parsed into numbers instead. An IPv6 literal
+that cannot be parsed is refused rather than allowed.
+
+Redirects are followed **manually**, one hop at a time, re-checking every
+address: the check on what the reporter pasted says nothing about where it
+forwards to, and an open redirect on a legitimate host is the ordinary way that
+gets exploited.
+
+**What this cannot do, stated rather than hidden:** checking a hostname is not
+checking where it resolves. A name that answers with `127.0.0.1` (DNS rebind)
+passes every test, because the platform gives no hook between resolve and
+connect. What makes the residual risk acceptable is what a success can reach —
+nothing here reads a secret, and the body is capped, fed to a model, and shown
+to the reporter who asked for it. If a fetched body is ever used to make a
+decision, this needs a resolver that pins the address.
+
+**Facebook is an expected state, not an error.** Known login-walled hosts are
+recognised before any request, and 401/403 reads the same way. The link is kept
+as the source either way — an unreadable Facebook URL is still where the result
+came from — and the reporter is asked for a screenshot they can add to the
+*same* import rather than starting again.
+
+#### Testing
+
+```bash
+npm test        # 88 tests: extraction, escalation, SSRF. No key, no network.
+```
+
+Nothing in the suite calls Anthropic. Every response comes from
+`tests/js/fixtures/extractions.mjs` and every provider is `fakeProvider`, which
+also records what it was asked — so "no database content is ever sent to the
+model" is an assertion rather than a property of the prompt somebody read once.
+
+The fixtures are the documents that are actually hard: a clean graphic, messy
+WhatsApp text, abbreviations, a fixture list posing as results, an abandoned
+match with a score printed beside it, invented ids, half a scoreline, absurd
+scores, and every malformed shape a response can take.
+
+#### Measuring whether the reading is any good
+
+```bash
+python3 scripts/import_eval.py                 # every case
+python3 scripts/import_eval.py --model claude-opus-5
+python3 scripts/import_eval.py --json
+```
+
+**This costs money and is not part of the suite.** The unit tests cover what
+the code does with an extraction; this measures whether the reading is
+accurate, and the answer is a score rather than a pass/fail. Run it when
+changing the model or the prompt. See `tests/import_eval/README.md` for how to
+add a case.
+
+It reads the schema and prompt out of `extract.js` **by evaluating it with
+Node**, not by copying them — an eval that drifts from the thing it is named
+after is worse than none. `invented` is reported separately from `missed`,
+because a missed row is visible to the reporter as a gap and an invented one
+arrives looking exactly like every other row.
+
+#### Using a different provider
+
+`provider.js` is one function: `async (request) => { ok, message, errorCategory }`.
+The seam is there rather than at an imagined vendor-neutral request object,
+because a fake "universal" schema is a second thing to maintain that no
+provider actually speaks. To add one, write a second factory beside
+`anthropicProvider` that translates `buildRequest()`'s output and returns a
+Messages-shaped response; nothing else in the pipeline changes.
 
 #### The other function: `manage-reporters`
 

@@ -87,6 +87,7 @@ src/hubs.py            club hubs + player profiles (cross-competition)
 src/officials.py       referee + coach pages (the officials registry, 0024)
 src/trending.py        the homepage carousel (the `trending` tab, 0030)
 src/matches_page.py    /matches/ — every match on one date, any date
+static/report/results_grid.js  the matchday grid's rules, DOM-free and tested
 src/nt.py, nt_page.py  national teams (the nt_* tabs, /scorchers/)
 src/search.py          the site search index
 static/report/app.js   the reporter portal (one file, no framework)
@@ -137,10 +138,25 @@ docs/                  build output, served by GitHub Pages
 
 ```bash
 python3 -m unittest discover -s tests -q      # ~590 tests, ~2s, no network
+npm test                                      # the reporter grid's rules, no deps
 RLS_LIVE=1 python3 -m unittest tests.test_rls_live   # opt-in, hits real Supabase
 DATASET_LOCAL_DIR=data/canonical python3 build.py --dist /tmp/site --no-snapshot
 python3 -m http.server -d /tmp/site 8000      # then look at it at 390px wide
 ```
+
+`npm test` runs `node --test 'tests/js/*.mjs'`. **There is nothing to install
+and this is still not a Node project** — the root `package.json` exists only
+because Node reads a bare `.js` as CommonJS unless a package.json says
+otherwise, and the portal's modules are ESM because browsers load them that
+way. It covers `static/report/results_grid.js`, which imports nothing; the
+moment that file needs `document` or `supabase`, the tests stop meaning
+anything.
+
+`python3 -m unittest discover` currently ends with **one pre-existing failure**
+— `test_search.IndexContentTest.test_index_stays_small_enough_to_ship`, a
+tripwire at 120 kB that the index has grown past. It is unrelated to the
+reporter portal; do not "fix" it by raising the cap without deciding what
+should come out of the index.
 
 Live tests (`*_live.py`) are skipped unless `RLS_LIVE=1`; they namespace every
 fixture and clean up, and they never mutate a real match.
@@ -167,6 +183,95 @@ fixture and clean up, and they never mutate a real match.
 ---
 
 ## Recent work (Aug 2026)
+
+Reading results off a picture, migrations `0042`–`0045` — `#/import`:
+
+- **The model reads, the database resolves.** There is no `match_id`,
+  `team_id`, `competition_id` or `season_id` anywhere in the extraction schema,
+  and `normalizeItem()` copies fields across BY NAME — so an invented id is not
+  stripped so much as never picked up. A model asked for an id produces one:
+  well-formed, plausible, and wrong in a way nothing downstream can detect.
+- **It publishes through the grid, not beside it.** The review rows are the
+  same objects `#/results` uses, drawn by the same `gridRowHtml`, wired by the
+  same `wireGridRows`, published by the same `submit_match_reports`. That is
+  why `gridRowHtml` and friends are at module scope — two screens draw them.
+  Nothing here can put a result on the site that could not have been typed.
+- **Green is pre-filled, yellow is offered, red is not publishable.** A yellow
+  row never tapped simply does not publish and the greens around it still do —
+  the brief's "publish the confident ones without losing the unresolved one",
+  using the rule the grid already had rather than a second concept.
+- **Confidence comes from evidence, never from the model.** `0043` decides it
+  from how the name matched, how many fixtures the pairing has, whether the
+  date agrees, and whether another team answers to the same name. The model's
+  own certainty is not consulted anywhere in the system.
+- **The scope IS the authorization** (`0043`): candidates come only from
+  competitions the caller may report, so the review screen cannot show a row
+  `submit_match_reports` would refuse. Batch consensus breaks ties and only
+  ties, and always to yellow.
+- **The Edge Function does not match, deliberately.** Matching needs
+  `auth.uid()` and the function cannot call PostgREST as the caller — the
+  `SUPABASE_ANON_KEY` slot holds a digest on a new-API-key project, which is
+  the trap `trigger-rebuild`'s header records. So it does the part needing the
+  ANTHROPIC secret, and the client does the part needing the REPORTER's
+  identity (`resolve_and_save_import`, `0045`).
+- `extract.js`, `provider.js`, `fetch_page.js` are plain `.js` importing
+  nothing, so `node --test` loads them; `index.ts` is a Deno wrapper holding
+  nothing that matters. 92 JS tests, no key, no network, no cost.
+- **`report_imports` is evidence, not a write path.** The row is created BEFORE
+  the model runs, so a failure still records what was submitted. Screenshots go
+  in a PRIVATE bucket — never `match-media`, which is public because the site
+  has to `<img src>` it.
+- Two bugs the tests caught and no reading would have: `new URL()`
+  canonicalizes `[::ffff:127.0.0.1]` to `[::ffff:7f00:1]`, so an SSRF check
+  looking for dotted quads missed every IPv4-mapped address; and
+  `collectReports` cleared `row.error` while both screens were calling it to
+  render, so a failed row's reason was wiped before it was ever drawn.
+- Not built: publishing scorers (read and stored, deliberately not published),
+  fixture-list import (recognised and deferred, extraction kept), and an admin
+  screen over `report_imports`.
+
+A matchday in one submission, migration `0041` — `#/results`:
+
+- A matchday is not a match, and the portal only knew how to report one. Eight
+  results meant eight screens and eight round trips on one bar of signal, with
+  the **same source typed eight times** because it is the same graphic. The
+  grid is 0014's fixture form applied to scores: shared things once at the top,
+  a line per match, one button, per-line answers.
+- **`apply_match_report` is the whole point of the migration.** The rules moved
+  out of `submit_match_report` into an internal function with two callers —
+  `insert_fixture`'s relationship to `create_fixture`/`create_fixtures`,
+  exactly. Every rule there is load-bearing elsewhere (score/status agreement
+  is validate.py check 4, and an ERROR deploys nothing for anyone), so a second
+  copy kept by hand is a bug with a date on it. `submit_match_report`'s
+  signature and behaviour are unchanged; browsers in the field keep working.
+- **Authorization once, then each row pinned to that competition and season.**
+  Without the pin the single check would be about the competition the *client
+  named* rather than the match it sent, and a reporter could publish into a
+  league they are not assigned to by putting its `match_id` on a line.
+- **`expect` is an optional conflict guard**, not a protocol. A row says what
+  the client believed was saved; if the database moved while the reporter was
+  typing, that row alone is refused with a sentence NAMING what is actually
+  there, and the rest publish. A deliberate correction omits it — which is what
+  the grid's "Replace 2–1" tap does, and why that tap means something.
+- **A blank shared source leaves each row's own alone.** Already true since
+  0008; it is what makes one box at the top of a screen full of history safe. A
+  *new* result with no source anywhere is refused client-side instead: it is
+  one tap to answer and the reporter is the only person who will ever know.
+- **The rules live in `static/report/results_grid.js`, which imports nothing.**
+  Which lines changed, what to send, how to fold the answer back — plain
+  functions over plain objects, so "after a failure, is everything the reporter
+  typed still there?" is an assertion rather than a person with aeroplane mode.
+- It caught a real bug that no unit test would have: gating the score boxes on
+  `isScored()` disabled them on `scheduled` — the one row every reporter opens
+  the screen to fill in. `acceptsScore()` is the distinction, and looking at the
+  screen at 390px is what found it.
+- The conflict block is rendered for every already-decided row and shipped
+  `hidden`, then revealed — the carousel-dots pattern. Redrawing the line the
+  moment it became a conflict would throw away the box being typed into and
+  take the focus with it, which is the team-sheet lesson below.
+- Not built: scorers from the grid, and a season filter. The grid is also
+  **Phase 2's review screen** — an AI importer fills these same rows and
+  publishes through this same button. There is one grid, not two.
 
 Comparing levels, migration `0039` — `#/ops?tab=compare`:
 

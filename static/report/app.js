@@ -9,6 +9,8 @@
  *   #/            the reporter's fixtures, bucketed and filterable
  *   #/login       email + password (no signup — accounts are made by CLI)
  *   #/m/<uuid>    one match, the reporting screen. This is the WhatsApp link.
+ *   #/results     a whole matchday's scores on one screen, published at once
+ *   #/import      read those results off a screenshot, post or pasted text
  *   #/add         add a whole fixture list to a competition you cover
  *   #/league/new  create a competition and its teams (administrators only)
  *   #/account     who am I, change password, sign out
@@ -29,6 +31,9 @@
 import { createClient } from "./vendor/supabase.min.js";
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "./config.js";
 import * as graphics from "./graphics.js";
+// The matchday grid's rules, kept out of this file so they can be tested
+// without a browser — see the section header on renderResults.
+import * as grid from "./results_grid.js";
 
 const view = document.querySelector("[data-view]");
 const flashEl = document.querySelector("[data-flash]");
@@ -149,6 +154,15 @@ function humanError(error) {
       || message.includes("at least one fixture")
       || message.includes("a list of fixtures")
       || message.includes("in two goes")
+      // ...and the matchday grid's rules from 0041. "someone else published"
+      // is the one that matters most: it names the result that is actually in
+      // the database, and rewriting it would throw away the only thing that
+      // lets the reporter decide whose line is right.
+      || message.includes("someone else published")
+      || message.includes("at least one result")
+      || message.includes("a list of results")
+      || message.includes("not in this competition")
+      || message.includes("no match on it")
       || message.includes("gender must be")
       || message.includes("type must be")
       // ...and the scorer-identity rules from 0010, phrased the same way.
@@ -910,7 +924,18 @@ async function renderHome(params) {
   // league reporter the whole section is empty and the link would be a dead
   // end. Resolved rather than assumed because an admin always has one.
   const hasNT = (await ntTeams().catch(() => [])).length > 0;
+  // The grid opens on whatever the reporter is already looking at. Filtering
+  // to "FDH Bank Premiership, matchday 6" and then being asked both questions
+  // again on the next screen is the app forgetting what it was just told.
+  const gridQuery = new URLSearchParams();
+  if (filters.comp) gridQuery.set("comp", filters.comp);
+  if (filters.md) gridQuery.set("md", filters.md);
+  if (filters.date) gridQuery.set("date", filters.date);
+  const gridHref = `#/results${gridQuery.toString() ? `?${gridQuery}` : ""}`;
+
   const actions = `
+    ${canAdd ? `<a class="rp-btn is-lead" href="${esc(gridHref)}">＋ Add matchday results</a>` : ""}
+    ${canAdd ? '<a class="rp-btn is-lead is-alt" href="#/import">Fill from screenshot, post or text</a>' : ""}
     <div class="rp-actions">
       ${canAdd ? '<a class="rp-btn is-ghost" href="#/add">＋ Add fixtures</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/league/new">＋ New league</a>' : ""}
@@ -1300,7 +1325,7 @@ async function renderAddFixture(params) {
       <h2 class="rp-field-head">The fixtures</h2>
       <p class="rp-hint" style="margin-top:0">Start typing a team and tap it
         from the list. Only teams entered in this competition are offered.</p>
-      <ol class="rp-fixtures">${state.rows.map(line).join("")}</ol>
+      <ol class="rp-fixtures">${state.rows.map((row, i) => gridRowHtml(row, i)).join("")}</ol>
       <button class="rp-btn is-ghost" type="button" data-more>＋ Add another</button>
 
       <div class="rp-publish">
@@ -1663,6 +1688,1197 @@ async function renderAddFixture(params) {
   }
 
   loadTeams();
+}
+
+// ── The matchday grid ────────────────────────────────────────────────────────
+// A matchday is not a match, and the portal only ever knew how to report one
+// match. Eight results meant eight screens: open, tap the steppers, type the
+// source, publish, go back, find the next one — eight round trips on one bar
+// of signal, with the SAME source typed eight times because it is the same
+// graphic. This is that whole afternoon as one screen and one button.
+//
+// It is the fixture form's shape, deliberately: the things the whole matchday
+// shares said once at the top, a line per match, one submission, and per-line
+// answers so a failure costs only the line it belongs to. The reporter who has
+// used #/add already knows how to use this.
+//
+// THE RULES LIVE IN results_grid.js, not here. Which lines changed, which are
+// safe to send, what to do with the answer, whether a result has any
+// provenance — all of it is plain functions over plain objects in that file,
+// because those are the decisions that must survive a dropped connection and
+// they cannot be checked by looking at a rendered screen. This function is the
+// markup and the wiring; `node --test tests/js/` is where the behaviour is
+// verified.
+//
+// IT IS ALSO PHASE 2'S REVIEW SCREEN. The AI importer fills these same rows
+// and publishes through this same button — there is one grid, not two.
+// (`grid` is imported at the top of this file, with the other modules.)
+
+// The same ceiling submit_match_reports enforces, said before a reporter has
+// filled in a line that would be refused.
+const RESULTS_MAX = 60;
+
+// ── One line of the grid ─────────────────────────────────────────────────────
+// AT MODULE SCOPE, not inside renderResults, because TWO screens draw it: the
+// manual grid and the AI import review. That is not code-sharing for its own
+// sake — it is the whole safety argument. An imported result and a typed one
+// have to be the same object, on the same row, published by the same button,
+// or "nothing is published because the AI is confident" becomes a claim about
+// two code paths instead of a property of one.
+//
+// Stacked, not tabular. A five-column table of team/score/score/team/status is
+// unreadable at 390px and scrolls sideways, which the site's own rule forbids.
+// Each side gets its own line with its score box beside it, so the pairing is
+// never ambiguous and nothing has to be scrolled to.
+
+/** What the confirmation button offers to publish, in words. Used by both the
+ *  markup and the patch that follows the typing, so the two cannot end up
+ *  saying different things. */
+const replaceLabel = (row) =>
+  grid.isScored(row.status) && row.home !== "" && row.away !== ""
+    ? `${row.home}–${row.away}`
+    : statusMeta(row.status).label.toLowerCase();
+
+/** `extra` is markup the import screen puts at the top of the row — the
+ *  confidence chip, the raw names the model read, the ambiguity. The manual
+ *  grid passes nothing and gets exactly what it had. */
+function gridRowHtml(row, i, { extra = "" } = {}) {
+  // acceptsScore, NOT isScored: a scheduled fixture is the row every reporter
+  // opens this screen to fill in, and typing the score is how it stops being
+  // scheduled. Only a match somebody has said did not happen has its boxes
+  // disabled.
+  const scored = grid.acceptsScore(row.status);
+  const conflict = grid.isConflict(row);
+  const changed = grid.isChanged(row);
+  const meta = [formatDate(row.date), formatKickoff(row.kickoff)]
+    .filter(Boolean).join(" · ");
+
+  const badge = row.published
+    ? '<span class="rp-badge is-done">Published just now</span>'
+    : conflict
+      ? '<span class="rp-badge is-off">Already has a result</span>'
+      : changed
+        ? '<span class="rp-badge is-late">Not published yet</span>'
+        : grid.isDecided(row.saved.status)
+          ? `<span class="rp-badge is-done">${
+               esc(statusMeta(row.saved.status).short
+                   || statusMeta(row.saved.status).label)}</span>`
+          : "";
+
+  const side = (name, value, key) => `
+    <div class="rp-gr-side">
+      <span class="rp-gr-team">${esc(name)}</span>
+      <input class="rp-gr-score" type="text" inputmode="numeric"
+             maxlength="2" data-score="${i}:${key}" value="${esc(value)}"
+             ${scored ? "" : "disabled"}
+             aria-label="${esc(name)} goals, match ${i + 1}">
+    </div>`;
+
+  return `
+  <li class="rp-gr${conflict ? " is-bad" : changed ? " is-edit" : ""}"
+      data-i="${i}">
+    <div class="rp-gr-head">
+      <span class="rp-gr-meta">${esc(meta)}</span>${badge}
+    </div>
+    ${extra}
+    ${side(row.homeName, row.home, "home")}
+    ${side(row.awayName, row.away, "away")}
+    <select class="rp-select rp-gr-status" data-row-status="${i}"
+            aria-label="What happened, match ${i + 1}">
+      ${STATUSES.map((s) => `<option value="${s.value}"${
+        s.value === row.status ? " selected" : ""}>${esc(s.label)}</option>`).join("")}
+    </select>
+    ${grid.isDecided(row.saved.status) ? `
+      <div class="rp-gr-conflict" data-conflict="${i}"${conflict ? "" : " hidden"}>
+        <p>This match is already published as
+           <strong>${esc(grid.savedScoreline(row))}</strong>. Replacing it
+           is a correction, and it is recorded as one.</p>
+        <div class="rp-btn-row">
+          <button class="rp-btn is-ghost" type="button" data-replace="${i}">
+            Replace with <span data-replace-label>${esc(replaceLabel(row))}</span></button>
+          <button class="rp-btn is-quiet" type="button" data-keep="${i}">
+            Keep ${esc(grid.savedScoreline(row))}</button>
+        </div>
+      </div>` : ""}
+    ${row.error ? `<p class="rp-fx-error">${esc(row.error)}</p>` : ""}
+  </li>`;
+}
+
+/** Everything about ONE line that the typing can change, patched in place.
+ *
+ *  The conflict block is rendered for every row that already carries a result
+ *  and shipped `hidden`, then revealed here — the homepage carousel's dots,
+ *  for the same reason. The alternative was redrawing the line the moment it
+ *  became a conflict, which would throw away the very box the reporter is
+ *  typing in and take the focus with it. */
+function patchGridRow(i, row) {
+  const el = view.querySelector(`.rp-gr[data-i="${i}"]`);
+  if (!el) return;
+  const conflict = grid.isConflict(row);
+  el.classList.toggle("is-bad", conflict);
+  el.classList.toggle("is-edit", !conflict && grid.isChanged(row));
+  const block = el.querySelector("[data-conflict]");
+  if (block) {
+    block.hidden = !conflict;
+    const label = block.querySelector("[data-replace-label]");
+    if (label) label.textContent = replaceLabel(row);
+  }
+}
+
+/** Read the score boxes and status selects back into a row list. Shared for
+ *  the same reason the markup is: two screens, one set of controls. */
+function syncGridFromDom(form, rows) {
+  if (!form) return;
+  form.querySelectorAll("[data-score]").forEach((el) => {
+    const [i, side] = el.dataset.score.split(":");
+    const row = rows[Number(i)];
+    if (row) grid.setScore(row, side, el.value);
+  });
+  form.querySelectorAll("[data-row-status]").forEach((el) => {
+    const row = rows[Number(el.dataset.rowStatus)];
+    if (row && row.status !== el.value) grid.setStatus(row, el.value);
+  });
+}
+
+/** The controls on every grid row, wired once for whichever screen drew them.
+ *
+ *  `onPatch` runs after an in-place change (update the publish button);
+ *  `onRedraw` runs when the row's shape has to change (a status that empties
+ *  the score boxes, a confirmation being taken back). The split is the
+ *  redraw-on-blur rule: a text box may never redraw, a <select> or a button
+ *  may. */
+function wireGridRows(form, rows, { onPatch, onRedraw }) {
+  form.addEventListener("input", (event) => {
+    const box = event.target.closest("[data-score]");
+    if (!box) return;
+    const [i, side] = box.dataset.score.split(":");
+    const row = rows[Number(i)];
+    if (!row) return;
+    grid.setScore(row, side, box.value);
+    // Digits only, said back to the box, so a typed letter never sits there
+    // looking accepted.
+    if (box.value !== row[side]) box.value = row[side];
+    // A score marks the match full time — the select beside it has to say so.
+    // Patched, not redrawn.
+    const statusEl = form.querySelector(`[data-row-status="${i}"]`);
+    if (statusEl && statusEl.value !== row.status) statusEl.value = row.status;
+    // Editing a confirmed replacement withdraws the confirmation: 2–1 was
+    // agreed to and 4–1 is a different claim. Redrawing is right here — the
+    // row has to grow its confirmation block back — and safe, because it can
+    // only happen on a row the reporter has already stopped at.
+    if (row.confirmed) { grid.unconfirm(row); onRedraw(); return; }
+    onPatch(i, row);
+  });
+
+  // A redraw is correct on a status change: it has to disable and empty both
+  // score boxes, and may reveal a conflict block that was not there before.
+  form.addEventListener("change", (event) => {
+    const el = event.target.closest("[data-row-status]");
+    if (!el) return;
+    syncGridFromDom(form, rows);
+    const row = rows[Number(el.dataset.rowStatus)];
+    if (row) { grid.setStatus(row, el.value); grid.unconfirm(row); }
+    onRedraw();
+  });
+
+  form.addEventListener("click", (event) => {
+    const replace = event.target.closest("[data-replace]");
+    if (replace) {
+      syncGridFromDom(form, rows);
+      const row = rows[Number(replace.dataset.replace)];
+      if (row) row.confirmed = true;
+      onRedraw();
+      return;
+    }
+    const keep = event.target.closest("[data-keep]");
+    if (keep) {
+      syncGridFromDom(form, rows);
+      const row = rows[Number(keep.dataset.keep)];
+      if (row) {
+        // Back to exactly what is saved, which makes the row unchanged and
+        // takes it out of the submission.
+        row.home = row.saved.home == null ? "" : String(row.saved.home);
+        row.away = row.saved.away == null ? "" : String(row.saved.away);
+        row.status = row.saved.status;
+        row.confirmed = false;
+        row.error = "";
+      }
+      onRedraw();
+    }
+  });
+}
+
+/** Rows the grid can offer at all: a fixture that exists, in the chosen
+ *  competition and season. `scheduled` first is not a filter — every one of
+ *  them is shown, because correcting last week's result is the other reason to
+ *  open this screen. */
+async function loadGridMatches(competitionId, seasonId) {
+  const { data, error } = await supabase.from("matches")
+    .select(MATCH_FIELDS)
+    .eq("competition_id", competitionId)
+    .eq("season_id", seasonId)
+    .order("date", { ascending: true })
+    .order("match_id", { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+/** The matchday to open on: the earliest one that still has a fixture with no
+ *  result. That is what a reporter came here to fill in — opening on the
+ *  newest would land on a round that has not been played, and opening on the
+ *  first would land on one finished months ago. */
+function likeliestStage(matches) {
+  const stages = stageOptions(matches);
+  const pending = stages.find((s) => matches.some(
+    (m) => m.stage === s && m.status === "scheduled"));
+  return pending || stages[stages.length - 1] || "";
+}
+
+async function renderResults(params) {
+  h('<div class="rp-loading"><span class="rp-spinner"></span><p>Loading…</p></div>');
+
+  let competitions, season;
+  try {
+    [competitions, season] = await Promise.all([entryCompetitions(), activeSeason()]);
+  } catch (error) {
+    h('<p class="rp-empty">Could not load your competitions.</p>'
+      + '<a class="rp-btn is-ghost" href="#/">Back to my matches</a>');
+    flash(humanError(error), "error");
+    return;
+  }
+
+  if (!competitions.length) {
+    h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+       <p class="rp-empty">You have no competitions to report results for.
+         ${context.isAdmin ? "Create a league first."
+                           : "Ask an administrator to assign you one."}</p>`);
+    return;
+  }
+  if (!season) {
+    h(`<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+       <p class="rp-empty">No season is marked active, so there is nothing to
+         report. An administrator needs to set one.</p>`);
+    return;
+  }
+
+  // Arriving from a filtered home screen keeps the context: the reporter has
+  // already said which league and which round, and being asked again is the
+  // app forgetting something it was just told. The same parameter names as
+  // the home filters, so the link is a plain hand-off.
+  const wanted = params?.get("comp");
+  const state = {
+    competition: competitions.find((c) => c.competition_id === wanted)
+                 || competitions[0],
+    matches: null,
+    stage: params?.get("md") || "",
+    date: params?.get("date") || "",
+    rows: [],
+    // The shared source, one for the whole submission.
+    sourceText: "",
+    sourceChoice: "",
+    sourceDirect: false,
+    busy: false,
+    // Whether the stage was chosen by the reporter or guessed for them. A
+    // guess must not survive changing competition.
+    stagePicked: Boolean(params?.get("md") || params?.get("date")),
+  };
+
+  const sharedSource = () => grid.resolveSource({
+    text: state.sourceText,
+    choice: state.sourceChoice,
+    direct: state.sourceDirect,
+    reporterName: context.reporter?.name || "",
+    today: formatDate(catToday()),
+  });
+
+  async function loadMatches() {
+    state.matches = null;
+    drawResults();
+    try {
+      state.matches = await loadGridMatches(
+        state.competition.competition_id, season.season_id);
+    } catch (error) {
+      state.matches = [];
+      flash(humanError(error), "error");
+    }
+    if (!state.stagePicked) state.stage = likeliestStage(state.matches);
+    rebuildRows();
+    drawResults();
+  }
+
+  /** The rows for the current narrowing. Rebuilt only when the narrowing
+   *  changes — never on a redraw — because a row holds what the reporter has
+   *  typed and rebuilding would be rule 1 broken in the least visible way. */
+  function rebuildRows() {
+    const shown = (state.matches || []).filter((m) => {
+      if (state.stage && m.stage !== state.stage) return false;
+      if (state.date && m.date !== state.date) return false;
+      return true;
+    });
+    state.rows = shown.slice(0, RESULTS_MAX).map(grid.gridRow);
+    state.overflow = Math.max(0, shown.length - RESULTS_MAX);
+  }
+
+  /** Read the boxes back into state before anything that redraws. The score
+   *  inputs also write through on every keystroke (see wireResults) so the
+   *  publish count can follow the typing; this is the belt to that's braces,
+   *  and it is what makes changing the matchday safe. */
+  function syncFromDom() {
+    const form = view.querySelector("[data-grid]");
+    if (!form) return;
+    // The shared source belongs to this screen; the rows are read by the same
+    // helper the import review uses.
+    state.sourceText = form.querySelector("[data-source]")?.value ?? state.sourceText;
+    syncGridFromDom(form, state.rows);
+  }
+
+  function drawResults() {
+    const compOptions = competitions.map((c) => `
+      <option value="${esc(c.competition_id)}"${
+        c.competition_id === state.competition.competition_id ? " selected" : ""}>
+        ${esc(c.label)}</option>`).join("");
+
+    const stages = stageOptions(state.matches || []);
+    const stagePicker = `
+      <label class="rp-label" for="gr-stage">Matchday</label>
+      <select class="rp-select" id="gr-stage" data-stage>
+        <option value="">Every matchday</option>
+        ${stages.map((s) => `<option value="${esc(s)}"${
+          s === state.stage ? " selected" : ""}>${esc(stageLabel(s))}</option>`).join("")}
+      </select>
+      <label class="rp-label" for="gr-date">…or one date</label>
+      <input class="rp-input rp-date" id="gr-date" type="date" data-date
+             value="${esc(state.date)}">
+      <p class="rp-hint">Narrow to the list in front of you. Both can be set;
+        a matchday spread over two days is normal.</p>`;
+
+    const { sending, conflicts } = grid.collectReports(state.rows);
+    const n = sending.length;
+
+    const body = state.matches === null
+      ? '<div class="rp-loading"><span class="rp-spinner"></span><p>Loading fixtures…</p></div>'
+      : !state.rows.length
+        ? `<p class="rp-empty">No fixtures here. ${
+             state.matches.length
+               ? "Try another matchday or clear the date."
+               : `${esc(state.competition.label)} has no fixtures for
+                  ${esc(season.label)} yet.`}</p>
+           <a class="rp-btn is-ghost" href="#/add?comp=${esc(
+              state.competition.competition_id)}">＋ Add fixtures</a>`
+        : `
+      <h2 class="rp-field-head">Source (where is this information from?)</h2>
+      <div class="rp-chips" data-source-chips>
+        ${grid.SOURCE_CHOICES.map((c) => `
+          <button class="rp-chip${c.key === state.sourceChoice ? " is-on" : ""}"
+                  type="button" data-choice="${esc(c.key)}"
+                  aria-pressed="${c.key === state.sourceChoice}">${esc(c.label)}</button>`).join("")}
+        <button class="rp-chip${state.sourceDirect ? " is-on" : ""}" type="button"
+                data-choice="__direct" aria-pressed="${state.sourceDirect}">Direct report by me</button>
+      </div>
+      <input class="rp-input" type="text" data-source maxlength="500"
+             value="${esc(state.sourceText)}"
+             placeholder="Facebook link, or how you know"
+             autocapitalize="sentences" autocorrect="off" spellcheck="false">
+      <p class="rp-hint">Never shown publicly, and recorded against every
+        result published below. Leave it empty and each match keeps the source
+        it already has.</p>
+
+      <h2 class="rp-field-head">The results</h2>
+      <p class="rp-hint" style="margin-top:0">Type the score and the match is
+        marked full time. Only the lines you change are published.${
+        state.overflow ? ` Showing the first ${RESULTS_MAX} — narrow to a
+        matchday to see the rest.` : ""}</p>
+      <ol class="rp-grid-list">${state.rows.map((row, i) => gridRowHtml(row, i)).join("")}</ol>
+
+      <div class="rp-publish">
+        <button class="rp-btn" type="button" data-publish ${n ? "" : "disabled"}>${
+          n ? `Publish ${n} result${n === 1 ? "" : "s"}` : "Nothing changed yet"}</button>
+        <p class="rp-publish-note" data-note>${
+          conflicts.length
+            ? `${conflicts.length} match${conflicts.length === 1 ? "" : "es"}
+               already ${conflicts.length === 1 ? "has" : "have"} a result —
+               confirm ${conflicts.length === 1 ? "it" : "them"} above to
+               include ${conflicts.length === 1 ? "it" : "them"}.`
+            : n ? "These will appear on everyleague.co within a few minutes."
+                : "Enter a score, or say what happened instead."}</p>
+      </div>`;
+
+    h(`<a class="rp-btn is-quiet" href="#/" style="margin-top:0">&larr; My matches</a>
+       <h1 class="rp-login-head">Matchday results</h1>
+       <p class="rp-login-sub">${esc(season.label)} season.</p>
+       <form class="rp-form" data-grid autocomplete="off">
+         <label class="rp-label" for="gr-comp">Competition</label>
+         <select class="rp-select" id="gr-comp" data-comp>${compOptions}</select>
+         ${state.matches === null ? "" : stagePicker}
+         ${body}
+       </form>`);
+
+    wireResults();
+  }
+
+  function wireResults() {
+    const form = view.querySelector("[data-grid]");
+    if (!form) return;
+    const button = form.querySelector("[data-publish]");
+    const note = form.querySelector("[data-note]");
+
+    // No submit button exists on this form — publishing is an explicit tap —
+    // so Enter in the source box must not reload the page with the whole
+    // matchday still unsent.
+    form.addEventListener("submit", (event) => event.preventDefault());
+
+    form.querySelector("[data-comp]").addEventListener("change", (event) => {
+      syncFromDom();
+      state.competition = competitions.find(
+        (c) => c.competition_id === event.target.value) || competitions[0];
+      // A matchday belongs to a competition: "matchday 12" in a league that
+      // has played six would show an empty screen and read as a bug. The date
+      // is kept, because a Saturday is a Saturday everywhere.
+      state.stage = "";
+      state.stagePicked = false;
+      state.rows = [];
+      loadMatches();
+    });
+
+    // A <select> may redraw: its change lands when the picker closes and the
+    // next tap is a fresh one. A text box may NOT — see the score inputs
+    // below, and the team-sheet lesson that rule came from.
+    form.querySelector("[data-stage]")?.addEventListener("change", (event) => {
+      syncFromDom();
+      state.stage = event.target.value;
+      state.stagePicked = true;
+      rebuildRows();
+      drawResults();
+    });
+    form.querySelector("[data-date]")?.addEventListener("change", (event) => {
+      syncFromDom();
+      state.date = event.target.value;
+      state.stagePicked = true;
+      rebuildRows();
+      drawResults();
+    });
+
+    // While the fixtures are loading, and on a matchday with none, there is no
+    // grid below the pickers — so there is nothing further to wire. The three
+    // controls above are the whole screen in that state.
+    if (!button || !note) return;
+
+    // ── The publish button follows the typing ────────────────────────────────
+    // Patched, never redrawn. A `change` fires when a box loses focus, which on
+    // a phone is the same gesture as the tap onto the next box — redrawing
+    // there throws away the node the tap is travelling towards and costs every
+    // field after the first a second tap. So the score boxes patch exactly
+    // what they control: their own row's status select, this row's classes,
+    // and the button.
+    function refreshButton() {
+      const { sending, conflicts } = grid.collectReports(state.rows);
+      const n = sending.length;
+      button.disabled = state.busy || !n;
+      button.textContent = state.busy
+        ? `Publishing ${n}…`
+        : n ? `Publish ${n} result${n === 1 ? "" : "s"}` : "Nothing changed yet";
+      note.textContent = conflicts.length
+        ? `${conflicts.length} match${conflicts.length === 1 ? "" : "es"} already `
+          + `${conflicts.length === 1 ? "has" : "have"} a result — confirm `
+          + `${conflicts.length === 1 ? "it" : "them"} above to include `
+          + `${conflicts.length === 1 ? "it" : "them"}.`
+        : n ? "These will appear on everyleague.co within a few minutes."
+            : "Enter a score, or say what happened instead.";
+    }
+
+    // The score boxes, the status selects and the confirm/keep buttons — the
+    // same controls the import review screen draws, wired by the same helper.
+    // onRedraw syncs first because a redraw throws the DOM away and the
+    // half-typed scores have to survive it (rule 1).
+    wireGridRows(form, state.rows, {
+      onPatch: (i, row) => { refreshButton(); patchGridRow(i, row); },
+      onRedraw: () => { syncFromDom(); drawResults(); },
+    });
+
+    // The source chips. One choice at a time, and tapping the one already on
+    // turns it off — a chip that cannot be un-tapped is a trap when the
+    // reporter meant to type a link instead.
+    form.querySelector("[data-source-chips]")?.addEventListener("click", (event) => {
+      const chip = event.target.closest("[data-choice]");
+      if (!chip) return;
+      syncFromDom();
+      const key = chip.dataset.choice;
+      if (key === "__direct") {
+        state.sourceDirect = !state.sourceDirect;
+        if (state.sourceDirect) state.sourceChoice = "";
+      } else {
+        state.sourceChoice = state.sourceChoice === key ? "" : key;
+        if (state.sourceChoice) state.sourceDirect = false;
+      }
+      drawResults();
+    });
+
+    button?.addEventListener("click", async () => {
+      if (state.busy) return;                  // rule 2: never submit twice
+      clearFlash();
+      syncFromDom();
+
+      const { sending, reports, conflicts } = grid.collectReports(state.rows);
+      if (!sending.length) {
+        drawResults();
+        flash(conflicts.length
+          ? "Confirm the matches that already have a result, or change them back."
+          : state.rows.some((r) => r.error)
+            ? "Some lines are not finished — see below."
+            : "Nothing has changed yet.", "warn");
+        return;
+      }
+
+      // PROVENANCE IS NOT OPTIONAL FOR A NEW RESULT. A score that arrives with
+      // nothing at all saying where it came from cannot be checked by anyone
+      // later, and the reporter is the only person who will ever know. It is
+      // one tap to answer, so it is asked rather than assumed.
+      const source = sharedSource();
+      const needing = grid.rowsNeedingSource(sending, source);
+      if (needing.length) {
+        drawResults();
+        flash(`Say where ${needing.length === 1 ? "this result comes"
+                                                : "these results come"} from —`
+              + " tap one of the buttons above, or type a link.", "warn", 8000);
+        view.querySelector("[data-source-chips]")
+          ?.scrollIntoView({ block: "center", behavior: "smooth" });
+        return;
+      }
+
+      state.busy = true;
+      refreshButton();
+
+      const { data, error } = await supabase.rpc("submit_match_reports", {
+        p_competition_id: state.competition.competition_id,
+        p_season_id: season.season_id,
+        p_source_ref: source,
+        p_reports: reports,
+      });
+
+      state.busy = false;
+
+      if (error) {
+        // The call itself failed, so nothing was written and nothing typed is
+        // lost — the screen is redrawn exactly as it stands (rule 1).
+        drawResults();
+        flash(humanError(error), "error");
+        return;
+      }
+
+      const { saved, failed } = grid.applyBatchResult(sending, data, humanError);
+
+      if (saved) {
+        // The home screen's buckets are now wrong for these matches, and so is
+        // the published site. ONE rebuild for the whole batch — the nudge is
+        // debounced server-side anyway, but asking once is the honest shape.
+        invalidateHome();
+        requestRebuild();
+      }
+
+      drawResults();
+      const { message, kind } = grid.summarize(saved, failed);
+      flash(saved && !failed
+        ? `${message} The site updates in a few minutes.`
+        : message, kind, failed ? 9000 : 5000);
+    });
+
+    refreshButton();
+  }
+
+  loadMatches();
+}
+
+// ── Reading results off a picture ────────────────────────────────────────────
+// #/import. A reporter has the results already — on a Facebook graphic, in a
+// WhatsApp message, on a printed sheet — and the work is retyping them. This
+// removes the typing and keeps every decision.
+//
+// IT PUBLISHES THROUGH THE GRID, NOT BESIDE IT. The rows below are the same
+// objects #/results uses, drawn by the same gridRowHtml, wired by the same
+// wireGridRows, and published by the same submit_match_reports. There is no
+// path here that can put a result on the site that a reporter could not have
+// typed by hand, which is what makes "nothing is published because the AI is
+// confident" a fact about the architecture instead of a promise.
+//
+// THREE CONFIDENCES, AND ONLY ONE OF THEM IS PRE-FILLED.
+//   green   the proposal is applied to the row, so it is a changed row and
+//           will publish — the reporter is confirming a filled-in grid.
+//   yellow  the fixture is shown and the score is NOT applied. There is a
+//           button offering it. That is what "confirmation required" means
+//           here: one tap, on the row, with the reason beside it.
+//   red     no fixture, or several. Listed with what the model read and what
+//           the database offered, and not publishable at all.
+//
+// A yellow row that is never tapped simply does not publish, and the green
+// ones around it still do — which is the brief's "publish the confident ones
+// without losing the unresolved one", achieved by the rule the grid already
+// had rather than by a second concept.
+
+const IMPORT_BUCKET = "report-imports";
+
+const CONFIDENCE = {
+  green: { label: "Ready", cls: "is-green" },
+  yellow: { label: "Check this", cls: "is-yellow" },
+  red: { label: "Not matched", cls: "is-red" },
+};
+
+// Reasons the matcher returns, said in words a reporter can act on. An unknown
+// reason renders as nothing rather than as a code — the list is allowed to
+// grow in SQL without this file being wrong.
+const REASON_TEXT = {
+  sides_swapped: "The graphic lists the teams the other way round.",
+  name_guessed: "The name was matched loosely, not exactly.",
+  home_name_ambiguous: "More than one team answers to that home name.",
+  away_name_ambiguous: "More than one team answers to that away name.",
+  already_has_result: "This match already has a published result.",
+  date_disagrees: "The date on the graphic is not this fixture's date.",
+  date_not_found: "No fixture on that date — matched without it.",
+  batch_consensus: "Matched using the rest of the page, not this row alone.",
+  several_fixtures: "These teams meet more than once — say which.",
+  no_fixture: "No fixture between these teams this season.",
+  team_not_found: "That team is not in a competition you report.",
+  narrowed_by_date: "",
+  narrowed_by_matchday: "",
+};
+
+/** A resolved item becomes a grid row, on the DATABASE's terms.
+ *
+ *  The fixture decides which side is home, not the graphic — so when the
+ *  matcher says the sides were swapped, the scores are swapped back to match
+ *  the fixture rather than the fixture being described the way the picture
+ *  drew it. The row then reads like every other row on the site. */
+function importRow(item, i) {
+  const m = item.match;
+  const row = grid.gridRow({
+    match_id: m.match_id,
+    public_id: m.public_id,
+    date: m.date, kickoff: "", stage: m.stage,
+    status: m.status,
+    home_goals: m.home_goals, away_goals: m.away_goals,
+    home_team_id: m.home_team_id, away_team_id: m.away_team_id,
+    home: { display_name: m.home_name }, away: { display_name: m.away_name },
+    // Blank on purpose: an imported result must carry the import's own
+    // source, and a blank here is what makes rowsNeedingSource insist on it.
+    source_ref: "",
+  });
+  row.idx = i;
+  row.item = item;
+  row.proposal = proposalFor(item);
+  return row;
+}
+
+/** What the model read, expressed the way the fixture is stored. */
+function proposalFor(item) {
+  const raw = item.raw || {};
+  const flipped = item.match?.orientation === "flipped";
+  const home = flipped ? raw.away_score : raw.home_score;
+  const away = flipped ? raw.home_score : raw.away_score;
+  const status = raw.status && raw.status !== "unknown" ? raw.status : "";
+  if (status && status !== "played") return { status, home: null, away: null };
+  if (home === null || home === undefined || away === null || away === undefined) {
+    return null;
+  }
+  return { status: "played", home: Number(home), away: Number(away) };
+}
+
+const proposalLabel = (p) =>
+  !p ? "" : p.status === "played" ? `${p.home}–${p.away}`
+                                  : statusMeta(p.status).label.toLowerCase();
+
+/** Put the proposal on the row. This is the ONLY way an extracted score
+ *  reaches a publishable state, and it happens either automatically for a
+ *  green row or on an explicit tap for a yellow one. */
+function applyProposal(row) {
+  const p = row.proposal;
+  if (!p) return row;
+  if (p.status === "played") {
+    grid.setStatus(row, "played");
+    grid.setScore(row, "home", String(p.home));
+    grid.setScore(row, "away", String(p.away));
+  } else {
+    grid.setStatus(row, p.status);
+  }
+  row.applied = true;
+  return row;
+}
+
+async function renderImport(params) {
+  const state = {
+    step: "submit",
+    file: null, preview: "", text: "", url: "",
+    importId: params?.get("id") || "",
+    extracted: null, resolved: null,
+    groups: [], unmatched: [],
+    busy: false, note: "", linkReason: "",
+  };
+
+  const sourceRef = () => (state.url.trim()
+    || `Imported from a screenshot by ${context.reporter?.name || "a reporter"}`
+       + `, ${formatDate(catToday())}`).slice(0, 500);
+
+  // ── Submitting ─────────────────────────────────────────────────────────────
+
+  function drawSubmit() {
+    h(`<a class="rp-btn is-quiet" href="#/" style="margin-top:0">&larr; My matches</a>
+       <h1 class="rp-login-head">Fill from a screenshot</h1>
+       <p class="rp-login-sub">Send whatever you have. Nothing is published
+         until you approve it.</p>
+       <form class="rp-form" data-import autocomplete="off">
+         <label class="rp-label" for="im-file">Screenshot or photo</label>
+         <input class="rp-input" id="im-file" type="file" data-file
+                accept="image/jpeg,image/png,image/webp" capture="environment">
+         <p class="rp-hint">A results graphic, or a photo of a printed sheet.
+           It is shrunk on this phone before it is sent.</p>
+         ${state.preview
+           ? `<img class="rp-imp-preview" src="${esc(state.preview)}" alt="">`
+           : ""}
+
+         <label class="rp-label" for="im-url">Link (optional)</label>
+         <input class="rp-input" id="im-url" type="url" data-url inputmode="url"
+                value="${esc(state.url)}" placeholder="https://facebook.com/..."
+                autocapitalize="off" autocorrect="off" spellcheck="false">
+         <p class="rp-hint">Kept as the source whether or not it can be read.
+           Facebook usually cannot be — send a screenshot with it.</p>
+
+         <label class="rp-label" for="im-text">…or paste the text</label>
+         <textarea class="rp-input rp-textarea" id="im-text" data-text rows="5"
+                   placeholder="Blue Eagles 2-1 Silver Strikers&#10;Wanderers 0-0 Bullets"
+                   >${esc(state.text)}</textarea>
+
+         ${state.note ? `<p class="rp-hint is-warn">${esc(state.note)}</p>` : ""}
+
+         <div class="rp-publish">
+           <button class="rp-btn" type="button" data-read>Read it</button>
+           <p class="rp-publish-note">Or
+             <a href="#/results">enter the results by hand</a>.</p>
+         </div>
+       </form>`);
+
+    const form = view.querySelector("[data-import]");
+    form.addEventListener("submit", (e) => e.preventDefault());
+    form.querySelector("[data-file]").addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      state.url = form.querySelector("[data-url]").value;
+      state.text = form.querySelector("[data-text]").value;
+      try {
+        const blob = await shrinkImage(file);
+        state.file = blob;
+        state.preview = URL.createObjectURL(blob);
+      } catch {
+        state.file = null; state.preview = "";
+        state.note = "That file is not a photo I can read. Try a JPG or PNG.";
+      }
+      drawSubmit();
+    });
+    form.querySelector("[data-read]").addEventListener("click", () => {
+      state.url = form.querySelector("[data-url]").value.trim();
+      state.text = form.querySelector("[data-text]").value.trim();
+      submit();
+    });
+  }
+
+  function drawReading(message) {
+    h(`<div class="rp-loading"><span class="rp-spinner"></span>
+         <p>${esc(message)}</p>
+         <p class="rp-hint">Nothing is published until you have looked at it.</p>
+       </div>`);
+  }
+
+  async function submit() {
+    if (state.busy) return;                      // rule 2
+    if (!state.file && !state.text && !state.url) {
+      flash("Add a screenshot, some text, or a link.", "warn");
+      return;
+    }
+    state.busy = true;
+    clearFlash();
+    drawReading("Sending…");
+
+    let storagePath = "";
+    try {
+      if (state.file) {
+        // '<reporter_id>/<uuid>.jpg' — the path IS the authorization, which is
+        // what the storage policy in 0042 reads. The bucket is private.
+        storagePath = `${context.reporter.reporter_id}/${crypto.randomUUID()}.jpg`;
+        const { error } = await supabase.storage.from(IMPORT_BUCKET)
+          .upload(storagePath, state.file, { contentType: "image/jpeg" });
+        if (error) throw error;
+      }
+    } catch (error) {
+      state.busy = false;
+      state.note = "";
+      drawSubmit();
+      flash(humanError(error), "error");
+      return;
+    }
+
+    const channel = state.file && state.url ? "image_url"
+      : state.file ? "image" : state.url && !state.text ? "url" : "text";
+
+    try {
+      const { data: importId, error } = await supabase.rpc("create_report_import", {
+        p_channel: channel,
+        p_source_url: state.url,
+        p_pasted_text: state.text,
+        p_storage_path: storagePath,
+      });
+      if (error) throw error;
+      state.importId = importId;
+    } catch (error) {
+      state.busy = false;
+      drawSubmit();
+      flash(humanError(error), "error");
+      return;
+    }
+
+    await read();
+  }
+
+  /** Extract, then resolve. Two calls because they need two different things:
+   *  the first needs the model key and runs server-side, the second needs THIS
+   *  reporter's identity and so has to run as them. */
+  async function read() {
+    drawReading("Reading it…");
+    let payload = null;
+    try {
+      const { data, error } = await supabase.functions.invoke("import-extract", {
+        body: { import_id: state.importId },
+      });
+      if (error) {
+        const reason = await functionError(error, data);
+        state.busy = false;
+        if (reason === "import_disabled") {
+          state.note = "Reading from screenshots is not switched on yet.";
+          drawSubmit();
+          flash("Reading from screenshots is not switched on. You can still "
+                + "enter results by hand.", "warn", 8000);
+          return;
+        }
+        drawSubmit();
+        flash(reason === "not an active reporter"
+          ? "Your reporter account is inactive. Ask an administrator."
+          : "I could not read that one. You can still enter the results by "
+            + "hand.", "error");
+        return;
+      }
+      payload = data;
+    } catch (error) {
+      state.busy = false;
+      drawSubmit();
+      flash(humanError(error), "error");
+      return;
+    }
+
+    // An unreadable link is an expected state, not a failure. The link is
+    // already saved as the source; what is needed is a picture, which can be
+    // added to THIS import rather than starting again.
+    if (payload?.error) {
+      state.busy = false;
+      state.linkReason = payload.link_reason || "";
+      state.note = payload.message
+        || "I could not read that one. You can still enter the results by hand.";
+      drawSubmit();
+      return;
+    }
+
+    state.extracted = payload?.extracted || null;
+    state.linkReason = payload?.link_reason || "";
+
+    // A fixture list is recognised and NOT processed. The extraction is kept,
+    // so the same submission can be reprocessed when fixture import ships —
+    // the reporter is not asked to send it again later.
+    if (state.extracted?.document_kind === "fixtures") {
+      state.busy = false;
+      state.step = "fixtures";
+      drawFixtureList();
+      return;
+    }
+
+    drawReading("Matching it to your fixtures…");
+    try {
+      const { data, error } = await supabase.rpc("resolve_and_save_import", {
+        p_import_id: state.importId,
+      });
+      if (error) throw error;
+      state.resolved = data;
+    } catch (error) {
+      state.busy = false;
+      drawSubmit();
+      flash(humanError(error), "error");
+      return;
+    }
+
+    buildGroups();
+    state.busy = false;
+    state.step = "review";
+    drawReview();
+  }
+
+  /** Group the proposals by competition. NOT forced into one: a submission
+   *  spanning two leagues is a real thing (a district page posting both), and
+   *  assuming one would file half the results in the wrong competition. Each
+   *  group publishes with its own submit_match_reports call, because that RPC
+   *  takes one competition — which is also what keeps its authorization check
+   *  meaningful. */
+  function buildGroups() {
+    const items = (state.resolved?.items || []);
+    const byComp = new Map();
+    state.unmatched = [];
+    // Index-aligned and dense: gridRowHtml stamps `data-i` and wireGridRows
+    // reads it back as an array subscript, so the row at position n must BE
+    // the row whose idx is n. Grouping by competition reorders the rows on
+    // screen, which is exactly why the lookup cannot be the on-screen order.
+    state.rowsByIdx = [];
+    let i = 0;
+
+    items.forEach((item) => {
+      if (!item.match || item.confidence === "red") {
+        state.unmatched.push(item);
+        return;
+      }
+      const comp = item.match.competition_id;
+      if (!byComp.has(comp)) byComp.set(comp, []);
+      const row = importRow(item, i);
+      state.rowsByIdx[i] = row;
+      i += 1;
+      // GREEN IS PRE-FILLED, YELLOW IS OFFERED. A yellow row that is never
+      // tapped does not publish, and the greens around it still do.
+      if (item.confidence === "green") applyProposal(row);
+      byComp.get(comp).push(row);
+    });
+
+    state.groups = [...byComp].map(([competition_id, rows]) => ({
+      competition_id, rows,
+    }));
+  }
+
+  // ── Reviewing ──────────────────────────────────────────────────────────────
+
+  function drawFixtureList() {
+    const rows = state.extracted?.results || [];
+    h(`<a class="rp-btn is-quiet" href="#/" style="margin-top:0">&larr; My matches</a>
+       <h1 class="rp-login-head">That looks like a fixture list</h1>
+       <p class="rp-login-sub">Fixture import is coming next. I have saved what
+         was in it, so you will not have to send it again.</p>
+       <ul class="rp-list">${rows.map((r) => `
+         <li>${esc(r.home_team_raw)} v ${esc(r.away_team_raw)}
+           ${r.date ? `<em>${esc(r.date)}</em>` : ""}</li>`).join("")}</ul>
+       <a class="rp-btn is-ghost" href="#/add">＋ Add these fixtures by hand</a>
+       <a class="rp-btn is-quiet" href="#/import">Send something else</a>`);
+  }
+
+  function allRows() {
+    return state.groups.flatMap((g) => g.rows);
+  }
+
+  function drawReview() {
+    const rows = allRows();
+    const { sending } = grid.collectReports(rows);
+    const n = sending.length;
+    const names = state.names || {};
+
+    const chip = (item) => {
+      const c = CONFIDENCE[item.confidence] || CONFIDENCE.red;
+      return `<span class="rp-conf ${c.cls}">${esc(c.label)}</span>`;
+    };
+
+    const reasons = (item) => {
+      const lines = (item.reasons || []).map((r) => REASON_TEXT[r])
+        .filter(Boolean);
+      return lines.length
+        ? `<p class="rp-imp-why">${lines.map(esc).join(" ")}</p>` : "";
+    };
+
+    // What the model read, kept beside the row it produced. It is what a
+    // reporter checks against the picture when something looks wrong, and it
+    // is the reason a bad reading is diagnosable at all.
+    const asRead = (item) => {
+      const raw = item.raw || {};
+      const score = raw.home_score === null || raw.home_score === undefined
+        ? "" : ` ${raw.home_score}–${raw.away_score}`;
+      return `<p class="rp-imp-raw">Read as:
+        <span>${esc(raw.home || "?")}${esc(score)} ${esc(raw.away || "?")}</span></p>`;
+    };
+
+    const extra = (row) => {
+      const item = row.item;
+      const offer = !row.applied && row.proposal
+        ? `<button class="rp-btn is-ghost rp-imp-use" type="button"
+             data-use="${row.idx}">Use ${esc(proposalLabel(row.proposal))}</button>`
+        : "";
+      return `<div class="rp-imp-head">${chip(item)}${asRead(item)}</div>
+              ${reasons(item)}${offer}`;
+    };
+
+    const groupHtml = (group) => `
+      <section class="rp-imp-group">
+        <h2 class="rp-field-head">${esc(names[group.competition_id]
+                                        || group.competition_id)}</h2>
+        <ol class="rp-grid-list">${
+          group.rows.map((row) => gridRowHtml(row, row.idx, { extra: extra(row) }))
+            .join("")}</ol>
+      </section>`;
+
+    const unmatchedHtml = state.unmatched.length ? `
+      <section class="rp-imp-group">
+        <h2 class="rp-field-head">Not matched (${state.unmatched.length})</h2>
+        <p class="rp-hint" style="margin-top:0">These could not be tied to a
+          fixture you report. Nothing here will be published — add them from
+          the matchday screen if they are real.</p>
+        ${state.unmatched.map((item) => `
+          <div class="rp-gr is-bad">
+            <div class="rp-imp-head">${chip(item)}${asRead(item)}</div>
+            ${reasons(item)}
+            ${(item.home_candidates || []).length > 1 ? `
+              <p class="rp-imp-why">Could be:
+                ${item.home_candidates.slice(0, 4)
+                   .map((c) => esc(c.name)).join(", ")}</p>` : ""}
+          </div>`).join("")}
+      </section>` : "";
+
+    const source = state.url
+      ? `<a href="${esc(state.url)}" rel="noopener noreferrer" target="_blank">
+           ${esc(state.url.slice(0, 60))}</a>`
+      : "this screenshot";
+
+    h(`<a class="rp-btn is-quiet" href="#/" style="margin-top:0">&larr; My matches</a>
+       <h1 class="rp-login-head">Check before publishing</h1>
+       <p class="rp-login-sub">Read from ${source}. Nothing below is on the site
+         yet.</p>
+       ${state.preview ? `<details class="rp-sec"><summary>
+           <span class="rp-sec-name">What you sent</span></summary>
+           <div class="rp-sec-body">
+             <img class="rp-imp-preview" src="${esc(state.preview)}" alt=""></div>
+         </details>` : ""}
+       ${state.extracted?.notes
+         ? `<p class="rp-hint is-warn">${esc(state.extracted.notes)}</p>` : ""}
+       <form class="rp-form" data-grid autocomplete="off">
+         ${state.groups.map(groupHtml).join("")}
+         ${unmatchedHtml}
+         <div class="rp-publish">
+           <button class="rp-btn" type="button" data-publish ${n ? "" : "disabled"}>${
+             n ? `Approve and publish ${n} result${n === 1 ? "" : "s"}`
+               : "Nothing to publish yet"}</button>
+           <p class="rp-publish-note" data-note></p>
+         </div>
+       </form>
+       <a class="rp-btn is-quiet" href="#/import">Send something else</a>`);
+
+    wireReview();
+  }
+
+  function wireReview() {
+    const form = view.querySelector("[data-grid]");
+    if (!form) return;
+    const button = form.querySelector("[data-publish]");
+    const note = form.querySelector("[data-note]");
+    form.addEventListener("submit", (e) => e.preventDefault());
+
+    const rows = allRows();
+    const byIdx = state.rowsByIdx;
+
+    function refresh() {
+      const { sending, conflicts } = grid.collectReports(rows);
+      const n = sending.length;
+      const waiting = rows.filter((r) => !r.applied && r.proposal
+                                         && !grid.isChanged(r)).length;
+      button.disabled = state.busy || !n;
+      button.textContent = state.busy
+        ? `Publishing ${n}…`
+        : n ? `Approve and publish ${n} result${n === 1 ? "" : "s"}`
+            : "Nothing to publish yet";
+      note.textContent = conflicts.length
+        ? `${conflicts.length} already ${conflicts.length === 1 ? "has" : "have"}`
+          + " a result — confirm above to include."
+        : waiting
+          ? `${waiting} still to check.`
+          : n ? "These will appear on everyleague.co within a few minutes."
+              : "Tap a suggestion above, or type a score.";
+    }
+
+    // The score boxes and status selects, wired exactly as on #/results —
+    // an imported row is editable in every way a typed one is.
+    wireGridRows(form, byIdx, {
+      onPatch: (i, row) => { refresh(); patchGridRow(i, row); },
+      onRedraw: () => { syncGridFromDom(form, byIdx); drawReview(); },
+    });
+
+    form.addEventListener("click", (event) => {
+      const use = event.target.closest("[data-use]");
+      if (!use) return;
+      syncGridFromDom(form, byIdx);
+      const row = byIdx[Number(use.dataset.use)];
+      if (row) applyProposal(row);
+      drawReview();
+    });
+
+    button?.addEventListener("click", async () => {
+      if (state.busy) return;                    // rule 2
+      clearFlash();
+      syncGridFromDom(form, byIdx);
+
+      const source = sourceRef();
+      let saved = 0;
+      let failed = 0;
+      state.busy = true;
+      refresh();
+
+      // One call per competition. Sequential rather than parallel: on the
+      // connection this app is written for, three requests at once is how all
+      // three time out.
+      for (const group of state.groups) {
+        const { sending, reports } = grid.collectReports(group.rows);
+        if (!sending.length) continue;
+        const { data, error } = await supabase.rpc("submit_match_reports", {
+          p_competition_id: group.competition_id,
+          p_season_id: state.resolved?.season_id || null,
+          p_source_ref: source,
+          p_reports: reports,
+        });
+        if (error) {
+          // Rule 1: nothing typed or proposed is lost — the rows are untouched
+          // and the button can simply be pressed again.
+          failed += sending.length;
+          flash(humanError(error), "error");
+          continue;
+        }
+        const outcome = grid.applyBatchResult(sending, data, humanError);
+        saved += outcome.saved;
+        failed += outcome.failed;
+      }
+
+      state.busy = false;
+
+      if (saved) {
+        invalidateHome();
+        requestRebuild();
+        // The import is closed only once something actually came of it. A
+        // failed publish leaves it open, which is what makes the retry sane.
+        supabase.rpc("set_import_outcome", {
+          p_import_id: state.importId, p_status: "published",
+        }).then(({ error }) => {
+          if (error) console.warn("[everyleague] import not closed:", error);
+        });
+      }
+
+      drawReview();
+      const { message, kind } = grid.summarize(saved, failed);
+      flash(saved && !failed
+        ? `${message} The site updates in a few minutes.`
+        : message, kind, failed ? 9000 : 5000);
+    });
+
+    refresh();
+  }
+
+  // ── Go ─────────────────────────────────────────────────────────────────────
+  competitionNames().then((names) => {
+    state.names = names;
+    if (state.step === "review") drawReview();
+  }).catch(() => { state.names = {}; });
+
+  drawSubmit();
 }
 
 // ── Creating a league ────────────────────────────────────────────────────────
@@ -9452,6 +10668,8 @@ async function route() {
   if (path.startsWith("/nt/m/")) return renderNTMatch(decodeURIComponent(path.slice(6)));
   if (path.startsWith("/nt/c/")) return renderNTCompetition(decodeURIComponent(path.slice(6)));
   if (path === "/ops") return renderOps(params);
+  if (path === "/results") return renderResults(params);
+  if (path === "/import") return renderImport(params);
   if (path === "/add") return renderAddFixture(params);
   if (path === "/league/new") return renderNewLeague();
   if (path === "/account") return renderAccount();
