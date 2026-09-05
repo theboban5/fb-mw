@@ -17,3 +17,6 @@ out/
 # both are local state that npx rewrites on every run, so they showed up as
 # spurious modifications in every diff after a db push.
 supabase/.temp/
+
+# Handoff notes between sessions. Working scratch, not repo content.
+NEXT_SESSION.md
