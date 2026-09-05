@@ -48,7 +48,16 @@ export const DOCUMENT_KINDS = [
  *  on every object, and numeric bounds (`minimum`, `maximum`) and string
  *  lengths are NOT supported. So the 0..99 score range is not expressed here —
  *  it is enforced in normalizeItem() below, and again by apply_match_report at
- *  the database, which is the only place it actually has to hold. */
+ *  the database, which is the only place it actually has to hold.
+ *
+ *  NULLABLE IS `anyOf`, NOT A TYPE UNION. The first version wrote
+ *  `type: ["string", "null"]`, which is ordinary JSON Schema and is not in the
+ *  supported subset: the dialect takes `null` as a basic TYPE and `anyOf` as
+ *  the way to compose, and a type-union is neither. Every request was rejected
+ *  with a 400 before a single word was read — and because every field in this
+ *  schema is nullable, it failed on plain pasted text as surely as on a
+ *  photograph, which is what made it look like the model rather than the
+ *  envelope. */
 export const EXTRACTION_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -57,9 +66,9 @@ export const EXTRACTION_SCHEMA = {
     document_kind: { type: "string", enum: DOCUMENT_KINDS },
     // Anything the source says about the competition as a whole. A hint, never
     // an answer — the matcher decides which competition this is.
-    competition_hint: { type: ["string", "null"] },
-    date: { type: ["string", "null"] },
-    matchday: { type: ["string", "null"] },
+    competition_hint: { anyOf: [{ type: "string" }, { type: "null" }] },
+    date: { anyOf: [{ type: "string" }, { type: "null" }] },
+    matchday: { anyOf: [{ type: "string" }, { type: "null" }] },
     results: {
       type: "array",
       items: {
@@ -73,14 +82,14 @@ export const EXTRACTION_SCHEMA = {
           // alias tables are what know it might be Nyasa Big Bullets.
           home_team_raw: { type: "string" },
           away_team_raw: { type: "string" },
-          home_score: { type: ["integer", "null"] },
-          away_score: { type: ["integer", "null"] },
+          home_score: { anyOf: [{ type: "integer" }, { type: "null" }] },
+          away_score: { anyOf: [{ type: "integer" }, { type: "null" }] },
           status: { type: "string", enum: IMPORT_STATUSES },
-          date: { type: ["string", "null"] },
-          kickoff: { type: ["string", "null"] },
-          matchday: { type: ["string", "null"] },
-          competition_hint: { type: ["string", "null"] },
-          venue_raw: { type: ["string", "null"] },
+          date: { anyOf: [{ type: "string" }, { type: "null" }] },
+          kickoff: { anyOf: [{ type: "string" }, { type: "null" }] },
+          matchday: { anyOf: [{ type: "string" }, { type: "null" }] },
+          competition_hint: { anyOf: [{ type: "string" }, { type: "null" }] },
+          venue_raw: { anyOf: [{ type: "string" }, { type: "null" }] },
           // Read if present, never published in this version. The shape is
           // here so scorer import is a later change to the CLIENT rather than
           // a new extraction contract and a re-run of every stored import.
@@ -93,16 +102,16 @@ export const EXTRACTION_SCHEMA = {
               properties: {
                 player_raw: { type: "string" },
                 team_side: { type: "string", enum: ["home", "away", "unknown"] },
-                minute: { type: ["integer", "null"] },
-                own_goal: { type: ["boolean", "null"] },
-                penalty: { type: ["boolean", "null"] },
+                minute: { anyOf: [{ type: "integer" }, { type: "null" }] },
+                own_goal: { anyOf: [{ type: "boolean" }, { type: "null" }] },
+                penalty: { anyOf: [{ type: "boolean" }, { type: "null" }] },
               },
             },
           },
           // The words this row was read from. It is what a reporter checks
           // against the picture when a row looks wrong, and it is the reason
           // a bad extraction is diagnosable at all.
-          evidence: { type: ["string", "null"] },
+          evidence: { anyOf: [{ type: "string" }, { type: "null" }] },
           // The anti-invention device. Asking for an explicit list of what was
           // NOT shown makes filling those fields in a contradiction rather
           // than a convenience.
@@ -110,7 +119,7 @@ export const EXTRACTION_SCHEMA = {
         },
       },
     },
-    notes: { type: ["string", "null"] },
+    notes: { anyOf: [{ type: "string" }, { type: "null" }] },
   },
 };
 
@@ -368,13 +377,17 @@ export function parseExtraction(message) {
  *  common case pays once. */
 export function shouldEscalate(result, { hasFallback = true } = {}) {
   if (!hasFallback) return false;
-  if (!result) return true;
-  if (!result.ok) {
-    // A refusal will be refused again, and an over-long response will be over-
-    // long again. Neither is a reading problem, so neither is worth paying
-    // twice for.
-    return !["refused", "too_long"].includes(result.errorCategory);
-  }
+  if (!result) return false;
+  // A FAILED CALL IS NEVER ESCALATED. Escalation exists for one thing: a
+  // document the cheap model could not read well. If the call itself did not
+  // succeed there is no reading to improve on, and a bigger model will hit the
+  // identical wall — a malformed request is malformed at every price, a bad
+  // key is bad at every price, and a rate limit is a rate limit.
+  //
+  // This used to retry everything except refusals and truncations, which meant
+  // the schema bug that made every request a 400 quietly cost two calls per
+  // import instead of one, for two identical rejections.
+  if (!result.ok) return false;
   if (result.documentKind === "unreadable") return true;
   if (result.items.length === 0) return true;
   if (result.dropped > 0) return true;

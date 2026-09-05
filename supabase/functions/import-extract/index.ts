@@ -34,6 +34,8 @@
 //
 // Secrets (set with `supabase secrets set`, never committed):
 //   ANTHROPIC_API_KEY                   required; absent = feature off
+//   ANTHROPIC_WORKSPACE_ID              only for an ORG-level key; a
+//                                       workspace-scoped key needs no header
 //   EVERYLEAGUE_IMPORT_MODEL            default claude-sonnet-5
 //   EVERYLEAGUE_IMPORT_FALLBACK_MODEL   default claude-opus-5; "" disables
 //
@@ -88,6 +90,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
     Deno.env.get("SUPABASE_SECRET_KEY");
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  // Only needed for an ORG-level key. A workspace-scoped key already knows
+  // which workspace it belongs to; an org-level one is rejected with a 400
+  // until it is told. Blank is the right value for the common case.
+  const workspaceId = Deno.env.get("ANTHROPIC_WORKSPACE_ID") ?? "";
   const model = Deno.env.get("EVERYLEAGUE_IMPORT_MODEL") ?? "claude-sonnet-5";
   const fallbackModel =
     Deno.env.get("EVERYLEAGUE_IMPORT_FALLBACK_MODEL") ?? "claude-opus-5";
@@ -252,7 +258,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let result;
   try {
     result = await runExtraction({
-      provider: anthropicProvider({ apiKey }),
+      provider: anthropicProvider({ apiKey, workspaceId }),
       model, fallbackModel,
       input: { imageBase64, mediaType, text, sourceUrl },
     });
@@ -263,8 +269,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   if (!result.ok) {
-    await finish({ status: "failed", error_category: result.errorCategory,
-                   usage: result.usage ?? null, model });
+    // The provider's own words go on the ROW, not in the reporter's message.
+    // An import that failed with no way to find out why is a hole this feature
+    // fell into once already: a 400 on a malformed schema is indistinguishable
+    // from "the model could not read it" if the only record is a category.
+    // report_imports is readable by its owner and by admins, and by nobody
+    // else — see the policies in 0042.
+    await finish({
+      status: "failed",
+      error_category: result.errorCategory,
+      model,
+      usage: {
+        failed: true,
+        provider_status: result.status ?? 0,
+        provider_detail: (result.detail ?? "").slice(0, 400),
+        attempts: result.usage ?? [],
+      },
+    });
     return json({ import_id: importId, error: result.errorCategory,
                   message: "I couldn't read that one. You can still enter the "
                            + "results by hand." }, 200);

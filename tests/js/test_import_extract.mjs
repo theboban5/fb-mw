@@ -22,7 +22,7 @@ import {
   EXTRACTION_SCHEMA, IMPORT_STATUSES, SYSTEM_PROMPT, buildContent, buildRequest,
   normalizeItem, parseExtraction, shouldEscalate, usageRecord,
 } from "../../supabase/functions/import-extract/extract.js";
-import { fakeProvider, runExtraction }
+import { anthropicProvider, fakeProvider, runExtraction }
   from "../../supabase/functions/import-extract/provider.js";
 import {
   CLEAN_GRAPHIC, MESSY_TEXT, ABBREVIATED, FIXTURE_LIST, ABANDONED_WITH_SCORE,
@@ -60,6 +60,31 @@ test("the schema cannot propose an awarded result", () => {
   // that says so.
   assert.equal(IMPORT_STATUSES.includes("awarded"), false);
   assert.equal(IMPORT_STATUSES.includes("scheduled"), false);
+});
+
+test("nullable fields use anyOf, not a type union", () => {
+  // THE BUG THAT MADE EVERY IMPORT FAIL. `type: ["string","null"]` is ordinary
+  // JSON Schema and is not in the supported structured-outputs subset, so the
+  // API rejected every request with a 400 before reading a word — and because
+  // every field here is nullable, plain pasted text failed exactly as surely
+  // as a photograph, which is what disguised it as a model problem.
+  const walk = (node, path) => {
+    if (!node || typeof node !== "object") return;
+    assert.equal(Array.isArray(node.type), false,
+      `${path} uses a type union; use anyOf`);
+    for (const [key, value] of Object.entries(node.properties ?? {})) {
+      walk(value, `${path}.${key}`);
+    }
+    (node.anyOf ?? []).forEach((sub, i) => walk(sub, `${path}|${i}`));
+    if (node.items) walk(node.items, `${path}[]`);
+  };
+  walk(EXTRACTION_SCHEMA, "root");
+});
+
+test("every nullable field can still express null", () => {
+  const nullable = EXTRACTION_SCHEMA.properties.results.items
+    .properties.home_score;
+  assert.deepEqual(nullable.anyOf, [{ type: "integer" }, { type: "null" }]);
 });
 
 test("every object in the schema forbids extra properties", () => {
@@ -267,6 +292,30 @@ test("a refusal and an over-long response are not retried", () => {
   assert.equal(shouldEscalate(parseExtraction(TRUNCATED)), false);
 });
 
+test("a failed CALL is never escalated", () => {
+  // Escalation is for a document the cheap model read badly. If the call did
+  // not succeed there is no reading to improve on, and a bigger model hits the
+  // identical wall — which is how a schema bug that 400'd every request
+  // quietly cost two calls per import instead of one.
+  for (const category of ["provider_error", "not_configured", "rate_limited",
+                          "provider_unreachable", "timeout", "bad_output",
+                          "no_response", "empty_output"]) {
+    assert.equal(shouldEscalate({ ok: false, errorCategory: category }), false,
+                 category);
+  }
+  assert.equal(shouldEscalate(null), false);
+});
+
+test("a provider failure costs exactly one call", async () => {
+  const provider = fakeProvider(null, { failWith: "provider_error" });
+  const out = await runExtraction({
+    provider, model: "claude-sonnet-5", fallbackModel: "claude-opus-5",
+    input: { text: "x" },
+  });
+  assert.equal(provider.calls.length, 1, "a rejected request is not re-sent");
+  assert.equal(out.ok, false);
+});
+
 test("escalation is off when there is no fallback model", () => {
   assert.equal(shouldEscalate(parseExtraction(UNREADABLE),
                               { hasFallback: false }), false);
@@ -324,6 +373,27 @@ test("with no fallback configured the import still returns what it got",
   });
   assert.equal(provider.calls.length, 1);
   assert.equal(out.items.length, 1);
+});
+
+test("an org-level key sends the workspace header; a scoped one does not", async () => {
+  // A key created inside a workspace carries that already. A key created at
+  // the ORGANISATION level does not, and every request without this header
+  // comes back 400 invalid_request_error — which is what made the first live
+  // import fail on plain text as surely as on a photograph.
+  const seen = [];
+  const fetchImpl = async (_url, init) => {
+    seen.push(init.headers);
+    return { ok: true, status: 200, json: async () => ({ content: [] }) };
+  };
+  await anthropicProvider({ apiKey: "k", workspaceId: "wrkspc_1", fetchImpl })({});
+  assert.equal(seen[0]["anthropic-workspace-id"], "wrkspc_1");
+
+  await anthropicProvider({ apiKey: "k", fetchImpl })({});
+  assert.equal("anthropic-workspace-id" in seen[1], false);
+
+  // Whitespace is not a workspace id.
+  await anthropicProvider({ apiKey: "k", workspaceId: "  ", fetchImpl })({});
+  assert.equal("anthropic-workspace-id" in seen[2], false);
 });
 
 test("a provider failure is a category and costs nothing to record", async () => {

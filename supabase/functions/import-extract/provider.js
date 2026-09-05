@@ -30,10 +30,19 @@ const API_VERSION = "2023-06-01";
  *  name a model, an account, a rate-limit tier or an internal host, and all of
  *  that would end up in report_imports.error_category, which a reporter reads.
  */
-export function anthropicProvider({ apiKey, fetchImpl = fetch,
+export function anthropicProvider({ apiKey, workspaceId = "",
+                                    fetchImpl = fetch,
                                     baseUrl = "https://api.anthropic.com",
                                     timeoutMs = 60_000 } = {}) {
   if (!apiKey) throw new Error("anthropicProvider needs an apiKey");
+
+  // AN ORG-LEVEL KEY NEEDS TO BE TOLD WHICH WORKSPACE TO BILL. A key created
+  // inside a workspace carries that already and needs nothing; a key created
+  // at the organisation level does not, and every request without the header
+  // comes back 400 invalid_request_error. Both kinds are ordinary things to
+  // be handed, so both are supported rather than one being documented as the
+  // only correct choice.
+  const workspace = String(workspaceId || "").trim();
 
   return async function call(request) {
     const controller = new AbortController();
@@ -47,6 +56,7 @@ export function anthropicProvider({ apiKey, fetchImpl = fetch,
           "content-type": "application/json",
           "x-api-key": apiKey,
           "anthropic-version": API_VERSION,
+          ...(workspace ? { "anthropic-workspace-id": workspace } : {}),
         },
         body: JSON.stringify(request),
       });
@@ -65,13 +75,25 @@ export function anthropicProvider({ apiKey, fetchImpl = fetch,
       // out, and it is what an unset secret looks like.
       const detail = await response.text().catch(() => "");
       console.error("[import] provider error", response.status, detail.slice(0, 500));
+      // `detail` is carried OUT as well as logged, and index.ts stores it on
+      // the import row. Not in the reporter's message — a provider error can
+      // name a model, an account or a rate-limit tier — but an import that
+      // failed with no way to find out why is a hole this feature already fell
+      // into once: a 400 on a malformed schema looked exactly like "the model
+      // could not read it", and the only way to tell them apart was a log
+      // nobody could reach. report_imports is readable by its owner and by
+      // admins, never by anon and never by the site.
+      const short = detail.slice(0, 400);
       if (response.status === 401 || response.status === 403) {
-        return { ok: false, errorCategory: "not_configured", status: response.status };
+        return { ok: false, errorCategory: "not_configured",
+                 status: response.status, detail: short };
       }
       if (response.status === 429) {
-        return { ok: false, errorCategory: "rate_limited", status: response.status };
+        return { ok: false, errorCategory: "rate_limited",
+                 status: response.status, detail: short };
       }
-      return { ok: false, errorCategory: "provider_error", status: response.status };
+      return { ok: false, errorCategory: "provider_error",
+               status: response.status, detail: short };
     }
 
     let message;
@@ -127,6 +149,7 @@ export async function runExtraction({
       model: useModel, effort, maxTokens, ...input }));
     if (!outcome.ok) {
       return { ok: false, errorCategory: outcome.errorCategory || "provider_error",
+               detail: outcome.detail || "", status: outcome.status || 0,
                items: [] };
     }
     usage.push(usageRecord(useModel, outcome.message?.usage, { escalated }));
