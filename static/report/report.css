@@ -1414,6 +1414,18 @@ a { color: var(--accent); }
 /* The names a team is printed under, on #/teams. A row per alias with its
    Remove beside it: at 390px the name is what has to be readable, so the
    button is quiet and the name takes the width it needs. */
+/* A stack trace on the Errors tab. The one place in this app where horizontal
+   scrolling inside a container is right: wrapping a stack makes it unreadable,
+   and the site's rule is that the PAGE never scrolls sideways, not that
+   nothing may. */
+.ops-stack {
+  margin: 12px 0 0; padding: 10px;
+  overflow-x: auto;
+  border-radius: var(--radius); background: var(--line);
+  color: var(--muted); font-size: 0.72rem; line-height: 1.5;
+  white-space: pre;
+}
+
 .rp-alias-list { margin: 0; padding: 0; list-style: none; }
 .rp-alias-list li {
   display: flex; align-items: center; gap: 10px;
