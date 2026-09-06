@@ -88,6 +88,7 @@ src/officials.py       referee + coach pages (the officials registry, 0024)
 src/trending.py        the homepage carousel (the `trending` tab, 0030)
 src/matches_page.py    /matches/ — every match on one date, any date
 static/report/results_grid.js  the matchday grid's rules, DOM-free and tested
+static/report/fixture_import.js  the fixture importer's rules, same bargain
 src/nt.py, nt_page.py  national teams (the nt_* tabs, /scorchers/)
 src/search.py          the site search index
 static/report/app.js   the reporter portal (one file, no framework)
@@ -148,9 +149,9 @@ python3 -m http.server -d /tmp/site 8000      # then look at it at 390px wide
 and this is still not a Node project** — the root `package.json` exists only
 because Node reads a bare `.js` as CommonJS unless a package.json says
 otherwise, and the portal's modules are ESM because browsers load them that
-way. It covers `static/report/results_grid.js`, which imports nothing; the
-moment that file needs `document` or `supabase`, the tests stop meaning
-anything.
+way. It covers `static/report/results_grid.js` and
+`static/report/fixture_import.js`, which import nothing; the moment either
+needs `document` or `supabase`, the tests stop meaning anything.
 
 `python3 -m unittest discover` currently ends with **one pre-existing failure**
 — `test_search.IndexContentTest.test_index_stays_small_enough_to_ship`, a
@@ -183,6 +184,51 @@ fixture and clean up, and they never mutate a real match.
 ---
 
 ## Recent work (Sep 2026)
+
+Reading a fixture list off a picture, migrations `0049`–`0051` — `#/import`:
+
+- **The extraction contract did not change.** It already asked for `date`,
+  `kickoff`, `venue_raw`, `matchday` and `competition_hint` and already
+  returned `document_kind: "fixtures"`, so every fixture graphic already in
+  `report_imports.extracted` can be replayed. That is what 0042's "I have saved
+  what was in it" was for.
+- **A fixture graphic asks a different question.** A results graphic asks which
+  fixture this is; a fixture graphic asks whether the fixture exists yet.
+  Answering it with the results matcher returns "no fixture between these
+  teams" on every row — true and useless.
+- **The obvious use is not the useful one.** Both fixtures on the Super League
+  MATCH DAY poster that prompted this were already stored with that date, that
+  kick-off and those grounds — a poster CONFIRMS a top league's list. Where the
+  list genuinely does not exist is district and youth football: MW_MDU14 has
+  sixteen teams and zero fixtures, MW_MGDU20 ten and zero. So the state is on
+  the row: `new` publishes, `existing_agrees` is a tick, `existing_differs`
+  offers a correction through `reschedule_match`/`set_match_venue`. Detected in
+  the resolver, not left to `insert_fixture`'s duplicate guard — "already in
+  the list" arriving as a per-row failure AFTER publishing reads as an error
+  and is the opposite of one.
+- **The competition comes from the teams; the hint only ever breaks a tie**,
+  and only between competitions `entries` already nominated. The tie is real:
+  every Airtel Top 8 side is also a Super League side, so every row of a cup
+  graphic shares two and votes for neither. A running intersection beside the
+  vote is what stops the resolver giving up on every cup.
+- **`import_venue_match` is `resolve_venue` with the insert removed.** That
+  function mints an unknown ground and argues the case well — but every word of
+  the argument is about a reporter TYPING it. A matched ground is pre-filled
+  with the name `venues` holds; an unmatched one is left blank with the printed
+  name beside it.
+- **`import_kickoff`** turns "2:30 PM" into 14:30. A bare "2:30" is read as
+  afternoon and FLAGGED, because that is an inference. The bare form requires a
+  colon — `06.09.2026` in a kickoff field would otherwise become 18:09.
+- `0050` is **0044's bug made again**: `v_reasons || 'literal'` resolves to
+  array_cat and raises 22P02. It came back because 0044 repaired 0043 with
+  `create or replace` in a NEW migration, so `0043_import_matching.sql` still
+  contains the broken line — it is a record of a request, not the definition
+  that is running. **To know what a function does today, grep the whole
+  migrations directory for its name and read the LAST one.**
+- `0051` is two things the live tests found: the competition was tested before
+  the teams, so an unknown name reported "I cannot tell which league" instead
+  of the one thing a reporter can fix; and the cup gap above.
+- Not built: `document_kind: "mixed"` still goes down the results path.
 
 How a result was submitted, migrations `0047`–`0048` — `#/ops?tab=submitted`:
 

@@ -1230,12 +1230,62 @@ results in the wrong place. The calls are sequential, not parallel: on the
 connection this app is written for, three requests at once is how all three time
 out.
 
-#### A fixture list
+#### A fixture list (`0049`–`0051`)
 
-Recognised and **not** processed: the screen says fixture import is coming next
-and offers `#/add`. The extraction is kept, so the same submission can be
-reprocessed when fixture import ships — the reporter is not asked to send it
-again later.
+A MATCH DAY poster goes down its own path, because it asks a different
+question. A results graphic asks *which fixture is this?*; a fixture graphic
+asks *does this fixture exist yet?*, and answering it with the results matcher
+would come back "no fixture between these teams" on every row — true, and
+useless.
+
+**The extraction contract did not change.** It already asked for and kept
+`date`, `kickoff`, `venue_raw`, `matchday` and `competition_hint`, and already
+returned `document_kind: "fixtures"`. Every fixture graphic sent before this
+shipped can be replayed from `report_imports.extracted` — which is what that
+"I have saved what was in it" promise was for.
+
+**What the data says the feature is for is not what it looks like.** The
+obvious use — a Super League poster — is almost never new information: the top
+leagues' fixture lists are entered, and the poster confirms a kick-off and a
+ground. Both fixtures on the poster that prompted this were already in
+`matches` with exactly that date, a 14:30 kick-off and the right grounds, so
+`create_fixtures` would have refused both as duplicates. Where the fixture list
+genuinely does not exist is the district and youth leagues: MW_MDU14 has
+sixteen teams and **zero** fixtures, MW_MGDU20 ten teams and zero.
+
+So the screen has four sections and only one publishes:
+
+| | |
+|---|---|
+| **To add** | not in the database. Publishes through `create_fixtures`, on `#/add`'s own row |
+| **Already listed, but different** | it exists and the graphic disagrees about the date, kick-off or ground. One tap corrects it through `reschedule_match` / `set_match_venue` |
+| **Already in the list** | the graphic agrees. A tick, and **not an error** — on a top-flight poster this is nearly every row |
+| **Not matched** | a name that resolved to nothing. The `0046` team-namer, verbatim: one tap and the whole list is matched again |
+
+**The competition comes from the teams, not the hint.** Two teams entered in
+exactly one competition this season *is* the answer, and it is in `entries`.
+`competition_hint` is a string the model produced, so it only ever breaks a tie
+— and only between competitions the teams already nominated. That tie is real:
+every Airtel Top 8 side is also a Super League side, so every row of a cup
+graphic shares two competitions and votes for neither. A running intersection
+beside the vote is what stops the resolver giving up on every cup.
+
+**Nothing is created from a reading.** `import_venue_match` is `resolve_venue`
+with the insert taken out. That function mints a ground it does not recognise
+and its header argues the case well — a `venue_id` is a label, a duplicate is
+an afternoon's tidying — but every word of that argument is about *a reporter
+typing it*. A model reading "MPIRA STADIUN" off a compressed screenshot is a
+different actor: nobody typed it, nobody would notice, and the table grows a
+twin. So a matched ground is pre-filled with the name `venues` holds, an
+unmatched one is left **blank** with the printed name beside it, and typing it
+in is the reporter's decision.
+
+`import_kickoff` exists because "2:30 PM" is what a graphic prints and
+`^[0-9]{1,2}:[0-9]{2}$` is what `insert_fixture` accepts. A bare "2:30" is half
+past two in the afternoon in every league in the country — so it is read that
+way, **and flagged**, because that is an inference rather than something the
+picture said. The bare form requires a colon: `06.09.2026` filed one column
+over would otherwise become a confident 18:09.
 
 #### An unreadable link
 
@@ -1280,13 +1330,25 @@ names that team. Tiers 3 and 4 are deliberately **not** a collision: a team
 alias outranks a club name, so filing "Bullets" on the men's first team is how
 four Bullets squads stop being ambiguous, not a way of making them so.
 
-#### The grid's row markup is shared, and that is the safety argument
+#### The row markup is shared, and that is the safety argument
 
 `gridRowHtml`, `patchGridRow`, `syncGridFromDom` and `wireGridRows` sit at
-module scope in `app.js` precisely because two screens draw them. An imported
-result and a typed one have to be the same object, on the same row, published
-by the same button, or the safety story becomes a claim about two code paths
-instead of a property of one.
+module scope in `app.js` precisely because two screens draw them, and
+`fixtureRowHtml`, `fixturePicker`, `syncFixtureRowsFromDom` and
+`wireFixturePickers` sit beside them for the fixture half. An imported result
+and a typed one have to be the same object, on the same row, published by the
+same button, or the safety story becomes a claim about two code paths instead
+of a property of one.
+
+**It is also the sharpest edge in this file.** When `gridRowHtml` was first
+moved out for the results import, `#/add`'s own `line()` was replaced by a call
+to it — a rename that compiled, resolved, and threw on every draw, because a
+fixture row has no `saved` to ask about. `#/add` painted "Loading teams…" and
+died with the spinner turning, which reads as a slow network rather than as a
+broken screen; nobody could add a fixture for a month. The fixture helpers take
+`rows` and `teams` as arguments rather than closing over one screen's state, so
+a caller that has not got them cannot silently be pointed at the wrong
+function, and `tests/js/test_results_grid.mjs` now asserts the throw.
 
 ### Reading results from a screenshot (`import-extract`)
 
