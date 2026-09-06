@@ -61,6 +61,25 @@ test("an existing result is shown, not hidden", () => {
   assert.equal(row.away, "2");
 });
 
+// A FIXTURE ROW IS NOT A GRID ROW, AND THIS IS WHY IT MATTERS.
+//
+// #/add builds its own rows — home/away/date/kickoff/venue and no `saved`,
+// because a fixture that does not exist yet has no saved state to compare
+// against. When gridRowHtml moved to module scope for the import review to
+// share, #/add's own `line()` was replaced by a call to it, and every draw of
+// the fixture form threw here: `row.saved.status` on an object with no
+// `saved`. The screen painted "Loading teams…" and died, so no fixture could
+// be added by anybody for a month before anyone noticed.
+//
+// The throw is correct — a row with no saved state cannot answer "is this a
+// correction?" and guessing would be worse. What was missing was a test
+// saying so, in the file that owns the rule.
+test("a row with no saved state is not a grid row, and says so loudly", () => {
+  const fixtureRow = { home: "", away: "", homeText: "", awayText: "",
+                       date: "", kickoff: "", venue: "", error: "" };
+  assert.throws(() => isConflict(fixtureRow), TypeError);
+});
+
 // ── Score behaviour ──────────────────────────────────────────────────────────
 
 test("entering a score defaults the match to played", () => {

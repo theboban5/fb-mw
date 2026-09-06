@@ -1337,7 +1337,7 @@ async function renderAddFixture(params) {
       <h2 class="rp-field-head">The fixtures</h2>
       <p class="rp-hint" style="margin-top:0">Start typing a team and tap it
         from the list. Only teams entered in this competition are offered.</p>
-      <ol class="rp-fixtures">${state.rows.map((row, i) => gridRowHtml(row, i)).join("")}</ol>
+      <ol class="rp-fixtures">${state.rows.map(line).join("")}</ol>
       <button class="rp-btn is-ghost" type="button" data-more>＋ Add another</button>
 
       <div class="rp-publish">
