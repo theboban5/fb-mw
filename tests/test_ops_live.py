@@ -43,6 +43,10 @@ OPS_VIEWS = (
     "ops_matchday_status",
     "ops_competition_summary",
     "ops_dashboard_totals",
+    # 0047. Same arrangement as the five above — the grant is what makes it
+    # visible, the is_admin() in the body is the gate — so it belongs to the
+    # same access sweep.
+    "ops_submissions",
 )
 OPS_TABLES = ("ops_competition_settings",)
 

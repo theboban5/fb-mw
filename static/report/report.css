@@ -1397,6 +1397,20 @@ a { color: var(--accent); }
 .rp-imp-fix .rp-input { margin-top: 0; }
 .rp-imp-fix .rp-hint { margin-bottom: 0; }
 
+/* THE ONE PLACE THE SUGGESTION LIST IS NOT AN OVERLAY.
+   Everywhere else it floats over the fields below it, which is right: on the
+   scorer form the minute and goal-type row must not be shoved under the
+   reporter's thumb while they read the list. Here the list sits inside a
+   bordered red card, in a column of other bordered red cards — so an overlay
+   spills past its own card and lands on the next row's button, which reads as
+   a bug rather than as a menu. Inline, the card grows and nothing is covered. */
+.rp-imp-fix .rp-suggest {
+  position: static;
+  margin-top: 8px;
+  max-height: 240px;
+  box-shadow: none;
+}
+
 /* The names a team is printed under, on #/teams. A row per alias with its
    Remove beside it: at 390px the name is what has to be readable, so the
    button is quiet and the name takes the width it needs. */
@@ -1407,5 +1421,15 @@ a { color: var(--accent); }
   border-bottom: 1px solid var(--line);
 }
 .rp-alias-list li:last-child { border-bottom: 0; }
-.rp-alias-list li span { flex: 1 1 auto; word-break: break-word; }
-.rp-alias-list .rp-btn { flex: none; margin-top: 0; }
+/* min-width:0 or the name wraps one letter per line. .rp-btn is width:100% by
+   design — every other button in this app is a full-width tap target — so
+   inside a flex row it claims the whole line and squeezes its sibling to
+   nothing. Both halves of that have to be said: the button gives up its width
+   here, and the name is allowed to shrink below its longest word. */
+.rp-alias-list li span {
+  flex: 1 1 auto; min-width: 0; word-break: break-word;
+}
+.rp-alias-list .rp-btn {
+  flex: none; width: auto; margin-top: 0;
+  min-height: 36px; padding: 6px 12px; font-size: 0.82rem;
+}
