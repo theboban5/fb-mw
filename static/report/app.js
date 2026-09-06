@@ -34,6 +34,8 @@ import * as graphics from "./graphics.js";
 // The matchday grid's rules, kept out of this file so they can be tested
 // without a browser — see the section header on renderResults.
 import * as grid from "./results_grid.js";
+// The fixture importer's rules, out here for the same reason.
+import * as fx from "./fixture_import.js";
 
 const view = document.querySelector("[data-view]");
 const flashEl = document.querySelector("[data-flash]");
@@ -1129,6 +1131,216 @@ const blankRow = () => ({
  *  the same rules, so humanError already knows every one of them. */
 const rowError = (message) => humanError({ message: message || "" });
 
+// ── One line of the fixture form ─────────────────────────────────────────────
+// AT MODULE SCOPE, because two screens draw it: #/add, where a reporter types
+// a fixture list, and the import review, where the same list arrives read off
+// a picture. It is the same argument gridRowHtml makes for results — an
+// imported fixture and a typed one have to be the same object, on the same
+// row, published by the same create_fixtures call, or "nothing here can put a
+// fixture on the site that could not have been typed" is a claim about two
+// code paths rather than a property of one.
+//
+// IT IS ALSO WHY THE HOIST IS A SEPARATE CHANGE FROM THE ONE THAT SHARES IT.
+// When gridRowHtml was moved out here for the results import, #/add's own
+// `line()` was replaced by a call to it — a rename that resolved, compiled and
+// threw on every draw, because a fixture row has no `saved`. Nobody could add
+// a fixture for a month. So these take `teams` and `rows` as arguments rather
+// than closing over a particular screen's state: a caller that has not got
+// them cannot silently be pointed at the wrong function.
+
+const fixtureTeamName = (teams, id) =>
+  (teams || []).find((t) => t.id === id)?.name || id;
+
+/** A team box: type to narrow, tap to commit.
+ *
+ *  The scorer picker's pattern, and simpler — the teams are already in memory,
+ *  so filtering is a string match rather than a search, and there is no "add a
+ *  new one". A team not entered in this competition is exactly what validate.py
+ *  check 3 refuses, so it is never offered; the box can only ever produce a
+ *  team_id that is already legal here.
+ *
+ *  Two inputs, as in the scorer picker: what the reporter reads is a NAME, and
+ *  what is submitted is the hidden id beside it. */
+function fixturePicker(row, i, side, label, teams) {
+  return `
+    <div class="rp-pick" data-pick="${i}:${side}">
+      <input class="rp-input" type="text" data-row="${i}" data-text="${side}"
+             value="${esc(row[side] ? fixtureTeamName(teams, row[side])
+                                    : row[`${side}Text`] || "")}"
+             placeholder="${esc(label)}" role="combobox" aria-expanded="false"
+             aria-autocomplete="list" autocomplete="off" autocorrect="off"
+             autocapitalize="words" aria-label="${esc(label)}, match ${i + 1}">
+      <input type="hidden" data-row="${i}" data-field="${side}"
+             value="${esc(row[side])}">
+      <ul class="rp-suggest" role="listbox" data-suggest hidden></ul>
+    </div>`;
+}
+
+/** `extra` is markup the import review puts at the top of the row — the
+ *  confidence chip, the names the model read, what disagrees with the fixture
+ *  already stored. #/add passes nothing and gets exactly what it had.
+ *
+ *  `heading` is "Match 3" on #/add, where the lines are blank and the number is
+ *  the only thing telling them apart. The import review passes "" — its rows
+ *  arrive with the teams already in them, and they are grouped into sections by
+ *  what should happen to each, so a number taken from the underlying array
+ *  reads as an ordinal that skips: one row under "To add", called Match 4. */
+function fixtureRowHtml(row, i, teams,
+                        { extra = "", canDrop = true, heading } = {}) {
+  const head = heading === undefined ? `Match ${i + 1}` : heading;
+  return `
+    <li class="rp-fx${row.error ? " is-bad" : ""}" data-fx="${i}">
+      ${head || canDrop ? `
+        <div class="rp-fx-head">
+          <span class="rp-fx-no">${esc(head)}</span>
+          ${canDrop
+            ? `<button class="rp-fx-drop" type="button" data-drop="${i}">Remove</button>`
+            : ""}
+        </div>` : ""}
+      ${extra}
+      ${fixturePicker(row, i, "home", "Home team", teams)}
+      <span class="rp-fx-v">v</span>
+      ${fixturePicker(row, i, "away", "Away team", teams)}
+      <div class="rp-row">
+        <input class="rp-input rp-date" type="date" data-row="${i}" data-field="date"
+               value="${esc(row.date)}" aria-label="Date, match ${i + 1}">
+        <input class="rp-input rp-date" type="time" data-row="${i}" data-field="kickoff"
+               value="${esc(row.kickoff)}" aria-label="Kick-off, match ${i + 1}">
+      </div>
+      <input class="rp-input" type="text" list="rp-venues" maxlength="120"
+             data-row="${i}" data-field="venue" value="${esc(row.venue)}"
+             placeholder="Ground" autocapitalize="words" autocorrect="off"
+             aria-label="Ground, match ${i + 1}">
+      ${row.error ? `<p class="rp-fx-error">${esc(row.error)}</p>` : ""}
+    </li>`;
+}
+
+/** Read the lines back into their rows.
+ *
+ *  [data-field] rather than [data-row]: a team picker carries BOTH a visible
+ *  box holding a name and a hidden input holding the team_id, and only the
+ *  second is the answer. The visible one has no data-field. */
+function syncFixtureRowsFromDom(form, rows) {
+  if (!form) return;
+  form.querySelectorAll("[data-field]").forEach((el) => {
+    const row = rows[Number(el.dataset.row)];
+    if (row) row[el.dataset.field] = el.value;
+  });
+  form.querySelectorAll("[data-text]").forEach((el) => {
+    const row = rows[Number(el.dataset.row)];
+    if (row) row[`${el.dataset.text}Text`] = el.value;
+  });
+}
+
+/** The team pickers on every line, wired once for whichever screen drew them.
+ *
+ *  Delegated to the form rather than bound per box: there are two per line and
+ *  the whole list is redrawn whenever a line is added or removed, so per-box
+ *  listeners would be re-attached on every redraw and hold detached nodes. The
+ *  form is replaced with them, so these die at the right time.
+ *
+ *  `emptyNote` is what an empty list says, which differs by screen: on #/add
+ *  it names the competition the reporter chose, and on the import it names the
+ *  one the resolver worked out. */
+function wireFixturePickers(form, { rows, teams, emptyNote, onSync }) {
+  let blurTimer = null;
+
+  const closeLists = () => {
+    form.querySelectorAll("[data-suggest]").forEach((ul) => {
+      if (ul.hidden) return;
+      ul.hidden = true;
+      ul.innerHTML = "";
+      ul.parentElement.querySelector("[data-text]")
+        ?.setAttribute("aria-expanded", "false");
+    });
+  };
+
+  function openList(wrap, term) {
+    const [index, side] = wrap.dataset.pick.split(":");
+    const row = rows[Number(index)];
+    const opposite = side === "home" ? row?.away : row?.home;
+    const needle = term.trim().toLowerCase();
+    const matches = (teams || []).filter(
+      (t) => !needle || t.name.toLowerCase().includes(needle));
+    const list = wrap.querySelector("[data-suggest]");
+
+    list.innerHTML = matches.length
+      ? matches.map((t) => `
+          <li role="option"><button type="button" class="rp-suggest-btn"
+            data-team="${esc(t.id)}" data-name="${esc(t.name)}"${
+              t.id === opposite ? " disabled" : ""}>
+            <span>${esc(t.name)}</span>${t.id === opposite
+              ? "<em>already the other side of this match</em>"
+              : (t.group ? `<em>${esc(t.group)}</em>` : "")}
+          </button></li>`).join("")
+      // Not a dead end, and not phrased as one: the reason a name is absent is
+      // almost always that the team is not entered in this competition this
+      // season, which is a thing an administrator fixes.
+      : `<li><button type="button" class="rp-suggest-btn" disabled>
+           <span>No team here matches that</span>
+           <em>${esc(emptyNote)}</em></button></li>`;
+    list.hidden = false;
+    wrap.querySelector("[data-text]").setAttribute("aria-expanded", "true");
+  }
+
+  // Focusing a box shows everything, so it is still one tap to browse the list
+  // the way the old dropdown worked. Typing narrows it.
+  form.addEventListener("focusin", (event) => {
+    if (event.target.closest("[data-suggest]")) return;
+    clearTimeout(blurTimer);
+    closeLists();
+    const input = event.target.closest("[data-text]");
+    if (input) openList(input.parentElement, "");
+  });
+
+  // Belt and braces for the same hazard: keeping the press from moving focus
+  // at all means the box never blurs and the list is still there when the
+  // click arrives. The deferred close below is the fallback for touch.
+  form.addEventListener("mousedown", (event) => {
+    if (event.target.closest("[data-suggest]")) event.preventDefault();
+  });
+
+  form.addEventListener("input", (event) => {
+    const input = event.target.closest("[data-text]");
+    if (!input) return;
+    // The typed name no longer belongs to whoever was picked.
+    input.parentElement.querySelector("[data-field]").value = "";
+    onSync?.();
+    openList(input.parentElement, input.value);
+  });
+
+  // The tap that chooses an option lands just after the blur it causes, so
+  // closing is deferred rather than immediate.
+  form.addEventListener("focusout", (event) => {
+    if (!event.target.closest("[data-text]")) return;
+    clearTimeout(blurTimer);
+    blurTimer = setTimeout(closeLists, 180);
+  });
+
+  form.addEventListener("click", (event) => {
+    const option = event.target.closest(".rp-suggest-btn");
+    if (!option || option.disabled || !option.dataset.team) return;
+    const wrap = option.closest("[data-pick]");
+    wrap.querySelector("[data-field]").value = option.dataset.team;
+    wrap.querySelector("[data-text]").value = option.dataset.name;
+    clearTimeout(blurTimer);
+    closeLists();
+    onSync?.();
+  });
+
+  form.addEventListener("keydown", (event) => {
+    const input = event.target.closest("[data-text]");
+    if (!input || event.key !== "Enter") return;
+    // Enter inside a picker means "the one at the top of the list", never
+    // "submit the other six fixtures".
+    event.preventDefault();
+    input.parentElement
+      .querySelector(".rp-suggest-btn[data-team]:not([disabled])")?.click();
+  });
+
+  return { closeLists };
+}
+
 async function renderAddFixture(params) {
   h('<div class="rp-loading"><span class="rp-spinner"></span><p>Loading…</p></div>');
 
@@ -1207,8 +1419,7 @@ async function renderAddFixture(params) {
     drawAddFixture();
   }
 
-  const teamName = (id) =>
-    (state.teams || []).find((t) => t.id === id)?.name || id;
+  const teamName = (id) => fixtureTeamName(state.teams, id);
 
   /** Read the form back into state.
    *
@@ -1226,17 +1437,9 @@ async function renderAddFixture(params) {
     state.date = value("[data-all-date]");
     state.kickoff = value("[data-all-kickoff]");
     state.source = value("[data-source]");
-    // [data-field] rather than [data-row]: a team picker carries BOTH a
-    // visible box holding a name and a hidden input holding the team_id, and
-    // only the second is the answer. The visible one has no data-field.
-    form.querySelectorAll("[data-field]").forEach((el) => {
-      const row = state.rows[Number(el.dataset.row)];
-      if (row) row[el.dataset.field] = el.value;
-    });
-    form.querySelectorAll("[data-text]").forEach((el) => {
-      const row = state.rows[Number(el.dataset.row)];
-      if (row) row[`${el.dataset.text}Text`] = el.value;
-    });
+    // The lines themselves are read by the shared helper — the same one the
+    // import review uses, because they are the same lines.
+    syncFixtureRowsFromDom(form, state.rows);
   }
 
   function drawAddFixture() {
@@ -1247,51 +1450,12 @@ async function renderAddFixture(params) {
         c.competition_id === state.competition.competition_id ? " selected" : ""}>
         ${esc(c.label)}</option>`).join("");
 
-    /** A team box: type to narrow, tap to commit.
-     *
-     *  The scorer picker's pattern, and simpler — the teams are already in
-     *  memory, so filtering is a string match rather than a search, and there
-     *  is no "add a new one". A team not entered in this competition is
-     *  exactly what validate.py check 3 refuses, so it is never offered; the
-     *  box can only ever produce a team_id that is already legal here.
-     *
-     *  Two inputs, as in the scorer picker: what the reporter reads is a
-     *  NAME, and what is submitted is the hidden id beside it. */
-    const picker = (row, i, side, label) => `
-      <div class="rp-pick" data-pick="${i}:${side}">
-        <input class="rp-input" type="text" data-row="${i}" data-text="${side}"
-               value="${esc(row[side] ? teamName(row[side]) : row[`${side}Text`] || "")}"
-               placeholder="${esc(label)}" role="combobox" aria-expanded="false"
-               aria-autocomplete="list" autocomplete="off" autocorrect="off"
-               autocapitalize="words" aria-label="${esc(label)}, match ${i + 1}">
-        <input type="hidden" data-row="${i}" data-field="${side}"
-               value="${esc(row[side])}">
-        <ul class="rp-suggest" role="listbox" data-suggest hidden></ul>
-      </div>`;
-
-    const line = (row, i) => `
-      <li class="rp-fx${row.error ? " is-bad" : ""}">
-        <div class="rp-fx-head">
-          <span class="rp-fx-no">Match ${i + 1}</span>
-          ${state.rows.length > 1
-            ? `<button class="rp-fx-drop" type="button" data-drop="${i}">Remove</button>`
-            : ""}
-        </div>
-        ${picker(row, i, "home", "Home team")}
-        <span class="rp-fx-v">v</span>
-        ${picker(row, i, "away", "Away team")}
-        <div class="rp-row">
-          <input class="rp-input rp-date" type="date" data-row="${i}" data-field="date"
-                 value="${esc(row.date)}" aria-label="Date, match ${i + 1}">
-          <input class="rp-input rp-date" type="time" data-row="${i}" data-field="kickoff"
-                 value="${esc(row.kickoff)}" aria-label="Kick-off, match ${i + 1}">
-        </div>
-        <input class="rp-input" type="text" list="rp-venues" maxlength="120"
-               data-row="${i}" data-field="venue" value="${esc(row.venue)}"
-               placeholder="Ground" autocapitalize="words" autocorrect="off"
-               aria-label="Ground, match ${i + 1}">
-        ${row.error ? `<p class="rp-fx-error">${esc(row.error)}</p>` : ""}
-      </li>`;
+    // The line and its pickers are drawn by the module-scope helpers, which
+    // the import review draws with too. `canDrop` is the only thing this
+    // screen asks for differently: the last remaining line has no Remove,
+    // because a form with no lines is not a form.
+    const line = (row, i) => fixtureRowHtml(row, i, state.teams,
+                                            { canDrop: state.rows.length > 1 });
 
     const count = state.rows.filter((r) => r.home && r.away).length;
 
@@ -1444,108 +1608,14 @@ async function renderAddFixture(params) {
       button.textContent = n ? `Add ${n} fixture${n === 1 ? "" : "s"}` : "Add fixtures";
     };
 
-    // ── The team pickers ─────────────────────────────────────────────────────
-    // Delegated to the form rather than bound per box: there are two per line
-    // and the whole list is redrawn whenever a line is added or removed, so
-    // per-box listeners would be re-attached on every redraw and hold detached
-    // nodes. The form is replaced with them, so these die at the right time.
-
-    let blurTimer = null;
-
-    const closeLists = () => {
-      form.querySelectorAll("[data-suggest]").forEach((ul) => {
-        if (ul.hidden) return;
-        ul.hidden = true;
-        ul.innerHTML = "";
-        ul.parentElement.querySelector("[data-text]")
-          ?.setAttribute("aria-expanded", "false");
-      });
-    };
-
-    function openList(wrap, term) {
-      const [index, side] = wrap.dataset.pick.split(":");
-      const row = state.rows[Number(index)];
-      const opposite = side === "home" ? row?.away : row?.home;
-      const needle = term.trim().toLowerCase();
-      const matches = (state.teams || []).filter(
-        (t) => !needle || t.name.toLowerCase().includes(needle));
-      const list = wrap.querySelector("[data-suggest]");
-
-      list.innerHTML = matches.length
-        ? matches.map((t) => `
-            <li role="option"><button type="button" class="rp-suggest-btn"
-              data-team="${esc(t.id)}" data-name="${esc(t.name)}"${
-                t.id === opposite ? " disabled" : ""}>
-              <span>${esc(t.name)}</span>${t.id === opposite
-                ? "<em>already the other side of this match</em>"
-                : (t.group ? `<em>${esc(t.group)}</em>` : "")}
-            </button></li>`).join("")
-        // Not a dead end, and not phrased as one: the reason a name is absent
-        // is almost always that the team is not entered in this competition
-        // this season, which is a thing an administrator fixes.
-        : `<li><button type="button" class="rp-suggest-btn" disabled>
-             <span>No team here matches that</span>
-             <em>only teams entered in ${esc(state.competition.label)} this
-                 season can be given a fixture</em></button></li>`;
-      list.hidden = false;
-      wrap.querySelector("[data-text]").setAttribute("aria-expanded", "true");
-    }
-
-    // Focusing a box shows everything, so it is still one tap to browse the
-    // list the way the old dropdown worked. Typing narrows it.
-    form.addEventListener("focusin", (event) => {
-      if (event.target.closest("[data-suggest]")) return;
-      clearTimeout(blurTimer);
-      closeLists();
-      const input = event.target.closest("[data-text]");
-      if (input) openList(input.parentElement, "");
-    });
-
-    // Belt and braces for the same hazard: keeping the press from moving focus
-    // at all means the box never blurs and the list is still there when the
-    // click arrives. The deferred close above is the fallback for touch.
-    form.addEventListener("mousedown", (event) => {
-      if (event.target.closest("[data-suggest]")) event.preventDefault();
-    });
-
-    form.addEventListener("input", (event) => {
-      const input = event.target.closest("[data-text]");
-      if (!input) return;
-      // The typed name no longer belongs to whoever was picked.
-      input.parentElement.querySelector("[data-field]").value = "";
-      syncFromDom();
-      countLines();
-      openList(input.parentElement, input.value);
-    });
-
-    // The tap that chooses an option lands just after the blur it causes, so
-    // closing is deferred rather than immediate.
-    form.addEventListener("focusout", (event) => {
-      if (!event.target.closest("[data-text]")) return;
-      clearTimeout(blurTimer);
-      blurTimer = setTimeout(closeLists, 180);
-    });
-
-    form.addEventListener("click", (event) => {
-      const option = event.target.closest(".rp-suggest-btn");
-      if (!option || option.disabled || !option.dataset.team) return;
-      const wrap = option.closest("[data-pick]");
-      wrap.querySelector("[data-field]").value = option.dataset.team;
-      wrap.querySelector("[data-text]").value = option.dataset.name;
-      clearTimeout(blurTimer);
-      closeLists();
-      syncFromDom();
-      countLines();
-    });
-
-    form.addEventListener("keydown", (event) => {
-      const input = event.target.closest("[data-text]");
-      if (!input || event.key !== "Enter") return;
-      // Enter inside a picker means "the one at the top of the list", never
-      // "submit the other six fixtures".
-      event.preventDefault();
-      input.parentElement
-        .querySelector(".rp-suggest-btn[data-team]:not([disabled])")?.click();
+    // The team pickers, wired by the shared helper — the same boxes the import
+    // review draws, behaving the same way.
+    const { closeLists } = wireFixturePickers(form, {
+      rows: state.rows,
+      teams: state.teams,
+      emptyNote: `only teams entered in ${state.competition.label} this season `
+                 + "can be given a fixture",
+      onSync: () => { syncFromDom(); countLines(); },
     });
 
     form.addEventListener("submit", async (event) => {
@@ -2351,6 +2421,19 @@ const REASON_TEXT = {
   team_not_found: "That team is not in a competition you report.",
   narrowed_by_date: "",
   narrowed_by_matchday: "",
+
+  // ...and the fixture side (0049). Same table, because they are the same
+  // kind of sentence: a reason a reporter can act on, or nothing at all.
+  no_competition: "I could not tell which competition this is — choose one.",
+  same_team: "The two sides read as the same team.",
+  already_listed: "",
+  differs_from_listed: "",
+  several_existing: "These teams already meet more than once — say which.",
+  reversed_existing: "These teams are already listed the other way round on "
+                     + "that date.",
+  kickoff_guessed: "The kick-off had no am/pm, so it was read as afternoon.",
+  no_date: "The graphic did not give a date.",
+  venue_unknown: "That ground is not one I know — type it to add it.",
 };
 
 /** A resolved item becomes a grid row, on the DATABASE's terms.
@@ -2601,13 +2684,12 @@ async function renderImport(params) {
     state.extracted = payload?.extracted || null;
     state.linkReason = payload?.link_reason || "";
 
-    // A fixture list is recognised and NOT processed. The extraction is kept,
-    // so the same submission can be reprocessed when fixture import ships —
-    // the reporter is not asked to send it again later.
+    // A FIXTURE LIST GOES DOWN ITS OWN PATH (0049). It asks a different
+    // question — does this fixture exist yet? — and answering it with the
+    // results matcher would come back "no fixture between these teams" on
+    // every row, which is true and useless.
     if (state.extracted?.document_kind === "fixtures") {
-      state.busy = false;
-      state.step = "fixtures";
-      drawFixtureList();
+      await readFixtures();
       return;
     }
 
@@ -2699,17 +2781,445 @@ async function renderImport(params) {
 
   // ── Reviewing ──────────────────────────────────────────────────────────────
 
-  function drawFixtureList() {
-    const rows = state.extracted?.results || [];
+  // ── A fixture list (0049) ──────────────────────────────────────────────────
+  // The other half of this screen. A results graphic asks "which fixture is
+  // this?"; a fixture graphic asks "does this fixture exist yet?", and on a
+  // top-flight MATCH DAY poster the answer is nearly always yes — the list is
+  // entered and the poster is confirming a kick-off and a ground. Where it is
+  // genuinely new is the district and youth leagues, half of which have no
+  // fixture list at all.
+  //
+  // So the screen has four sections and only one of them publishes. That is
+  // not a compromise between two features; it is what the data on the picture
+  // actually means.
+  //
+  // IT PUBLISHES THROUGH #/add's ROWS, NOT BESIDE THEM. The lines below are
+  // drawn by fixtureRowHtml and wired by wireFixturePickers — the same ones
+  // the fixture form uses — and go out through the same create_fixtures call.
+  // Corrections go through reschedule_match and set_match_venue, which are the
+  // same RPCs the match screen uses. There is no path here that can put a
+  // fixture on the site that a reporter could not have typed.
+
+  function fixtureRowsBy(kind) {
+    return (state.fixRows || [])
+      .map((row, i) => ({ row, i }))
+      .filter(({ row }) => fx.classify(row) === kind);
+  }
+
+  const fixCompetition = () => state.fixResolved?.competition_id || "";
+
+  /** Rebuild the lines from the stored proposal, keeping whatever the reporter
+   *  has already done to them. Keyed on the item index, because re-resolving
+   *  after naming a team returns the same rows in the same order. */
+  function buildFixtureRows(keep) {
+    state.fixRows = (state.fixResolved?.items || []).map((item) => {
+      const row = fx.fixtureRow(item);
+      const prior = keep?.get(item.idx);
+      if (prior) {
+        row.date = prior.date; row.kickoff = prior.kickoff;
+        row.venue = prior.venue;
+        row.confirmed = prior.confirmed; row.updated = prior.updated;
+        row.done = prior.done; row.error = prior.error;
+        if (prior.home) { row.home = prior.home; row.homeText = prior.homeText; }
+        if (prior.away) { row.away = prior.away; row.awayText = prior.awayText; }
+      }
+      return row;
+    });
+  }
+
+  const fixtureEdits = () => new Map((state.fixRows || []).map((row) => [
+    row.idx, { date: row.date, kickoff: row.kickoff, venue: row.venue,
+               home: row.home, away: row.away, homeText: row.homeText,
+               awayText: row.awayText, confirmed: row.confirmed,
+               updated: row.updated, done: row.done, error: row.error }]));
+
+  /** The teams of the chosen competition, for the pickers. Any season, like
+   *  #/players' filter: a fixture is being added for the active one, but the
+   *  list a reporter recognises is the club list. */
+  async function loadFixtureTeams() {
+    const comp = fixCompetition();
+    if (!comp) { state.fixTeams = []; return; }
+    try {
+      state.fixTeams = await competitionTeams(comp);
+    } catch {
+      state.fixTeams = [];
+    }
+  }
+
+  async function readFixtures() {
+    drawReading("Matching it to your teams…");
+    // The competition list and the ground suggestions, which the shared row
+    // markup expects. Both are optional: losing the ground list costs the
+    // autocomplete, not the screen (#/add's bargain, for #/add's reason).
+    [state.fixComps, state.fixVenues] = await Promise.all([
+      entryCompetitions().catch(() => []),
+      venueNames().catch(() => []),
+    ]);
+    try {
+      const { data, error } = await supabase.rpc(
+        "resolve_and_save_import_fixtures", { p_import_id: state.importId });
+      if (error) throw error;
+      state.fixResolved = data;
+    } catch (error) {
+      state.busy = false;
+      drawSubmit();
+      flash(humanError(error), "error");
+      return;
+    }
+    buildFixtureRows();
+    await loadFixtureTeams();
+    state.busy = false;
+    state.step = "fixtures";
+    drawFixtures();
+  }
+
+  /** Re-run the matcher, optionally pinning a competition. Everything already
+   *  typed survives it — the same bargain the results side makes. */
+  async function reResolveFixtures(competitionId) {
+    const keep = fixtureEdits();
+    drawReading("Matching it again…");
+    try {
+      const { data, error } = await supabase.rpc(
+        "resolve_and_save_import_fixtures", {
+          p_import_id: state.importId,
+          p_competition_id: competitionId ?? fixCompetition() ?? null,
+        });
+      if (error) throw error;
+      state.fixResolved = data;
+    } catch (error) {
+      buildFixtureRows(keep);
+      drawFixtures();
+      flash(humanError(error), "error");
+      return;
+    }
+    buildFixtureRows(keep);
+    await loadFixtureTeams();
+    drawFixtures();
+  }
+
+  function drawFixtures() {
+    const names = state.names || {};
+    const comp = fixCompetition();
+    const isCup = (state.fixComps || []).find(
+      (c) => c.competition_id === comp)?.type === "cup";
+
+    const chip = (item) => {
+      const c = CONFIDENCE[item.confidence] || CONFIDENCE.red;
+      return `<span class="rp-conf ${c.cls}">${esc(c.label)}</span>`;
+    };
+    const asRead = (item) => `<p class="rp-imp-raw">Read as:
+      <span>${esc(item.raw?.home || "?")} v ${esc(item.raw?.away || "?")}</span>${
+        item.raw?.date ? ` <em>${esc(item.raw.date)}</em>` : ""}</p>`;
+    const reasons = (item) => {
+      const lines = (item.reasons || []).map((r) => REASON_TEXT[r]).filter(Boolean);
+      return lines.length
+        ? `<p class="rp-imp-why">${lines.map(esc).join(" ")}</p>` : "";
+    };
+
+    // ── The competition, which everything else depends on ────────────────────
+    const compOptions = (state.fixComps || []).map((c) => `
+      <option value="${esc(c.competition_id)}"${
+        c.competition_id === comp ? " selected" : ""}>${esc(c.label)}</option>`).join("");
+    const compBlock = `
+      <label class="rp-label" for="fx-imp-comp">Competition</label>
+      <select class="rp-select" id="fx-imp-comp" data-fix-comp>
+        <option value="">Choose…</option>${compOptions}</select>
+      <p class="rp-hint">${comp
+        ? (state.fixResolved.competition_source === "hint"
+            ? "Read from the heading on the graphic, from the leagues these "
+              + "teams play in. Change it if it is wrong."
+            : "Worked out from the teams themselves. Change it if it is wrong.")
+        : "These teams play in more than one competition, or none I could "
+          + "find. Choose the one this list is for."}</p>`;
+
+    const toAdd = fixtureRowsBy("new");
+    const differs = fixtureRowsBy("differs");
+    const agrees = fixtureRowsBy("agrees");
+    const blocked = fixtureRowsBy("blocked");
+    const n = fx.collectFixtures((state.fixRows || []).filter((r) => !r.done)).sending.length;
+
+    const addSection = toAdd.length ? `
+      <section class="rp-imp-group">
+        <h2 class="rp-field-head">To add (${toAdd.length})</h2>
+        <ol class="rp-fixtures">${toAdd.map(({ row, i }) =>
+          fixtureRowHtml(row, i, state.fixTeams, {
+            canDrop: false, heading: "",
+            extra: `<div class="rp-imp-head">${chip(row.item)}${asRead(row.item)}</div>
+                    ${reasons(row.item)}${row.done
+                      ? '<p class="rp-imp-why">Added.</p>' : ""}`,
+          })).join("")}</ol>
+      </section>` : "";
+
+    const differsSection = differs.length ? `
+      <section class="rp-imp-group">
+        <h2 class="rp-field-head">Already listed, but different (${differs.length})</h2>
+        <p class="rp-hint" style="margin-top:0">These fixtures exist. The
+          graphic says something else about them — correcting one is a
+          reschedule or a change of ground, recorded as one.</p>
+        <ol class="rp-fixtures">${differs.map(({ row, i }) =>
+          fixtureRowHtml(row, i, state.fixTeams, {
+            canDrop: false, heading: "",
+            extra: `<div class="rp-imp-head">${chip(row.item)}${asRead(row.item)}</div>
+              <p class="rp-imp-why">${esc(fx.differenceLabel(row))}</p>
+              ${row.updated
+                ? '<p class="rp-imp-why">Corrected.</p>'
+                : `<button class="rp-btn is-ghost rp-imp-use" type="button"
+                     data-fx-update="${i}">${row.confirmed
+                       ? "Correcting…" : "Correct this fixture"}</button>`}`,
+          })).join("")}</ol>
+      </section>` : "";
+
+    const agreesSection = agrees.length ? `
+      <section class="rp-imp-group">
+        <h2 class="rp-field-head">Already in the list (${agrees.length})</h2>
+        <p class="rp-hint" style="margin-top:0">The graphic agrees with what is
+          stored. Nothing to do — and nothing wrong.</p>
+        ${agrees.map(({ row }) => `
+          <a class="ops-row" href="#/m/${esc(row.item.existing?.public_id || "")}">
+            <span class="ops-row-teams">${esc(row.homeText)}
+              <span class="ops-row-v">v</span> ${esc(row.awayText)}</span>
+            <span class="ops-row-meta">${esc([formatDate(row.date),
+              formatKickoff(row.kickoff), row.venue].filter(Boolean).join(" · "))}</span>
+          </a>`).join("")}
+      </section>` : "";
+
+    const blockedSection = blocked.length ? `
+      <section class="rp-imp-group">
+        <h2 class="rp-field-head">Not matched (${blocked.length})</h2>
+        <p class="rp-hint" style="margin-top:0">Nothing here will be added.
+          Where a name is the problem, say which team it is and the whole list
+          is matched again.</p>
+        ${blocked.map(({ row }) => `
+          <div class="rp-gr is-bad">
+            <div class="rp-imp-head">${chip(row.item)}${asRead(row.item)}</div>
+            ${reasons(row.item)}
+            ${fixerHtml(row.item)}
+          </div>`).join("")}
+      </section>` : "";
+
+    const source = state.url
+      ? `<a href="${esc(state.url)}" rel="noopener noreferrer" target="_blank">
+           ${esc(state.url.slice(0, 60))}</a>`
+      : "this screenshot";
+
     h(`<a class="rp-btn is-quiet" href="#/" style="margin-top:0">&larr; My matches</a>
-       <h1 class="rp-login-head">That looks like a fixture list</h1>
-       <p class="rp-login-sub">Fixture import is coming next. I have saved what
-         was in it, so you will not have to send it again.</p>
-       <ul class="rp-list">${rows.map((r) => `
-         <li>${esc(r.home_team_raw)} v ${esc(r.away_team_raw)}
-           ${r.date ? `<em>${esc(r.date)}</em>` : ""}</li>`).join("")}</ul>
-       <a class="rp-btn is-ghost" href="#/add">＋ Add these fixtures by hand</a>
+       <h1 class="rp-login-head">A fixture list</h1>
+       <p class="rp-login-sub">Read from ${source}. Nothing below is on the site
+         yet.</p>
+       ${state.preview ? `<details class="rp-sec"><summary>
+           <span class="rp-sec-name">What you sent</span></summary>
+           <div class="rp-sec-body">
+             <img class="rp-imp-preview" src="${esc(state.preview)}" alt=""></div>
+         </details>` : ""}
+       ${state.extracted?.notes
+         ? `<p class="rp-hint is-warn">${esc(state.extracted.notes)}</p>` : ""}
+       <form class="rp-form" data-fixtures autocomplete="off">
+         ${compBlock}
+         ${comp ? `
+           ${isCup ? `
+             <label class="rp-label" for="fx-imp-stage">Round</label>
+             <select class="rp-select" id="fx-imp-stage" data-fx-stage>
+               <option value="">Choose…</option>
+               ${CUP_ROUNDS.map((r) => `<option value="${r.value}"${
+                 r.value === state.fixStage ? " selected" : ""}>${esc(r.label)}</option>`).join("")}
+             </select>
+             <p class="rp-hint">The round every fixture below is in.</p>`
+           : `
+             <label class="rp-label" for="fx-imp-md">Matchday</label>
+             <input class="rp-input" id="fx-imp-md" type="number" data-fx-md
+                    min="1" step="1" inputmode="numeric"
+                    value="${esc(state.fixMatchday || "")}">
+             <p class="rp-hint">Optional, and applies to every fixture added —
+               most graphics do not print it.</p>`}
+           ${addSection}${differsSection}${agreesSection}${blockedSection}
+           <div class="rp-publish">
+             <button class="rp-btn" type="button" data-fx-add ${n ? "" : "disabled"}>${
+               n ? `Add ${n} fixture${n === 1 ? "" : "s"}` : "Nothing to add"}</button>
+             <p class="rp-publish-note" data-fx-note>${
+               n ? "These will appear on everyleague.co within a few minutes."
+                 : agrees.length && !toAdd.length && !differs.length
+                   ? "Every fixture on this list is already in the database."
+                   : "Nothing on this list is new."}</p>
+           </div>` : ""}
+       </form>
+       <datalist id="rp-venues">${
+         (state.fixVenues || []).map((v) => `<option value="${esc(v)}"></option>`).join("")}</datalist>
        <a class="rp-btn is-quiet" href="#/import">Send something else</a>`);
+
+    wireFixtures();
+  }
+
+  function wireFixtures() {
+    const form = view.querySelector("[data-fixtures]");
+    if (!form) return;
+    form.addEventListener("submit", (e) => e.preventDefault());
+
+    const rows = state.fixRows || [];
+    const sync = () => syncFixtureRowsFromDom(form, rows);
+
+    form.querySelector("[data-fix-comp]")?.addEventListener("change", (event) => {
+      sync();
+      reResolveFixtures(event.target.value || null);
+    });
+
+    if (!fixCompetition()) return;
+
+    wireFixturePickers(form, {
+      rows, teams: state.fixTeams,
+      emptyNote: "only teams entered in this competition this season can be "
+                 + "given a fixture",
+      onSync: sync,
+    });
+
+    form.querySelector("[data-fx-md]")?.addEventListener("change", (event) => {
+      state.fixMatchday = event.target.value;
+    });
+    form.querySelector("[data-fx-stage]")?.addEventListener("change", (event) => {
+      state.fixStage = event.target.value;
+    });
+
+    form.addEventListener("click", (event) => {
+      const fixOpen = event.target.closest("[data-fix-open]");
+      if (fixOpen) {
+        sync();
+        const key = fixOpen.dataset.fixOpen;
+        const raw = fixOpen.dataset.fixRaw || "";
+        state.fix = state.fix?.key === key
+          ? null
+          : { key, raw, term: raw, results: [], note: "", busy: false };
+        drawFixtures();
+        if (state.fix) {
+          view.querySelector("[data-fix-term]")?.focus();
+          runFixSearch();
+        }
+        return;
+      }
+      const pick = event.target.closest("[data-fix-pick]");
+      if (pick) { applyFix(pick.dataset.fixPick, pick); return; }
+
+      const update = event.target.closest("[data-fx-update]");
+      if (update) {
+        sync();
+        const row = rows[Number(update.dataset.fxUpdate)];
+        if (row) { row.confirmed = true; runFixtureUpdates(update); }
+      }
+    });
+
+    form.addEventListener("input", (event) => {
+      const box = event.target.closest("[data-fix-term]");
+      if (!box || !state.fix) return;
+      state.fix.term = box.value;
+      clearTimeout(fixTimer);
+      fixTimer = setTimeout(runFixSearch, 250);
+    });
+
+    form.querySelector("[data-fx-add]")?.addEventListener("click", () => addFixtures());
+  }
+
+  /** The corrections, one match at a time.
+   *
+   *  Sequential and only for rows the reporter tapped — which will usually be
+   *  none, or one. reschedule_match and set_match_venue are per-match RPCs and
+   *  building a batch pair for a button pressed twice a week would be
+   *  machinery for a problem that has not happened; if a matchday of eight
+   *  confirmations ever proves slow, 0041's refactor is the shape to copy. */
+  async function runFixtureUpdates(button) {
+    if (state.busy) return;                        // rule 2
+    state.busy = true;
+    button.disabled = true;
+    button.textContent = "Correcting…";
+
+    let done = 0;
+    let failed = 0;
+    for (const update of fx.collectUpdates(state.fixRows || [])) {
+      let error = null;
+      if (update.reschedule) {
+        ({ error } = await supabase.rpc("reschedule_match", {
+          p_match_id: update.matchId,
+          p_date: update.reschedule.date,
+          p_kickoff: update.reschedule.kickoff,
+        }));
+      }
+      if (!error && update.venue !== null) {
+        ({ error } = await supabase.rpc("set_match_venue", {
+          p_match_id: update.matchId, p_venue_name: update.venue,
+        }));
+      }
+      if (error) {
+        failed += 1;
+        update.row.confirmed = false;
+        update.row.error = humanError(error);
+      } else {
+        done += 1;
+        update.row.updated = true;
+        update.row.error = "";
+      }
+    }
+
+    state.busy = false;
+    if (done) { invalidateHome(); requestRebuild(); }
+    drawFixtures();
+    flash(failed
+      ? `${done} corrected; ${failed} could not be.`
+      : `${done} fixture${done === 1 ? "" : "s"} corrected. The site updates in `
+        + "a few minutes.",
+      failed ? "warn" : "ok");
+  }
+
+  async function addFixtures() {
+    if (state.busy) return;                        // rule 2
+    clearFlash();
+    const form = view.querySelector("[data-fixtures]");
+    syncFixtureRowsFromDom(form, state.fixRows || []);
+
+    const shared = state.fixStage
+      ? { stage: state.fixStage }
+      : { matchday: state.fixMatchday || "" };
+    const { sending, fixtures } = fx.collectFixtures(
+      (state.fixRows || []).filter((r) => !r.done), shared);
+
+    if (!sending.length) {
+      drawFixtures();
+      flash("Nothing on this list is new.", "warn");
+      return;
+    }
+
+    state.busy = true;
+    drawFixtures();
+
+    const { data, error } = await supabase.rpc("create_fixtures", {
+      p_competition_id: fixCompetition(),
+      p_season_id: state.fixResolved?.season_id || null,
+      p_source_ref: sourceRef(),
+      p_fixtures: fixtures,
+    });
+
+    state.busy = false;
+
+    if (error) {
+      // Rule 1: nothing proposed or typed is lost — the screen comes back
+      // exactly as it stands and the button can be pressed again.
+      drawFixtures();
+      flash(humanError(error), "error");
+      return;
+    }
+
+    const { added, failed } = fx.applyFixtureResult(sending, data, humanError);
+    if (added) {
+      invalidateHome();
+      requestRebuild();
+      // Closed only once something came of it, as the results path does.
+      supabase.rpc("set_import_outcome", {
+        p_import_id: state.importId, p_status: "published",
+      }).then(({ error: err }) => {
+        if (err) console.warn("[everyleague] import not closed:", err);
+      });
+    }
+
+    drawFixtures();
+    const { message, kind } = fx.summarizeFixtures(added, 0, failed);
+    flash(added && !failed ? `${message} The site updates in a few minutes.`
+                           : message, kind, failed ? 9000 : 5000);
   }
 
   function allRows() {
@@ -2799,7 +3309,10 @@ async function renderImport(params) {
     const mine = ++fixLatest;
     let rows;
     try {
-      rows = await searchReportTeams(f.term, state.resolved?.season_id || null);
+      rows = await searchReportTeams(
+        f.term,
+        (state.step === "fixtures" ? state.fixResolved : state.resolved)
+          ?.season_id || null);
     } catch (error) {
       // Rule 3: a failed lookup is not a failed screen. The row is still red,
       // the results below it still publish, and the reporter can still enter
@@ -2838,7 +3351,12 @@ async function renderImport(params) {
     const raw = f.raw;
     state.fix = null;
     flash(`“${raw}” is now a name for that team.`, "ok");
-    await reResolve();
+    // BOTH SCREENS RE-RESOLVE THROUGH THEIR OWN MATCHER. The namer is shared
+    // because the problem is — a graphic printing MOYALE FC is the same
+    // problem whether it carries scores or kick-offs — but what to do with the
+    // repaired name is not: one asks which fixture this is, the other whether
+    // the fixture exists.
+    await (state.step === "fixtures" ? reResolveFixtures() : reResolve());
   }
 
   async function reResolve() {
