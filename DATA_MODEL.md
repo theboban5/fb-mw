@@ -80,10 +80,17 @@ matches (home/away team_id, venue_id, competition_id, season_id)
   football rather than football. Only `status = live` rows render.
 - **registrations**, **reporters** — present, currently empty.
 - **aliases** — every spelling an entity has ever been filed under.
-  Written by `rename_player`/`merge_players` (0022) and their official
-  counterparts (0024), read by `search_players`/`search_officials` so a name
-  someone used to answer to still finds them. `entity_type` is `player` or
-  `official`.
+  `entity_type` is `player`, `official`, `team` or `club`. People's spellings
+  are written by `rename_player`/`merge_players` (0022) and their official
+  counterparts (0024) and read by `search_players`/`search_officials`, so a
+  name someone used to answer to still finds them. Team and club rows are read
+  by `import_team_candidates` (0043) as match tiers 2 and 4 — the name a
+  league's graphics actually print — and written by `add_team_alias` /
+  `rename_team` (0046); the 30 club rows that predate it were filed by hand as
+  `context = 'fast entry'`. **Only competition and club rows reach the site**:
+  `src/search.py` folds those into the search index's alternate terms, and a
+  team alias renders nowhere at all, which is why recording one needs no
+  rebuild.
 
 ## ID conventions (as built)
 

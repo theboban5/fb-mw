@@ -1385,3 +1385,27 @@ a { color: var(--accent); }
 .rp-imp-use {
   width: 100%; margin: 0 0 10px; min-height: 44px; font-size: 0.9rem;
 }
+
+/* Naming a team the matcher did not know (0046). Set off from the reasons
+   above it by a rule, because it is the one thing on a red row that DOES
+   something — everything else there is an explanation of why nothing will be
+   published. */
+.rp-imp-fix {
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.rp-imp-fix .rp-input { margin-top: 0; }
+.rp-imp-fix .rp-hint { margin-bottom: 0; }
+
+/* The names a team is printed under, on #/teams. A row per alias with its
+   Remove beside it: at 390px the name is what has to be readable, so the
+   button is quiet and the name takes the width it needs. */
+.rp-alias-list { margin: 0; padding: 0; list-style: none; }
+.rp-alias-list li {
+  display: flex; align-items: center; gap: 10px;
+  min-height: 40px; padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+.rp-alias-list li:last-child { border-bottom: 0; }
+.rp-alias-list li span { flex: 1 1 auto; word-break: break-word; }
+.rp-alias-list .rp-btn { flex: none; margin-top: 0; }

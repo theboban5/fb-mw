@@ -358,6 +358,31 @@ instead of only searching for a name someone already flagged. It filters on
 who has actually been named for a team or in a competition, derived from
 `lineups` and `goals` the same way `search_players`' club hints are (0034).
 
+**Teams have the same problem one table over** (`#/teams`, `0046`). A team is
+printed under several names — "MOYALE FC" for Moyale Barracks, "FCB Nyasa Big
+Bullets" for Nyasa Big Bullets — and the importer resolves whichever ones are
+recorded against it. The screen lists the teams the caller may report with the
+names already on file, and:
+
+- **adding a name is any reporter's** (`add_team_alias`). An alias references
+  nothing and nothing references it, so a wrong one is one delete from
+  repaired — and the person who can see what the graphic says is the person
+  holding the phone. Scoped to their own competitions, and refused if another
+  team already answers to that name.
+- **removing one, and renaming, are an admin's** (`remove_team_alias`,
+  `rename_team`). A `display_name` is on the standings table and every fixture
+  line, so changing it is a change to published pages; `rename_team` keeps the
+  old spelling as an alias, exactly as `rename_player` does, so graphics still
+  printing it keep resolving.
+- **there is no "add a team".** Minting a club stays in `create_league` (admin,
+  one screen) because a duplicate club splits that club's history across the
+  site permanently and is not repairable by editing one row. Everything on this
+  screen is reversible; that is what makes it a reporter's screen at all.
+
+Adding a name asks for **no rebuild**: `src/search.py` reads `aliases` for
+competition and club ids only, so a team alias reaches no page and no search
+row. Renaming does.
+
 Cards are one control with four states — none, yellow, second yellow, red —
 cycled by tapping, rather than three checkboxes that could express "yellow AND
 red AND second yellow", which is not a thing that can happen and which the
@@ -500,6 +525,7 @@ the ordinary static tree copy. No framework, no bundler, no build step.
 /report/#/results       a whole matchday's scores on one screen, published at once
 /report/#/import        read those results off a screenshot, post or pasted text
 /report/#/add           add a whole fixture list to a competition you cover
+/report/#/teams         the names each team is printed under (0046)
 /report/#/league/new    create a competition and its teams (admin only)
 /report/#/reporters     the reporter pool: create, assign, promote (admin only)
 /report/#/account       change password, sign out
@@ -1192,6 +1218,43 @@ again later.
 Expected, not an error. The link is already saved as the source, and the
 message asks for a screenshot which can be added to the *same* import rather
 than starting again.
+
+#### A team the matcher does not know (`0046`)
+
+A real import came back **NOT MATCHED — Read as: MAFCO FC 1–2 MOYALE FC**,
+*"That team is not in a competition you report."* The database has **Moyale
+Barracks**; the graphic says **MOYALE FC**. That is not an error in either of
+them — it is the club under the name its league prints.
+
+The matching half was already built: `import_team_candidates` reads team
+aliases at tier 2 and club aliases at tier 4. What was missing was any way to
+*write* one — `rename_player` (0022) and `rename_official` (0024) file a
+person's old spelling as a side effect of correcting it, and nothing anywhere
+wrote an alias for a team. So the one repair a reporter could see the need for
+was the one repair the portal could not make, and the same graphic failed the
+same way every week.
+
+Now an unmatched row carries **"Which team is 'MOYALE FC'?"**: a search over
+the caller's own teams, one tap, `add_team_alias`, and the whole import is
+matched **again by the same RPC that matched it the first time**. It is
+re-resolved rather than patched in the client — the matcher is the only thing
+allowed to decide which fixture a row is. Everything already typed or tapped on
+the other rows survives the round trip (`currentEdits()` keys on `match_id`,
+because the point of re-resolving is that the row order changes).
+
+**The alias goes on the team, not the club.** A club alias reaches every team
+of that club through tier 4 — Moyale Barracks *and* Moyale Sisters — so filing
+it at club level would turn a red row into an ambiguous one wherever a reporter
+covers both. A team alias resolves at tier 2, alone, and still works next
+season because `team_id` is stable across entries.
+
+**The guard is a collision check.** `MW_MB` is Moyale Barracks and `MW_MR` is
+Moyale Reserve FC — different clubs — so a careless alias does not fail to
+match, it matches the *wrong* team and publishes a result against it. A name
+another team already answers to at tier 1 or tier 2 is refused, and the message
+names that team. Tiers 3 and 4 are deliberately **not** a collision: a team
+alias outranks a club name, so filing "Bullets" on the men's first team is how
+four Bullets squads stop being ambiguous, not a way of making them so.
 
 #### The grid's row markup is shared, and that is the safety argument
 

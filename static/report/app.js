@@ -186,7 +186,18 @@ function humanError(error) {
       // scheduled fixture, only one with nothing already reported onto it.
       || message.includes("only an administrator can delete a fixture")
       || message.includes("can be deleted")
-      || message.includes("cannot be deleted")) {
+      || message.includes("cannot be deleted")
+      // ...and the team-name rules from 0046. "MOYALE FC already means Moyale
+      // Reserve FC" is the one that has to survive: it is raised with 23505,
+      // which the branch at the bottom of this function would otherwise reduce
+      // to "that could not be saved" — and a refusal naming nobody leaves the
+      // reporter with no move except to give up on the row.
+      || message.includes("already means")
+      || message.includes("already this team")
+      || message.includes("too short to match")
+      || message.includes("the graphic prints")
+      || message.includes("not in a competition you report")
+      || message.includes("not a team alias")) {
     return error.message.charAt(0).toUpperCase() + error.message.slice(1);
   }
   // The RPC's own validation, which is phrased for a person to read.
@@ -940,6 +951,7 @@ async function renderHome(params) {
       ${canAdd ? '<a class="rp-btn is-ghost" href="#/add">＋ Add fixtures</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/league/new">＋ New league</a>' : ""}
       <a class="rp-btn is-ghost" href="#/players">Players</a>
+      ${canAdd ? '<a class="rp-btn is-ghost" href="#/teams">Teams</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/ops">Operations</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/trending">Homepage</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/graphics">Graphics</a>' : ""}
@@ -2410,6 +2422,10 @@ async function renderImport(params) {
     extracted: null, resolved: null,
     groups: [], unmatched: [],
     busy: false, note: "", linkReason: "",
+    // The open team-namer, if any: { key, raw, term, results, note, busy }.
+    // One at a time — this is a 390px screen and two open search boxes on it
+    // is two lists nobody asked for.
+    fix: null,
   };
 
   const sourceRef = () => (state.url.trim()
@@ -2615,13 +2631,29 @@ async function renderImport(params) {
     drawReview();
   }
 
+  /** What every row currently holds, keyed by the match it is about.
+   *
+   *  Taken before a re-resolve and handed back to buildGroups, because naming
+   *  a team the matcher did not know rebuilds every row from a fresh proposal
+   *  — and rule 1 says fixing line eight may not cost what was typed on lines
+   *  one to seven. Keyed on match_id rather than position: the whole point of
+   *  re-resolving is that the row order changes. */
+  function currentEdits() {
+    return new Map(allRows().map((row) => [row.matchId, {
+      home: row.home, away: row.away, status: row.status,
+      confirmed: row.confirmed, applied: row.applied,
+    }]));
+  }
+
   /** Group the proposals by competition. NOT forced into one: a submission
    *  spanning two leagues is a real thing (a district page posting both), and
    *  assuming one would file half the results in the wrong competition. Each
    *  group publishes with its own submit_match_reports call, because that RPC
    *  takes one competition — which is also what keeps its authorization check
-   *  meaningful. */
-  function buildGroups() {
+   *  meaningful.
+   *
+   *  `keep` is currentEdits()' answer, present only on a re-resolve. */
+  function buildGroups(keep) {
     const items = (state.resolved?.items || []);
     const byComp = new Map();
     state.unmatched = [];
@@ -2642,9 +2674,21 @@ async function renderImport(params) {
       const row = importRow(item, i);
       state.rowsByIdx[i] = row;
       i += 1;
-      // GREEN IS PRE-FILLED, YELLOW IS OFFERED. A yellow row that is never
-      // tapped does not publish, and the greens around it still do.
-      if (item.confidence === "green") applyProposal(row);
+      const prior = keep?.get(row.matchId);
+      if (prior) {
+        // This row was on the screen before the re-resolve. Whatever state the
+        // reporter left it in is restored — including a green row they
+        // deliberately emptied, which re-applying the proposal would silently
+        // fill back in.
+        row.home = prior.home; row.away = prior.away;
+        row.status = prior.status;
+        row.confirmed = prior.confirmed;
+        row.applied = prior.applied;
+      } else if (item.confidence === "green") {
+        // GREEN IS PRE-FILLED, YELLOW IS OFFERED. A yellow row that is never
+        // tapped does not publish, and the greens around it still do.
+        applyProposal(row);
+      }
       byComp.get(comp).push(row);
     });
 
@@ -2670,6 +2714,152 @@ async function renderImport(params) {
 
   function allRows() {
     return state.groups.flatMap((g) => g.rows);
+  }
+
+  // ── Naming a team the matcher did not know (0046) ──────────────────────────
+  // A red row said "that team is not in a competition you report" and that was
+  // the end of it. The reporter could see the answer — the database has Moyale
+  // Barracks and the graphic says MOYALE FC — and had nowhere to put it, so the
+  // same graphic failed the same way the following week.
+  //
+  // Now they pick the team, add_team_alias records the name against it, and the
+  // import is matched AGAIN by the same RPC that matched it the first time. It
+  // is re-resolved rather than patched here: the matcher is the only thing
+  // allowed to decide which fixture a row is, and deciding it in the client
+  // would be exactly the second path this screen exists not to have.
+
+  let fixTimer = null;
+  let fixLatest = 0;
+
+  /** The names on this row that resolved to nothing at all. A row can be red
+   *  because the pairing has no fixture — both names fine — and there is
+   *  nothing to teach the database about that one. */
+  function unresolvedSides(item) {
+    const raw = item.raw || {};
+    const out = [];
+    if (!(item.home_candidates || []).length && (raw.home || "").trim()) {
+      out.push(["home", raw.home.trim()]);
+    }
+    if (!(item.away_candidates || []).length && (raw.away || "").trim()) {
+      out.push(["away", raw.away.trim()]);
+    }
+    return out;
+  }
+
+  const fixHint = (raw) => `Pick the team this is. “${raw}” is remembered as a `
+    + "name for it, so the next graphic resolves on its own.";
+
+  const fixListHtml = () => (state.fix?.results || []).map((t) => `
+    <li role="option"><button type="button" class="rp-suggest-btn"
+      data-fix-pick="${esc(t.team_id)}">
+      <span>${esc(t.display_name)}</span>${
+        t.competitions || t.club_name
+          ? `<em>${esc(t.competitions || t.club_name)}</em>` : ""}</button></li>`)
+    .join("");
+
+  function fixerHtml(item) {
+    return unresolvedSides(item).map(([side, raw]) => {
+      const key = `${item.idx}:${side}`;
+      const open = state.fix?.key === key;
+      return `
+        <div class="rp-imp-fix" data-fix="${esc(key)}">
+          <button class="rp-btn is-ghost rp-imp-use" type="button"
+                  data-fix-open="${esc(key)}" data-fix-raw="${esc(raw)}">${
+            open ? "Cancel" : `Which team is “${esc(raw)}”?`}</button>
+          ${open ? `
+            <div class="rp-pick">
+              <input class="rp-input" type="text" data-fix-term
+                     value="${esc(state.fix.term)}" placeholder="Search your teams"
+                     autocapitalize="words" autocorrect="off" spellcheck="false">
+              <ul class="rp-suggest" data-fix-list${
+                state.fix.results.length ? "" : " hidden"}>${fixListHtml()}</ul>
+            </div>
+            <p class="rp-hint" data-fix-note>${
+              esc(state.fix.note || fixHint(raw))}</p>` : ""}
+        </div>`;
+    }).join("");
+  }
+
+  /** The list and the note, in place. NEVER a redraw: the reporter is typing
+   *  into the box above it, and redrawing would throw that box away mid-word —
+   *  the team-sheet lesson, and the same rule the grid rows follow. */
+  function patchFix() {
+    const list = view.querySelector("[data-fix-list]");
+    const note = view.querySelector("[data-fix-note]");
+    if (list) {
+      list.innerHTML = fixListHtml();
+      list.hidden = !(state.fix?.results || []).length;
+    }
+    if (note) note.textContent = state.fix?.note || fixHint(state.fix?.raw || "");
+  }
+
+  async function runFixSearch() {
+    const f = state.fix;
+    if (!f) return;
+    const mine = ++fixLatest;
+    let rows;
+    try {
+      rows = await searchReportTeams(f.term, state.resolved?.season_id || null);
+    } catch (error) {
+      // Rule 3: a failed lookup is not a failed screen. The row is still red,
+      // the results below it still publish, and the reporter can still enter
+      // this match by hand from the matchday grid.
+      if (mine !== fixLatest || state.fix !== f) return;
+      f.results = [];
+      f.note = "Could not search your teams just now. Try again in a moment.";
+      patchFix();
+      return;
+    }
+    if (mine !== fixLatest || state.fix !== f) return;
+    f.results = rows;
+    f.note = rows.length ? "" : "No team of yours answers to that. Try the "
+                                + "club's name instead of the sponsor's.";
+    patchFix();
+  }
+
+  async function applyFix(teamId, button) {
+    const f = state.fix;
+    if (!f || f.busy) return;                    // rule 2
+    f.busy = true;
+    button.disabled = true;
+    const { error } = await supabase.rpc("add_team_alias", {
+      p_team_id: teamId, p_alias_text: f.raw,
+    });
+    if (error) {
+      // add_team_alias refuses a name another team already answers to, and
+      // says which — that sentence is the whole value of the refusal, so it
+      // goes on the row rather than into a flash that scrolls away.
+      f.busy = false;
+      button.disabled = false;
+      f.note = humanError(error);
+      patchFix();
+      return;
+    }
+    const raw = f.raw;
+    state.fix = null;
+    flash(`“${raw}” is now a name for that team.`, "ok");
+    await reResolve();
+  }
+
+  async function reResolve() {
+    const keep = currentEdits();
+    drawReading("Matching it again…");
+    try {
+      const { data, error } = await supabase.rpc("resolve_and_save_import", {
+        p_import_id: state.importId,
+      });
+      if (error) throw error;
+      state.resolved = data;
+    } catch (error) {
+      // The old proposal is still in state, so rebuilding from it puts the
+      // screen back exactly as it was, with everything typed still on it.
+      buildGroups(keep);
+      drawReview();
+      flash(humanError(error), "error");
+      return;
+    }
+    buildGroups(keep);
+    drawReview();
   }
 
   function drawReview() {
@@ -2724,8 +2914,9 @@ async function renderImport(params) {
       <section class="rp-imp-group">
         <h2 class="rp-field-head">Not matched (${state.unmatched.length})</h2>
         <p class="rp-hint" style="margin-top:0">These could not be tied to a
-          fixture you report. Nothing here will be published — add them from
-          the matchday screen if they are real.</p>
+          fixture you report, and nothing here will be published. Where a name
+          is the problem, say which team it is and the whole page is matched
+          again; otherwise add the match from the matchday screen.</p>
         ${state.unmatched.map((item) => `
           <div class="rp-gr is-bad">
             <div class="rp-imp-head">${chip(item)}${asRead(item)}</div>
@@ -2734,6 +2925,7 @@ async function renderImport(params) {
               <p class="rp-imp-why">Could be:
                 ${item.home_candidates.slice(0, 4)
                    .map((c) => esc(c.name)).join(", ")}</p>` : ""}
+            ${fixerHtml(item)}
           </div>`).join("")}
       </section>` : "";
 
@@ -2806,11 +2998,47 @@ async function renderImport(params) {
 
     form.addEventListener("click", (event) => {
       const use = event.target.closest("[data-use]");
-      if (!use) return;
-      syncGridFromDom(form, byIdx);
-      const row = byIdx[Number(use.dataset.use)];
-      if (row) applyProposal(row);
-      drawReview();
+      if (use) {
+        syncGridFromDom(form, byIdx);
+        const row = byIdx[Number(use.dataset.use)];
+        if (row) applyProposal(row);
+        drawReview();
+        return;
+      }
+
+      // Opening or closing a team-namer redraws — it is a button, not a text
+      // box, so the redraw-on-blur rule permits it, and the block has to grow.
+      const open = event.target.closest("[data-fix-open]");
+      if (open) {
+        syncGridFromDom(form, byIdx);
+        const key = open.dataset.fixOpen;
+        const raw = open.dataset.fixRaw || "";
+        state.fix = state.fix?.key === key
+          ? null
+          // Seeded with the name as printed: "Moyale" finds Moyale Barracks
+          // through the club, which is the answer often enough to be worth
+          // showing before a letter is typed.
+          : { key, raw, term: raw, results: [], note: "", busy: false };
+        drawReview();
+        if (state.fix) {
+          view.querySelector("[data-fix-term]")?.focus();
+          runFixSearch();
+        }
+        return;
+      }
+
+      const pick = event.target.closest("[data-fix-pick]");
+      if (pick) applyFix(pick.dataset.fixPick, pick);
+    });
+
+    form.addEventListener("input", (event) => {
+      const box = event.target.closest("[data-fix-term]");
+      if (!box || !state.fix) return;
+      state.fix.term = box.value;
+      clearTimeout(fixTimer);
+      // The same 250ms the player picker waits: long enough that a two-finger
+      // typist does not fire a query per letter, short enough to keep up.
+      fixTimer = setTimeout(runFixSearch, 250);
     });
 
     button?.addEventListener("click", async () => {
@@ -5357,6 +5585,251 @@ function wireMergePicker(wrap, loserId, loserName, redraw) {
     if (note) note.textContent = `Merged into ${winnerName}.`;
     flash(`Merged ${loserName} into ${winnerName}.`, "ok");
     redraw();
+  });
+}
+
+
+// ── Teams: the names a league actually prints ────────────────────────────────
+// #/teams (0046). The other half of the import fixer. That one repairs ONE name
+// in the middle of publishing, when the reporter is looking straight at the row
+// that failed; this is where the same names are looked at on purpose — what is
+// a team already known as, what should it be called, and which of the names
+// filed against it was a mistake.
+//
+// ADDING A NAME IS ANY REPORTER'S. REMOVING ONE, AND RENAMING, ARE AN ADMIN'S.
+// An alias references nothing and nothing references it, so a wrong one is one
+// delete away from repaired — and the person who can see that the graphic says
+// MOYALE FC is the person holding the phone. A display_name is on the standings
+// table and every fixture line, so changing it is a change to the published
+// site: admin only, and it asks for a rebuild.
+//
+// THERE IS DELIBERATELY NO "ADD A TEAM" HERE. Minting a club stays in
+// create_league, because a duplicate club splits that club's history across the
+// site permanently and is not repairable by editing one row. Everything on this
+// screen is reversible; that is what makes it a reporter's screen at all.
+
+const TEAM_PAGE_SIZE = 40;
+
+/** Teams the caller may report, with their club, their competitions and the
+ *  names already recorded for them. A blank term lists them — browsing is the
+ *  point, the same way #/players' listing is (0037).
+ *
+ *  No fallback, unlike searchPlayers. The fallback there degrades to a worse
+ *  list and the screen still works; here every button calls an RPC from the
+ *  same migration, so a fallback would produce a list that can do nothing. The
+ *  honest answer in that deploy window is the error. */
+async function searchReportTeams(term, seasonId) {
+  const { data, error } = await supabase.rpc("search_report_teams", {
+    p_term: (term || "").trim(),
+    p_season_id: seasonId || null,
+    p_limit: TEAM_PAGE_SIZE,
+  });
+  if (error) throw error;
+  return data || [];
+}
+
+async function renderTeams(params) {
+  const state = { term: params.get("q") || "", teams: null, busy: false };
+
+  let searchTimer = null;
+  // Only the most recent search may paint — the picker's rule, for the picker's
+  // reason: on a slow connection the answer to "Mo" arrives after the answer to
+  // "Moyale" often enough to matter.
+  let latest = 0;
+
+  async function runSearch() {
+    const mine = ++latest;
+    state.busy = true;
+    drawResults();
+    let rows;
+    try {
+      rows = await searchReportTeams(state.term, null);
+    } catch (error) {
+      if (mine !== latest) return;
+      state.busy = false;
+      state.teams = [];
+      drawResults();
+      flash(humanError(error), "error");
+      return;
+    }
+    if (mine !== latest) return;
+    state.busy = false;
+    state.teams = rows;
+    const q = state.term.trim();
+    history.replaceState(null, "", `#/teams${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+    drawResults();
+  }
+
+  function drawResults() {
+    const host = view.querySelector("[data-team-results]");
+    if (!host) return;
+    if (state.busy && state.teams === null) {
+      host.innerHTML = '<p class="rp-hint">Loading…</p>';
+      return;
+    }
+    if (!(state.teams || []).length) {
+      host.innerHTML = `<p class="rp-empty">No team of yours matches${
+        state.term.trim() ? ` “${esc(state.term.trim())}”` : ""}. Teams are
+        created with their league, never here.</p>`;
+      return;
+    }
+    const full = state.teams.length === TEAM_PAGE_SIZE;
+    host.innerHTML = state.teams.map(teamCard).join("")
+      + (full ? `<p class="rp-hint">Showing the first ${TEAM_PAGE_SIZE}. Type a
+           name to narrow it.</p>` : "");
+    wireTeamCards(host, runSearch);
+  }
+
+  h(`<a class="rp-btn is-quiet" href="#/" style="margin-top:0">&larr; My matches</a>
+     <h1 class="rp-login-head">Teams</h1>
+     <p class="rp-login-sub">The names each team is printed under. Record the
+       one a league's graphics use and the importer will resolve it by itself
+       next time. Leave the box blank to browse.</p>
+     <form class="rp-form" data-team-search autocomplete="off">
+       <input class="rp-input" name="q" value="${esc(state.term)}"
+              autocomplete="off" autocapitalize="words"
+              placeholder="Search your teams">
+     </form>
+     <div data-team-results></div>`);
+
+  const form = view.querySelector("[data-team-search]");
+  const input = form.querySelector('input[name="q"]');
+  input.addEventListener("input", () => {
+    state.term = input.value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(runSearch, 250);
+  });
+  form.addEventListener("submit", (e) => { e.preventDefault(); runSearch(); });
+
+  runSearch();
+}
+
+function teamCard(t) {
+  const aliases = Array.isArray(t.aliases) ? t.aliases : [];
+  // Which team this is, on the summary line — the competitions are what tell
+  // Moyale Barracks from Moyale Sisters, and this screen's whole job is being
+  // sure which of the two a name is about.
+  const note = t.competitions || t.club_name || "";
+  return `
+    <details class="rp-sec" data-team-card data-team-id="${esc(t.team_id)}">
+      <summary><span class="rp-sec-name">${esc(t.display_name)}</span>${
+        note ? `<span class="rp-sec-note">${esc(note)}</span>` : ""}<span
+        class="rp-sec-count">${aliases.length || ""}</span></summary>
+      <div class="rp-sec-body">
+        <h2 class="rp-field-head">Also printed as</h2>
+        ${aliases.length ? `<ul class="rp-alias-list">${aliases.map((a) => `
+          <li><span>${esc(a.alias_text)}</span>${context.isAdmin ? `
+            <button class="rp-btn is-quiet" type="button"
+                    data-alias-remove="${a.id}">Remove</button>` : ""}</li>`).join("")}
+          </ul>` : '<p class="rp-hint">No other names recorded yet.</p>'}
+
+        <form data-alias-form autocomplete="off">
+          <input class="rp-input" name="alias" maxlength="80"
+                 placeholder="Add a name, e.g. MOYALE FC"
+                 autocomplete="off" autocorrect="off" spellcheck="false">
+          <button class="rp-btn is-ghost" type="submit">Add this name</button>
+          <p class="rp-hint">Exactly as the graphic prints it. Nothing on the
+            site changes — this is only how an import finds this team.</p>
+        </form>
+
+        ${context.isAdmin ? `
+        <h2 class="rp-field-head">Name on the site</h2>
+        <form data-team-rename autocomplete="off">
+          <input class="rp-input" name="display_name" maxlength="80" required
+                 value="${esc(t.display_name)}" autocapitalize="words">
+          <button class="rp-btn is-ghost" type="submit">Save name</button>
+          <p class="rp-hint">Readers see this on the standings table and every
+            fixture line. The old name is kept above, so graphics still printing
+            it keep resolving.</p>
+        </form>` : ""}
+      </div>
+    </details>`;
+}
+
+/** Every team card on the screen. `redraw` re-runs the search, which is what
+ *  brings a new alias back down from the database rather than assuming it
+ *  landed. */
+function wireTeamCards(host, redraw) {
+  host.querySelectorAll("[data-team-card]").forEach((card) => {
+    const teamId = card.dataset.teamId;
+
+    card.querySelector("[data-alias-form]").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const button = f.querySelector('button[type="submit"]');
+      if (button.disabled) return;                 // rule 2
+      const text = f.alias.value.trim();
+      if (!text) return;
+      button.disabled = true;
+      button.textContent = "Adding…";
+      const { error } = await supabase.rpc("add_team_alias", {
+        p_team_id: teamId, p_alias_text: text,
+      });
+      button.disabled = false;
+      button.textContent = "Add this name";
+      if (error) { flash(humanError(error), "error", 8000); return; }
+      // NO REBUILD. A team alias is read by the importer and by nothing the
+      // site renders — src/search.py reads aliases for competition and club ids
+      // only — so asking CI to rebuild the world for it would be a build that
+      // changes no page.
+      f.alias.value = "";
+      flash(`“${text}” added.`, "ok");
+      redraw();
+    });
+
+    // Two taps, like every other delete in this app: the first says what is
+    // about to happen, the second does it. An alias is cheap to re-add, so the
+    // ceremony stops at that.
+    card.querySelectorAll("[data-alias-remove]").forEach((button) => {
+      let armed = false;
+      let timer = null;
+      button.addEventListener("click", async () => {
+        if (!armed) {
+          armed = true;
+          button.textContent = "Sure?";
+          timer = setTimeout(() => { armed = false; button.textContent = "Remove"; },
+                             4000);
+          return;
+        }
+        clearTimeout(timer);
+        button.disabled = true;
+        button.textContent = "…";
+        const { error } = await supabase.rpc("remove_team_alias", {
+          p_alias_id: Number(button.dataset.aliasRemove),
+        });
+        if (error) {
+          button.disabled = false;
+          armed = false;
+          button.textContent = "Remove";
+          flash(humanError(error), "error");
+          return;
+        }
+        flash("Name removed.", "ok");
+        redraw();
+      });
+    });
+
+    card.querySelector("[data-team-rename]")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const button = f.querySelector('button[type="submit"]');
+      if (button.disabled) return;
+      button.disabled = true;
+      button.textContent = "Saving…";
+      const { error } = await supabase.rpc("rename_team", {
+        p_team_id: teamId, p_display_name: f.display_name.value.trim(),
+      });
+      button.disabled = false;
+      button.textContent = "Save name";
+      if (error) { flash(humanError(error), "error", 8000); return; }
+      // This one IS on the site — the standings table, every fixture line, the
+      // club hub — so it is a change to published pages, exactly as a player
+      // rename is.
+      invalidateReference();
+      requestRebuild();
+      flash("Name saved.", "ok");
+      redraw();
+    });
   });
 }
 
@@ -10674,6 +11147,7 @@ async function route() {
   if (path === "/league/new") return renderNewLeague();
   if (path === "/account") return renderAccount();
   if (path === "/players") return renderPlayers(params);
+  if (path === "/teams") return renderTeams(params);
   if (path === "/trending") return renderTrending(params);
   if (path === "/graphics") return renderGraphics(params);
   if (path === "/reporters") return renderReporters();
