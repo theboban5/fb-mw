@@ -3063,6 +3063,14 @@ async function renderImport(params) {
           p_season_id: state.resolved?.season_id || null,
           p_source_ref: source,
           p_reports: reports,
+          // WHICH IMPORT THIS CAME FROM (0047). It is what makes the change
+          // log say 'import' rather than 'grid', and it is checked server-side
+          // — an import that does not exist, or belongs to somebody else, is
+          // refused rather than recorded. Without it a result a model read off
+          // a blurry photo is indistinguishable afterwards from one typed by
+          // hand, which is exactly the question an operator asks about a
+          // scoreline that turned out to be wrong.
+          p_import_id: state.importId || null,
         });
         if (error) {
           // Rule 1: nothing typed or proposed is lost — the rows are untouched
@@ -5713,8 +5721,12 @@ function teamCard(t) {
   return `
     <details class="rp-sec" data-team-card data-team-id="${esc(t.team_id)}">
       <summary><span class="rp-sec-name">${esc(t.display_name)}</span>${
-        note ? `<span class="rp-sec-note">${esc(note)}</span>` : ""}<span
-        class="rp-sec-count">${aliases.length || ""}</span></summary>
+        note ? `<span class="rp-sec-note">${esc(note)}</span>` : ""}${
+        // Omitted rather than emptied: .rp-sec-count has a background, so a
+        // team with no recorded names would otherwise wear a blank pill that
+        // reads as a broken badge rather than as a zero.
+        aliases.length
+          ? `<span class="rp-sec-count">${aliases.length}</span>` : ""}</summary>
       <div class="rp-sec-body">
         <h2 class="rp-field-head">Also printed as</h2>
         ${aliases.length ? `<ul class="rp-alias-list">${aliases.map((a) => `
@@ -10024,6 +10036,11 @@ const OPS_TABS = [
     head: "Missing sources", blank: "Every result cites a source." },
   { key: "verification", label: "Verification", flag: "is_unconfirmed",
     head: "Unconfirmed results", blank: "Nothing is waiting on confirmation." },
+  // Beside Reporters, because they are the two tabs about people rather than
+  // about a backlog — and this one answers "what happened today", which is the
+  // question the other one cannot: it counts a season, and a season does not
+  // tell you that eight results arrived from a screenshot an hour ago.
+  { key: "submitted",    label: "Submitted",    flag: null },
   { key: "reporters",    label: "Reporters",    flag: null },
   { key: "crests",       label: "Crests",       flag: null,
     head: "Clubs without a crest", blank: "Every club has a crest." },
@@ -10398,6 +10415,223 @@ function opsReporterDetail(r, names) {
     <p class="ops-sub">${esc(r.email || "")}${r.active ? "" : " · inactive"}
       · ${r.competitions.length} competition${r.competitions.length === 1 ? "" : "s"} assigned</p>
     ${body}`;
+}
+
+// ── Submitted: everything that changed on one day (0047) ─────────────────────
+// Pick a date, see every result that was published or corrected on it: which
+// match, by whom, from where, how, and what it replaced.
+//
+// IT READS THE CHANGE LOG, NOT matches. matches.reported_by/reported_at hold
+// only the LAST submission, so a match published in the morning and corrected
+// in the evening would appear once, saying only the second thing — and would
+// stop saying anything about today at all as soon as somebody touched it
+// tomorrow. match_change_log is per-event and append-only, and it is the only
+// place that knows what the result was before.
+//
+// THE CONSEQUENCE WORTH KNOWING: apply_match_report writes a log row only when
+// something actually changed, so re-tapping publish on an unchanged matchday
+// adds nothing here. "Everything submitted today" is therefore everything that
+// CHANGED today — the honest reading of the question, and the only one the log
+// can answer.
+
+const SUBMIT_CHANNELS = {
+  single: "one match screen",
+  grid: "matchday grid",
+  import: "AI import",
+  // Every row written before 0047. It is not a channel and must not read like
+  // one: nothing observed how those results arrived, and the legacy value
+  // dressed up as an answer is worse than admitting the gap.
+  reporter: "channel not recorded",
+};
+
+const IMPORT_CHANNELS = {
+  image: "screenshot",
+  text: "pasted text",
+  url: "a link",
+  image_url: "screenshot + link",
+};
+
+// THE LOG IS A MATCH AUDIT, NOT A RESULT LOG. Seven functions write to it —
+// a score, a reschedule, a venue, the officials, a matchday move — and only
+// the first is a result being submitted. The view labels each row by which
+// keys its payload carries (0047); these are the labels for the rest, which
+// are shown under their own heading rather than as a result with no score.
+const CHANGE_KINDS = {
+  reschedule: "moved",
+  venue: "venue",
+  officials: "officials",
+  matchday: "matchday",
+  other: "changed",
+};
+
+// The fields those rows carry, in the words the portal already uses for them.
+// A key that is not here renders under its own name rather than being dropped:
+// a writer added later should look unfamiliar, not invisible.
+const CHANGE_FIELDS = {
+  date: "date", kickoff: "kick-off", venue: "venue",
+  stage: "stage", matchday: "matchday",
+  referee: "referee", assistant_referee_1: "assistant 1",
+  assistant_referee_2: "assistant 2", fourth_official: "fourth official",
+  home_coach: "home coach", away_coach: "away coach",
+};
+
+// venue_id is the id behind `venue`, and set_match_matchday writes `stage` as
+// md_<n> derived from `matchday` — so both would print the same fact twice.
+const CHANGE_SKIP = { venue_id: "venue", stage: "matchday" };
+
+const SUBMISSIONS_LIMIT = 500;
+
+async function loadOpsSubmissions(day) {
+  const { data, error } = await supabase.from("ops_submissions")
+    .select("*")
+    .eq("day", day)
+    .order("changed_at", { ascending: false })
+    .limit(SUBMISSIONS_LIMIT);
+  if (error) throw error;
+  return data || [];
+}
+
+/** A scoreline, or the word that replaced it. Both halves of a change are
+ *  rendered by this, so "postponed" and "2–1" read the same way round. */
+const submissionScore = (status, home, away) =>
+  home != null && away != null ? `${home}–${away}`
+    : status ? (statusMeta(status).short || statusMeta(status).label) : "";
+
+/** The clock time in CAT, explicitly.
+ *
+ *  Not the phone's timezone: the day above these rows is a Malawi calendar day
+ *  (the view buckets on Africa/Blantyre), so an administrator reading this in
+ *  another country would otherwise see times that disagree with the date they
+ *  asked for. */
+function submissionTime(iso) {
+  return new Date(iso).toLocaleTimeString("en-GB", {
+    hour: "2-digit", minute: "2-digit", timeZone: "Africa/Blantyre",
+  });
+}
+
+/** What a non-result change actually changed, from the payload's own keys.
+ *
+ *  Six of the seven writers record no description of themselves, so the keys
+ *  are all there is — which is fine, because the keys ARE the answer: "date
+ *  2026-09-05 → 2026-09-12" is the whole content of a reschedule. */
+function fieldChanges(oldValues, newValues) {
+  const next = newValues || {};
+  const prev = oldValues || {};
+  return Object.keys(next)
+    .filter((k) => {
+      if (CHANGE_SKIP[k] && CHANGE_SKIP[k] in next) return false;
+      return String(prev[k] ?? "") !== String(next[k] ?? "");
+    })
+    .map((k) => {
+      const from = String(prev[k] ?? "").trim();
+      const to = String(next[k] ?? "").trim();
+      const label = CHANGE_FIELDS[k] || k;
+      // A field being filled in for the first time is not a change FROM
+      // anything, and "→ Kamuzu Stadium" reads better than "'' → …".
+      return from ? `${label} ${from} → ${to || "—"}` : `${label} ${to}`;
+    })
+    .join(" · ");
+}
+
+function opsSubmissionRow(s, names) {
+  const isResult = s.kind === "result";
+  const comp = names[s.competition_id] || s.competition_name || s.competition_id;
+
+  // A result's headline is its score; everything else's is what it changed.
+  const score = isResult
+    ? submissionScore(s.new_status, s.new_home, s.new_away) : "";
+  // A first report replaces nothing, and "was scheduled" is noise on every
+  // row. Only an actual correction earns the words.
+  const what = isResult
+    ? (s.old_status && s.old_status !== "scheduled"
+        ? ` · was ${submissionScore(s.old_status, s.old_home, s.old_away)}` : "")
+    : ` · ${fieldChanges(s.old_values, s.new_values)}`;
+
+  // The chip says the channel on a result and the kind on anything else. A
+  // reschedule has no channel — it was written by a function that records
+  // none — and printing "channel not recorded" against one would read as a
+  // gap rather than as a category that does not apply.
+  const chip = isResult
+    ? { text: s.source === "import"
+          ? `${SUBMIT_CHANNELS.import}${s.import_channel
+              ? ` · ${IMPORT_CHANNELS[s.import_channel] || s.import_channel}` : ""}`
+          : SUBMIT_CHANNELS[s.source] || s.source,
+        warn: s.source === "reporter" || s.source === "admin" }
+    : { text: CHANGE_KINDS[s.kind] || s.kind, warn: false };
+
+  return `
+    <a class="ops-row" href="#/m/${esc(s.public_id)}?from=${encodeURIComponent("ops")}">
+      <span class="ops-row-teams">${esc(s.home_name)}
+        <span class="ops-row-v">v</span> ${esc(s.away_name)}</span>
+      <span class="ops-row-score">${esc(score)}</span>
+      <span class="ops-row-meta">${esc(submissionTime(s.changed_at))}
+        · ${esc(s.reporter_name || s.changed_by || "not recorded")}
+        · ${esc(comp)}${esc(what)}<span class="ops-tag${
+          chip.warn ? " is-warn" : ""}">${esc(chip.text)}</span></span>
+      ${isResult && s.source_ref ? `<span class="ops-row-meta">${
+        esc(s.source_ref.slice(0, 120))}</span>` : ""}
+    </a>`;
+}
+
+/** The line above the list. Says what the day was, in the numbers that are
+ *  actually asked about: how much, by how many people, and how much of it came
+ *  off a picture. */
+function opsSubmissionsSummary(results, others) {
+  if (!results.length && !others.length) return "";
+  const people = new Set(results.concat(others)
+    .map((r) => r.changed_by).filter(Boolean)).size;
+  const imported = results.filter((r) => r.source === "import").length;
+  const unknown = results.filter((r) => r.source === "reporter").length;
+  const bits = [
+    `${results.length} result${results.length === 1 ? "" : "s"}`,
+    `${people} reporter${people === 1 ? "" : "s"}`,
+  ];
+  if (imported) bits.push(`${imported} from an import`);
+  if (others.length) bits.push(`${others.length} other change${
+    others.length === 1 ? "" : "s"}`);
+  return `<p class="rp-hint">${esc(bits.join(" · "))}${unknown
+    ? ` · ${unknown} predate${unknown === 1 ? "s" : ""} 0047 and cannot say how`
+    : ""}</p>`;
+}
+
+function opsSubmissionsPanel(day, rows, names) {
+  const nav = (offset, label) => `
+    <a class="rp-btn is-quiet" href="#/ops?tab=submitted&day=${
+      esc(addDaysIso(day, offset))}">${label}</a>`;
+  const results = rows.filter((r) => r.kind === "result");
+  const others = rows.filter((r) => r.kind !== "result");
+  return `
+    <h2 class="rp-group-head">Submitted
+      <span class="rp-count">${results.length}</span></h2>
+    <form class="rp-form" data-submitted autocomplete="off">
+      <label class="rp-label" for="ops-day">Day</label>
+      <input class="rp-input rp-date" id="ops-day" type="date" data-day
+             value="${esc(day)}">
+      <div class="rp-btn-row">
+        ${nav(-1, "&larr; Previous day")}
+        ${day === catToday() ? ""
+          : '<a class="rp-btn is-quiet" href="#/ops?tab=submitted">Today</a>'}
+        ${nav(1, "Next day &rarr;")}
+      </div>
+    </form>
+    <p class="rp-hint">Malawi calendar day. A result that was published and
+      then corrected appears twice — that is the point of reading the change
+      log rather than the match. Re-publishing an unchanged result appears not
+      at all, for the same reason.</p>
+    ${opsSubmissionsSummary(results, others)}
+    ${rows.length === SUBMISSIONS_LIMIT
+      ? `<p class="rp-hint is-warn">Showing the first ${SUBMISSIONS_LIMIT}.</p>`
+      : ""}
+    ${results.map((s) => opsSubmissionRow(s, names)).join("")
+      || `<p class="rp-empty">No results were submitted on
+            ${esc(formatDate(day))}.</p>`}
+    ${others.length ? `
+      <h2 class="rp-group-head" style="margin-top:24px">Other changes
+        <span class="rp-count">${others.length}</span></h2>
+      <p class="rp-hint" style="margin-top:0">The same log, written by the
+        other screens: a fixture moved, a ground filled in, the officials
+        named. None of those records how it was submitted.</p>
+      ${others.map((s) => opsSubmissionRow(s, names)).join("")}` : ""}`;
 }
 
 // ── Site freshness panel ─────────────────────────────────────────────────────
@@ -11022,6 +11256,20 @@ async function renderOps(params) {
                 <code>static/logos/clubs/</code> named for the club id or a
                 team's legacy code.</p>
               ${rows || '<p class="rp-empty">Every club has a crest.</p>'}`);
+      return;
+    }
+
+    if (tab === "submitted") {
+      // The day lives in the URL, like every other ops narrowing: the back
+      // button works, a reload keeps the day, and "what went out on Saturday"
+      // is a link an administrator can keep.
+      const day = params.get("day") || catToday();
+      const rows = await loadOpsSubmissions(day);
+      header(opsSubmissionsPanel(day, rows, names));
+      view.querySelector("[data-day]")?.addEventListener("change", (event) => {
+        const value = event.target.value;
+        if (value) location.hash = `#/ops?tab=submitted&day=${value}`;
+      });
       return;
     }
 

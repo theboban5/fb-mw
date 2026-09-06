@@ -526,6 +526,7 @@ the ordinary static tree copy. No framework, no bundler, no build step.
 /report/#/import        read those results off a screenshot, post or pasted text
 /report/#/add           add a whole fixture list to a competition you cover
 /report/#/teams         the names each team is printed under (0046)
+/report/#/ops           coverage, backlog and what was submitted (admin only)
 /report/#/league/new    create a competition and its teams (admin only)
 /report/#/reporters     the reporter pool: create, assign, promote (admin only)
 /report/#/account       change password, sign out
@@ -811,6 +812,29 @@ or DELETE on it through the API, and only the RPC writes to it (as the owner).
 A reporter correcting 2–1 to 2–2 leaves both rows behind, each with who and
 when. Anon cannot read it; a reporter sees only matches they can report; admins
 see everything. An unchanged re-publish adds no row.
+
+Since `0047` each row also says **how** it arrived — `single` from the match
+screen, `grid` from the matchday grid, `import` from an AI import, with
+`import_id` naming the evidence. Nothing is backfilled: the 496 rows written
+before it keep the old default `reporter`, which honestly means "not recorded",
+and the eight reading `admin` are a bulk matchday correction someone made by
+hand with the secret key, which is `0003`'s own suggestion working as intended.
+
+**The channel is derived, never claimed.** There is deliberately no
+`p_channel` argument. `submit_match_reports` takes an optional `p_import_id`,
+validates that it exists and belongs to the caller, and the channel follows
+from whether one was given — so `source = 'import'` cannot appear on a row with
+no import behind it, and a client cannot assert a channel it did not use. Same
+instinct as `0043`'s confidence, which comes from how a name matched rather
+than from what the model said about itself.
+
+**It is a MATCH audit, not a result log**, and that is easy to misread. Seven
+functions write to it: `apply_match_report` (score, status, source_ref),
+`reschedule_match` (date, kickoff), `set_match_venue`, `set_match_officials` in
+both its `0023` and `0024` forms, and `set_match_matchday`. Only the first is a
+result being submitted, and only the first records a channel. `ops_submissions`
+labels each row by which keys its payload carries (`kind`), because none of the
+older six records what it was.
 
 ```bash
 RLS_LIVE=1 python3 -m unittest tests.test_reporting_live tests.test_entry_live
@@ -1540,13 +1564,16 @@ Eleven questions, one screen:
 | Venues | Fixtures with no ground |
 | Sources | Published results with no `source_ref` |
 | Verification | Results still `confidence = 'unconfirmed'` |
+| Submitted | Everything that changed on one day: what, by whom, how (0047, below) |
 | Reporters | Matches reported this season, by reporter |
 | Crests | Clubs whose hub page renders without a logo |
 | Site | Whether everyleague.co is up to date |
 
-Every tab but Compare asks *what needs doing*. Compare asks *how are we doing*,
-which is a different question with a different shape — it aggregates rather
-than lists, and its row is a whole competition rather than one match.
+Most tabs ask *what needs doing*. Compare asks *how are we doing*, which
+aggregates rather than lists and whose row is a whole competition. Submitted
+asks *what happened today*, which Reporters cannot: that one counts a season,
+and a season does not tell you eight results arrived from a screenshot an hour
+ago.
 
 **A matchday is a logical round, not a weekend.** A fixture postponed out of its
 weekend keeps its matchday and changes only its date, so every matchday of a
@@ -1592,6 +1619,48 @@ It signs in as anon, a reporter and an administrator, then recomputes every
 count in Python from the raw rows rather than re-running the view's own SQL —
 which is what catches a predicate that is subtly wrong, such as a 0-0 draw
 counted as missing its scorers.
+
+### Submitted: everything that changed on one day
+
+`/report/#/ops?tab=submitted`, administrators only. `0047_submission_channel.sql`.
+
+Pick a date, see every result published or corrected on it: which match, by
+whom, from where, **how**, and what it replaced. The day lives in the URL, so
+"what went out on Saturday" is a link.
+
+**Before 0047 there was no way to answer "how".** `match_change_log.source` had
+defaulted to `'reporter'` since `0003` and no function had ever set it, and
+`report_imports` recorded no `match_id`s — so a result a model read off a blurry
+screenshot and a reporter approved was, in the audit trail, identical to one
+typed by hand. That is the whole content of the migration: the row that answers
+the question was already being written, it just was not being filled in.
+
+**It reads the change log, not `matches`.** `reported_by`/`reported_at` hold
+only the *last* submission, so a match published in the morning and corrected
+in the evening would appear once, saying only the second thing — and would stop
+saying anything about today the moment somebody touched it tomorrow. The
+consequence worth knowing is the other direction too: `apply_match_report`
+writes a log row only when something actually changed, so re-tapping publish on
+an unchanged matchday adds nothing here. "Everything submitted today" is
+everything that *changed* today, which is the honest reading of the question
+and the only one the log can answer.
+
+The `ops_submissions` view labels every row by `kind` — `result`, `reschedule`,
+`venue`, `officials`, `matchday` — because the log has seven writers and only
+one of them is a result. The screen leads with the results and puts the rest
+under their own heading rather than rendering a reschedule as a result with the
+score missing. Days are bucketed in CAT (`Africa/Blantyre`, UTC+2, no DST): a
+Malawian Saturday evening's results land after 22:00 UTC, and bucketing on the
+UTC date would file half a matchday under Sunday.
+
+```bash
+RLS_LIVE=1 python3 -m unittest tests.test_submission_channel_live
+```
+
+Not built: a daily email roundup. There is no mail infrastructure in this repo
+at all, so it needs a scheduler, a provider and its secret, a rendering
+function, a recipient list and SPF/DKIM on the domain — five new moving parts
+and a second thing that can fail silently, for what this screen already shows.
 
 ### Compare: district, regional and national side by side
 

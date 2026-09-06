@@ -184,6 +184,46 @@ fixture and clean up, and they never mutate a real match.
 
 ## Recent work (Sep 2026)
 
+How a result was submitted, migrations `0047`–`0048` — `#/ops?tab=submitted`:
+
+- `match_change_log.source` defaulted to `'reporter'` from 0003 and **no
+  function ever set it**, so a result a model read off a screenshot and a
+  reporter approved was, in the audit trail, identical to one typed by hand.
+  The row that answers "where did this come from" was already being written; it
+  just was not being filled in.
+- **The channel is derived, never claimed.** There is deliberately no
+  `p_channel` argument. `submit_match_reports` takes an optional
+  `p_import_id`, validates it exists and belongs to the caller, and the channel
+  follows: an import means `'import'`, no import means `'grid'`,
+  `submit_match_report` means `'single'`. So `source='import'` cannot appear on
+  a row with nothing behind it. 0043's rule about confidence, one table over.
+- **`match_change_log` is a MATCH audit, not a result log** — seven functions
+  write to it (score, reschedule, venue, officials in two forms, matchday), and
+  only the first records a channel. `ops_submissions` labels each row by which
+  keys its payload carries, because none of the other six says what it was.
+  Discovered by the CHECK constraint refusing to apply: eight rows already read
+  `'admin'`, a bulk matchday correction made by hand with the secret key in
+  August — 0003's own suggestion working as intended, so `'admin'` stays legal.
+- **Nothing is backfilled.** 496 rows keep `'reporter'`, which now means "not
+  recorded", and the screen says so. Inventing a channel for them would put a
+  fact in an audit log that nobody ever observed.
+- The day is bucketed in CAT in SQL (`at time zone 'Africa/Blantyre'`) and the
+  clock time is formatted in CAT in JS, because a Malawian Saturday evening
+  lands after 22:00 UTC and the two halves must agree.
+- `submit_match_reports` was **dropped and recreated**, not overloaded: a
+  defaulted parameter added by `create or replace` makes a second function and
+  PostgREST's named call then matches both. Inside the migration's transaction
+  the window is milliseconds, and the four-argument call every browser in the
+  field makes still resolves afterwards — there is a live test that says so.
+- `0048` is the `revoke all ... from anon` that `0047` forgot. **This project's
+  default privileges grant new objects to `anon`**, which is why 0016 and 0039
+  both revoke explicitly; the view's own `is_admin()` meant no row ever leaked,
+  but it answered 200 where every other ops view answers 401. Caught by
+  test_ops_live's access sweep, one line after adding the view to its list.
+- Not built: the daily email roundup. No mail infrastructure exists at all —
+  scheduler, provider, secret, renderer, recipients, SPF/DKIM — five new moving
+  parts for what the screen already shows.
+
 The names a league actually prints, migration `0046` — `#/teams`:
 
 - An import came back **NOT MATCHED — MAFCO FC 1–2 MOYALE FC**. The database

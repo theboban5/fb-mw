@@ -24,6 +24,17 @@ Reporter-facing tables that are NOT part of the `Dataset` — `reporter_assignme
 `match_change_log`, `match_media`, `rebuild_state` — are invisible to the build
 by design. They carry no rules below and cannot affect a rendered page.
 
+`match_change_log` is the audit of a MATCH, not of a result: seven functions
+append to it — `apply_match_report` (score, status, `source_ref`),
+`reschedule_match` (date, kickoff), `set_match_venue`, `set_match_officials` in
+both its `0023` and `0024` forms, and `set_match_matchday` — and each writes its
+own set of keys into `old_values`/`new_values`, which is the only thing that
+tells them apart. Since `0047` the reporting path also fills in `source`
+(`single | grid | import`, plus the legacy `reporter` meaning "not recorded"
+and `admin` for a hand correction made with the secret key) and `import_id`.
+The other six record no channel, and `ops_submissions` labels rows by their
+keys rather than pretending otherwise.
+
 `match_incidents` and `lineup_entries` are **deprecated** (0018). They were in
 that list too, which is precisely what was wrong with them: cards,
 substitutions and line-ups typed into `/report` were stored correctly and then
