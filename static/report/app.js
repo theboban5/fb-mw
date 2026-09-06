@@ -36,6 +36,9 @@ import * as graphics from "./graphics.js";
 import * as grid from "./results_grid.js";
 // The fixture importer's rules, out here for the same reason.
 import * as fx from "./fixture_import.js";
+// What to report when a screen breaks, and how often. Out here because it must
+// work on a page that has already gone wrong — see 0052.
+import * as crash from "./error_report.js";
 
 const view = document.querySelector("[data-view]");
 const flashEl = document.querySelector("[data-flash]");
@@ -353,7 +356,7 @@ function renderLogin(next) {
     // Re-route by hand in that case or the reporter is left staring at the
     // form they just completed.
     const target = next || "#/";
-    if (location.hash === target) route();
+    if (location.hash === target) safeRoute();
     else location.hash = target;
   });
 }
@@ -7673,7 +7676,7 @@ function wireGraphics(type, competitions, teams, accents, format) {
         if (!draft) return;
         pendingDraftRestore = draft;
         const target = `#/graphics?type=${draft.type}&format=${draft.format}`;
-        if (location.hash === target) route(); else location.hash = target;
+        if (location.hash === target) safeRoute(); else location.hash = target;
       };
     });
   }
@@ -10559,6 +10562,10 @@ const OPS_TABS = [
   // question the other one cannot: it counts a season, and a season does not
   // tell you that eight results arrived from a screenshot an hour ago.
   { key: "submitted",    label: "Submitted",    flag: null },
+  // Last, and reached from the urgent strip rather than by looking for it: a
+  // broken screen is not a daily job, and on the day it is one it is the only
+  // thing on this screen worth reading.
+  { key: "errors",       label: "Errors",       flag: null },
   { key: "reporters",    label: "Reporters",    flag: null },
   { key: "crests",       label: "Crests",       flag: null,
     head: "Clubs without a crest", blank: "Every club has a crest." },
@@ -10633,7 +10640,7 @@ async function loadOpsFreshness() {
 // Only non-zero items appear. A clean day should say so in one line rather than
 // showing seven zeros, which trains an administrator to stop reading it.
 
-function opsUrgent(totals, fresh) {
+function opsUrgent(totals, fresh, broken = 0) {
   const items = [];
   const add = (n, label, tab) => {
     if (n > 0) items.push(
@@ -10646,6 +10653,15 @@ function opsUrgent(totals, fresh) {
   add(totals.unscheduled, "fixtures with no date", "fixtures");
   add(totals.competitions_without_fixtures, "leagues with nothing upcoming", "fixtures");
   add(totals.awaiting_reschedule, "awaiting a new date", "fixtures");
+  // FIRST IN THE LIST WHEN IT IS THERE AT ALL. A missing result is a job; a
+  // screen that will not draw is every reporter's job blocked, and #/add spent
+  // a month in that state without appearing anywhere an administrator looked.
+  if (broken > 0) {
+    items.unshift(
+      `<a class="ops-urgent-item is-bad" href="#/ops?tab=errors">
+         <span class="ops-urgent-n">${broken}</span>
+         <span class="ops-urgent-l">screen${broken === 1 ? "" : "s"} breaking</span></a>`);
+  }
 
   const site = fresh.verdict === "ok"
     ? `<a class="ops-urgent-item is-ok"><span class="ops-urgent-n">✓</span>
@@ -11150,6 +11166,51 @@ function opsSubmissionsPanel(day, rows, names) {
         other screens: a fixture moved, a ground filled in, the officials
         named. None of those records how it was submitted.</p>
       ${others.map((s) => opsSubmissionRow(s, names)).join("")}` : ""}`;
+}
+
+// ── Broken screens (0052) ────────────────────────────────────────────────────
+// One row per broken screen, which is what the grouped view returns. #/add
+// would have been a single line here — "/add · Cannot read properties of
+// undefined (reading 'status') · 340 times · 11 reporters · first seen 5
+// September" — and 340 identical rows would have said it no better.
+
+const BROKEN_WINDOW_HOURS = 48;
+
+async function loadOpsErrors() {
+  const { data, error } = await supabase.from("ops_portal_errors")
+    .select("*")
+    .order("last_seen", { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  return data || [];
+}
+
+/** How many DISTINCT problems are still happening. The urgent strip counts
+ *  this rather than hits, because "340" is the same one screen and would read
+ *  as a catastrophe; two is two screens to go and look at. */
+const brokenNow = (rows, hours = BROKEN_WINDOW_HOURS) => (rows || []).filter(
+  (r) => Date.now() - new Date(r.last_seen).getTime() < hours * 3600 * 1000).length;
+
+function opsErrorRow(r) {
+  const when = (iso) => (iso ? new Date(iso).toLocaleString("en-GB",
+    { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Blantyre" }) : "—");
+  const recent = Date.now() - new Date(r.last_seen).getTime()
+                 < BROKEN_WINDOW_HOURS * 3600 * 1000;
+  return `
+    <details class="rp-sec" ${recent ? "open" : ""}>
+      <summary><span class="rp-sec-name">${esc(r.route)}</span>
+        <span class="rp-sec-note">${esc(r.message)}</span>
+        <span class="rp-sec-count">${r.hits}</span></summary>
+      <div class="rp-sec-body">
+        <div class="rp-account-row"><span>Reporters affected</span>
+          <span>${r.reporters}</span></div>
+        <div class="rp-account-row"><span>First seen</span>
+          <span>${esc(when(r.first_seen))}</span></div>
+        <div class="rp-account-row"><span>Last seen</span>
+          <span>${esc(when(r.last_seen))}</span></div>
+        ${r.stack ? `<pre class="ops-stack">${esc(r.stack)}</pre>` : ""}
+      </div>
+    </details>`;
 }
 
 // ── Site freshness panel ─────────────────────────────────────────────────────
@@ -11756,6 +11817,23 @@ async function renderOps(params) {
       return;
     }
 
+    if (tab === "errors") {
+      const rows = await loadOpsErrors();
+      const live = brokenNow(rows);
+      header(`<h2 class="rp-group-head">Screens that broke
+                <span class="rp-count">${rows.length}</span></h2>
+              <p class="rp-hint">Uncaught errors from /report, grouped by screen
+                and message. ${live
+                  ? `${live} still happening in the last ${BROKEN_WINDOW_HOURS}
+                     hours — those are open above.`
+                  : "None in the last two days."}</p>
+              ${rows.map(opsErrorRow).join("")
+                || `<p class="rp-empty">Nothing has thrown. Reports arrive only
+                      from signed-in reporters, so a screen that breaks before
+                      the login is still invisible here.</p>`}`);
+      return;
+    }
+
     if (tab === "crests") {
       const data = await opsCrests();
       if (!data) {
@@ -11837,16 +11915,90 @@ async function renderOps(params) {
     }
 
     // Overview.
-    const [{ totals, comps }, fresh] = await Promise.all([
-      loadOpsSummary(), loadOpsFreshness()]);
+    const [{ totals, comps }, fresh, errors] = await Promise.all([
+      loadOpsSummary(), loadOpsFreshness(),
+      // Never a reason to lose the overview: a dashboard that will not draw
+      // because the broken-screen count would not load is a joke with a long
+      // setup.
+      loadOpsErrors().catch(() => [])]);
     if (!totals) {
       header('<p class="rp-empty">No active competitions this season.</p>');
       return;
     }
-    header(opsUrgent(totals, fresh) + opsGlance(comps));
+    header(opsUrgent(totals, fresh, brokenNow(errors)) + opsGlance(comps));
   } catch (error) {
     h('<p class="rp-empty">Could not load operations.</p>');
     flash(humanError(error), "error");
+  }
+}
+
+// ── When a screen breaks (0052) ──────────────────────────────────────────────
+// #/add threw a TypeError on every draw for a month and nobody said anything,
+// because of HOW it failed rather than how badly: the first draw painted
+// "Loading teams…", the throw landed on the second, and the spinner stayed. On
+// the connection this app is written for, a spinner that never resolves is not
+// a broken screen — it is Tuesday.
+//
+// So two things, and the second is the one a reporter experiences:
+//
+//   1. the error is recorded, once per distinct problem per session;
+//   2. the spinner is replaced by a sentence saying the screen did not draw,
+//      that it is not their connection, and that nothing they saved is gone.
+//
+// NOTHING HERE MAY THROW. It runs on a page that has already gone wrong, and a
+// reporter that can fail turns one broken screen into an outage. Every call is
+// inside a try, the RPC's promise is swallowed, and the rules that decide how
+// often to send live in error_report.js where they can be tested.
+
+const crashesSeen = new Set();
+
+function reportCrash(reason) {
+  try {
+    const payload = crash.errorPayload(reason, {
+      hash: location.hash,
+      userAgent: navigator.userAgent,
+    });
+    if (!crash.shouldReport(payload, crashesSeen)) return;
+    crashesSeen.add(crash.dedupeKey(payload));
+    console.error("[everyleague]", payload.route, payload.message);
+    // Signed out, offline, or the function not deployed yet: all of them mean
+    // the report does not arrive, and none of them is worth a second error.
+    supabase?.rpc("record_portal_error", {
+      p_route: payload.route,
+      p_message: payload.message,
+      p_stack: payload.stack,
+      p_user_agent: payload.user_agent,
+    }).then(() => {}, () => {});
+  } catch {
+    // Reporting an error must not be a way of causing one.
+  }
+}
+
+function installCrashReporter() {
+  window.addEventListener("error", (event) => reportCrash(event));
+  window.addEventListener("unhandledrejection", (event) => reportCrash(event));
+}
+
+/** route(), with the failure made visible.
+ *
+ *  Every render is an async function called from an event listener, so an
+ *  exception inside one became an unhandled rejection — recorded now, but
+ *  still leaving whatever was on screen when it threw. Which was, for a month,
+ *  a spinner. */
+async function safeRoute() {
+  try {
+    await route();
+  } catch (error) {
+    reportCrash(error);
+    const { heading, body } = crash.brokenScreenMessage(
+      crash.routeOf(location.hash));
+    h(`<h1 class="rp-login-head">${esc(heading)}</h1>
+       <p class="rp-empty">${esc(body)}</p>
+       <div class="rp-btn-row">
+         <button class="rp-btn is-ghost" type="button" data-retry>Try again</button>
+         <a class="rp-btn is-quiet" href="#/">My matches</a>
+       </div>`);
+    view.querySelector("[data-retry]")?.addEventListener("click", () => safeRoute());
   }
 }
 
@@ -11940,17 +12092,19 @@ function start() {
     },
   });
 
+  installCrashReporter();
+
   accountBtn.addEventListener("click", () => { location.hash = "#/account"; });
   document.addEventListener("click", (event) => { dismissPicker?.(event); });
-  window.addEventListener("hashchange", route);
+  window.addEventListener("hashchange", safeRoute);
   supabase.auth.onAuthStateChange((event) => {
-    if (event === "SIGNED_OUT") { context = null; route(); }
+    if (event === "SIGNED_OUT") { context = null; safeRoute(); }
   });
   // A reporter who walks back into signal should get a working page rather
   // than a stale error.
-  window.addEventListener("online", () => { clearFlash(); route(); });
+  window.addEventListener("online", () => { clearFlash(); safeRoute(); });
 
-  route();
+  safeRoute();
 }
 
 start();

@@ -1627,6 +1627,7 @@ Eleven questions, one screen:
 | Sources | Published results with no `source_ref` |
 | Verification | Results still `confidence = 'unconfirmed'` |
 | Submitted | Everything that changed on one day: what, by whom, how (0047, below) |
+| Errors | Screens that threw, grouped by screen and message (0052, below) |
 | Reporters | Matches reported this season, by reporter |
 | Crests | Clubs whose hub page renders without a logo |
 | Site | Whether everyleague.co is up to date |
@@ -1723,6 +1724,54 @@ Not built: a daily email roundup. There is no mail infrastructure in this repo
 at all, so it needs a scheduler, a provider and its secret, a rendering
 function, a recipient list and SPF/DKIM on the domain — five new moving parts
 and a second thing that can fail silently, for what this screen already shows.
+
+### Errors: when a screen breaks
+
+`/report/#/ops?tab=errors`, administrators only. `0052_portal_errors.sql`.
+
+**`#/add` threw a TypeError on every draw from 5 September to 6 October** — the
+fixture form was dead for everybody, in every competition, for a month. Nothing
+recorded it and nobody reported it, because of *how* it failed rather than how
+badly: the first draw painted "Loading teams…", the throw landed on the second,
+and the spinner stayed. On the connection this app is written for, a spinner
+that never resolves is not a broken screen. It is Tuesday.
+
+Two halves, and the second is the one a reporter experiences:
+
+1. `window.onerror` and `unhandledrejection` call `record_portal_error`, once
+   per distinct problem per session;
+2. `safeRoute()` wraps every render, so a screen that fails to draw says **"This
+   screen did not load"** — that it is not their connection, that nothing they
+   saved is affected, and that it has been reported. Not the message and not a
+   stack: *"Cannot read properties of undefined"* is true, useless and
+   frightening.
+
+**Nothing in the reporting path may throw.** It runs on a page that has already
+gone wrong, and a reporter that can itself fail turns one broken screen into an
+outage — so every call is inside a `try`, the RPC's promise is swallowed, and
+`record_portal_error` returns quietly rather than raising. The cap is 20 an
+hour per reporter and the client dedupes on route-plus-message; neither is
+trusted to be the only one working. **201 throws produce 2 reports**, asserted
+in `tests/js/test_error_report.mjs` and confirmed in a real browser.
+
+**Four columns and no page contents**: route, message, stack, browser. The
+route is reduced to the screen — `/m/…`, not the match id, and the query string
+goes because it can carry a search term. Readable by admins only, not even by
+the reporter who hit it: a stack trace is an operational artefact, and someone
+who sees one has been handed a worry they cannot act on.
+
+`ops_portal_errors` groups by route and message, so `#/add` would have been one
+line — *"/add · Cannot read properties of undefined (reading 'status') · 340
+times · 11 reporters · first seen 5 September"* — and the urgent strip counts
+distinct broken screens rather than hits, and puts them first.
+
+Anon is refused the RPC outright, so an error thrown on the sign-in screen is
+not recorded. That is a real gap, and the right trade against an
+unauthenticated write endpoint on a public database.
+
+```bash
+RLS_LIVE=1 python3 -m unittest tests.test_portal_errors_live
+```
 
 ### Compare: district, regional and national side by side
 

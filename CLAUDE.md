@@ -89,6 +89,7 @@ src/trending.py        the homepage carousel (the `trending` tab, 0030)
 src/matches_page.py    /matches/ — every match on one date, any date
 static/report/results_grid.js  the matchday grid's rules, DOM-free and tested
 static/report/fixture_import.js  the fixture importer's rules, same bargain
+static/report/error_report.js  what to report when a screen breaks (0052)
 src/nt.py, nt_page.py  national teams (the nt_* tabs, /scorchers/)
 src/search.py          the site search index
 static/report/app.js   the reporter portal (one file, no framework)
@@ -149,9 +150,10 @@ python3 -m http.server -d /tmp/site 8000      # then look at it at 390px wide
 and this is still not a Node project** — the root `package.json` exists only
 because Node reads a bare `.js` as CommonJS unless a package.json says
 otherwise, and the portal's modules are ESM because browsers load them that
-way. It covers `static/report/results_grid.js` and
-`static/report/fixture_import.js`, which import nothing; the moment either
-needs `document` or `supabase`, the tests stop meaning anything.
+way. It covers `static/report/results_grid.js`,
+`static/report/fixture_import.js` and `static/report/error_report.js`, which
+import nothing; the moment one of them needs `document` or `supabase`, its
+tests stop meaning anything.
 
 `python3 -m unittest discover` currently ends with **one pre-existing failure**
 — `test_search.IndexContentTest.test_index_stays_small_enough_to_ship`, a
@@ -184,6 +186,42 @@ fixture and clean up, and they never mutate a real match.
 ---
 
 ## Recent work (Sep 2026)
+
+When a screen breaks, migration `0052` — `#/ops?tab=errors`:
+
+- **`#/add` threw on every draw for a month and nobody said anything**, because
+  of HOW it failed rather than how badly. The first draw painted "Loading
+  teams…", the throw landed on the second, and the spinner stayed. On the
+  connection this app is written for, a spinner that never resolves is not a
+  broken screen — it is Tuesday. That is the failure mode to build against: an
+  error a reporter can SEE gets mentioned; a screen that merely never finishes
+  does not.
+- Two halves, and the second is the one a reporter experiences: the error is
+  recorded once per distinct problem per session, and `safeRoute` replaces the
+  spinner with a sentence saying the screen did not draw, that it is not their
+  connection, and that nothing they saved is gone. **Not the message and not a
+  stack** — "Cannot read properties of undefined" is true, useless and
+  frightening.
+- **Nothing in the reporting path may throw.** It runs on a page that has
+  already gone wrong, so every call is inside a try and the RPC's promise is
+  swallowed. `record_portal_error` returns quietly rather than raising for the
+  same reason, and caps at 20 an hour per reporter — the client dedupes too,
+  and neither is trusted to be the only one working. 201 throws produce 2
+  reports, verified in a real browser.
+- **Four columns and no page contents**: route, message, stack, browser. The
+  route is `/m/…` rather than the match id, and the query string goes, because
+  it can carry a search term. Admin-only, not even the reporter who hit it.
+- `ops_portal_errors` groups by route and message, so `#/add` would have been
+  ONE line — "/add · Cannot read properties of undefined · 340 times · 11
+  reporters · first seen 5 September". The urgent strip counts distinct broken
+  screens, not hits, and puts them first.
+- Anon is refused the RPC outright, so an error on the sign-in screen is not
+  recorded. A real gap, and the right trade against an unauthenticated write
+  endpoint on a public database.
+- The tests caught the `token=None` trap `test_import_matching_live` warns
+  about: a default of `None` behind `token or self.tokens["a"]` runs the anon
+  check as an authorized reporter. It is invisible when the assertion is only
+  about a status code.
 
 Reading a fixture list off a picture, migrations `0049`–`0051` — `#/import`:
 
