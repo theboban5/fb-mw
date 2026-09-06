@@ -182,6 +182,45 @@ fixture and clean up, and they never mutate a real match.
 
 ---
 
+## Recent work (Sep 2026)
+
+The names a league actually prints, migration `0046` — `#/teams`:
+
+- An import came back **NOT MATCHED — MAFCO FC 1–2 MOYALE FC**. The database
+  has Moyale Barracks. That is not an error in either of them, and the matching
+  half was already built — `import_team_candidates` reads team aliases at tier
+  2 and club aliases at tier 4, and 30 club rows were already in the table.
+  **What was missing was any way to write one**: 0022 and 0024 file a person's
+  old spelling as a side effect of renaming them, and nothing anywhere wrote an
+  alias for a team. So the one repair a reporter could see the need for was the
+  one the portal could not make.
+- **The alias goes on the TEAM, not the club.** A club alias reaches every team
+  of that club through tier 4 — Moyale Barracks *and* Moyale Sisters — so
+  filing it there would turn a red row into an ambiguous one wherever a
+  reporter covers both, which is the same fix failing more quietly. Tier 2
+  resolves alone, and survives into next season because `team_id` is stable
+  across entries.
+- **The guard is the collision check.** `MW_MB` is Moyale Barracks and `MW_MR`
+  is Moyale Reserve FC — different clubs — so a careless alias does not fail to
+  match, it matches the wrong team and publishes a result against it. A name
+  another team answers to at tier 1 or 2 is refused and the message names that
+  team. Tiers 3 and 4 are deliberately not a collision: a team alias outranks a
+  club name, so filing "Bullets" on the men's first team is how four Bullets
+  squads stop being ambiguous, not a way of making them so.
+- **Adding a name is a reporter's; removing and renaming are an admin's.** An
+  alias references nothing and nothing references it, so a wrong one is one
+  delete from repaired — unlike a duplicate club, which is why `create_league`
+  is still the only way to mint one and `#/teams` has no "add a team".
+- The unmatched import row **re-resolves through the same RPC** rather than
+  patching itself: the matcher is the only thing allowed to decide which
+  fixture a row is. What the reporter already typed on the other rows survives
+  it (`currentEdits()` keys on `match_id`, because re-resolving reorders rows).
+- **Recording a name needs no rebuild.** `src/search.py` reads `aliases` for
+  competition and club ids only, so a team alias renders nowhere. `rename_team`
+  does need one — a `display_name` is on the standings table and every fixture
+  line — which is the other half of why it is admin-only.
+- Not built: club-level aliases from the portal, and any way to add a team.
+
 ## Recent work (Aug 2026)
 
 Reading results off a picture, migrations `0042`–`0045` — `#/import`:
