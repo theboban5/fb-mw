@@ -20,7 +20,8 @@ import {
   unconfirm, collectReports, applyBatchResult, summarize, resolveSource,
   rowsNeedingSource, isScored, acceptsScore, SOURCE_CHOICES,
   acceptsScorers, addScorer, removeScorer, scorerRoom, collectGoals,
-  applyGoalsResult, summarizeGoals, possessive,
+  applyGoalsResult, summarizeGoals, possessive, scorersFromImport,
+  offerScorers, setScorerSide, sidelessScorers,
 } from "../../static/report/results_grid.js";
 
 // A match as the portal's MATCH_FIELDS select returns it.
@@ -609,4 +610,102 @@ test("a club name ending in s takes a bare apostrophe", () => {
   assert.equal(possessive("Moyale Barracks"), "Moyale Barracks'");
   assert.equal(possessive("Karonga United"), "Karonga United's");
   assert.equal(possessive(""), "");
+});
+
+// ── Scorers the model read ───────────────────────────────────────────────────
+
+const aiScorer = (over = {}) => ({
+  player_raw: "A. Josephy", team_side: "home", minute: 12,
+  own_goal: false, penalty: false, ...over,
+});
+
+test("a printed side becomes the fixture's side", () => {
+  const [s] = scorersFromImport([aiScorer()],
+    { homeTeamId: "MW_BE_M1", awayTeamId: "MW_SIL_M1" });
+  assert.equal(s.teamId, "MW_BE_M1");
+  assert.equal(s.needsSide, "");
+  assert.equal(s.minute, "12");
+  assert.equal(s.playerId, "", "a model never identifies anybody");
+});
+
+test("a flipped fixture swaps the scorer's side with the scores", () => {
+  // The picture drew the fixture the other way round. proposalFor already
+  // swaps the score for this; a scorer left unswapped would be the same bug
+  // one field over, and it would look completely correct on screen.
+  const [s] = scorersFromImport([aiScorer({ team_side: "home" })],
+    { homeTeamId: "MW_BE_M1", awayTeamId: "MW_SIL_M1", flipped: true });
+  assert.equal(s.teamId, "MW_SIL_M1");
+});
+
+test("an own goal comes back with no side, even from a legible column", () => {
+  // team_side is where the name was PRINTED; goals.team_id is the beneficiary;
+  // on an own goal those are different teams and the picture only told us the
+  // first. There is no rule to apply, so a person applies one.
+  const [s] = scorersFromImport([aiScorer({ own_goal: true, team_side: "home" })],
+    { homeTeamId: "MW_BE_M1", awayTeamId: "MW_SIL_M1" });
+  assert.equal(s.teamId, "");
+  assert.equal(s.needsSide, "own_goal");
+  assert.equal(s.goalType, "own_goal");
+});
+
+test("an unreadable column comes back needing a tap too", () => {
+  const [s] = scorersFromImport([aiScorer({ team_side: "unknown" })],
+    { homeTeamId: "MW_BE_M1", awayTeamId: "MW_SIL_M1" });
+  assert.equal(s.teamId, "");
+  assert.equal(s.needsSide, "unknown");
+});
+
+test("a penalty keeps its type; a nameless scorer is dropped", () => {
+  const out = scorersFromImport(
+    [aiScorer({ penalty: true }), aiScorer({ player_raw: "   " })],
+    { homeTeamId: "MW_BE_M1", awayTeamId: "MW_SIL_M1" });
+  assert.equal(out.length, 1);
+  assert.equal(out[0].goalType, "penalty");
+});
+
+test("a sideless scorer is held back and the ones around it still publish", () => {
+  const row = gridRow(played(2, 1));
+  const { staged, sideless } = offerScorers(row, scorersFromImport([
+    aiScorer({ player_raw: "A. Josephy" }),
+    aiScorer({ player_raw: "S. Banda", own_goal: true }),
+    aiScorer({ player_raw: "G. Phiri", team_side: "away", minute: 81 }),
+  ], { homeTeamId: "MW_BE_M1", awayTeamId: "MW_SIL_M1" }));
+
+  assert.equal(staged, 3);
+  assert.equal(sideless, 1);
+  assert.equal(sidelessScorers([row]), 1);
+
+  const { goals } = collectGoals([row]);
+  assert.equal(goals.length, 2, "the own goal is held back, not refused");
+  assert.deepEqual(goals.map((g) => g.player_name), ["A. Josephy", "G. Phiri"]);
+});
+
+test("giving an own goal its side makes it publishable", () => {
+  const row = gridRow(played(1, 0));
+  offerScorers(row, scorersFromImport([aiScorer({ own_goal: true })],
+    { homeTeamId: "MW_BE_M1", awayTeamId: "MW_SIL_M1" }));
+  assert.equal(collectGoals([row]).goals.length, 0);
+
+  // Blue Eagles won 1-0 through a Silver Strikers defender: the goal is
+  // Blue Eagles'. Silver Strikers scored none, so that side is refused.
+  assert.equal(setScorerSide(row, 0, "MW_SIL_M1"),
+               "Silver Strikers did not score in this match.");
+  assert.equal(setScorerSide(row, 0, "MW_BE_M1"), "");
+  const { goals } = collectGoals([row]);
+  assert.equal(goals.length, 1);
+  assert.equal(goals[0].team_id, "MW_BE_M1");
+  assert.equal(goals[0].goal_type, "own_goal");
+});
+
+test("a graphic naming more scorers than the score allows stages what fits", () => {
+  // A misread column, and the honest answer is a visible count now rather than
+  // a failure per line at save time.
+  const row = gridRow(played(1, 0));
+  const { staged } = offerScorers(row, scorersFromImport([
+    aiScorer({ player_raw: "One" }),
+    aiScorer({ player_raw: "Two" }),
+    aiScorer({ player_raw: "Three" }),
+  ], { homeTeamId: "MW_BE_M1", awayTeamId: "MW_SIL_M1" }));
+  assert.equal(staged, 1);
+  assert.equal(row.scorers.length, 1);
 });

@@ -231,7 +231,36 @@ A matchday's scorers in one submission, migration `0053` — `#/results`:
   single-match screen had been getting this wrong since 0007 on nearly every
   club name in the country, and a 1-0 now reads "…only goal already has a
   scorer" rather than "All 1 of…".
-- Not built: scorers from `#/import`, and `resolve_scorer_candidates`.
+- Not built: `resolve_scorer_candidates`.
+
+Scorers from a picture, no migration — `#/import`:
+
+- The AI has extracted scorers since 0042 and nothing ever read them: zero
+  references to `extracted.results[].scorers` anywhere in the client. They
+  publish now, through the **same rows, same block, same `submit_match_goals`**
+  as a typed one — `wireGridScorers` is called on both screens with the same
+  arguments.
+- **No migration.** `resolve_import_candidates` copies fields into `raw` by
+  name and `scorers` is not among them, but its `idx` is 1-based over
+  `extracted.results` in order, so `extracted.results[item.idx - 1]` IS that
+  candidate's row. Carrying it through `raw` would have been a migration to
+  move data the client already holds.
+- **The orientation goes with the scorer.** A graphic that drew the fixture the
+  other way round has its scorers on the wrong side too, and `proposalFor`
+  already swaps the scores for exactly that. A scorer left unswapped would be
+  the same bug one field over, and it would look completely right on screen.
+- **An own goal arrives with NO side and asks.** `team_side` is where the name
+  was printed and `goals.team_id` is the beneficiary; on an own goal those are
+  different teams and the picture only ever said the first. A `team_side` of
+  `unknown` asks for the same reason. It stays in the list, renders amber with
+  a "Which side?" `<select>`, and **`collectGoals` holds it back** — the greens
+  around it publish, which is 0043's "publish the confident ones without losing
+  the unresolved one" one row down.
+- Staged automatically the moment their results publish, because they were read
+  off the same picture as those scores and publishing was the only thing
+  stopping them. Nothing leaves the phone until **Save scorers** is tapped.
+- A graphic naming three scorers against a 2-1 stages what fits and says so,
+  rather than producing a failure per line at save time.
 
 **`SYSTEM_PROMPT` never mentioned scorers at all** — fixed the same day:
 

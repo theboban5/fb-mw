@@ -1391,7 +1391,25 @@ a { color: var(--accent); }
 }
 .rp-sc-row .rp-fx-error { flex: 1 1 100%; margin: 2px 0 0; }
 
+/* A scorer nobody has placed yet. Amber and not red: it is not an error, it is
+   a question — the model read a real name off the picture and only the one
+   fact it could not see is missing. It stays in the list and simply does not
+   publish, which is the grid's own rule for a row it is unsure of. */
+.rp-sc-row.is-ask { border-left: 3px solid var(--warn); padding-left: 8px; }
+.rp-sc-ask { flex: 1 1 100%; margin-top: 6px; }
+.rp-sc-ask p {
+  margin: 0 0 6px; font-size: 0.78rem; color: var(--warn);
+}
+.rp-sc-ask .rp-select { min-height: var(--tap); font-size: 0.85rem; }
+
 .rp-sc-add { margin-top: 8px; }
+/* Separated from the list above it, because an unplaced own goal's "Which
+   side?" select and this form's side select otherwise sit flush against each
+   other and are one mis-tap apart. Only when there IS a list — an empty ul is
+   :empty here, the template renders no whitespace into it. */
+.rp-sc-list:not(:empty) + .rp-sc-add {
+  border-top: 1px dashed var(--line); padding-top: 10px; margin-top: 10px;
+}
 .rp-sc-add .rp-select, .rp-sc-add .rp-input { min-height: var(--tap); }
 .rp-sc-add .rp-btn { margin-top: 8px; min-height: 44px; font-size: 0.85rem; }
 /* Minute and type share a line: neither needs the width and the block is

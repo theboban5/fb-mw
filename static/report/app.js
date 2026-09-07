@@ -1919,23 +1919,44 @@ function gridScorersHtml(row, i) {
     + grid.scorerRoom(row, row.awayTeamId);
 
   const staged = row.scorers.map((s, j) => {
-    const side = s.teamId === row.homeTeamId ? row.homeName : row.awayName;
     const bits = [
       s.minute ? `${esc(s.minute)}'` : "",
       esc(s.playerName),
       s.goalType === "own_goal" ? '<em class="rp-sc-og">OG</em>'
         : s.goalType === "penalty" ? '<em>pen</em>' : "",
     ].filter(Boolean).join(" ");
+
+    // A SIDELESS SCORER ASKS, IT DOES NOT GUESS. Only ever from an import: an
+    // own goal, or a column the model could not read. It stays in the list —
+    // it is real, it was read off the picture — and simply does not publish
+    // until somebody answers, which is the grid's own rule for a row it is not
+    // sure about rather than a second idea.
+    const ask = s.teamId ? "" : `
+      <div class="rp-sc-ask">
+        <p>${s.needsSide === "own_goal"
+              ? "An own goal counts for the other side. Which side did it count for?"
+              : "The graphic did not say which side. Which was it?"}</p>
+        <select class="rp-select" data-sc-setside="${i}:${j}"
+                aria-label="Which side this goal counted for">
+          <option value="">Which side?</option>
+          <option value="${esc(row.homeTeamId)}">${esc(row.homeName)}</option>
+          <option value="${esc(row.awayTeamId)}">${esc(row.awayName)}</option>
+        </select>
+      </div>`;
+
     return `
-      <li class="rp-sc-row${s.error ? " is-bad" : ""}">
+      <li class="rp-sc-row${s.error ? " is-bad" : ""}${s.teamId ? "" : " is-ask"}">
         <span class="rp-sc-name">${bits}
-          <em>${esc(side)}</em>${s.playerId ? "" : `
+          ${s.teamId
+            ? `<em>${esc(s.teamId === row.homeTeamId ? row.homeName : row.awayName)}</em>`
+            : '<em class="rp-sc-unknown">needs a side</em>'}${s.playerId ? "" : `
           <em class="rp-sc-unknown" title="Not linked to a player page">unidentified</em>`}</span>
         ${s.saved
           ? '<span class="rp-badge is-done">Saved</span>'
           : `<button class="rp-btn is-quiet" type="button"
                      data-sc-del="${i}:${j}" aria-label="Remove ${esc(s.playerName)}">×</button>`}
         ${s.error ? `<p class="rp-fx-error">${esc(s.error)}</p>` : ""}
+        ${ask}
       </li>`;
   }).join("");
 
@@ -2109,6 +2130,28 @@ function wireGridRows(form, rows, { onPatch, onRedraw }) {
  *  (a `change` fires when a box loses focus, which on a phone is the same
  *  gesture as the tap onto the next box) applied before it can bite. */
 function wireGridScorers(form, rows, { onRedraw, playerHost }) {
+  // A <select> may redraw: its change lands when the picker closes and the
+  // next tap is a fresh one. (A text box may not — see the team-sheet lesson
+  // in CLAUDE.md.) Answering it turns a held-back scorer into a publishable
+  // one, so the row genuinely has to change shape.
+  form.addEventListener("change", (event) => {
+    const el = event.target.closest("[data-sc-setside]");
+    if (!el || !el.value) return;
+    const [i, j] = el.dataset.scSetside.split(":").map(Number);
+    const row = rows[i];
+    if (!row) return;
+    const reason = grid.setScorerSide(row, j, el.value);
+    if (reason) {
+      // Put the select back, so the screen never shows an answer that was not
+      // taken. The reason is nearly always "that side did not score", which is
+      // the reporter learning something about the graphic.
+      el.value = "";
+      flash(reason, "warn");
+      return;
+    }
+    onRedraw();
+  });
+
   form.addEventListener("click", (event) => {
     const toggle = event.target.closest("[data-sc-toggle]");
     if (toggle) {
@@ -2734,6 +2777,28 @@ function importRow(item, i) {
   return row;
 }
 
+/** The scorers the model read for one resolved item.
+ *
+ *  JOINED BY INDEX, AND THE INDEX IS SOUND BY CONSTRUCTION.
+ *  resolve_import_candidates numbers its items 1..n over `extracted.results`
+ *  in order, so `extracted.results[item.idx - 1]` IS the row this candidate
+ *  came from. It is read here rather than carried through `raw` because the
+ *  resolver copies fields across by name and scorers is not one of them —
+ *  adding it there would be a migration to move data the client already holds.
+ *
+ *  The orientation goes with it: a graphic that drew the fixture the other way
+ *  round has its scorers on the wrong side too, and scorersFromImport is where
+ *  that is undone. */
+function importScorerDrafts(item, extracted) {
+  const source = (extracted?.results || [])[Number(item.idx) - 1];
+  const m = item.match || {};
+  return grid.scorersFromImport(source?.scorers, {
+    homeTeamId: m.home_team_id,
+    awayTeamId: m.away_team_id,
+    flipped: m.orientation === "flipped",
+  });
+}
+
 /** What the model read, expressed the way the fixture is stored. */
 function proposalFor(item) {
   const raw = item.raw || {};
@@ -3026,6 +3091,10 @@ async function renderImport(params) {
       const comp = item.match.competition_id;
       if (!byComp.has(comp)) byComp.set(comp, []);
       const row = importRow(item, i);
+      // Read now, offered later: a scorer cannot be staged until the score it
+      // belongs to is published, so these sit on the row until the reporter
+      // has pressed Publish and the block appears.
+      row.aiScorers = importScorerDrafts(item, state.extracted);
       state.rowsByIdx[i] = row;
       i += 1;
       const prior = keep?.get(row.matchId);
@@ -3656,6 +3725,9 @@ async function renderImport(params) {
     const rows = allRows();
     const { sending } = grid.collectReports(rows);
     const n = sending.length;
+    // Staged only after their results published, and counted separately
+    // because they are a separate submission to a separate RPC.
+    const scorerCount = grid.collectGoals(rows).goals.length;
     const names = state.names || {};
 
     const chip = (item) => {
@@ -3696,7 +3768,8 @@ async function renderImport(params) {
         <h2 class="rp-field-head">${esc(names[group.competition_id]
                                         || group.competition_id)}</h2>
         <ol class="rp-grid-list">${
-          group.rows.map((row) => gridRowHtml(row, row.idx, { extra: extra(row) }))
+          group.rows.map((row) => gridRowHtml(row, row.idx,
+            { extra: extra(row), scorers: true }))
             .join("")}</ol>
       </section>`;
 
@@ -3739,6 +3812,9 @@ async function renderImport(params) {
          ${state.groups.map(groupHtml).join("")}
          ${unmatchedHtml}
          <div class="rp-publish">
+           ${scorerCount ? `
+           <button class="rp-btn" type="button" data-save-scorers>Save ${
+             scorerCount} scorer${scorerCount === 1 ? "" : "s"}</button>` : ""}
            <button class="rp-btn" type="button" data-publish ${n ? "" : "disabled"}>${
              n ? `Approve and publish ${n} result${n === 1 ? "" : "s"}`
                : "Nothing to publish yet"}</button>
@@ -3784,6 +3860,57 @@ async function renderImport(params) {
     wireGridRows(form, byIdx, {
       onPatch: (i, row) => { refresh(); patchGridRow(i, row); },
       onRedraw: () => { syncGridFromDom(form, byIdx); drawReview(); },
+    });
+
+    // The same controls #/results has, on the same rows, from the same
+    // function. The block only exists on a row that has already published, so
+    // before Publish is tapped this wires nothing at all.
+    wireGridScorers(form, byIdx, {
+      onRedraw: () => { syncGridFromDom(form, byIdx); drawReview(); },
+      playerHost: form,
+    });
+
+    form.querySelector("[data-save-scorers]")?.addEventListener("click", async (event) => {
+      if (state.busy) return;                    // rule 2
+      clearFlash();
+      state.busy = true;
+      event.currentTarget.disabled = true;
+
+      let saved = 0;
+      let failed = 0;
+      // One call per competition, sequentially, for the reason the publish
+      // loop above gives: three requests at once on this connection is how all
+      // three time out. submit_match_goals takes one competition anyway, which
+      // is what keeps its authorization check meaningful.
+      for (const group of state.groups) {
+        const { sending, goals } = grid.collectGoals(group.rows);
+        if (!goals.length) continue;
+        const { data, error } = await supabase.rpc("submit_match_goals", {
+          p_competition_id: group.competition_id,
+          p_season_id: state.resolved?.season_id || null,
+          p_goals: goals,
+        });
+        if (error) {
+          failed += sending.length;
+          flash(humanError(error), "error");
+          continue;
+        }
+        const outcome = grid.applyGoalsResult(sending, data, humanError);
+        saved += outcome.saved;
+        failed += outcome.failed;
+      }
+
+      state.busy = false;
+      if (saved) requestRebuild();
+
+      drawReview();
+      const held = grid.sidelessScorers(rows);
+      const { message, kind } = grid.summarizeGoals(saved, failed);
+      flash(held
+        ? `${message} ${held} still ${held === 1 ? "needs" : "need"} a side.`
+        : saved && !failed
+          ? `${message} The site updates in a few minutes.`
+          : message, kind, failed || held ? 9000 : 5000);
     });
 
     form.addEventListener("click", (event) => {
@@ -3872,6 +3999,19 @@ async function renderImport(params) {
         const outcome = grid.applyBatchResult(sending, data, humanError);
         saved += outcome.saved;
         failed += outcome.failed;
+
+        // THE SCORERS THE MODEL READ, STAGED THE MOMENT THEY HAVE A RESULT TO
+        // BELONG TO. They were extracted with these scores off the same
+        // picture; publishing the score is the only thing that was ever
+        // stopping them, so staging them here is the "green is pre-filled"
+        // rule arriving one step late rather than a new decision. Nothing
+        // leaves the phone until Save scorers is tapped, and an own goal
+        // arrives without a side and asks for one.
+        group.rows.forEach((row) => {
+          if (!row.published || row.scorersOffered) return;
+          row.scorersOffered = true;
+          grid.offerScorers(row, row.aiScorers);
+        });
       }
 
       state.busy = false;

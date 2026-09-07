@@ -390,6 +390,10 @@ export const SCORER_TYPES = ["", "penalty", "own_goal", "header", "free_kick"];
 export function scorer({ teamId, playerName, playerId = "", assistPlayerId = "",
                          minute = "", goalType = "" } = {}) {
   return {
+    // May be blank, but only on a scorer that came from an import: see
+    // scorersFromImport. A blank side is not publishable and collectGoals
+    // leaves it behind, which is 0043's "yellow is offered, red is not
+    // publishable" rule applied one row down.
     teamId: teamId || "",
     playerName: String(playerName ?? "").trim(),
     playerId: playerId || "",
@@ -492,6 +496,102 @@ export function removeScorer(row, index) {
   return true;
 }
 
+/** What the model read, expressed as scorer drafts for one row.
+ *
+ *  THE ORIENTATION IS THE FIRST HALF OF THIS, AND IT IS EASY TO MISS.
+ *  `team_side` is which column of the PICTURE the name was printed in, and the
+ *  matcher already knows the picture may have drawn the fixture the other way
+ *  round (`orientation: 'flipped'`, the same fact proposalFor swaps the scores
+ *  by). So the printed side has to be swapped with them. A scorer that arrived
+ *  correct on a flipped row would be the exact bug the score swap exists to
+ *  prevent, one field over.
+ *
+ *  THE SECOND HALF IS THAT AN OWN GOAL GETS NO SIDE AT ALL. `goals.team_id` is
+ *  the beneficiary; `team_side` is where the name was printed; on an own goal
+ *  those are different teams and the picture only ever told us the second.
+ *  Graphics in this country disagree about which column to print an OG under,
+ *  so there is no rule to apply — the row comes back needing a tap, and so does
+ *  a `team_side` of "unknown". Everything else publishes with the greens
+ *  around it.
+ *
+ *  NOTHING HERE IDENTIFIES ANYBODY. playerId is always blank: a name from a
+ *  model is a name, and turning it into a player_id is a claim only a reporter
+ *  tapping the picker may make. An unidentified goal still ranks in the scorer
+ *  table under the name as read (src/adapt.py); it just earns no player page. */
+export function scorersFromImport(rawScorers, { homeTeamId, awayTeamId,
+                                                flipped = false } = {}) {
+  return (rawScorers || [])
+    .filter((s) => s && String(s.player_raw || "").trim())
+    .map((s) => {
+      const printed = s.team_side === "home" || s.team_side === "away"
+        ? s.team_side : "";
+      const asFixture = !printed ? ""
+        : printed === "home"
+          ? (flipped ? awayTeamId : homeTeamId)
+          : (flipped ? homeTeamId : awayTeamId);
+      const ownGoal = s.own_goal === true;
+      return {
+        ...scorer({
+          // Blank on an own goal EVEN WHEN the column was legible. The column
+          // is not the answer to the question this field asks.
+          teamId: ownGoal ? "" : asFixture,
+          playerName: s.player_raw,
+          minute: Number.isInteger(s.minute) ? String(s.minute) : "",
+          goalType: ownGoal ? "own_goal" : s.penalty === true ? "penalty" : "",
+        }),
+        // Why it is sideless, so the screen can say which of the two it is.
+        needsSide: ownGoal ? "own_goal" : asFixture ? "" : "unknown",
+        fromImport: true,
+      };
+    });
+}
+
+/** Stage what the model read against a row. Returns how many arrived and how
+ *  many of them still need a side, because that is the sentence the offer
+ *  button has to be able to write before it is tapped. */
+export function offerScorers(row, drafts) {
+  let staged = 0;
+  let sideless = 0;
+  (drafts || []).forEach((draft) => {
+    // The room check still applies to the ones that know their side: a graphic
+    // listing three scorers against a 2-1 is a misread, and staging all three
+    // would produce a failure per line at save time instead of one visible
+    // count now.
+    if (draft.teamId && scorerRoom(row, draft.teamId) <= 0) return;
+    row.scorers.push({ ...draft });
+    staged += 1;
+    if (!draft.teamId) sideless += 1;
+  });
+  return { staged, sideless };
+}
+
+/** Give a sideless scorer its side. The only way one ever gets published. */
+export function setScorerSide(row, index, teamId) {
+  const target = row.scorers[index];
+  if (!target || target.saved) return "Already saved.";
+  if (teamId !== row.homeTeamId && teamId !== row.awayTeamId) {
+    return "Pick which side the goal counted for.";
+  }
+  if (scorerRoom(row, teamId) <= 0) {
+    const name = teamId === row.homeTeamId ? row.homeName : row.awayName;
+    const allowed = goalsFor(row, teamId);
+    if (allowed === 0) return `${name} did not score in this match.`;
+    if (allowed === 1) return `${possessive(name)} only goal already has a scorer.`;
+    return `All ${allowed} of ${possessive(name)} goals already have a scorer.`;
+  }
+  target.teamId = teamId;
+  target.needsSide = "";
+  target.error = "";
+  return "";
+}
+
+/** Staged scorers that cannot be sent yet because nobody has said which side
+ *  the goal counted for. */
+export function sidelessScorers(rows) {
+  return rows.reduce(
+    (n, row) => n + row.scorers.filter((s) => !s.saved && !s.teamId).length, 0);
+}
+
 /** Every staged scorer across the matchday, flattened into what
  *  submit_match_goals takes: one object per goal, each carrying its own
  *  match_id. `sending` is the parallel list of the scorer objects themselves,
@@ -505,6 +605,11 @@ export function collectGoals(rows) {
   rows.forEach((row) => {
     row.scorers.forEach((s) => {
       if (s.saved) return;
+      // A scorer with no side is HELD BACK, not refused: an own goal nobody
+      // has placed yet simply does not publish, and the greens around it still
+      // do. The brief's "publish the confident ones without losing the
+      // unresolved one", using the rule the grid already had.
+      if (!s.teamId) return;
       sending.push(s);
       goals.push({
         match_id: row.matchId,
