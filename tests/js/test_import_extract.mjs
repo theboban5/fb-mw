@@ -349,6 +349,40 @@ test("a blurry photo escalates to the stronger model and keeps the better read",
   assert.equal(out.escalationHelped, true);
   assert.equal(out.items.length, 2);
   assert.equal(out.usage.length, 2, "both attempts are accounted for");
+  // The verdict has to survive into report_imports.usage, which is the only
+  // thing index.ts stores. Returning it alongside is what made it invisible.
+  assert.equal(out.usage[1].helped, true);
+});
+
+test("whether escalation helped is stored, not just returned", async () => {
+  // "This import cost twice" was recorded from the start; "it was worth paying
+  // twice" was computed and thrown away, so no import ever run can answer it.
+  const provider = fakeProvider([HALF_SCORE, UNREADABLE]);
+  const out = await runExtraction({
+    provider, model: "claude-sonnet-5", fallbackModel: "claude-opus-5",
+    input: { imageBase64: "AAAA" },
+  });
+  assert.equal(out.usage[1].escalated, true);
+  assert.equal(out.usage[1].helped, false);
+  assert.equal(out.usage[0].helped, undefined,
+               "the verdict belongs to the escalated attempt, not the first");
+});
+
+test("a failed second call leaves no verdict rather than a false one",
+     async () => {
+  // The second attempt never reaches usageRecord, so the array holds one
+  // record — the FIRST model's. Stamping the last one would file "escalation
+  // did not help" against a model that was never escalated to. An absent flag
+  // says "no second read came back", which is the truth.
+  const provider = fakeProvider([UNREADABLE, { __error: "timeout" }]);
+  const out = await runExtraction({
+    provider, model: "claude-sonnet-5", fallbackModel: "claude-opus-5",
+    input: { imageBase64: "AAAA" },
+  });
+  assert.equal(out.escalated, true);
+  assert.equal(out.usage.length, 1);
+  assert.equal(out.usage[0].escalated, false);
+  assert.equal(out.usage[0].helped, undefined);
 });
 
 test("a second read that is no better does not overwrite the first", async () => {

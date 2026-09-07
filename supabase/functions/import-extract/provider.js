@@ -174,6 +174,24 @@ export async function runExtraction({
     && (!first.ok || second.items.length > first.items.length
         || (second.items.length === first.items.length && (second.dropped || 0) < (first.dropped || 0)));
 
+  // ESCALATION HELPED IS RECORDED, NOT JUST RETURNED. It was computed here
+  // from the first commit and returned beside `usage` — and index.ts stores
+  // `result.usage` and nothing else, so it was dropped on the floor for every
+  // import ever run. "This import cost twice" was answerable and "it was worth
+  // paying twice" was not, which is the half that decides whether to keep the
+  // fallback. It goes on the escalated attempt's own record because that is
+  // the attempt it is about, and because usage is already two shapes for a
+  // reader to handle (an array on success, an object on failure) and a third
+  // would be one too many.
+  //
+  // Found via usage.escalated rather than by position: when the second CALL
+  // fails there is no second record, and stamping the last one would file the
+  // verdict against the first model. Nothing is stamped then, which is right —
+  // "the escalated call never came back" is not "it came back and did not
+  // help", and an absent flag says so where a false one would lie.
+  const escalatedRecord = usage.find((u) => u.escalated);
+  if (escalatedRecord) escalatedRecord.helped = secondIsBetter;
+
   const chosen = secondIsBetter ? second : first;
   return { ...chosen, usage, escalated: true, escalationHelped: secondIsBetter };
 }
