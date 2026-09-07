@@ -7,8 +7,15 @@ time someone touches a search box and does all the matching client-side; there
 is no server and no search API.
 
 The index is an array of arrays rather than an array of objects on purpose: at
-~680 records, repeating six field names per row would cost more bytes than
-every club and player name in the file put together.
+~1,440 records, repeating six field names per row would cost 63KB — three
+times every club, player and referee name in the file put together.
+
+One row per page, and only pages this build writes. That is the contract, and
+tests/test_search.py pins it as the five URL forms below rather than as a size
+ceiling: the index grows every weekend the site does its job, so a byte count
+cannot tell "we indexed something that has no page" apart from "more people
+scored". What a reader pays is asserted once, gzipped, which is how Pages
+serves it.
 
 Row shape, mirrored by COLUMNS below and by search.js:
 

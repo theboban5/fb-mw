@@ -155,11 +155,10 @@ way. It covers `static/report/results_grid.js`,
 import nothing; the moment one of them needs `document` or `supabase`, its
 tests stop meaning anything.
 
-`python3 -m unittest discover` currently ends with **one pre-existing failure**
-— `test_search.IndexContentTest.test_index_stays_small_enough_to_ship`, a
-tripwire at 120 kB that the index has grown past. It is unrelated to the
-reporter portal; do not "fix" it by raising the cap without deciding what
-should come out of the index.
+`python3 -m unittest discover` is **green**. It ended with one long-standing
+failure until 7 Sep 2026 — the search index's raw-byte ceiling, which had been
+raised once and gone red again sixteen days later. It is gone, replaced by a
+shape assertion; see "A tripwire that fired on success" below.
 
 Live tests (`*_live.py`) are skipped unless `RLS_LIVE=1`; they namespace every
 fixture and clean up, and they never mutate a real match.
@@ -186,6 +185,34 @@ fixture and clean up, and they never mutate a real match.
 ---
 
 ## Recent work (Sep 2026)
+
+A tripwire that fired on success, no migration — `tests/test_search.py`:
+
+- The search index had a raw-byte ceiling "against indexing a whole category
+  that does not belong". It **never once fired for that reason**. It was 80 kB,
+  went red at 1,016 records, was raised to 120 kB on 22 August, and was red
+  again sixteen days later at 122,392 — both times because players had arrived,
+  which is the site working. A test everyone reads past is the `#/add` failure
+  in miniature: not a wrong answer, an unread one.
+- **It could not be satisfied honestly either.** The obvious shrink is to store
+  an id and derive the URL from the type, dropping `players/` and `.html` from a
+  thousand rows: **−21 kB raw and −0.6 kB on the wire**, because those prefixes
+  are the most compressible bytes in the file and gzip deduplicates them to
+  nothing. The ceiling was denominated in bytes no reader ever pays for.
+- **And one total cannot separate the two failures.** Indexing every match costs
+  ~52 kB; ordinary player growth is ~12 kB a month. Any ceiling generous enough
+  to survive a year of success is one the mistake no longer trips.
+- So the size assertion is now **gzip only** — 20.5 kB against 40 kB, the one
+  number with a person on the other end of it, reached in about two years at
+  the current rate. Beside it sit the two things the byte count was conflating:
+  every row's URL must match **one of the five forms the build writes** (a
+  category with no page needs a sixth form or a new type; both fail by name),
+  and **mean bytes per row** stays under 120 (85 today) — rows getting *fatter*
+  is worth catching, rows getting *more numerous* is not.
+- Verified by injecting each mistake into the real index: all 872 matches as
+  rows → caught; the same smuggled in under a new type → caught; a paragraph in
+  every player's `meta` → caught; **another year of players → passes silently**,
+  which is the whole point.
 
 When a screen breaks, migration `0052` — `#/ops?tab=errors`:
 

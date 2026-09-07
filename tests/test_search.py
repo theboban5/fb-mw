@@ -232,33 +232,76 @@ class IndexContentTest(unittest.TestCase):
         if ku19 is not None:
             self.assertLess(ku19, sl)
 
+    def test_every_row_points_at_a_page_this_build_writes(self):
+        """The tripwire against indexing a whole category that does not belong.
+
+        This replaces a raw-byte ceiling, which was the wrong instrument twice
+        over. It was 80,000 bytes and went red at 1,016 records; it was raised
+        to 120,000 on 22 Aug and went red again sixteen days later at 122,392.
+        Both times the cause was players arriving — a player earns a row by
+        scoring, so the index grows every weekend the site does its job. It
+        has never once fired for the reason it was written.
+
+        Worse, it could not be satisfied honestly. The obvious shrink is to
+        store an id and derive the URL from the type, dropping "players/" and
+        ".html" from a thousand rows: 21KB off the raw number and 0.6KB off
+        the wire, because those prefixes are the most compressible bytes in
+        the file and gzip already deduplicates them to nothing. The raw
+        ceiling was denominated in bytes no reader ever pays for.
+
+        And a single total cannot tell the two failures apart. Indexing every
+        match costs ~52KB; ordinary player growth is ~12KB a month. Any
+        ceiling generous enough to survive a year of success is one the
+        mistake no longer trips.
+
+        So assert the shape instead. src/search.py's contract is one row per
+        page the build actually writes, and these are the five URL forms it
+        writes. Indexing the matches needs a sixth form or a new type; either
+        fails here, by name, saying what happened — rather than as a byte
+        count nobody can read a diagnosis out of. This never goes red because
+        the site did its job.
+        """
+        # T_COMP and T_NT share a form: both are a top-level slug directory.
+        forms = {
+            search.T_COMP: r"[a-z0-9]+/",
+            search.T_NT: r"[a-z0-9]+/",
+            search.T_CLUB: r"clubs/[A-Z0-9_]+\.html",
+            search.T_TEAM: r"[a-z0-9]+/clubs/[A-Z0-9_]+\.html",
+            search.T_PLAYER: r"players/[A-Z0-9_]+\.html",
+            search.T_OFFICIAL: r"officials/[A-Z0-9_]+\.html",
+        }
+        self.assertEqual(set(forms), set(range(len(search.TYPES))),
+                         "a new type needs a URL form here, or it is untested")
+        for row in self.rows:
+            self.assertIn(row[0], forms, f"unknown type index in {row!r}")
+            self.assertRegex(row[2], f"^{forms[row[0]]}$",
+                             f"{search.TYPES[row[0]]} row {row[1]!r} points at "
+                             "a URL shape no builder writes")
+
+    def test_rows_stay_a_search_result_and_not_a_page(self):
+        """The other half of the old byte ceiling, decomposed.
+
+        Row *count* growing is the site working. Rows getting *fatter* is
+        somebody putting a paragraph in `meta`, and that is worth catching on
+        its own — it is the one kind of growth a reader pays for per result
+        rather than once. ~85 bytes a row today, across every type.
+        """
+        payload = json.dumps(self.rows, ensure_ascii=False, separators=(",", ":"))
+        per_row = len(payload.encode("utf-8")) / len(self.rows)
+        self.assertLess(per_row, 120, f"{per_row:.0f} bytes a row")
+
     def test_index_stays_small_enough_to_ship(self):
-        """A tripwire against indexing a whole category that does not belong,
-        which is what "adding all the matches" would be. NOT a budget for
-        ordinary growth.
+        """What a reader on an expensive connection actually pays.
 
-        It was 80,000 bytes, written when the index held ~680 records, and it
-        went red at 1,016 — three quarters of them players. Nothing had gone
-        wrong: a player earns a row by scoring, so the index grows every
-        weekend the site does its job, and a tripwire that fires on success is
-        one someone eventually raises without reading.
-
-        How fast it grows is the point. Between writing this and committing
-        it the snapshot gained another 106 records and 9KB, in a day. So the
-        ceiling is not set just above today's number — it is set where the
-        mistake it guards against still trips it: every match indexed would
-        cost ~52KB more, landing past 140KB.
-
-        The gzip assertion is the one that reflects what a reader on an
-        expensive connection actually pays, and it is the reason the raw
-        number can afford to be generous: Pages serves this compressed, and
-        the 92KB above is 16KB on the wire.
+        Pages serves this gzipped, so this is the only size number with a
+        person on the other end of it: 20.5KB today against a 40KB budget.
+        It is deliberately the *only* size assertion left — see
+        test_every_row_points_at_a_page_this_build_writes for why the raw
+        ceiling beside it was measuring nothing.
         """
         payload = json.dumps({"v": 1, "types": list(search.TYPES), "docs": self.rows},
                              ensure_ascii=False, separators=(",", ":"))
-        raw = payload.encode("utf-8")
-        self.assertLess(len(raw), 120_000)
-        self.assertLess(len(gzip.compress(raw, 9)), 40_000)
+        self.assertLess(len(gzip.compress(payload.encode("utf-8"), 9)), 40_000)
 
 
 if __name__ == "__main__":
