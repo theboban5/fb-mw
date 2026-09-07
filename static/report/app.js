@@ -1827,7 +1827,14 @@ const replaceLabel = (row) =>
 /** `extra` is markup the import screen puts at the top of the row — the
  *  confidence chip, the raw names the model read, the ambiguity. The manual
  *  grid passes nothing and gets exactly what it had. */
-function gridRowHtml(row, i, { extra = "" } = {}) {
+/* `scorers` is opt-in and defaults OFF for a reason worth stating. Both screens
+ * that draw a grid row build it with grid.gridRow, so both have everything the
+ * scorers block reads — and the import review would therefore grow one on any
+ * row whose fixture is already played, on a screen where nothing wires it.
+ * Buttons that do nothing, which is the fault the carousel's hidden dots exist
+ * to avoid. #/results asks for the block; #/import is unchanged by all of this,
+ * which is also the promise the shared row path is worth keeping. */
+function gridRowHtml(row, i, { extra = "", scorers = false } = {}) {
   // acceptsScore, NOT isScored: a scheduled fixture is the row every reporter
   // opens this screen to fill in, and typing the score is how it stops being
   // scheduled. Only a match somebody has said did not happen has its boxes
@@ -1886,7 +1893,101 @@ function gridRowHtml(row, i, { extra = "" } = {}) {
         </div>
       </div>` : ""}
     ${row.error ? `<p class="rp-fx-error">${esc(row.error)}</p>` : ""}
+    ${scorers ? gridScorersHtml(row, i) : ""}
   </li>`;
+}
+
+/** The scorers block under one published grid line.
+ *
+ *  SHIPPED CLOSED, AND ONLY ON A ROW THAT CAN HOLD GOALS. A matchday of eight
+ *  lines with eight open scorer forms is unreadable at 390px, and most rows on
+ *  most screens will never get a scorer — the graphic gives the scores and the
+ *  names come later, or not at all. So it is a summary line the reporter taps,
+ *  which is the carousel-dots bargain again: rendered in the markup and
+ *  revealed, never built on demand.
+ *
+ *  It appears only where grid.acceptsScorers is true — a row whose score is
+ *  PUBLISHED, not merely typed. See the Scorers section of results_grid.js:
+ *  apply_match_goal refuses a goal on a match with no score, so offering the
+ *  box before publishing would collect names the database is about to reject. */
+function gridScorersHtml(row, i) {
+  if (!grid.acceptsScorers(row)) return "";
+
+  const total = row.scorers.length
+    + (row.existing?.home || 0) + (row.existing?.away || 0);
+  const room = grid.scorerRoom(row, row.homeTeamId)
+    + grid.scorerRoom(row, row.awayTeamId);
+
+  const staged = row.scorers.map((s, j) => {
+    const side = s.teamId === row.homeTeamId ? row.homeName : row.awayName;
+    const bits = [
+      s.minute ? `${esc(s.minute)}'` : "",
+      esc(s.playerName),
+      s.goalType === "own_goal" ? '<em class="rp-sc-og">OG</em>'
+        : s.goalType === "penalty" ? '<em>pen</em>' : "",
+    ].filter(Boolean).join(" ");
+    return `
+      <li class="rp-sc-row${s.error ? " is-bad" : ""}">
+        <span class="rp-sc-name">${bits}
+          <em>${esc(side)}</em>${s.playerId ? "" : `
+          <em class="rp-sc-unknown" title="Not linked to a player page">unidentified</em>`}</span>
+        ${s.saved
+          ? '<span class="rp-badge is-done">Saved</span>'
+          : `<button class="rp-btn is-quiet" type="button"
+                     data-sc-del="${i}:${j}" aria-label="Remove ${esc(s.playerName)}">×</button>`}
+        ${s.error ? `<p class="rp-fx-error">${esc(s.error)}</p>` : ""}
+      </li>`;
+  }).join("");
+
+  // The side is a <select> and not a pair of radios for one reason: it is the
+  // control that decides goals.team_id, which for an own goal is NOT the side
+  // the scorer plays for, and a labelled list of two named teams is harder to
+  // tap through without reading than two bare radio buttons are.
+  const sideOption = (teamId, name) => {
+    const left = grid.scorerRoom(row, teamId);
+    return `<option value="${esc(teamId)}"${left ? "" : " disabled"}>${
+      esc(name)}${left ? ` (${left} left)` : " (full)"}</option>`;
+  };
+
+  return `
+  <button class="rp-sc-toggle" type="button" data-sc-toggle="${i}"
+          aria-expanded="${row.scorers.length ? "true" : "false"}"
+          aria-controls="rp-sc-${i}">${total ? `Scorers (${total})` : "＋ Scorers"}</button>
+  <div class="rp-sc" id="rp-sc-${i}" data-scorers="${i}"${
+      row.scorers.length ? "" : " hidden"}>
+    <ul class="rp-sc-list">${staged}</ul>
+    ${room ? `
+    <div class="rp-sc-add">
+      <select class="rp-select" data-sc-side="${i}"
+              aria-label="Which side the goal counted for, match ${i + 1}">
+        ${sideOption(row.homeTeamId, row.homeName)}
+        ${sideOption(row.awayTeamId, row.awayName)}
+      </select>
+      <div class="rp-pick" data-pick="scorer">
+        <input class="rp-input" name="scorer" placeholder="Scorer's name"
+               autocomplete="off" autocapitalize="words" role="combobox"
+               aria-expanded="false" aria-autocomplete="list"
+               aria-controls="rp-sc-list-${i}">
+        <input type="hidden" name="scorer_id" value="">
+        <ul class="rp-suggest" id="rp-sc-list-${i}" role="listbox" data-suggest hidden></ul>
+      </div>
+      <p class="rp-hint" data-pick-note="scorer">Pick the player so the goal
+        counts on their page. A name nobody picks still saves and still ranks,
+        under the name as typed.</p>
+      <div class="rp-row">
+        <input class="rp-input" data-sc-min="${i}" placeholder="Min" inputmode="numeric">
+        <select class="rp-select" data-sc-type="${i}"
+                aria-label="Goal type, match ${i + 1}">
+          <option value="">Goal</option>
+          <option value="penalty">Penalty</option>
+          <option value="own_goal">Own goal</option>
+          <option value="header">Header</option>
+          <option value="free_kick">Free kick</option>
+        </select>
+      </div>
+      <button class="rp-btn is-ghost" type="button" data-sc-add="${i}">Add scorer</button>
+    </div>` : '<p class="rp-hint">Every goal in this match has a scorer.</p>'}
+  </div>`;
 }
 
 /** Everything about ONE line that the typing can change, patched in place.
@@ -1993,6 +2094,87 @@ function wireGridRows(form, rows, { onPatch, onRedraw }) {
   });
 }
 
+/** The scorer controls on every published grid row.
+ *
+ *  Separate from wireGridRows because the two screens that draw grid rows do
+ *  not both want this: #/import's review rows have not published yet, so none
+ *  of them accepts a scorer and the block never renders. One function per
+ *  concern rather than a flag.
+ *
+ *  THE REDRAW RULE IS THE SAME ONE, AND IT IS WHY THIS IS WIRED AT ALL RATHER
+ *  THAN BOUND PER FIELD. Adding a scorer is a BUTTON, so redrawing the screen
+ *  under it is safe — the tap has already landed and there is no box holding
+ *  focus. The name, minute and side boxes never redraw anything by themselves;
+ *  they are read at the moment Add is tapped. That is the team-sheet lesson
+ *  (a `change` fires when a box loses focus, which on a phone is the same
+ *  gesture as the tap onto the next box) applied before it can bite. */
+function wireGridScorers(form, rows, { onRedraw, playerHost }) {
+  form.addEventListener("click", (event) => {
+    const toggle = event.target.closest("[data-sc-toggle]");
+    if (toggle) {
+      const block = form.querySelector(
+        `[data-scorers="${toggle.dataset.scToggle}"]`);
+      if (block) {
+        block.hidden = !block.hidden;
+        toggle.setAttribute("aria-expanded", String(!block.hidden));
+      }
+      return;
+    }
+
+    const del = event.target.closest("[data-sc-del]");
+    if (del) {
+      const [i, j] = del.dataset.scDel.split(":").map(Number);
+      // Only an unsaved one. A goal already in the database is removed on the
+      // match screen by delete_match_goal, which checks it was yours.
+      if (rows[i] && grid.removeScorer(rows[i], j)) onRedraw();
+      return;
+    }
+
+    const add = event.target.closest("[data-sc-add]");
+    if (!add) return;
+    const i = Number(add.dataset.scAdd);
+    const row = rows[i];
+    if (!row) return;
+
+    const block = form.querySelector(`[data-scorers="${i}"]`);
+    const nameBox = block?.querySelector('input[name="scorer"]');
+    const idBox = block?.querySelector('input[name="scorer_id"]');
+    const reason = grid.addScorer(row, {
+      teamId: block?.querySelector(`[data-sc-side="${i}"]`)?.value || "",
+      playerName: nameBox?.value || "",
+      playerId: idBox?.value || "",
+      minute: block?.querySelector(`[data-sc-min="${i}"]`)?.value || "",
+      goalType: block?.querySelector(`[data-sc-type="${i}"]`)?.value || "",
+    });
+
+    // The name is NOT cleared on a refusal, and that is the point: "all 2 of
+    // Blue Eagles' goals already have a scorer" means the reporter picked the
+    // wrong side, not that they typed the wrong person.
+    if (reason) { flash(reason, "warn"); return; }
+    onRedraw();
+  });
+
+  // Reused wholesale from the match screen. It only ever asks its `match` for
+  // the two team ids (playsHere), so a grid row shims one — which is what
+  // makes a player who has actually worn one of these two shirts sort to the
+  // top of the list here exactly as it does there.
+  rows.forEach((row, i) => {
+    const block = form.querySelector(`[data-scorers="${i}"]`);
+    const wrap = block?.querySelector("[data-pick]");
+    if (wrap) {
+      wirePlayerPicker(wrap, playerHost, {
+        home_team_id: row.homeTeamId, away_team_id: row.awayTeamId });
+    }
+  });
+  // A tap anywhere outside every open list means "not that one". One listener
+  // for the screen, as wirePlayerPickers does it.
+  dismissPicker = (event) => {
+    form.querySelectorAll("[data-pick]").forEach((wrap) => {
+      if (!wrap.contains(event.target)) wrap._closePicker?.();
+    });
+  };
+}
+
 /** Rows the grid can offer at all: a fixture that exists, in the chosen
  *  competition and season. `scheduled` first is not a filter — every one of
  *  them is shown, because correcting last week's result is the other reason to
@@ -2005,7 +2187,33 @@ async function loadGridMatches(competitionId, seasonId) {
     .order("date", { ascending: true })
     .order("match_id", { ascending: true });
   if (error) throw error;
-  return data || [];
+  const matches = data || [];
+
+  // Goal rows these matches already have, per side, so the grid can say "all 2
+  // of Blue Eagles' goals already have a scorer" before the RPC has to.
+  //
+  // A SECOND QUERY AND A FAILED ONE IS NOT AN ERROR. Every count it fills in
+  // is an early warning that submit_match_goals repeats under a row lock, so
+  // losing it costs a rejection the reporter could have been spared and
+  // nothing else. Refusing to draw the whole matchday because a count query
+  // timed out would be the wrong trade on this connection — the same bargain
+  // every optional lookup in this portal makes.
+  try {
+    const { data: goals } = await supabase.from("goals")
+      .select("match_id,team_id")
+      .in("match_id", matches.map((m) => m.match_id));
+    const tally = new Map();
+    (goals || []).forEach((g) => {
+      tally.set(`${g.match_id}:${g.team_id}`,
+                (tally.get(`${g.match_id}:${g.team_id}`) || 0) + 1);
+    });
+    matches.forEach((m) => {
+      m.scorer_count_home = tally.get(`${m.match_id}:${m.home_team_id}`) || 0;
+      m.scorer_count_away = tally.get(`${m.match_id}:${m.away_team_id}`) || 0;
+    });
+  } catch { /* counts stay 0; the RPC is still the authority */ }
+
+  return matches;
 }
 
 /** The matchday to open on: the earliest one that still has a fixture with no
@@ -2139,6 +2347,11 @@ async function renderResults(params) {
 
     const { sending, conflicts } = grid.collectReports(state.rows);
     const n = sending.length;
+    // Staged scorers are counted separately from changed results, because they
+    // are a separate submission to a separate RPC: the results above are
+    // already published, which is the only reason these rows can hold a goal
+    // at all.
+    const scorerCount = grid.collectGoals(state.rows).goals.length;
 
     const body = state.matches === null
       ? '<div class="rp-loading"><span class="rp-spinner"></span><p>Loading fixtures…</p></div>'
@@ -2173,13 +2386,22 @@ async function renderResults(params) {
         marked full time. Only the lines you change are published.${
         state.overflow ? ` Showing the first ${RESULTS_MAX} — narrow to a
         matchday to see the rest.` : ""}</p>
-      <ol class="rp-grid-list">${state.rows.map((row, i) => gridRowHtml(row, i)).join("")}</ol>
+      <ol class="rp-grid-list">${state.rows.map((row, i) => gridRowHtml(row, i, { scorers: true })).join("")}</ol>
 
       <div class="rp-publish">
+        ${scorerCount ? `
+        <button class="rp-btn" type="button" data-save-scorers>Save ${
+          scorerCount} scorer${scorerCount === 1 ? "" : "s"}</button>` : ""}
         <button class="rp-btn" type="button" data-publish ${n ? "" : "disabled"}>${
           n ? `Publish ${n} result${n === 1 ? "" : "s"}` : "Nothing changed yet"}</button>
         <p class="rp-publish-note" data-note>${
-          conflicts.length
+          // ONE note, whatever is pending. This bar is stuck to the bottom of a
+          // 390px screen and every line in it is a line of the matchday the
+          // reporter cannot see; a second button already costs 48px, and a
+          // second explanation under it was covering a whole grid row.
+          scorerCount
+            ? `Scorers save separately — the results above are already published.`
+            : conflicts.length
             ? `${conflicts.length} match${conflicts.length === 1 ? "" : "es"}
                already ${conflicts.length === 1 ? "has" : "have"} a result —
                confirm ${conflicts.length === 1 ? "it" : "them"} above to
@@ -2280,6 +2502,11 @@ async function renderResults(params) {
       onRedraw: () => { syncFromDom(); drawResults(); },
     });
 
+    wireGridScorers(form, state.rows, {
+      onRedraw: () => { syncFromDom(); drawResults(); },
+      playerHost: form,
+    });
+
     // The source chips. One choice at a time, and tapping the one already on
     // turns it off — a chip that cannot be un-tapped is a trap when the
     // reporter meant to type a link instead.
@@ -2296,6 +2523,48 @@ async function renderResults(params) {
         if (state.sourceChoice) state.sourceDirect = false;
       }
       drawResults();
+    });
+
+    // SCORERS ARE THEIR OWN SUBMISSION, not part of Publish. The results they
+    // hang off are already saved — that is what made the block appear — so
+    // folding them into the publish button would put a second, differently
+    // shaped failure behind a button whose sentence is about results. Two
+    // buttons, each saying what it is about to do.
+    view.querySelector("[data-save-scorers]")?.addEventListener("click", async (event) => {
+      if (state.busy) return;                  // rule 2: never submit twice
+      clearFlash();
+      const { sending, goals } = grid.collectGoals(state.rows);
+      if (!goals.length) return;
+
+      state.busy = true;
+      event.currentTarget.disabled = true;
+
+      const { data, error } = await supabase.rpc("submit_match_goals", {
+        p_competition_id: state.competition.competition_id,
+        p_season_id: season.season_id,
+        p_goals: goals,
+      });
+
+      state.busy = false;
+
+      if (error) {
+        // Nothing was written, so nothing typed is lost: the screen is redrawn
+        // exactly as it stands and every staged scorer is still on its row.
+        drawResults();
+        flash(humanError(error), "error");
+        return;
+      }
+
+      const { saved, failed } = grid.applyGoalsResult(sending, data, humanError);
+      // A scorer renders under the result on everyleague.co, so it earns a
+      // build the same way a score does — and one build for the batch.
+      if (saved) requestRebuild();
+
+      drawResults();
+      const { message, kind } = grid.summarizeGoals(saved, failed);
+      flash(saved && !failed
+        ? `${message} The site updates in a few minutes.`
+        : message, kind, failed ? 9000 : 5000);
     });
 
     button?.addEventListener("click", async () => {
@@ -5464,7 +5733,11 @@ function wireDetail(match, state, goals, sides) {
     if (goalsNamedFor(goals, state, teamId) >= allowed) {
       flash(allowed === 0
         ? `${teamName(teamId)} did not score in this match.`
-        : `All ${allowed} of ${teamName(teamId)}'s goals already have a scorer.`,
+        // grid.possessive, because "Mighty Wanderers's" is what a bare 's
+        // gives on most club names in this country. Same sentence as the
+        // matchday grid's, from the same function, deliberately.
+        : `All ${allowed} of ${grid.possessive(teamName(teamId))} goals `
+          + "already have a scorer.",
         "warn");
       return;
     }

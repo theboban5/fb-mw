@@ -19,6 +19,8 @@ import {
   gridRow, setScore, setStatus, isChanged, isConflict, savedScoreline,
   unconfirm, collectReports, applyBatchResult, summarize, resolveSource,
   rowsNeedingSource, isScored, acceptsScore, SOURCE_CHOICES,
+  acceptsScorers, addScorer, removeScorer, scorerRoom, collectGoals,
+  applyGoalsResult, summarizeGoals, possessive,
 } from "../../static/report/results_grid.js";
 
 // A match as the portal's MATCH_FIELDS select returns it.
@@ -404,4 +406,207 @@ test("the summary counts", () => {
   assert.equal(summarize(6, 1).message, "6 published; 1 still needs attention below.");
   assert.equal(summarize(5, 2).message, "5 published; 2 still need attention below.");
   assert.equal(summarize(0, 3).kind, "error");
+});
+
+// ── Scorers: the second pass ─────────────────────────────────────────────────
+//
+// The rule underneath all of these is that a goal needs a SIDE, that side is
+// the one that benefited, and nothing derives it from the scorer. An own goal
+// is the case where those two differ, and where getting it wrong is invisible.
+
+test("a row carries the team ids a goal needs", () => {
+  // gridRow deliberately kept only display names until scorers existed: a
+  // score needs the match, a goal needs the side it counted for.
+  const row = gridRow(played(2, 1));
+  assert.equal(row.homeTeamId, "MW_BE_M1");
+  assert.equal(row.awayTeamId, "MW_SIL_M1");
+  assert.deepEqual(row.scorers, []);
+});
+
+test("scorers cannot be named until the score is published", () => {
+  const row = gridRow(match());
+  setScore(row, "home", "2");
+  // Typed but not published: there are no goals for a scorer to belong to,
+  // and apply_match_goal would refuse. Said here so the reporter is not
+  // staging names against a line that may still become 0-0.
+  assert.equal(acceptsScorers(row), false);
+  assert.equal(addScorer(row, { teamId: row.homeTeamId, playerName: "A. Josephy" }),
+               "Publish the score before adding scorers.");
+  assert.equal(row.scorers.length, 0);
+});
+
+test("a postponed row accepts no scorers", () => {
+  const row = gridRow(match({ status: "postponed" }));
+  assert.equal(acceptsScorers(row), false);
+});
+
+test("a side cannot have more scorers than it scored", () => {
+  const row = gridRow(played(2, 1));
+  assert.equal(addScorer(row, { teamId: "MW_BE_M1", playerName: "A. Josephy" }), "");
+  assert.equal(addScorer(row, { teamId: "MW_BE_M1", playerName: "G. Phiri" }), "");
+  // validate.py check 5, said on the phone rather than by a rejection.
+  assert.equal(addScorer(row, { teamId: "MW_BE_M1", playerName: "S. Banda" }),
+               "All 2 of Blue Eagles' goals already have a scorer.");
+  assert.equal(row.scorers.length, 2);
+});
+
+test("a side that did not score is told so in its own words", () => {
+  const row = gridRow(played(2, 0));
+  assert.equal(addScorer(row, { teamId: "MW_SIL_M1", playerName: "S. Banda" }),
+               "Silver Strikers did not score in this match.");
+});
+
+test("goals already in the database count against the room left", () => {
+  // Nearly every match has none, but a reporter coming back to add the second
+  // scorer must not be offered room for three.
+  const row = gridRow(played(2, 1, { scorer_count_home: 1 }));
+  assert.equal(scorerRoom(row, "MW_BE_M1"), 1);
+  assert.equal(addScorer(row, { teamId: "MW_BE_M1", playerName: "A. Josephy" }), "");
+  assert.equal(scorerRoom(row, "MW_BE_M1"), 0);
+  assert.equal(addScorer(row, { teamId: "MW_BE_M1", playerName: "G. Phiri" }),
+               "All 2 of Blue Eagles' goals already have a scorer.");
+});
+
+test("a one-goal side gets a sentence written for one goal", () => {
+  // A 1-0 is the commonest score here, so "All 1 of ... goals already have a
+  // scorer" would have been the branch most reporters actually read.
+  const row = gridRow(played(1, 0));
+  addScorer(row, { teamId: "MW_BE_M1", playerName: "A. Josephy" });
+  assert.equal(addScorer(row, { teamId: "MW_BE_M1", playerName: "G. Phiri" }),
+               "Blue Eagles' only goal already has a scorer.");
+});
+
+test("a scorer needs a name and a side that played", () => {
+  const row = gridRow(played(1, 1));
+  assert.equal(addScorer(row, { teamId: "MW_BE_M1", playerName: "  " }),
+               "Type the scorer's name first.");
+  assert.equal(addScorer(row, { teamId: "MW_OTHER", playerName: "A. Josephy" }),
+               "Pick which side the goal counted for.");
+  assert.equal(row.scorers.length, 0);
+});
+
+test("an own goal counts for the side that benefited, not the scorer's", () => {
+  // The whole reason teamId is asked for rather than derived. Blue Eagles win
+  // 1-0 through a Silver Strikers defender: the goal is Blue Eagles'.
+  const row = gridRow(played(1, 0));
+  assert.equal(addScorer(row, {
+    teamId: "MW_BE_M1", playerName: "S. Banda", goalType: "own_goal" }), "");
+  assert.equal(row.scorers[0].teamId, "MW_BE_M1");
+  assert.equal(collectGoals([row]).goals[0].team_id, "MW_BE_M1");
+  // And the side the scorer actually plays for has no room at all, which is
+  // what would have been silently wrong had the side been inferred.
+  assert.equal(scorerRoom(row, "MW_SIL_M1"), 0);
+});
+
+test("an unknown goal type is dropped rather than sent", () => {
+  // goals.goal_type has a CHECK constraint; a typo must not become a failed
+  // line the reporter cannot interpret.
+  const row = gridRow(played(1, 0));
+  addScorer(row, { teamId: "MW_BE_M1", playerName: "A. Josephy", goalType: "bicycle" });
+  assert.equal(row.scorers[0].goalType, "");
+});
+
+test("a name with nobody picked is still sent, unidentified", () => {
+  // The deliberate trade: an unidentified goal counts in the team total and
+  // never reaches a scorer table. Refusing it would lose the name entirely.
+  const row = gridRow(played(1, 0));
+  addScorer(row, { teamId: "MW_BE_M1", playerName: "A. Josephy" });
+  const { goals } = collectGoals([row]);
+  assert.equal(goals[0].player_id, "");
+  assert.equal(goals[0].player_name, "A. Josephy");
+});
+
+test("a staged scorer can be taken back, a saved one cannot", () => {
+  const row = gridRow(played(2, 0));
+  addScorer(row, { teamId: "MW_BE_M1", playerName: "A. Josephy" });
+  addScorer(row, { teamId: "MW_BE_M1", playerName: "G. Phiri" });
+  row.scorers[0].saved = true;
+  assert.equal(removeScorer(row, 0), false, "delete_match_goal's job, not this screen's");
+  assert.equal(removeScorer(row, 1), true);
+  assert.equal(row.scorers.length, 1);
+});
+
+test("scorers flatten across matches into one call, each carrying its match", () => {
+  const a = gridRow(played(1, 0));
+  const b = gridRow(played(0, 1, { match_id: "MW_SL_2627_002",
+                                   home_team_id: "MW_MW_M1", away_team_id: "MW_KB_M1" }));
+  addScorer(a, { teamId: "MW_BE_M1", playerName: "A. Josephy", minute: "12" });
+  addScorer(b, { teamId: "MW_KB_M1", playerName: "S. Banda", goalType: "penalty" });
+  const { goals } = collectGoals([a, b]);
+  assert.equal(goals.length, 2);
+  assert.deepEqual(goals.map((g) => g.match_id),
+                   ["MW_SL_2627_001", "MW_SL_2627_002"]);
+  assert.equal(goals[0].minute, "12");
+  assert.equal(goals[1].goal_type, "penalty");
+});
+
+// ── After a failure, is everything the reporter typed still there? ───────────
+
+test("a partial failure saves what it can and keeps the rest exactly as typed",
+     () => {
+  const row = gridRow(played(2, 1));
+  addScorer(row, { teamId: "MW_BE_M1", playerName: "A. Josephy", minute: "12" });
+  addScorer(row, { teamId: "MW_BE_M1", playerName: "G. Phiri", minute: "67" });
+  addScorer(row, { teamId: "MW_SIL_M1", playerName: "S. Banda", minute: "81" });
+  const { sending } = collectGoals([row]);
+
+  const { saved, failed } = applyGoalsResult(sending, [
+    { idx: 1, ok: true, goal_id: "MW_SL_2627_001_G1", message: "" },
+    { idx: 2, ok: false, goal_id: null,
+      message: "that player is not in the database" },
+    { idx: 3, ok: true, goal_id: "MW_SL_2627_001_G2", message: "" },
+  ]);
+
+  assert.equal(saved, 2);
+  assert.equal(failed, 1);
+  assert.equal(row.scorers[1].playerName, "G. Phiri", "the name survives");
+  assert.equal(row.scorers[1].minute, "67", "and so does the minute");
+  assert.equal(row.scorers[1].saved, false);
+  assert.match(row.scorers[1].error, /not in the database/);
+  assert.equal(summarizeGoals(saved, failed).kind, "warn");
+});
+
+test("pressing save again sends only what did not go", () => {
+  const row = gridRow(played(2, 1));
+  addScorer(row, { teamId: "MW_BE_M1", playerName: "A. Josephy" });
+  addScorer(row, { teamId: "MW_BE_M1", playerName: "G. Phiri" });
+  const first = collectGoals([row]);
+  applyGoalsResult(first.sending, [
+    { idx: 1, ok: true, goal_id: "G1", message: "" },
+    { idx: 2, ok: false, message: "boom" },
+  ]);
+  const second = collectGoals([row]);
+  assert.equal(second.goals.length, 1);
+  assert.equal(second.goals[0].player_name, "G. Phiri");
+});
+
+test("a scorer with no answer at all is treated as unsaved, not as saved", () => {
+  const row = gridRow(played(1, 0));
+  addScorer(row, { teamId: "MW_BE_M1", playerName: "A. Josephy" });
+  const { sending } = collectGoals([row]);
+  const { saved, failed } = applyGoalsResult(sending, []);
+  assert.equal(saved, 0);
+  assert.equal(failed, 1);
+  assert.equal(row.scorers[0].saved, false);
+  assert.equal(summarizeGoals(0, 1).kind, "error");
+});
+
+test("the failure message reaches the scorer through humanError", () => {
+  const row = gridRow(played(1, 0));
+  addScorer(row, { teamId: "MW_BE_M1", playerName: "A. Josephy" });
+  const { sending } = collectGoals([row]);
+  applyGoalsResult(sending, [{ idx: 1, ok: false, message: "raw pg text" }],
+                   () => "Something went wrong — please try again.");
+  assert.equal(row.scorers[0].error, "Something went wrong — please try again.");
+});
+
+test("a club name ending in s takes a bare apostrophe", () => {
+  // Nearly every club in this dataset: Blue Eagles, Silver Strikers, Mighty
+  // Wanderers, Bullets, Kamuzu Barracks. The bare 's this replaces had been
+  // shipping "Mighty Wanderers's goals" on the single-match screen.
+  assert.equal(possessive("Blue Eagles"), "Blue Eagles'");
+  assert.equal(possessive("Mighty Wanderers"), "Mighty Wanderers'");
+  assert.equal(possessive("Moyale Barracks"), "Moyale Barracks'");
+  assert.equal(possessive("Karonga United"), "Karonga United's");
+  assert.equal(possessive(""), "");
 });

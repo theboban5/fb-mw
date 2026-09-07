@@ -186,6 +186,60 @@ fixture and clean up, and they never mutate a real match.
 
 ## Recent work (Sep 2026)
 
+A matchday's scorers in one submission, migration `0053` — `#/results`:
+
+- 0041 made a matchday's RESULTS one screen and left its scorers on
+  `#/m/<public_id>`, one match at a time. The graphic that gives eight results
+  is the same graphic that names the scorers under them, so the half that fills
+  in top-scorer tables still cost eight screens. **The Women's Premiership has
+  260 goals and zero goal rows** — that is an entry cost, not a reporting
+  failure.
+- `apply_match_goal` + `submit_match_goals`, which is **0041's move exactly**:
+  the rules move out of `submit_match_goal` into one internal function with two
+  callers, because two of them ARE validate.py check 5 and a second copy kept by
+  hand is a bug with a date on it. `submit_match_goal`'s signature and behaviour
+  are unchanged; browsers in the field keep working.
+- **A flat list of goals, each carrying its own match_id**, not a list of
+  matches each holding goals. Nesting would address a failure two indexes deep
+  for no gain — every failure here is about one scorer.
+- **It has to be a SECOND PASS**, and the block only renders on a row whose
+  score is PUBLISHED. `apply_match_goal` refuses a goal on a match with no
+  score, so offering the box earlier would collect names the database is about
+  to reject. Closed until tapped: eight open scorer forms is unreadable at 390px
+  and most rows never get one.
+- **`teamId` is the side that BENEFITED and is always explicit.** For an own
+  goal that is not the side the scorer plays for, and a rule reading "invert
+  when own_goal" is one confident line from filing a goal against the wrong
+  team, invisibly. The `<select>` asks, exactly as `sideButtons` does.
+- **`gridRowHtml` grew a `scorers` flag that defaults OFF.** Both screens build
+  rows with `grid.gridRow`, so `#/import`'s review rows would have grown the
+  block on any already-played fixture — on a screen where nothing wires it.
+  Buttons that do nothing.
+- **Four layout bugs, all found at 390px and none by a test**: `.rp-btn` is
+  `width:100%` so the × took a line of its own; the sticky publish bar went four
+  elements tall and covered a grid row; `flex-basis:auto` on the name made it
+  claim a line and push the × to a third (wrapping is decided before shrinking,
+  so `min-width:0` does not save it); and `> span` also matched the SAVED badge
+  beside it, so the two grew in step and the name wrapped to pay for it.
+- **`DATA_MODEL.md` was right and the old brief was wrong**: an unidentified
+  goal with a reported name *does* rank in the scorer table, under that name,
+  with a blank `player_id` so nothing links (`src/adapt.py`). It earns no player
+  page, and two spellings rank as two people — that is the whole cost, and it is
+  smaller than "never reaches a scorer table". Only 6 of 1195 goals are
+  unidentified: reporters do tap the picker, so the grid reuses it.
+- `possessive()` — "Mighty Wanderers'", not "Mighty Wanderers's". The
+  single-match screen had been getting this wrong since 0007 on nearly every
+  club name in the country, and a 1-0 now reads "…only goal already has a
+  scorer" rather than "All 1 of…".
+- Not built: scorers from `#/import` (the AI already extracts them and the
+  own-goal `team_side` is undefined — see below), and `resolve_scorer_candidates`.
+- **The extraction prompt never mentions scorers at all.** The schema asks for
+  `team_side` and `own_goal`; `SYSTEM_PROMPT` says nothing about either, and no
+  fixture pins them. So for an own goal already stored in
+  `report_imports.extracted` there is no way to know whether `team_side` means
+  the scorer's side or the beneficiary's. Publishing those needs the prompt
+  fixed AND the reporter to place own goals by hand.
+
 A tripwire that fired on success, no migration — `tests/test_search.py`:
 
 - The search index had a raw-byte ceiling "against indexing a whole category

@@ -66,6 +66,24 @@ export function gridRow(match) {
     publicId: match.public_id,
     homeName: match.home?.display_name || match.home_team_id,
     awayName: match.away?.display_name || match.away_team_id,
+    // KEPT NOW, AND THEY WERE NOT BEFORE. A score needs only the match; a goal
+    // needs the side it counted for, and goals.team_id is the beneficiary
+    // rather than anything derivable from the scorer's name. The names above
+    // are for drawing and can fall back to an id; these two are identity and
+    // never fall back to anything.
+    homeTeamId: match.home_team_id,
+    awayTeamId: match.away_team_id,
+    // Goal rows the database already holds for this match, per side, so the
+    // screen can say "all 2 of Bullets' goals already have a scorer" before
+    // the RPC does. Absent on a match nobody has reported a scorer for, which
+    // is nearly all of them — hence the zeroes.
+    existing: {
+      home: Number(match.scorer_count_home || 0),
+      away: Number(match.scorer_count_away || 0),
+    },
+    // Staged, unsaved scorers. See the Scorers section at the foot of this
+    // file: they are a SECOND pass over a row that has already published.
+    scorers: [],
     date: match.date || "",
     kickoff: match.kickoff || "",
     stage: match.stage || "",
@@ -331,5 +349,220 @@ export function summarize(saved, failed) {
              kind: "warn" };
   }
   return { message: "Nothing was published — see the lines below.",
+           kind: "error" };
+}
+
+
+/* ── Scorers ─────────────────────────────────────────────────────────────────
+ *
+ * THE SECOND PASS, AND WHY IT HAS TO BE ONE. apply_match_goal refuses a goal
+ * on a match with no score — that is validate.py check 5, and an ERROR there
+ * deploys nothing for anybody — so a scorer cannot be typed into a grid row
+ * beside the score that does not exist yet. The single-match screen has lived
+ * with this since 0007 by STAGING scorers on the phone and flushing them once
+ * the score publishes (state.pendingGoals / flushPendingGoals). This is that
+ * bargain for a whole matchday: publish the scores, then name the scorers
+ * against rows that now have one.
+ *
+ * It is also why the row is not four elements taller. At 390px a grid line is
+ * already two teams, two boxes and a status; scorers open under a published
+ * line, on demand, for the rows a reporter actually has names for.
+ *
+ * teamId IS THE SIDE THAT BENEFITED, ALWAYS EXPLICIT. goals.team_id is the
+ * beneficiary (DATA_MODEL.md), which for an own goal is NOT the side the
+ * scorer plays for. Nothing here derives it from the scorer, the same way
+ * sideButtons on the single-match screen asks the reporter outright: a rule
+ * that reads "invert when own_goal" is one confident line away from filing a
+ * goal against the wrong team, and the wrongness is invisible on the screen
+ * that entered it.
+ */
+
+// The goal types the portal offers, in the order the single-match screen's
+// <select> lists them. '' is an ordinary goal and is what a blank means.
+export const SCORER_TYPES = ["", "penalty", "own_goal", "header", "free_kick"];
+
+/** One staged scorer. Everything optional except the name and the side —
+ *  a name with no player picked is the normal case and saves as an
+ *  unidentified goal (CAF_MW_UNKNOWN + the typed name), which renders as plain
+ *  text and earns no player page. That is a real cost, paid deliberately: it
+ *  keeps a scorer nobody can identify off the site's player pages rather than
+ *  keeping them out of the database. */
+export function scorer({ teamId, playerName, playerId = "", assistPlayerId = "",
+                         minute = "", goalType = "" } = {}) {
+  return {
+    teamId: teamId || "",
+    playerName: String(playerName ?? "").trim(),
+    playerId: playerId || "",
+    assistPlayerId: assistPlayerId || "",
+    minute: String(minute ?? "").trim(),
+    goalType: SCORER_TYPES.includes(goalType) ? goalType : "",
+    // Set by applyGoalsResult, exactly as row.error is by applyBatchResult.
+    error: "",
+    // True once the database holds it. A saved scorer is never re-sent.
+    saved: false,
+    goalId: "",
+  };
+}
+
+/** May scorers be named against this row at all?
+ *
+ *  Deliberately about row.saved rather than about what is typed: a score the
+ *  reporter has entered but not published has no goals for a scorer to belong
+ *  to, and offering the box would stage names against a row that may still be
+ *  corrected to 0-0. Published first, then named. */
+export function acceptsScorers(row) {
+  return isScored(row.saved.status)
+    && row.saved.home != null && row.saved.away != null;
+}
+
+/** How many goals a side is credited with in the published result. */
+export function goalsFor(row, teamId) {
+  if (!acceptsScorers(row)) return 0;
+  if (teamId === row.homeTeamId) return row.saved.home ?? 0;
+  if (teamId === row.awayTeamId) return row.saved.away ?? 0;
+  return 0;
+}
+
+/** Scorers already counted against a side: rows the database holds plus the
+ *  ones staged on this screen. The RPC checks this again under a row lock — it
+ *  has to, it is check 5 — but a reporter should be told they are naming a
+ *  third scorer in a 2-1 while the line is still in front of them, not by a
+ *  rejection after they have typed seven more. */
+export function scorersNamedFor(row, teamId) {
+  const existing = teamId === row.homeTeamId
+    ? (row.existing?.home || 0)
+    : teamId === row.awayTeamId ? (row.existing?.away || 0) : 0;
+  return existing + row.scorers.filter((s) => s.teamId === teamId).length;
+}
+
+/** Room for another name on that side, and how much. */
+export function scorerRoom(row, teamId) {
+  return Math.max(0, goalsFor(row, teamId) - scorersNamedFor(row, teamId));
+}
+
+/** "Blue Eagles'", not "Blue Eagles's".
+ *
+ *  Football club names are plural far more often than not, and in Malawi
+ *  overwhelmingly so — Blue Eagles, Silver Strikers, Mighty Wanderers,
+ *  Bullets, Kamuzu Barracks. The single-match screen has been interpolating a
+ *  bare 's since 0007 and therefore saying "Mighty Wanderers's goals" to every
+ *  reporter who overfilled a side. It is one character and it is in the
+ *  sentence a reporter reads when they are already being told they are wrong,
+ *  which is the worst moment to look careless. */
+export function possessive(name) {
+  const clean = String(name ?? "").trim();
+  if (!clean) return "";
+  return /s$/i.test(clean) ? `${clean}'` : `${clean}'s`;
+}
+
+/** Stage a scorer, or say why not. Returns the reason as a sentence rather
+ *  than throwing: every caller here is a tap on a phone, and the message goes
+ *  beside the box that produced it. */
+export function addScorer(row, entry) {
+  const next = scorer(entry);
+  if (!next.playerName) return "Type the scorer's name first.";
+  if (next.teamId !== row.homeTeamId && next.teamId !== row.awayTeamId) {
+    return "Pick which side the goal counted for.";
+  }
+  if (!acceptsScorers(row)) return "Publish the score before adding scorers.";
+  const allowed = goalsFor(row, next.teamId);
+  if (scorersNamedFor(row, next.teamId) >= allowed) {
+    const name = next.teamId === row.homeTeamId ? row.homeName : row.awayName;
+    // Three sentences rather than one with numbers substituted into it. "All 1
+    // of Silver Strikers' goals already have a scorer" is what one template
+    // gives, and a 1-0 is the commonest score in this dataset — so the awkward
+    // branch would have been the one most reporters read.
+    if (allowed === 0) return `${name} did not score in this match.`;
+    if (allowed === 1) {
+      return `${possessive(name)} only goal already has a scorer.`;
+    }
+    return `All ${allowed} of ${possessive(name)} goals already have a scorer.`;
+  }
+  row.scorers.push(next);
+  return "";
+}
+
+/** Take one back. Only an unsaved one: a scorer already in the database is
+ *  removed by delete_match_goal on the match screen, which checks that it was
+ *  yours — a rule this screen has no business reimplementing. */
+export function removeScorer(row, index) {
+  const target = row.scorers[index];
+  if (!target || target.saved) return false;
+  row.scorers.splice(index, 1);
+  return true;
+}
+
+/** Every staged scorer across the matchday, flattened into what
+ *  submit_match_goals takes: one object per goal, each carrying its own
+ *  match_id. `sending` is the parallel list of the scorer objects themselves,
+ *  so the answer can be folded back onto exactly the lines that produced it.
+ *
+ *  Saved ones are skipped, which is what makes the button safe to press twice
+ *  after a partial failure: it sends what did not go, and nothing else. */
+export function collectGoals(rows) {
+  const sending = [];
+  const goals = [];
+  rows.forEach((row) => {
+    row.scorers.forEach((s) => {
+      if (s.saved) return;
+      sending.push(s);
+      goals.push({
+        match_id: row.matchId,
+        team_id: s.teamId,
+        player_name: s.playerName,
+        player_id: s.playerId,
+        assist_player_id: s.assistPlayerId,
+        minute: s.minute,
+        goal_type: s.goalType,
+      });
+    });
+  });
+  return { sending, goals };
+}
+
+/** Fold submit_match_goals' answer back onto the scorers that produced it.
+ *
+ *  The same contract applyBatchResult has, for the same reason: a scorer that
+ *  saved becomes saved data and stops being re-sent; one that did not keeps
+ *  every field the reporter typed and gains the reason. Nothing typed is ever
+ *  discarded by a failure. */
+export function applyGoalsResult(sending, data,
+                                 humanize = (error) => error.message) {
+  const results = new Map((data || []).map((r) => [r.idx, r]));
+  let saved = 0;
+  let failed = 0;
+  sending.forEach((entry, i) => {
+    const result = results.get(i + 1);
+    if (result?.ok) {
+      saved += 1;
+      entry.saved = true;
+      entry.goalId = result.goal_id || "";
+      entry.error = "";
+    } else {
+      failed += 1;
+      // A line with no result at all did not come back. Treated as failed for
+      // applyBatchResult's reason exactly: the one thing worse than sending a
+      // scorer twice is never sending them at all — and the RPC's own count
+      // check is what stops a genuine double-send becoming a duplicate goal.
+      entry.error = result
+        ? humanize({ message: result.message || "" })
+        : "That scorer was not saved — please try again.";
+    }
+  });
+  return { saved, failed };
+}
+
+/** The sentence at the top after saving scorers. */
+export function summarizeGoals(saved, failed) {
+  if (saved && !failed) {
+    return { message: `${saved} scorer${saved === 1 ? "" : "s"} saved.`,
+             kind: "ok" };
+  }
+  if (saved) {
+    return { message: `${saved} saved; ${failed} still `
+                      + `${failed === 1 ? "needs" : "need"} attention below.`,
+             kind: "warn" };
+  }
+  return { message: "No scorers were saved — see the lines below.",
            kind: "error" };
 }
