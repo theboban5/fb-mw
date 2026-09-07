@@ -26,7 +26,8 @@ import { anthropicProvider, fakeProvider, runExtraction }
   from "../../supabase/functions/import-extract/provider.js";
 import {
   CLEAN_GRAPHIC, MESSY_TEXT, ABBREVIATED, FIXTURE_LIST, ABANDONED_WITH_SCORE,
-  POSTPONED, INVENTED_IDS, HALF_SCORE, ABSURD_SCORES, WITH_SCORERS, UNREADABLE,
+  POSTPONED, INVENTED_IDS, HALF_SCORE, ABSURD_SCORES, WITH_SCORERS, WITH_OWN_GOAL,
+  UNREADABLE,
   RESCUED, NOT_JSON, EMPTY_CONTENT, REFUSED, TRUNCATED, WRONG_SHAPE,
 } from "./fixtures/extractions.mjs";
 
@@ -206,6 +207,31 @@ test("scorers are read and kept, ready for a later version", () => {
   assert.equal(out.items[0].scorers[1].penalty, true);
   // A null own_goal is a missing value, not a true one.
   assert.equal(out.items[0].scorers[2].own_goal, false);
+});
+
+test("an own goal is carried through exactly as printed, not re-sided", () => {
+  // THE CASE NO FIXTURE COVERED, WHICH IS WHY THE PROMPT NEVER DEFINED IT.
+  // team_side says where the name was printed. goals.team_id is the side that
+  // BENEFITED, and on an own goal the scorer plays for the other one — so this
+  // is the single row where the two readings differ. Nothing in this layer may
+  // resolve that: #/results asks a person which side it counted for, and a
+  // helpful swap here would destroy the only evidence of what the picture said.
+  const out = parseExtraction(WITH_OWN_GOAL);
+  const scorer = out.items[0].scorers[0];
+  assert.equal(scorer.own_goal, true);
+  assert.equal(scorer.player_raw, "S. Banda");
+  assert.equal(scorer.team_side, "home", "printed under the home column");
+  assert.equal(scorer.minute, 34);
+  assert.equal(scorer.penalty, false);
+});
+
+test("the prompt tells the model what a scorer field means", () => {
+  // It did not, for the whole life of the importer: the schema asked for
+  // team_side and own_goal and the instructions never mentioned either, so
+  // every stored scorer row was read under a convention nobody wrote down.
+  // These are the two sentences that stop that being true again.
+  assert.match(SYSTEM_PROMPT, /team_side is WHERE THE NAME IS PRINTED/);
+  assert.match(SYSTEM_PROMPT, /own_goal is true only when the source marks it/);
 });
 
 test("a fixture list is recognised rather than published", () => {

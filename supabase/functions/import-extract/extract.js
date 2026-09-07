@@ -93,6 +93,18 @@ export const EXTRACTION_SCHEMA = {
           // Read if present, never published in this version. The shape is
           // here so scorer import is a later change to the CLIENT rather than
           // a new extraction contract and a re-run of every stored import.
+          //
+          // TEAM_SIDE IS WHERE THE NAME IS PRINTED, NOT WHO THE GOAL COUNTED
+          // FOR, and until Sep 2026 the prompt did not say so — it did not
+          // mention scorers at all, so every one of these fields was whatever
+          // the model took them to mean. For an ordinary goal the two readings
+          // agree. For an own goal they do not: goals.team_id is the
+          // BENEFICIARY (DATA_MODEL.md) and the scorer plays for the other
+          // side, so a stored own_goal row from before that prompt change
+          // cannot be published without a person saying which side it was.
+          // That is why #/results asks for the side outright rather than
+          // deriving it, and why nothing here tries to repair the old rows:
+          // there is no fact to repair them from.
           scorers: {
             type: "array",
             items: {
@@ -160,6 +172,17 @@ DOCUMENT KIND
 - "mixed": both.
 - "other": football-related but neither, e.g. a league table or a squad list.
 - "unreadable": you cannot make out enough to return anything. Return an empty results array.
+
+SCORERS
+
+Return a scorer for every goal the source names, and none it does not. Most graphics name no scorers at all; an empty list is the ordinary answer and is never a failure.
+
+- player_raw is the name EXACTLY AS PRINTED, under the same rule as the team names: no expanding "A. Josephy" into a full name, no correcting a spelling.
+- team_side is WHERE THE NAME IS PRINTED — the column, the badge or the heading it is listed under. It is an observation about the picture, not a conclusion about who the goal counted for. Use "unknown" when the layout does not make it clear.
+- own_goal is true only when the source marks it: "OG", "o.g.", "own goal". Do NOT work out for yourself that a goal was an own goal.
+- Do not reorder, relabel or move a scorer to the side you think the goal counted for. On an own goal those two sides differ, graphics disagree with each other about which one to print it under, and something downstream asks a person. Moving it destroys the only evidence of what the picture actually said.
+- penalty is true only when the source marks it — "(P)", "pen", "penalty". A goal marked both a penalty and an own goal is a misread: report what is printed and say so in notes.
+- minute is the number printed beside the name, as an integer, and null when none is. "45+2" is 45. A scorer with no minute shown is normal and is not a reason to leave the scorer out.
 
 Put anything a person should know in notes — a cut-off edge, a column you could not interpret, two matches that looked like duplicates.`;
 

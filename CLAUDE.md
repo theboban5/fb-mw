@@ -231,14 +231,31 @@ A matchday's scorers in one submission, migration `0053` — `#/results`:
   single-match screen had been getting this wrong since 0007 on nearly every
   club name in the country, and a 1-0 now reads "…only goal already has a
   scorer" rather than "All 1 of…".
-- Not built: scorers from `#/import` (the AI already extracts them and the
-  own-goal `team_side` is undefined — see below), and `resolve_scorer_candidates`.
-- **The extraction prompt never mentions scorers at all.** The schema asks for
-  `team_side` and `own_goal`; `SYSTEM_PROMPT` says nothing about either, and no
-  fixture pins them. So for an own goal already stored in
-  `report_imports.extracted` there is no way to know whether `team_side` means
-  the scorer's side or the beneficiary's. Publishing those needs the prompt
-  fixed AND the reporter to place own goals by hand.
+- Not built: scorers from `#/import`, and `resolve_scorer_candidates`.
+
+**`SYSTEM_PROMPT` never mentioned scorers at all** — fixed the same day:
+
+- The schema has asked for `team_side`, `own_goal`, `penalty` and `minute`
+  since 0042 and the instructions defined none of them, so every scorer row in
+  `report_imports.extracted` was read under a convention nobody wrote down. No
+  fixture covered an own goal either (`WITH_SCORERS` is three ordinary goals),
+  which is why nothing caught it.
+- **`team_side` is now defined as WHERE THE NAME IS PRINTED** — an observation
+  about the picture, not a conclusion about who the goal counted for. That is
+  the extractor's existing bargain ("a date you inferred from context is worse
+  than no date at all") applied to the one field where the two readings differ:
+  `goals.team_id` is the beneficiary and an own-goal scorer plays for the other
+  side. The prompt says outright not to move a scorer to the side it thinks the
+  goal counted for, because graphics disagree with each other and moving it
+  destroys the evidence.
+- **Nothing is backfilled and nothing can be.** An own goal stored before this
+  change has no fact to repair it from — which is exactly why `#/results` asks
+  the reporter for the side outright.
+- The prompt grew ~1,100 characters, which is one cache write on the first
+  import after the deploy. It also sits it further above the 1,024-token
+  minimum cacheable prefix on Sonnet 5 that the file's own comment names — it
+  was close to that line before, and the stored `cache_read_input_tokens` will
+  say whether that was ever costing anything.
 
 A tripwire that fired on success, no migration — `tests/test_search.py`:
 

@@ -182,6 +182,31 @@ export const WITH_SCORERS = asMessage({
   notes: null,
 });
 
+// ── An own goal, printed under the side it was credited to ───────────────────
+// THE FIXTURE WHOSE ABSENCE WAS THE BUG. WITH_SCORERS is three ordinary goals,
+// so nothing in this suite ever exercised own_goal — and the prompt, until Sep
+// 2026, never told the model what team_side meant on one. goals.team_id is the
+// BENEFICIARY and the scorer plays for the other side, so the two readings of
+// team_side differ on exactly this row and agree everywhere else.
+//
+// Here Blue Eagles win 1-0 through a Silver Strikers defender, printed in the
+// Blue Eagles column the way most Malawian graphics print it. What normalizeItem
+// must do is carry it through unchanged: it is not this layer's job to decide
+// which side it counted for, and #/results asks a person instead.
+export const WITH_OWN_GOAL = asMessage({
+  document_kind: "results",
+  competition_hint: null, date: null, matchday: null,
+  results: [
+    result("Blue Eagles", "Silver Strikers", 1, 0, {
+      scorers: [
+        { player_raw: "S. Banda", team_side: "home", minute: 34,
+          own_goal: true, penalty: false },
+      ],
+    }),
+  ],
+  notes: "The goal is marked OG in the graphic.",
+});
+
 // ── Nothing readable ─────────────────────────────────────────────────────────
 export const UNREADABLE = asMessage({
   document_kind: "unreadable",
