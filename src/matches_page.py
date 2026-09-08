@@ -150,6 +150,11 @@ class Day:
         return sum(len(g.matches) for g in self.groups) + len(self.nt_matches)
 
     @property
+    def played_count(self) -> int:
+        return (sum(1 for g in self.groups for m in g.matches if _is_played(m))
+                + sum(1 for m, _team in self.nt_matches if m.played))
+
+    @property
     def competition_names(self) -> "list[str]":
         """Display names of everything on, national team last."""
         return ([g.name for g in self.groups]
@@ -183,8 +188,11 @@ def collect(ds, nt_data=None) -> "dict[str, Day]":
         comp = ds.competitions.get(comp_id)
         if comp is None:
             continue
-        matches.sort(key=lambda m: (_clock(m.kickoff) == "", _clock(m.kickoff),
-                                    m.match_id))
+        # Played first, then still to come — a reader opening the day should
+        # see what already happened before a list of kickoff times, and
+        # within each half the earlier match still sorts above the later one.
+        matches.sort(key=lambda m: (not _is_played(m), _clock(m.kickoff) == "",
+                                    _clock(m.kickoff), m.match_id))
         labels = {_round_label(comp, m) for m in matches}
         group = CompGroup(
             competition_id=comp_id,
@@ -212,7 +220,8 @@ def collect(ds, nt_data=None) -> "dict[str, Day]":
 
     for day in days.values():
         day.groups.sort(key=lambda g: g.sort)
-        day.nt_matches.sort(key=lambda pair: (_clock(pair[0].kickoff) == "",
+        day.nt_matches.sort(key=lambda pair: (not pair[0].played,
+                                              _clock(pair[0].kickoff) == "",
                                               _clock(pair[0].kickoff),
                                               pair[0].match_id))
     return days
@@ -241,6 +250,17 @@ def _crest_finder(static_dir, css_prefix):
     return crest
 
 
+def _is_played(m) -> bool:
+    """True once a league/cup match has a result to show.
+
+    Same test `_score_cell` renders on: `status` is `played`/`awarded` (not a
+    placeholder) AND both goals are set. Postponed/cancelled/abandoned stay
+    "not played" — they are not a result still to come, but they are not one
+    either, and a day's played-first ordering only needs the two-way split.
+    """
+    return m.counts_for_table and m.has_score
+
+
 def _score_cell(m) -> "tuple[str, str]":
     """(RESULT cell, row modifier class) for one dataset.Match.
 
@@ -248,7 +268,7 @@ def _score_cell(m) -> "tuple[str, str]":
     real departure from the league results table, and the reason to be on this
     page at all: "what time is it on" is the question of the day view.
     """
-    if m.counts_for_table and m.has_score:
+    if _is_played(m):
         star = ('<span class="v2-res-unconf">*</span>'
                 if m.confidence == "unconfirmed" else "")
         parts = []
@@ -674,7 +694,18 @@ def landing_card(days, today: str) -> str:
     href = f"{SLUG}/" if iso == today else f"{SLUG}/{iso}.html"
 
     n = day.count
-    title = f"{n} match{'' if n == 1 else 'es'}"
+    played = day.played_count
+    remaining = n - played
+    if remaining == 0:
+        # Nothing left to submit — the day reads as a set of results, not an
+        # outstanding count.
+        title = f"{n} result{'' if n == 1 else 's'}"
+    elif played == 0:
+        title = f"{n} match{'' if n == 1 else 'es'}"
+    else:
+        # The count decrements as results come in, so a reporter watching the
+        # homepage sees the outstanding work shrink rather than a static total.
+        title = f"{remaining} match{'' if remaining == 1 else 'es'} left"
     if not rel:
         title += f" on {d.day} {d.strftime('%b')}"
     elif rel != "Today":

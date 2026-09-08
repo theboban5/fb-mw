@@ -113,14 +113,18 @@ class CollectTest(unittest.TestCase):
                      if g.competition_id in order]
             self.assertEqual(ranks, sorted(ranks))
 
-    def test_matches_are_in_kickoff_order_with_unknown_times_last(self):
+    def test_matches_are_played_first_then_kickoff_ordered(self):
         for day in self.days.values():
             for group in day.groups:
-                times = [matches_page._clock(m.kickoff) for m in group.matches]
-                known = [t for t in times if t]
-                self.assertEqual(known, sorted(known))
-                self.assertEqual(times, [t for t in times if t]
-                                 + [t for t in times if not t])
+                played = [matches_page._is_played(m) for m in group.matches]
+                self.assertEqual(played, sorted(played, reverse=True),
+                                 "played matches must sort before scheduled ones")
+                for flag in (True, False):
+                    bucket = [m for m, p in zip(group.matches, played) if p is flag]
+                    times = [matches_page._clock(m.kickoff) for m in bucket]
+                    known = [t for t in times if t]
+                    self.assertEqual(known, sorted(known))
+                    self.assertEqual(times, known + [t for t in times if not t])
 
     def test_round_label_is_dropped_when_a_group_spans_two_rounds(self):
         for day in self.days.values():

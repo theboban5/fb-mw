@@ -1201,14 +1201,16 @@ body.landing {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  justify-content: center;
   gap: 7px;
   padding: 15px 16px 17px;
   min-width: 0;
   flex: 1 1 auto;
 }
-/* See src/trending.py: a card with no photo is as tall as the one beside it,
-   so its words are centred instead of sitting at the top of a green field. */
-.el-trend-card.is-plain .el-trend-body { justify-content: center; }
+/* See src/trending.py: every slide is the height of the tallest one, so a
+   card whose own text is shorter than its neighbour gets extra room in its
+   flex-grown body. Centring it there (any card, photo or not) is what keeps
+   that room from reading as dead space below the button. */
 .el-trend-eyebrow {
   font-size: 0.68rem;
   font-weight: 800;
