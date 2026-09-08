@@ -595,6 +595,22 @@ async function loadHome(filters) {
   return homeCache;
 }
 
+/** How many of this account's matches are overdue — scheduled, dated, and
+ *  that date has passed. A standing status, not scoped to whatever the home
+ *  screen's own comp/date filters currently show: a reporter who has
+ *  narrowed the list to one league should not see the count quietly shrink
+ *  to match. An admin gets every competition, same as the "Awaiting result"
+ *  bucket already does when nothing is filtered. A head-only count query, so
+ *  checking in costs nothing beyond the round trip. */
+async function overdueCount() {
+  let q = supabase.from("matches").select("match_id", { count: "exact", head: true })
+    .eq("status", "scheduled").lt("date", catToday());
+  if (!context.isAdmin) q = q.in("competition_id", context.competitions);
+  const { count, error } = await q;
+  if (error) throw error;
+  return count || 0;
+}
+
 // A separate field list from MATCH_FIELDS: #/graphics needs club_id and
 // legacy_code to draw a crest (graphics.loadCrest's lookup order) and venue
 // name for the fixture sub-line, which the home list has no use for and
@@ -827,6 +843,26 @@ function filterBar(filters, names, competitions, stages) {
     </div>`;
 }
 
+/** The overdue-results box at the top of the home screen: "N matches need a
+ *  result", or "up to date" once nothing does. Same is-ok/is-bad language as
+ *  the admin ops dashboard's urgent strip (report.css .ops-urgent-item), so
+ *  the two screens read as one system rather than two different vocabularies
+ *  for the same idea. `null` (the count failed to load) renders nothing —
+ *  a missing status is not the same claim as "up to date". */
+function overdueBox(n) {
+  if (n === null) return "";
+  if (n === 0) {
+    return `<div class="ops-urgent">
+      <a class="ops-urgent-item is-ok"><span class="ops-urgent-n">&#x2713;</span>
+        <span class="ops-urgent-l">up to date</span></a></div>`;
+  }
+  return `<div class="ops-urgent">
+    <a class="ops-urgent-item is-bad" href="#/?show=awaiting">
+      <span class="ops-urgent-n">${n}</span>
+      <span class="ops-urgent-l">match${n === 1 ? "" : "es"} need${n === 1 ? "s" : ""}
+        a result</span></a></div>`;
+}
+
 async function renderHome(params) {
   const filters = readFilters(params || new URLSearchParams());
 
@@ -852,14 +888,18 @@ async function renderHome(params) {
     h('<div class="rp-loading"><span class="rp-spinner"></span><p>Loading your matches…</p></div>');
   }
 
-  let data, choices;
+  let data, choices, overdue;
   try {
     // The dropdown's options come from what this account may report, NOT from
     // the matches on screen: deriving them from a list that is itself filtered
     // would leave the menu holding only the league already chosen, with no way
     // back to any other.
-    [data, choices] = await Promise.all([
-      loadHome(filters), entryCompetitions(),
+    //
+    // overdueCount is its own catch, not part of this Promise.all: a status
+    // box is worth losing quietly on a bad connection, and must never be why
+    // the whole screen fails to load.
+    [data, choices, overdue] = await Promise.all([
+      loadHome(filters), entryCompetitions(), overdueCount().catch(() => null),
     ]);
   } catch (error) {
     h(`<p class="rp-empty">Could not load your matches.</p>
@@ -968,6 +1008,7 @@ async function renderHome(params) {
   h(`<h1 class="rp-greeting">Hi ${esc(firstName())}</h1>
      <p class="rp-sub">${esc(formatDate(today))}${
         context.isAdmin ? " · administrator" : ""}</p>
+     ${overdueBox(overdue)}
      ${actions}
      ${filterBar(filters, names, competitions, stages)}
      ${body || `<p class="rp-empty">Nothing matches these filters.${
