@@ -529,7 +529,17 @@ let homeCache = null;   // { key, matches, names }
 // they started is the only version that behaves like a list.
 let queue = null;       // { from, items: [{ id, label, needsResult }] }
 
-const invalidateHome = () => { homeCache = null; };
+// The overdue count, cached the same way homeCache is: not per-filter (it
+// deliberately ignores the screen's own comp/show/date filters — see
+// overdueCount), just loaded-or-not for this session. Without this, picking
+// a filter that does not even touch homeCache's own key — Awaiting result
+// from the Show menu, or the status box itself — would still force a fresh
+// network round trip before anything on screen could change, on a screen
+// that shows no spinner for a filter-only change because homeCache's key
+// did not move. That read as the tap not having registered at all.
+let overdueCache = null;   // integer, or null when not yet loaded
+
+const invalidateHome = () => { homeCache = null; overdueCache = null; };
 
 const RESULT_LIMIT = 60;
 
@@ -601,14 +611,17 @@ async function loadHome(filters) {
  *  narrowed the list to one league should not see the count quietly shrink
  *  to match. An admin gets every competition, same as the "Awaiting result"
  *  bucket already does when nothing is filtered. A head-only count query, so
- *  checking in costs nothing beyond the round trip. */
+ *  checking in costs nothing beyond the round trip — cached across renders
+ *  the same way loadHome's own cache is: see the comment above overdueCache. */
 async function overdueCount() {
+  if (overdueCache !== null) return overdueCache;
   let q = supabase.from("matches").select("match_id", { count: "exact", head: true })
     .eq("status", "scheduled").lt("date", catToday());
   if (!context.isAdmin) q = q.in("competition_id", context.competitions);
   const { count, error } = await q;
   if (error) throw error;
-  return count || 0;
+  overdueCache = count || 0;
+  return overdueCache;
 }
 
 // A separate field list from MATCH_FIELDS: #/graphics needs club_id and
@@ -852,12 +865,16 @@ function filterBar(filters, names, competitions, stages) {
 function overdueBox(n) {
   if (n === null) return "";
   if (n === 0) {
-    return `<div class="ops-urgent">
+    return `<div class="ops-urgent rp-home-status">
       <a class="ops-urgent-item is-ok"><span class="ops-urgent-n">&#x2713;</span>
         <span class="ops-urgent-l">up to date</span></a></div>`;
   }
-  return `<div class="ops-urgent">
-    <a class="ops-urgent-item is-bad" href="#/?show=awaiting">
+  // The from=home-status marker is not one of readFilters' recognised keys,
+  // so it never leaks into a saved filter link — it is read once, directly
+  // off params, purely to decide whether to scroll the list into view. See
+  // the scrollIntoView call below.
+  return `<div class="ops-urgent rp-home-status">
+    <a class="ops-urgent-item is-bad" href="#/?show=awaiting&amp;from=home-status">
       <span class="ops-urgent-n">${n}</span>
       <span class="ops-urgent-l">match${n === 1 ? "" : "es"} need${n === 1 ? "s" : ""}
         a result</span></a></div>`;
@@ -1013,6 +1030,15 @@ async function renderHome(params) {
      ${filterBar(filters, names, competitions, stages)}
      ${body || `<p class="rp-empty">Nothing matches these filters.${
         anyFilterSet(filters) ? " Try clearing them." : ""}</p>`}`);
+
+  // Arrived by tapping the status box: the Show filter just changed to
+  // Awaiting result, but nothing above the fold looks any different — same
+  // greeting, same buttons, same box — so a tap that genuinely worked could
+  // still read as dead. Scrolling the filter bar (and the list right under
+  // it) into view is the confirmation a filter value alone does not give.
+  if (params?.get("from") === "home-status") {
+    view.querySelector("[data-filters]")?.scrollIntoView({ block: "start" });
+  }
 
   view.querySelector("[data-filters]").addEventListener("change", (event) => {
     const key = event.target.dataset.filter;

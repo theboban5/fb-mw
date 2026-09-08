@@ -833,6 +833,20 @@ a { color: var(--accent); }
 .ops-urgent-n { font-size: 1.3rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 .ops-urgent-l { font-size: 0.8rem; color: var(--muted); }
 
+/* The home screen's own status box (0054): one item, alone in its own strip,
+   so it needs to read as the single most important thing on the screen
+   rather than one chip among several the way the ops urgent strip's items
+   do. A solid border in the full-strength colour (not the wash-on-wash the
+   shared item uses) plus a bigger number is the whole difference. */
+.rp-home-status .ops-urgent-item {
+  border-width: 2px;
+  border-color: var(--danger);
+  padding: 14px 16px;
+}
+.rp-home-status .ops-urgent-item.is-ok { border-color: var(--accent); }
+.rp-home-status .ops-urgent-n { font-size: 1.7rem; }
+.rp-home-status .ops-urgent-l { font-size: 0.88rem; }
+
 .ops-comp { display: block; font-weight: 700; }
 .ops-sub { display: block; color: var(--muted); font-size: 0.76rem; }
 .ops-warn { color: var(--danger); font-weight: 700; }
