@@ -1201,6 +1201,32 @@ const blankRow = () => ({
  *  the same rules, so humanError already knows every one of them. */
 const rowError = (message) => humanError({ message: message || "" });
 
+/** A guess at the next matchday for a competition+season: one past the
+ *  highest already on the books, so a reporter who has just finished
+ *  matchday 5 opens the form to "6" rather than a blank box that quietly
+ *  becomes 0 the moment it is left that way. A hint, never an answer — the
+ *  field stays required and editable, this only saves typing the common
+ *  case. Best-effort: a failed lookup returns null and costs the reporter
+ *  nothing beyond typing it themselves, same bargain as every other optional
+ *  lookup in this portal (loadGridMatches' scorer counts, for one). */
+async function suggestNextMatchday(competitionId, seasonId) {
+  if (!competitionId || !seasonId) return null;
+  try {
+    const { data, error } = await supabase.from("matches")
+      .select("matchday")
+      .eq("competition_id", competitionId)
+      .eq("season_id", seasonId)
+      .not("matchday", "is", null)
+      .order("matchday", { ascending: false })
+      .limit(1);
+    if (error) throw error;
+    const top = data?.[0]?.matchday;
+    return typeof top === "number" ? top + 1 : 1;
+  } catch {
+    return null;
+  }
+}
+
 // ── One line of the fixture form ─────────────────────────────────────────────
 // AT MODULE SCOPE, because two screens draw it: #/add, where a reporter types
 // a fixture list, and the import review, where the same list arrives read off
@@ -1453,6 +1479,7 @@ async function renderAddFixture(params) {
     teams: null,
     // Shared by every line, because the graphic shares them.
     matchday: "",
+    matchdayHint: null,
     stage: "",
     date: "",
     kickoff: "",
@@ -1485,6 +1512,19 @@ async function renderAddFixture(params) {
         // one cluster at a time — which is the order a fixture list arrives in.
         .sort((a, b) => a.group.localeCompare(b.group)
                         || a.name.localeCompare(b.name));
+    }
+    drawAddFixture();
+  }
+
+  /** Runs beside loadTeams, not inside it — a slow or failed guess must never
+   *  hold up the team list the form actually needs to be usable. */
+  async function loadMatchdayHint() {
+    state.matchdayHint = state.competition.type === "cup" ? null
+      : await suggestNextMatchday(state.competition.competition_id, season.season_id);
+    // Pre-filled only while the reporter has not already typed over it —
+    // the same rule the fixture list's shared date/kickoff spread uses.
+    if (state.matchdayHint && !state.matchday) {
+      state.matchday = String(state.matchdayHint);
     }
     drawAddFixture();
   }
@@ -1546,10 +1586,13 @@ async function renderAddFixture(params) {
         <p class="rp-hint">The round every match below is in.</p>`
       : `
         <label class="rp-label" for="fx-matchday">Matchday</label>
-        <input class="rp-input" id="fx-matchday" type="number" data-matchday
-               min="1" step="1" inputmode="numeric" value="${esc(state.matchday)}">
-        <p class="rp-hint">Optional, and applies to every match below — a
-          fixture list is published a week at a time.</p>`}
+        <input class="rp-input" id="fx-matchday" type="number" required
+               data-matchday min="1" step="1" inputmode="numeric"
+               value="${esc(state.matchday)}">
+        <p class="rp-hint">${state.matchdayHint
+          ? "Suggested from what is already entered — check it before adding."
+          : "Applies to every match below — a fixture list is published a "
+            + "week at a time."}</p>`}
 
       <h2 class="rp-field-head">Applies to every match</h2>
       <div class="rp-row">
@@ -1619,11 +1662,16 @@ async function renderAddFixture(params) {
       // when they were picked — carrying either across would offer a fixture
       // that validate.py check 3 exists to refuse.
       state.stage = "";
+      // A matchday typed for the last competition means nothing in this one
+      // — carrying it across is how a wrong number gets published silently.
+      state.matchday = "";
+      state.matchdayHint = null;
       state.rows.forEach((row) => {
         row.home = ""; row.away = ""; row.homeText = ""; row.awayText = "";
         row.error = "";
       });
       loadTeams();
+      loadMatchdayHint();
     });
 
     form.querySelector("[data-more]")?.addEventListener("click", () => {
@@ -1717,6 +1765,13 @@ async function renderAddFixture(params) {
         flash("Choose the round these matches are in.", "warn");
         return;
       }
+      // Same reasoning, the league side: a blank matchday is how a fixture
+      // renders under "Matchday 0" and nobody notices until it is a table of
+      // eight to fix by hand instead of one field to have filled in.
+      if (!isCup && !state.matchday) {
+        flash("Enter the matchday these matches are in.", "warn");
+        return;
+      }
 
       // What is worth sending, and what is wrong before the network is
       // involved. A line with neither team is a spare line, not a mistake —
@@ -1760,7 +1815,7 @@ async function renderAddFixture(params) {
             date: row.date, kickoff: row.kickoff, venue: row.venue.trim(),
           };
           if (isCup) fixture.stage = state.stage;
-          else if (state.matchday) fixture.matchday = state.matchday;
+          else fixture.matchday = state.matchday;
           return fixture;
         }),
       });
@@ -1840,6 +1895,7 @@ async function renderAddFixture(params) {
   }
 
   loadTeams();
+  loadMatchdayHint();
 }
 
 // ── The matchday grid ────────────────────────────────────────────────────────
@@ -3215,6 +3271,8 @@ async function renderImport(params) {
   }
 
   const fixCompetition = () => state.fixResolved?.competition_id || "";
+  const fixIsCup = () => (state.fixComps || []).find(
+    (c) => c.competition_id === fixCompetition())?.type === "cup";
 
   /** Rebuild the lines from the stored proposal, keeping whatever the reporter
    *  has already done to them. Keyed on the item index, because re-resolving
@@ -3254,6 +3312,18 @@ async function renderImport(params) {
     }
   }
 
+  /** The same guess #/add offers, for the same reason — a graphic that names
+   *  no matchday at all is the common case here ("most graphics do not print
+   *  it"), which is exactly when a hint is worth the most. Pre-fills only
+   *  over a blank the reporter has not already answered. */
+  async function loadFixtureMatchdayHint() {
+    state.fixMatchdayHint = fixIsCup() ? null
+      : await suggestNextMatchday(fixCompetition(), state.fixResolved?.season_id);
+    if (state.fixMatchdayHint && !state.fixMatchday) {
+      state.fixMatchday = String(state.fixMatchdayHint);
+    }
+  }
+
   async function readFixtures() {
     drawReading("Matching it to your teams…");
     // The competition list and the ground suggestions, which the shared row
@@ -3276,6 +3346,7 @@ async function renderImport(params) {
     }
     buildFixtureRows();
     await loadFixtureTeams();
+    await loadFixtureMatchdayHint();
     state.busy = false;
     state.step = "fixtures";
     drawFixtures();
@@ -3285,6 +3356,7 @@ async function renderImport(params) {
    *  typed survives it — the same bargain the results side makes. */
   async function reResolveFixtures(competitionId) {
     const keep = fixtureEdits();
+    const previousComp = fixCompetition();
     drawReading("Matching it again…");
     try {
       const { data, error } = await supabase.rpc(
@@ -3301,15 +3373,23 @@ async function renderImport(params) {
       return;
     }
     buildFixtureRows(keep);
+    // A matchday typed for the competition this screen had before means
+    // nothing in the one it was just pinned to — #/add's same rule. Naming an
+    // unrecognised team (0046) re-resolves without pinning anything, so that
+    // path leaves it alone.
+    if (fixCompetition() !== previousComp) {
+      state.fixMatchday = "";
+      state.fixMatchdayHint = null;
+    }
     await loadFixtureTeams();
+    await loadFixtureMatchdayHint();
     drawFixtures();
   }
 
   function drawFixtures() {
     const names = state.names || {};
     const comp = fixCompetition();
-    const isCup = (state.fixComps || []).find(
-      (c) => c.competition_id === comp)?.type === "cup";
+    const isCup = fixIsCup();
 
     const chip = (item) => {
       const c = CONFIDENCE[item.confidence] || CONFIDENCE.red;
@@ -3434,11 +3514,13 @@ async function renderImport(params) {
              <p class="rp-hint">The round every fixture below is in.</p>`
            : `
              <label class="rp-label" for="fx-imp-md">Matchday</label>
-             <input class="rp-input" id="fx-imp-md" type="number" data-fx-md
-                    min="1" step="1" inputmode="numeric"
+             <input class="rp-input" id="fx-imp-md" type="number" required
+                    data-fx-md min="1" step="1" inputmode="numeric"
                     value="${esc(state.fixMatchday || "")}">
-             <p class="rp-hint">Optional, and applies to every fixture added —
-               most graphics do not print it.</p>`}
+             <p class="rp-hint">Applies to every fixture added. ${
+               state.fixMatchdayHint
+                 ? "Suggested from what is already entered — check it before adding."
+                 : "Most graphics do not print it — enter it yourself."}</p>`}
            ${addSection}${differsSection}${agreesSection}${blockedSection}
            <div class="rp-publish">
              <button class="rp-btn" type="button" data-fx-add ${n ? "" : "disabled"}>${
@@ -3577,6 +3659,12 @@ async function renderImport(params) {
   async function addFixtures() {
     if (state.busy) return;                        // rule 2
     clearFlash();
+    // Same rule as #/add, said before the network is involved: a league
+    // fixture with no matchday is how one ends up filed under "Matchday 0".
+    if (!fixIsCup() && !state.fixMatchday) {
+      flash("Enter the matchday these fixtures are in.", "warn");
+      return;
+    }
     const form = view.querySelector("[data-fixtures]");
     syncFixtureRowsFromDom(form, state.fixRows || []);
 
