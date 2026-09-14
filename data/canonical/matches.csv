@@ -972,7 +972,7 @@ MW_BDU14_2627_061,MW_BDU14,MW_2026_27,md_10,10,2026-09-19,12:00,MW_B_COMPANY,MW_
 MW_BDU14_2627_062,MW_BDU14,MW_2026_27,md_11,11,2026-09-19,01:00,MW_B_COMPANY,MW_LB_M1,MW_SB_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_BDU14_2627_063,MW_BDU14,MW_2026_27,md_12,12,2026-09-19,02:00,MW_B_COMPANY,MW_LB_M1,MW_BIA_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_BDU14_2627_064,MW_BDU14,MW_2026_27,md_12,12,2026-09-19,03:00,MW_B_COMPANY,MW_ZA_M1,MW_FU_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
-MW_NDU16_2627_011,MW_NDU16,MW_2026_27,,,2026-09-12,08:00,,MW_MAU2_M1,MW_BSU_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_NDU16_2627_011,MW_NDU16,MW_2026_27,,,2026-09-12,08:00,,MW_MAU2_M1,MW_BSU_M1,1,0,played,,reporter,,MW_REP_003,2026-09-14T16:52:58.74062+00:00,confirmed,MW_REP_003,2026-09-14T16:52:58.74062+00:00,,,,,,,,,,,,,,,
 MW_NDU16_2627_012,MW_NDU16,MW_2026_27,,,2026-09-12,09:30,,MW_JYU_M1,MW_GAU_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_NDU16_2627_013,MW_NDU16,MW_2026_27,,,2026-09-12,10:30,,MW_MYU_M1,MW_SBU2_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_NDU16_2627_014,MW_NDU16,MW_2026_27,,,2026-09-12,00:30,,MW_MYU3_M1,MW_WYU_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
