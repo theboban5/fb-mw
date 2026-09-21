@@ -1021,3 +1021,8 @@ MW_NDU16_2627_022,MW_NDU16,MW_2026_27,md_4,4,2026-09-26,08:30,MW_ALL_STARS,MW_JY
 MW_NDU16_2627_023,MW_NDU16,MW_2026_27,md_4,4,2026-09-26,07:00,MW_UNITED,MW_GAU_M1,MW_MAU2_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_NDU16_2627_024,MW_NDU16,MW_2026_27,md_4,4,2026-09-26,08:30,MW_UNITED,MW_MYU3_M1,MW_SBU2_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_NDU16_2627_025,MW_NDU16,MW_2026_27,md_4,4,2026-09-26,10:00,MW_UNITED,MW_MYU4_M1,MW_MYU3_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_NDU12_2627_011,MW_NDU12,MW_2026_27,md_3,3,2026-09-26,07:00,MW_CDSS,MW_AAU3_M1,MW_FAU_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_NDU12_2627_012,MW_NDU12,MW_2026_27,md_3,3,2026-09-26,07:00,MW_CCAP,MW_CYU_M1,MW_FYSU_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_NDU12_2627_013,MW_NDU12,MW_2026_27,md_3,3,2026-09-26,08:30,MW_CCAP,MW_MYU5_M1,MW_SAU2_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_NDU12_2627_014,MW_NDU12,MW_2026_27,md_3,3,2026-09-26,07:00,MW_KAPALAKONJE,MW_SAU3_M1,MW_WNAU_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_NDU12_2627_015,MW_NDU12,MW_2026_27,md_3,3,2026-09-26,08:30,MW_KAPALAKONJE,MW_NFU_M1,MW_YBMU_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
