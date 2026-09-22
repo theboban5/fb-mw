@@ -1035,3 +1035,8 @@ MW_BDU16_2627_069,MW_BDU16,MW_2026_27,md_9,9,2026-09-27,08:00,MW_KAMPALA,MW_GREE
 MW_BDU16_2627_070,MW_BDU16,MW_2026_27,md_9,9,2026-09-27,09:30,MW_KAMPALA,MW_MTOPWA_MU16,MW_SM_MU16,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_BDU16_2627_071,MW_BDU16,MW_2026_27,md_9,9,2026-09-27,11:30,MW_KAMPALA,MW_NTH_ACA_MU16,MW_BCSD_MU16,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_BDU16_2627_072,MW_BDU16,MW_2026_27,md_9,9,2026-09-27,12:30,MW_KAMPALA2,MW_CHIGU_A_MU16,MW_CHITS_U_MU16,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_KU19_2627_080,MW_KU19,MW_2026_27,md_13,13,2026-09-26,08:00,MW_B_002,MW_BIA_MU19,MW_MW_U19,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_KU19_2627_081,MW_KU19,MW_2026_27,md_13,13,2026-09-26,08:00,MW_CHIWE,MW_EH_MU19,MW_GS_MU19,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_KU19_2627_082,MW_KU19,MW_2026_27,md_13,13,2026-09-26,09:30,MW_CHIWE,MW_RU_MU19,MW_SM_MU19,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_KU19_2627_083,MW_KU19,MW_2026_27,md_13,13,2026-09-27,08:00,MW_CHIWE,MW_A_MU19,MW_NU_MU19,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_KU19_2627_084,MW_KU19,MW_2026_27,md_13,13,2026-09-27,09:30,MW_CHIWE,MW_ND_MU19,MW_YY_MU19,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
