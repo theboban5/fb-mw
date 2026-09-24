@@ -12,7 +12,8 @@ Two halves:
 - **The reporter portal** — `/report`, a no-framework SPA (`static/report/app.js`)
   where reporters enter results, scorers and team sheets on their phones.
 
-Python 3.12, one dependency (Pillow, only for logo downscaling). No build step,
+Python 3.12, one dependency (Pillow: logo downscaling and the match link-preview
+cards). No build step,
 no bundler, no framework. Keep it that way.
 
 ---
@@ -88,6 +89,7 @@ src/officials.py       referee + coach pages (the officials registry, 0024)
 src/trending.py        the homepage carousel (the `trending` tab, 0030)
 src/matches_page.py    /matches/ — every match on one date, any date
 src/home.py            the homepage shell: the day first, leagues beside it
+src/og_card.py         a link-preview PNG per match (/og/match/), cached in CI
 static/report/results_grid.js  the matchday grid's rules, DOM-free and tested
 static/report/fixture_import.js  the fixture importer's rules, same bargain
 static/report/error_report.js  what to report when a screen breaks (0052)
@@ -186,6 +188,32 @@ fixture and clean up, and they never mutate a real match.
 ---
 
 ## Recent work (Sep 2026)
+
+A card per match, no migration — `src/og_card.py`:
+
+- **A shared result previewed as the site logo.** WhatsApp and Facebook draw
+  og:image and little else, so the scoreline, the reason the link was sent,
+  was in the small print. `/og/match/<match_id>-<hash8>.png`, 1200×630: the
+  competition and round, both crests, the score (or kick-off, or Postponed).
+- **It had been costed and declined** at ~40 MB a build. Measured it is ~30 MB
+  for 985 cards (the match pages are 19 MB), and the real cost was the
+  drawing: ~35 s from nothing. So `deploy.yml` keeps `docs/og/match` in
+  `actions/cache` and a build draws only cards whose hash is new; a warm build
+  spends ~0 s on them. Stale cards are deleted, or the cache would grow by
+  every edit. A first cut drew only matches near today; that meant a result
+  shared a month later previewed as the logo again, so it was dropped.
+- **The filename hashes everything drawn**, plus `og_card.DESIGN`. Chat
+  clients cache a preview by image URL, so Friday's "v 15:00" must not come
+  back on Sunday. It is also what makes the cache safe: a restored card is
+  either still right or deleted. Bump `DESIGN` when the drawing changes, or
+  the redesign ships under the old URLs (and a bump redraws all ~1,000 once).
+- The font is `assets/fonts/Inter.ttf` (OFL), the portal's Inter converted
+  from woff2 once, because loading woff2 in Pillow depends on its FreeType
+  build and CI is not the place to find that out. Outside `static/`, never
+  shipped. No Pillow or no font means no cards; the build carries on.
+- 256-colour palette PNG: about a third of the bytes, no visible loss.
+- `tests/test_og_card.py` holds the repo's first assertions about a page's
+  `og:` tags.
 
 A page per match, no migration — `/match/<match_id>.html` (`src/match_page.py`):
 

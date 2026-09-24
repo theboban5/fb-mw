@@ -29,9 +29,10 @@ have a team sheet, most have no scorers, many no venue or kickoff: each
 section renders only when it has something in it, so the typical page is a
 scoreboard, the table and the previous meetings, and that is a fine page.
 
-The link preview is the site's own image. A per-match card was costed and
-declined (~40 MB of PNGs a build); the <title> names the match, which is what
-a chat client shows above the logo anyway.
+The link preview is a card of the match itself (og_card.py). This said "a
+per-match card was costed and declined (~40 MB of PNGs a build)"; measured it
+is ~26 MB, and CI keeps the cards between builds so only a changed match is
+drawn again. A page with no card (no Pillow, no font) keeps the site image.
 """
 
 from functools import lru_cache
@@ -505,12 +506,15 @@ def render_match(p, mv, league, rows, goals) -> str:
 
 def build_pages(dist, templates_dir, static_dir, ds, leagues, standings_by_slug,
                 updated, club_hub_ids=(), player_pages=None, official_pages=None,
-                page_ids=None):
+                page_ids=None, cards=None):
     """Write /match/{match_id}.html for every match in a built competition.
 
     Returns the number written. `page_ids` is match_page_ids(ds), passed in so
     the links rendered earlier and the pages written here are one set.
+    `cards` is og_card.build_cards' answer, match_id -> (image URL, alt); a
+    match not in it previews with the site card.
     """
+    cards = cards or {}
     if page_ids is None:
         page_ids = match_page_ids(ds)
     base = render._read(os.path.join(templates_dir, "base.html"))
@@ -533,8 +537,10 @@ def build_pages(dist, templates_dir, static_dir, ds, leagues, standings_by_slug,
             # The player page's back link: this page is reached from a list
             # (a day, a results tab, a club), and back is where the reader
             # wants to go — the home page only when they arrived from outside.
+            image, alt = cards.get(mv.match_id, ("", ""))
             html = hubs._page(base, title, content, updated, css_ver,
-                              back=hubs.PLAYER_BACK)
+                              back=hubs.PLAYER_BACK, social_image=image,
+                              social_image_alt=alt)
             render._write(os.path.join(out_dir, f"{mv.match_id}.html"), html)
             count += 1
     return count

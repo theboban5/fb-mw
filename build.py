@@ -30,8 +30,8 @@ sys.path.insert(0, ROOT)
 
 import validate  # noqa: E402
 from src import (adapt, dataset, flags, home, hubs, match_page,  # noqa: E402
-                 matches_page, nt, nt_page, officials, render, scorers, search,
-                 standings, trending)
+                 matches_page, nt, nt_page, og_card, officials, render, scorers,
+                 search, standings, trending)
 
 STATIC = os.path.join(ROOT, "static")
 TEMPLATES = os.path.join(ROOT, "templates")
@@ -860,10 +860,14 @@ def main(argv):
                                         club_hub_ids=club_hub_ids, ntd=nt_data)
     n_officials = officials.build_official_pages(
         dist, TEMPLATES, STATIC, ds, updated)
+    # The link-preview cards (og_card.py). Written before the pages because
+    # each page's <head> names its card.
+    match_cards = og_card.build_cards(dist, STATIC, ds, match_pages)
     n_matches = match_page.build_pages(
         dist, TEMPLATES, STATIC, ds, leagues, standings_by_slug, updated,
         club_hub_ids=club_hub_ids, player_pages=player_pages,
-        official_pages=official_pages, page_ids=match_pages)
+        official_pages=official_pages, page_ids=match_pages,
+        cards=match_cards)
 
     # The by-date pages, written after the club hubs they link into.
     n_day_pages, n_match_dates = matches_page.build_pages(
@@ -886,7 +890,7 @@ def main(argv):
     print(f"Built {dist}/  " + " | ".join(parts)
           + (f" | {len(live_cards)} trending" if live_cards else "")
           + f" | {n_clubs} club hubs | {n_players} player pages"
-          + f" | {n_matches} match pages"
+          + f" | {n_matches} match pages ({len(match_cards)} with a card)"
           + (f" | {n_officials} official pages" if n_officials else "")
           + f" | {nt_page.SLUG}: {len(scorchers.results)} results,"
           + f" {len(scorchers.fixtures)} fixtures"

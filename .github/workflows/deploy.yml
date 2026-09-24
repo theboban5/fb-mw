@@ -34,6 +34,18 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Reuse the match link-preview cards
+        # ~1,000 PNGs (src/og_card.py), ~30 s to draw from nothing. Each
+        # filename hashes what it shows, so a card restored here is either
+        # still right (reused as-is) or stale (build.py deletes it), and only
+        # the matches that changed since the last deploy are drawn again. The
+        # key is unique per run because a cache entry is immutable once saved;
+        # restore-keys picks up the newest one. A miss just draws them all.
+        uses: actions/cache@v4
+        with:
+          path: docs/og/match
+          key: og-cards-${{ github.run_id }}
+          restore-keys: og-cards-
       - name: Build site (fetch -> validate -> snapshot -> render)
         # SUPABASE IS THE SOURCE OF TRUTH. DATASET_SOURCE=supabase reads the
         # Postgres tables and rebuilds the identical CSV text the spreadsheet

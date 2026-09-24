@@ -35,7 +35,8 @@ DIST_ROOT = ""
 _OG_URL_TOKEN = "{{OG_URL}}"
 
 
-def social_meta(title: str, url: str = "") -> str:
+def social_meta(title: str, url: str = "", image: str = "",
+                image_alt: str = "") -> str:
     """Open Graph + Twitter tags, so a shared link previews as a card.
 
     Without these a chat client has nothing to show but the bare domain — it
@@ -44,23 +45,30 @@ def social_meta(title: str, url: str = "") -> str:
     `url` is the page's own absolute URL. Callers that know it pass it; the
     rest leave it and _write fills it in from the path it writes to, because
     that is the only place the output path is known.
+
+    `image` replaces the site card with a page's own (absolute, like OG_IMAGE,
+    and 1200x630 — the size tags below are not per-image). Only a match page
+    has one, and only near match day (og_card.py); everything else, and every
+    match page without one, keeps the site card.
     """
     t, d = escape(title), escape(SITE_DESCRIPTION)
+    img = escape(image) or OG_IMAGE
+    alt = (escape(image_alt) if image else
+           f"{SITE_NAME} — every league, every level")
     tags = [
         f'<meta name="description" content="{d}">',
         f'<meta property="og:site_name" content="{SITE_NAME}">',
         '<meta property="og:type" content="website">',
         f'<meta property="og:title" content="{t}">',
         f'<meta property="og:description" content="{d}">',
-        f'<meta property="og:image" content="{OG_IMAGE}">',
+        f'<meta property="og:image" content="{img}">',
         '<meta property="og:image:width" content="1200">',
         '<meta property="og:image:height" content="630">',
-        f'<meta property="og:image:alt" content="{SITE_NAME} '
-        '— every league, every level">',
+        f'<meta property="og:image:alt" content="{alt}">',
         '<meta name="twitter:card" content="summary_large_image">',
         f'<meta name="twitter:title" content="{t}">',
         f'<meta name="twitter:description" content="{d}">',
-        f'<meta name="twitter:image" content="{OG_IMAGE}">',
+        f'<meta name="twitter:image" content="{img}">',
     ]
     tags.insert(3, f'<meta property="og:url" content="{escape(url) or _OG_URL_TOKEN}">')
     return "\n".join(tags)

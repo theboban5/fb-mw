@@ -49,7 +49,7 @@ PLAYER_BACK = (
 
 
 def _page(base, title, content, updated, css_ver, header_logo="",
-          back=HOME_BACK):
+          back=HOME_BACK, social_image="", social_image_alt=""):
     return (
         # A hub belongs to no single competition, so there is no second half to
         # the <title> — just the club or player name.
@@ -64,7 +64,8 @@ def _page(base, title, content, updated, css_ver, header_logo="",
         .replace("{{CSS_VER}}", css_ver)
         .replace("{{BACK_LINK}}", back)
         .replace("{{FOOTER}}", render.footer(updated))
-        .replace("{{SOCIAL}}", render.social_meta(title))
+        .replace("{{SOCIAL}}", render.social_meta(title, image=social_image,
+                                                  image_alt=social_image_alt))
     )
 
 
