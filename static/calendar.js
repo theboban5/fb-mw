@@ -5,8 +5,9 @@
  * step a day at a time, which is all the arrows this replaced ever did — the
  * calendar exists so nobody has to tap "previous day" fourteen times.
  *
- * Every cell is a real <a href="YYYY-MM-DD.html">, so long-press and
- * middle-click open a date in a new tab like any other link on the site.
+ * Every cell is a real <a href="YYYY-MM-DD.html"> (under `base`), so
+ * long-press and middle-click open a date in a new tab like any other link on
+ * the site.
  *
  * The data comes from the <script type="application/json"> the page inlines
  * beside the button (see matches_page._cal_data): `win` is the contiguous
@@ -37,8 +38,12 @@
   var hasMatch = Object.create(null);
   (cfg.match || []).forEach(function (d) { hasMatch[d] = true; });
 
+  // Where the date pages are from this one: "" beside them under /matches/,
+  // "matches/" on the homepage, which shows today in the same layout.
+  var base = cfg.base || '';
+
   function pageFor(d) {
-    if ((d >= cfg.win[0] && d <= cfg.win[1]) || hasMatch[d]) return d + '.html';
+    if ((d >= cfg.win[0] && d <= cfg.win[1]) || hasMatch[d]) return base + d + '.html';
     return '';
   }
 
@@ -105,7 +110,7 @@
       }
     }
     out.push('</div>');
-    out.push('<a class="dc-today" href="' + cfg.today + '.html">Jump to today</a>');
+    out.push('<a class="dc-today" href="' + base + cfg.today + '.html">Jump to today</a>');
     panel.innerHTML = out.join('');
   }
 

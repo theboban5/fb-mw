@@ -888,21 +888,10 @@ body.landing {
   display: flex;
   flex-direction: column;
 }
-/* flex-grow so the footer sits at the bottom of a short viewport, not
-   half-way up it. */
-.landing-main {
-  flex: 1 0 auto;
-  max-width: var(--max);
-  margin: 0 auto;
-  padding: 22px 16px 40px;
-  width: 100%;
-}
 
-/* ─── Landing: Everyleague hero ──────────────────────── */
-/* Brand on the left, country on the right; below them the positioning line.
-   The row is flex-wrap, so on a narrow phone the country label drops under
-   the wordmark and both stay left-aligned. */
-.el-hero { margin-bottom: 16px; }
+/* ─── Landing: Everyleague wordmark ──────────────────── */
+/* Brand on the left, country on the right (and, on a phone, the jump to the
+   leagues after it — see .hm-jump). */
 .el-brand-row {
   display: flex;
   flex-wrap: wrap;
@@ -948,19 +937,6 @@ body.landing {
   border-radius: 2px;
   vertical-align: -0.14em;
 }
-.el-title {
-  margin: 14px 0 0;
-  font-size: clamp(1.5rem, 5.6vw, 2.05rem);
-  font-weight: 900;
-  letter-spacing: -0.02em;
-  color: var(--ink);
-}
-.el-tagline {
-  margin: 5px 0 0;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
 /* ─── Landing: featured Scorchers card ───────────────── */
 /* The whole card is the link; the CTA is a span because an <a> cannot nest.
    No squad photo ships with the repo, so the mark itself is the artwork —
@@ -2333,100 +2309,197 @@ table.nt-table {
 }
 
 
-/* ─── Landing: today's matches card ──────────────────── */
-/* The date browser's front door, directly under the search bar because it is
-   the most time-sensitive thing on the page. A compact row rather than a
-   second hero card, so it does not compete with the featured card below it.
-   Theme tokens (not the V2 layer's hardcoded light), like the rest of the
-   landing page. */
-.el-today {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 0 0 10px;
-  padding: 10px 14px 10px 10px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--bg);
-  text-decoration: none;
-  color: inherit;
-  transition: border-color 0.15s, transform 0.15s;
+/* ─── Home: the day leads (src/home.py) ─────────────── */
+/* One shell for the homepage and every /matches/ date page. Three regions in
+   one DOM order — the day, the feature, the leagues — and this decides where
+   they sit. On a phone, which is most readers, that order IS the reading
+   order and nothing is beside anything. From 960px the leagues become a
+   sticky left sidebar; from 1240px the feature takes a right rail. A date
+   with no football collapses back to one centred column (.is-empty), with the
+   leagues directly under the "No matches" line.
+
+   Theme tokens throughout. The by-date view used to borrow the V2 tables'
+   hardcoded light colours, so it was a white slab on a dark page. */
+.hm-wrap {
+  flex: 1 0 auto;
+  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 12px 16px 36px;
 }
-.el-today:hover { border-color: var(--accent); transform: translateY(-1px); }
-.el-today:hover .el-today-arrow { transform: translateX(3px); }
-.el-today:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-  border-color: var(--accent);
-}
-/* Tear-off calendar leaf: weekday over day number. */
-.el-today-cal {
+/* The search bar's own 16px gutter would double up with the wrapper's. */
+.hm-wrap > .site-search { max-width: none; padding: 0; margin: 10px 0 4px; }
+.hm-wrap > .site-search .ss-panel { left: 0; right: 0; }
+
+.hm-top .el-brand-row { flex-wrap: nowrap; }
+.hm-top .el-brand { color: inherit; text-decoration: none; }
+.hm-top .el-brand-logo { height: 26px; }
+h1.el-brand-name { margin: 0; font-size: 1.15rem; line-height: 1.2; }
+.hm-top .el-locale { margin-left: auto; }
+/* On a phone the leagues are below a whole day of matches: this is the way
+   to them without the scroll. Gone once they are a sidebar. */
+/* Bright, not big: as a thin outline it read as a label, and it is the
+   only way to the leagues on a phone short of scrolling past every match.
+   The site's light green as a solid fill, with near-black text on it, is
+   the one bright shape in the header in either theme — so it is noticed
+   without taking any more room than the outline did. */
+.hm-jump {
   flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 46px;
-  padding: 5px 0 6px;
-  border-radius: 9px;
-  background: var(--accent);
-  color: #fff;
-  line-height: 1;
-}
-.el-today-dow {
-  font-size: 0.56rem;
+  gap: 5px;
+  padding: 6px 12px 6px 10px;
+  border-radius: 999px;
+  background: #3fb37a;
+  color: #07170e;
+  font-size: 0.8rem;
   font-weight: 800;
-  letter-spacing: 0.1em;
-  opacity: 0.85;
+  text-decoration: none;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
 }
-.el-today-day {
-  margin-top: 3px;
-  font-size: 1.25rem;
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
+.hm-jump:hover { background: #4fc98b; }
+.hm-jump:active { transform: translateY(1px); }
+.hm-jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hm-jump-icon { width: 14px; height: 14px; flex: 0 0 auto; }
+/* A phone cannot fit wordmark, country and the Leagues pill on one line,
+   and of the three the country is the one a Malawian football site can
+   spare: the text goes first, then (on a 375px phone) the flag too. */
+@media (max-width: 480px) {
+  .hm-top .el-locale-text { display: none; }
+  .hm-top .el-locale { margin-right: 4px; }
 }
-.el-today-main {
+@media (max-width: 400px) {
+  .hm-top .el-locale { display: none; }
+  .hm-top .hm-jump { margin-left: auto; }
+  /* "YESTERDAY" is the longest chip label and the first to be clipped. */
+  .day-chip-label { letter-spacing: 0.03em; }
+}
+@media (max-width: 340px) {
+  h1.el-brand-name { font-size: 1rem; letter-spacing: 0.05em; }
+}
+
+.hm-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
+  max-width: var(--max);
+  margin: 0 auto;
+}
+.hm-leagues { scroll-margin-top: 8px; }
+/* No football on this date: the competitions are the useful thing on the
+   screen, so they come straight after the "No matches" line and the feature
+   waits below them. */
+.hm-grid.is-empty .hm-feature { order: 1; }
+.hm-leagues-h {
+  margin: 6px 0 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+/* The tab strip's -16px bleed is for a full-width phone column; inside a
+   sidebar it would stick out past the edge. */
+.hm-leagues .comp-sticky { margin: 0; padding: 0; }
+
+@media (min-width: 960px) {
+  .hm-jump { display: none; }
+  .hm-grid {
+    max-width: none;
+    /* The day column is capped: a match line stretched across 1000px puts
+       the two team names a hand-span apart from the score between them. */
+    grid-template-columns: 300px minmax(0, 720px);
+    justify-content: center;
+    grid-template-areas: "leagues day" "leagues feature";
+    grid-template-rows: auto 1fr;
+    align-items: start;
+    column-gap: 32px;
+  }
+  .hm-grid:not(.has-feature) { grid-template-areas: "leagues day"; grid-template-rows: auto; }
+  .hm-day { grid-area: day; }
+  .hm-feature { grid-area: feature; }
+  /* Sticky with its own scroll, so the full list is reachable from anywhere
+     in a long Saturday without scrolling back up. */
+  .hm-leagues {
+    grid-area: leagues;
+    position: sticky;
+    top: 12px;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 6px;
+  }
+  .hm-leagues .lc-row { padding: 10px 2px; gap: 10px; }
+  .hm-leagues .lc-logo { width: 24px; height: 24px; }
+  .hm-leagues .lc-name { font-size: 0.9rem; }
+  .hm-leagues .comp-tab { padding: 10px 8px; font-size: 0.9rem; min-height: 40px; }
+
+  /* No football on this date: nothing to put a sidebar beside. */
+  .hm-grid.is-empty {
+    grid-template-columns: minmax(0, var(--max));
+    grid-template-areas: "day" "leagues" "feature";
+    grid-template-rows: auto;
+    justify-content: center;
+  }
+  .hm-grid.is-empty:not(.has-feature) { grid-template-areas: "day" "leagues"; }
+  .hm-grid.is-empty .hm-leagues {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+}
+@media (min-width: 1240px) {
+  .hm-grid.has-feature:not(.is-empty) {
+    grid-template-columns: 280px minmax(0, 720px) 320px;
+    grid-template-areas: "leagues day feature";
+    grid-template-rows: auto;
+  }
+  .hm-grid:not(.is-empty) .hm-feature { position: sticky; top: 12px; }
+  /* A 320px rail is a phone's width: the cards go back to their phone shape. */
+  .hm-grid:not(.is-empty) .hm-feature .el-trend-card { flex-direction: column; }
+  .hm-grid:not(.is-empty) .hm-feature .el-trend-media { flex: none; aspect-ratio: 16 / 9; }
+  .hm-grid:not(.is-empty) .hm-feature .el-feature.has-next { flex-direction: column; align-items: stretch; }
+  .hm-grid:not(.is-empty) .hm-feature .el-feature.has-next .el-next { flex: none; width: 100%; margin-top: 14px; }
+}
+
+/* ─── The day: heading, date bar, competition cards ──── */
+.day-head {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  flex: 1 1 auto;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 2px 0 0;
 }
-.el-today-eyebrow {
-  font-size: 0.63rem;
+.day-title {
+  margin: 0;
+  min-width: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+.day-rel {
+  margin-right: 8px;
+  font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--accent);
 }
-.el-today-title {
-  font-size: 0.98rem;
-  font-weight: 800;
-  color: var(--ink);
-}
-/* One line: a day with six competitions on would otherwise push the card to
-   three lines on a phone. */
-.el-today-sub {
+/* The first thing to go on a narrow phone: the list below says it anyway,
+   and it is what pushed a long weekday onto a second line. */
+@media (max-width: 420px) { .day-count { display: none; } }
+.day-count {
+  flex: 0 0 auto;
   font-size: 0.78rem;
+  font-weight: 600;
   color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.el-today-arrow {
-  flex: 0 0 auto;
-  color: var(--muted);
-  font-size: 1.05rem;
-  transition: transform 0.15s;
-}
-
-/* ─── By-date pages (/matches/) ──────────────────────── */
-/* Part of the V2 content layer, so the colours are the same hardcoded light
-   values the results tables use — not the theme tokens. */
 
 /* The previous day, this day, the next day — plus the calendar button. The
    chips are links, so the day-by-day walk works with JS off; only the picker
-   needs script. Sticky, like the matchday pager it sits in the same place as. */
+   needs script. Sticky, so the next day is one tap from anywhere in a long
+   Saturday. */
 .day-bar {
   position: sticky;
   top: 0;
@@ -2435,8 +2508,7 @@ table.nt-table {
   align-items: stretch;
   gap: 6px;
   padding: 8px 0;
-  background: #ffffff;
-  border-bottom: 1px solid #e4e4e4;
+  background: var(--bg);
 }
 .day-chips {
   flex: 1 1 auto;
@@ -2447,16 +2519,17 @@ table.nt-table {
 .day-chip {
   flex: 1 1 0;
   min-width: 0;
+  min-height: 44px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 1px;
-  padding: 6px 4px;
-  border: 1px solid #d8d8d8;
+  padding: 5px 4px;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: #ffffff;
-  color: #1c1c1c;
+  background: var(--panel);
+  color: var(--ink);
   text-decoration: none;
   -webkit-tap-highlight-color: transparent;
 }
@@ -2465,7 +2538,7 @@ table.nt-table {
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #8a9099;
+  color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2477,6 +2550,8 @@ table.nt-table {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+/* The one fixed green: white text on it has to read in both themes, and the
+   dark theme's lighter --accent would not carry it. */
 .day-chip.active {
   background: #0b6b3a;
   border-color: #0b6b3a;
@@ -2499,15 +2574,15 @@ table.nt-table {
   display: flex;
 }
 .day-cal-btn {
-  width: 2.4rem;
+  width: 2.75rem;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid #d8d8d8;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: #ffffff;
-  color: #1c1c1c;
+  background: var(--panel);
+  color: var(--ink);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -2527,11 +2602,11 @@ table.nt-table {
   width: 292px;
   max-width: calc(100vw - 24px);
   padding: 10px;
-  border: 1px solid #e4e4e4;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: #ffffff;
-  color: #1c1c1c;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--shadow);
 }
 .day-cal-panel[hidden] { display: none; }
 .dc-head {
@@ -2546,12 +2621,12 @@ table.nt-table {
   font-weight: 800;
 }
 .dc-nav {
-  width: 1.9rem;
-  height: 1.9rem;
-  border: 1px solid #d8d8d8;
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #ffffff;
-  color: #1c1c1c;
+  background: var(--panel);
+  color: var(--ink);
   font: inherit;
   font-size: 1.05rem;
   line-height: 1;
@@ -2570,11 +2645,11 @@ table.nt-table {
   font-size: 0.6rem;
   font-weight: 800;
   letter-spacing: 0.04em;
-  color: #8a9099;
+  color: var(--muted);
 }
 .dc-day {
   position: relative;
-  min-height: 34px;
+  min-height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2582,7 +2657,7 @@ table.nt-table {
   font-size: 0.82rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: #1c1c1c;
+  color: var(--ink);
   text-decoration: none;
   -webkit-tap-highlight-color: transparent;
 }
@@ -2595,9 +2670,9 @@ table.nt-table {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: #0b6b3a;
+  background: var(--accent);
 }
-.dc-day.is-today { box-shadow: inset 0 0 0 1px #0b6b3a; }
+.dc-day.is-today { box-shadow: inset 0 0 0 1px var(--accent); }
 .dc-day.is-sel {
   background: #0b6b3a;
   color: #ffffff;
@@ -2605,13 +2680,13 @@ table.nt-table {
 }
 .dc-day.is-sel.has-matches::after { background: #ffffff; }
 /* No page for that date: it is a number, not a destination. */
-.dc-day.is-off { color: #c8ccd1; }
-.dc-day.is-off.has-matches::after { background: #c8ccd1; }
-.dc-pad { min-height: 34px; }
+.dc-day.is-off { color: var(--muted); opacity: 0.45; }
+.dc-day.is-off.has-matches::after { background: var(--muted); }
+.dc-pad { min-height: 36px; }
 .dc-today {
   display: block;
   margin-top: 10px;
-  padding: 9px;
+  padding: 10px;
   border-radius: 999px;
   background: #0b6b3a;
   color: #ffffff;
@@ -2621,61 +2696,172 @@ table.nt-table {
   text-decoration: none;
 }
 
-.day-summary {
-  margin: 10px 0 8px;
-  text-align: center;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #8a9099;
+/* One card per competition: a header that links to its results, then one
+   line per match. */
+.day-comps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 6px;
 }
-.day-jump {
-  margin: 10px 0 0;
-  text-align: center;
-  font-size: 0.85rem;
-  font-weight: 700;
+.day-comp {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  overflow: hidden;
 }
-.day-jump .club-link { margin: 0 8px; }
-
-/* Competition header inside the dark group bar: name (linked to that
-   competition's results) on the left, the round on the right. */
 .day-comp-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
-}
-.day-comp-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  color: #ffffff;
+  min-height: 44px;
+  padding: 8px 12px;
+  background: var(--row-alt);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 700;
   text-decoration: none;
 }
-.day-comp-link:hover { text-decoration: underline; }
+.day-comp-head:hover .day-comp-name { color: var(--accent); }
 .day-comp-logo {
-  height: 15px;
-  width: auto;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
   flex: 0 0 auto;
+}
+.day-comp-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .day-comp-round {
   flex: 0 0 auto;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
 }
-/* A kickoff time stands where a score would: the day view's whole point is
-   "what is on and when", so it reads as data, not as a muted placeholder. */
-.day-res-time {
-  font-size: 0.8rem;
-  font-weight: 800;
-  color: #0b6b3a;
+.day-comp-arrow {
+  flex: 0 0 auto;
+  margin-left: -2px;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.day-list { list-style: none; margin: 0; padding: 0; }
+/* Home | score-or-time | away. The middle column is fixed so every score in
+   a card sits on one vertical line; the names take what is left and wrap to
+   two lines at most. */
+.dm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3.9rem minmax(0, 1fr);
+  align-items: center;
+  column-gap: 4px;
+  min-height: 52px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+}
+.dm:first-child { border-top: 0; }
+.dm-team {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.dm-home { justify-content: flex-end; text-align: right; }
+.dm-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+.dm-link { min-width: 0; color: inherit; text-decoration: none; }
+.dm-link:hover .dm-name { text-decoration: underline; }
+.dm-crest {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+.dm-mid {
+  text-align: center;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.dm-score { font-size: 1.05rem; font-weight: 800; color: var(--ink); }
+.dm-dash { margin: 0 0.2em; font-weight: 600; color: var(--muted); }
+.dm-unconf { margin-left: 1px; font-size: 0.8em; color: var(--muted); }
+/* A kickoff stands where a score would: "what is on and when" is the day
+   view's whole point, so it reads as data, not as a muted placeholder. */
+.dm-time { font-size: 0.86rem; font-weight: 700; color: var(--accent); }
+.dm-vs {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.dm-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.dm-note {
+  grid-column: 1 / -1;
+  margin-top: 3px;
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.day-legend {
+  margin: 10px 2px 0;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.day-empty {
+  margin-top: 6px;
+  padding: 26px 16px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  text-align: center;
+}
+.day-empty-msg { margin: 0; font-weight: 700; color: var(--ink); }
+.day-jump {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 14px 0 0;
+}
+.day-jump-link {
+  padding: 9px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: none;
 }
 
 @media (max-width: 360px) {
   .day-chip-label { font-size: 0.54rem; letter-spacing: 0.04em; }
   .day-chip-date { font-size: 0.74rem; }
-  .day-cal-btn { width: 2.1rem; }
+  .day-cal-btn { width: 2.4rem; }
+  .dm { grid-template-columns: minmax(0, 1fr) 3.5rem minmax(0, 1fr); padding: 8px 6px; }
+  .dm-team { font-size: 0.84rem; gap: 6px; }
 }

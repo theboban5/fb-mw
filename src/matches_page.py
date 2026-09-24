@@ -8,26 +8,20 @@ today", which is the question a visitor arriving cold actually has.
 
 Shape of the thing:
 
-  * **/matches/** is today's page, baked at build time. CI builds daily at
-    07:07 CAT, so it is right for the whole Malawi day; the eight lines of JS
-    at the bottom of the page cover the midnight-to-build gap by hopping to
-    the neighbouring date's page when the visitor's CAT date has moved on.
-  * **/matches/YYYY-MM-DD.html** is the stable, shareable page for one date.
-    Written for every date that has a match, plus a contiguous window either
-    side of today (WINDOW_BACK/WINDOW_FORWARD) so the day-by-day chips never
+  * **The homepage** is today's page. It is written by build.py in the
+    homepage shell (src/home.py), with the day region from `home_day` —
+    the same markup as a dated page, its date links pointing into matches/.
+  * **/matches/** is today's page too, kept because it has been linked to.
+    CI builds daily at 07:07 CAT, so both are right for the whole Malawi day;
+    the few lines of JS at the bottom of each cover the midnight-to-build gap
+    by hopping to the neighbouring date's page when the visitor's CAT date has
+    moved on.
+  * **/matches/YYYY-MM-DD.html** is the stable, shareable page for one date,
+    in the same shell as the homepage (competition sidebar and all), so
+    stepping to yesterday changes the date and nothing else. Written for
+    every date that has a match, plus a contiguous window either side of
+    today (WINDOW_BACK/WINDOW_FORWARD) so the day-by-day chips never
     dead-end on an empty stretch of calendar.
-
-The date bar is three chips anchored on the date being shown — the day before,
-that day, the day after — so stepping forward re-centres them. Their labels
-read Today/Yesterday/Tomorrow when that is what they are and the weekday
-otherwise. Inside the window the neighbours are literally ±1 day; outside it
-(browsing last season) they are the nearest dates that have football.
-
-Beside them sits the calendar button, so two weeks back is one tap rather than
-fourteen. The picker is the only part that needs JavaScript
-(static/calendar.js) and it ships hidden until that file reveals it —
-everything else is an <a href>, and the chips alone still walk the calendar a
-day at a time with script off.
 
 Unlike the league pages this reads `Dataset` directly (like src/hubs.py), so a
 match in a season that is not the one currently built for its competition —
@@ -43,11 +37,9 @@ from html import escape
 import json
 import os
 
-from . import adapt, flags, nt, nt_page, render
+from . import adapt, flags, home, nt, nt_page, render
 
 SLUG = "matches"
-
-BACK_LINK = '<a href="../" class="back-link">&#x2190; All Leagues</a>'
 
 # How far either side of today the calendar is walkable day by day. Dates with
 # matches outside this window still get a page; the empty days between them do
@@ -236,7 +228,20 @@ def page_dates(days, today: str) -> "list[str]":
     return sorted(dates)
 
 
+
+
 # ── Rendering one day ────────────────────────────────────────────────────────
+#
+# A day is a stack of competition cards, each a header (logo, name, round —
+# the whole thing a link to that competition's results) over one line per
+# match: home, score-or-kickoff, away. FotMob's shape, and for its reason: a
+# match is one line on a phone, so a Saturday of 29 matches is a scroll rather
+# than a page of two-row table entries. The venue is the one thing that did
+# not survive the move — it was a second row on every match, and it is still
+# on the competition's own results page one tap away.
+#
+# Everything here is theme-aware (the site tokens), unlike the V2 tables it
+# replaced, which stayed white in dark mode.
 
 def _crest_finder(static_dir, css_prefix):
     """f(team) -> crest URL, legacy code first then club id (see render.py)."""
@@ -261,129 +266,132 @@ def _is_played(m) -> bool:
     return m.counts_for_table and m.has_score
 
 
-def _score_cell(m) -> "tuple[str, str]":
-    """(RESULT cell, row modifier class) for one dataset.Match.
+def _score(home, away, star=""):
+    return (f'<span class="dm-score">{home}<span class="dm-dash">&ndash;</span>'
+            f"{away}{star}</span>")
+
+
+def _time_or_vs(raw) -> str:
+    time = _clock(raw)
+    if time:
+        return f'<span class="dm-time day-res-time">{escape(time)}</span>'
+    return '<span class="dm-vs">vs</span>'
+
+
+def _score_cell(m) -> "tuple[str, list[str], bool]":
+    """(middle of the row, notes for the line under it, is it a fixture).
 
     A fixture shows its kickoff time where a result shows the score — the one
     real departure from the league results table, and the reason to be on this
     page at all: "what time is it on" is the question of the day view.
     """
     if _is_played(m):
-        star = ('<span class="v2-res-unconf">*</span>'
+        star = ('<span class="dm-unconf" title="Not yet confirmed">*</span>'
                 if m.confidence == "unconfirmed" else "")
-        parts = []
+        notes = []
         if m.home_pens is not None and m.away_pens is not None:
-            parts.append(f"{m.home_pens}–{m.away_pens} pens")
+            notes.append(f"{m.home_pens}–{m.away_pens} on pens")
         if m.extra_time:
-            parts.append("AET")
-        note = (f'<span class="v2-res-note">({escape(", ".join(parts))})</span>'
-                if parts else "")
-        return (f'<td class="v2-res-score">{m.home_goals}:{m.away_goals}{star}'
-                f"{note}</td>"), ""
+            notes.append("AET")
+        return _score(m.home_goals, m.away_goals, star), notes, False
     badge = _BADGES.get(m.status, "")
     if badge:
-        return (f'<td class="v2-res-score v2-res-badge">{badge}</td>',
-                " v2-res-row-fixture")
-    time = _clock(m.kickoff)
-    if time:
-        return (f'<td class="v2-res-score day-res-time">{escape(time)}</td>',
-                " v2-res-row-fixture")
-    return '<td class="v2-res-score v2-res-vs">vs</td>', " v2-res-row-fixture"
+        return f'<span class="dm-badge">{badge}</span>', [], True
+    return _time_or_vs(m.kickoff), [], True
 
 
-def _team_cell(ds, team_id, crest, club_hub_ids, side):
-    """One side of a match: name + crest, linked to the club hub when there is one."""
+def _side(name_html, crest_img, href, side):
+    """One team: name and crest, the name a link when there is a page for it.
+
+    The crest sits on the inside, next to the score, so both columns of
+    crests line up down the card however long the names are.
+    """
+    name = f'<span class="dm-name">{name_html}</span>'
+    if href:
+        name = f'<a class="dm-link" href="{escape(href)}">{name}</a>'
+    inner = f"{name}{crest_img}" if side == "home" else f"{crest_img}{name}"
+    return f'<span class="dm-team dm-{side}">{inner}</span>'
+
+
+def _crest(url):
+    if not url:
+        # An empty box keeps the name the same distance from the score as the
+        # rows around it that do have a crest.
+        return '<span class="dm-crest" aria-hidden="true"></span>'
+    return f'<img class="dm-crest" src="{escape(url)}" alt="" loading="lazy">'
+
+
+def _team_side(ds, team_id, crest, club_hub_ids, side, prefix):
     team = ds.teams.get(team_id)
     name = escape(team.display_name if team else team_id)
-    img = render._crest_img(crest(team),
-                            "crest-post" if side == "home" else "crest-pre")
-    inner = f"{name}{img}" if side == "home" else f"{img}{name}"
     club_id = team.club_id if team else ""
-    if club_id and club_id in club_hub_ids:
-        return (f'<a class="club-link" href="../clubs/{escape(club_id)}.html">'
-                f"{inner}</a>")
-    return inner
+    href = (f"{prefix}clubs/{club_id}.html"
+            if club_id and club_id in club_hub_ids else "")
+    return _side(name, _crest(crest(team)), href, side)
 
 
-def _match_rows(ds, group, crest, club_hub_ids, venues):
-    """The meta + result row pair for every match in one competition group."""
+def _row(home, mid, away, notes, fixture):
+    note = (f'<span class="dm-note">{" &middot; ".join(notes)}</span>'
+            if notes else "")
+    cls = "dm is-fixture" if fixture else "dm"
+    return (f'<li class="{cls}">{home}<span class="dm-mid">{mid}</span>'
+            f"{away}{note}</li>")
+
+
+def _match_rows(ds, group, crest, club_hub_ids, prefix):
+    """One line per match in a competition group."""
     out = []
-    for j, m in enumerate(group.matches):
-        alt = " alt" if j % 2 == 1 else ""
-        meta_bits = []
+    for m in group.matches:
+        mid, notes, fixture = _score_cell(m)
         # The round only moves onto the row when the group header could not
         # carry it (a competition playing two rounds on one date).
         if not group.round_label:
             label = _round_label(ds.competitions.get(m.competition_id), m)
             if label:
-                meta_bits.append(escape(label))
-        venue = venues.get(m.venue_id)
-        if venue is not None and venue.name:
-            meta_bits.append(escape(venue.name))
+                notes.insert(0, label)
+        notes = [escape(n) for n in notes]
         if m.awarded_note:
-            meta_bits.append(f"Awarded: {escape(m.awarded_note)}")
-        if meta_bits:
-            out.append(
-                f'<tr class="v2-res-meta-row{alt}"><td colspan="3">'
-                f'<span class="v2-res-meta">{" &middot; ".join(meta_bits)}</span>'
-                f"</td></tr>"
-            )
-        score_cell, fix_cls = _score_cell(m)
-        out.append(
-            f'<tr class="v2-res-row v2-res-row-compact{fix_cls}{alt}">'
-            f'<td class="v2-res-home">'
-            f'{_team_cell(ds, m.home_team_id, crest, club_hub_ids, "home")}</td>'
-            f"{score_cell}"
-            f'<td class="v2-res-away">'
-            f'{_team_cell(ds, m.away_team_id, crest, club_hub_ids, "away")}</td>'
-            f"</tr>"
-        )
+            notes.append(f"Awarded: {escape(m.awarded_note)}")
+        out.append(_row(
+            _team_side(ds, m.home_team_id, crest, club_hub_ids, "home", prefix),
+            mid,
+            _team_side(ds, m.away_team_id, crest, club_hub_ids, "away", prefix),
+            notes, fixture))
     return out
 
 
-def _nt_rows(day, fl):
-    """The national-team block: Malawi always on the left, flags for crests.
+def _nt_rows(day, fl, prefix):
+    """The national-team lines: Malawi always on the left, flags for crests.
 
     Same convention as /scorchers/ — a national-team line reads from one
-    team's perspective, so home/away moves into the caption.
+    team's perspective, so home/away moves into the note under it.
     """
     out = []
-    for j, (m, team) in enumerate(day.nt_matches):
-        alt = " alt" if j % 2 == 1 else ""
-        meta_bits = [escape(m.competition)] if m.competition else []
-        meta_bits.append(escape(m.ground_label))
-        if m.venue_label:
-            meta_bits.append(escape(m.venue_label))
-        out.append(
-            f'<tr class="v2-res-meta-row{alt}"><td colspan="3">'
-            f'<span class="v2-res-meta">{" &middot; ".join(meta_bits)}</span>'
-            f"</td></tr>"
-        )
+    for m, team in day.nt_matches:
+        notes = [escape(m.competition)] if m.competition else []
+        if m.ground_label:
+            notes.append(escape(m.ground_label))
         if m.played:
-            note = (f'<span class="v2-res-note">{escape(m.score_note)}</span>'
-                    if m.score_note else "")
-            score = (f'<td class="v2-res-score">{m.team_score}:'
-                     f"{m.opponent_score}{note}</td>")
-            fix_cls = ""
+            mid, fixture = _score(m.team_score, m.opponent_score), False
+            if m.score_note:
+                notes.append(escape(m.score_note))
         else:
-            time = _clock(m.kickoff)
-            score = (f'<td class="v2-res-score day-res-time">{escape(time)}</td>'
-                     if time else
-                     '<td class="v2-res-score v2-res-vs">vs</td>')
-            fix_cls = " v2-res-row-fixture"
-        ours = (f'{escape(nt_page.SIDE_NAME)}'
-                f'{fl.img_for(nt_page.OUR_COUNTRY, "nt-flag nt-flag-post")}')
-        if team.team_code == nt.SCORCHERS:
-            ours = f'<a class="club-link" href="../{nt_page.SLUG}/">{ours}</a>'
-        out.append(
-            f'<tr class="v2-res-row v2-res-row-compact{fix_cls}{alt}">'
-            f'<td class="v2-res-home">{ours}</td>'
-            f"{score}"
-            f'<td class="v2-res-away">'
-            f'{fl.img_for(m.opponent, "nt-flag nt-flag-pre")}'
-            f"{escape(m.opponent)}</td></tr>"
-        )
+            mid, fixture = _time_or_vs(m.kickoff), True
+        ours_href = (f"{prefix}{nt_page.SLUG}/"
+                     if team.team_code == nt.SCORCHERS else "")
+        ours = _side(escape(nt_page.SIDE_NAME),
+                     fl.img_for(nt_page.OUR_COUNTRY, "dm-crest dm-flag"),
+                     ours_href, "home")
+        theirs = _side(escape(m.opponent),
+                       fl.img_for(m.opponent, "dm-crest dm-flag") or _crest(""),
+                       "", "away")
+        out.append(_row(ours, mid, theirs, notes, fixture))
     return out
+
+
+def _card(head_html, rows):
+    return ('<section class="day-comp">' + head_html
+            + '<ul class="day-list">' + "".join(rows) + "</ul></section>")
 
 
 def _chip_label(iso, today) -> str:
@@ -392,17 +400,18 @@ def _chip_label(iso, today) -> str:
     return relative_label(iso, today) or _WEEKDAYS[_parse(iso).weekday()]
 
 
-def _chip(iso, today, active):
+def _chip(iso, today, active, base=""):
     """One chip in the date bar; a dimmed placeholder when there is no date."""
     if not iso:
         return ('<span class="day-chip is-off" aria-hidden="true">'
                 '<span class="day-chip-date">&mdash;</span></span>')
     inner = (f'<span class="day-chip-label">{escape(_chip_label(iso, today))}</span>'
              f'<span class="day-chip-date">{escape(short_date_label(iso))}</span>')
+    href = f"{base}{iso}.html"
     if active:
-        return (f'<a class="day-chip active" href="{iso}.html" '
+        return (f'<a class="day-chip active" href="{href}" '
                 f'aria-current="page">{inner}</a>')
-    return f'<a class="day-chip" href="{iso}.html">{inner}</a>'
+    return f'<a class="day-chip" href="{href}">{inner}</a>'
 
 
 # The picker's data, inlined on every page rather than fetched as one shared
@@ -411,13 +420,15 @@ def _chip(iso, today, active):
 # the calendar — the one moment the visitor is waiting on it. `win` is the
 # walkable window, `match` the dates that have football: a date is clickable
 # if it falls in the first or appears in the second, which is exactly the set
-# of pages build_pages writes.
-def _cal_data(iso, today, dates_with_matches) -> str:
+# of pages build_pages writes. `base` is where those pages are from here —
+# "" on a /matches/ page, "matches/" on the homepage.
+def _cal_data(iso, today, dates_with_matches, base="") -> str:
     return json.dumps({
         "sel": iso,
         "today": today,
         "win": [_shift(today, -WINDOW_BACK), _shift(today, WINDOW_FORWARD)],
         "match": dates_with_matches,
+        "base": base,
     }, separators=(",", ":"))
 
 
@@ -429,7 +440,7 @@ _CAL_ICON = (
 )
 
 
-def _date_bar(iso, today, dates, dates_with_matches, css_prefix):
+def _date_bar(iso, today, dates, dates_with_matches, css_prefix, base=""):
     """The previous day, this day and the next, plus the calendar button.
 
     The chips are anchored on the date being shown, not on today: stepping
@@ -446,9 +457,9 @@ def _date_bar(iso, today, dates, dates_with_matches, css_prefix):
     prev_d = dates[i - 1] if i is not None and i > 0 else ""
     next_d = dates[i + 1] if i is not None and i + 1 < len(dates) else ""
 
-    chips = (_chip(prev_d, today, False)
-             + _chip(iso, today, True)
-             + _chip(next_d, today, False))
+    chips = (_chip(prev_d, today, False, base)
+             + _chip(iso, today, True, base)
+             + _chip(next_d, today, False, base))
 
     js = f"{css_prefix}calendar.js"
     if CAL_JS_VERSION:
@@ -464,7 +475,7 @@ def _date_bar(iso, today, dates, dates_with_matches, css_prefix):
         'aria-haspopup="dialog" aria-expanded="false" '
         f'aria-label="Pick a date">{_CAL_ICON}</button>'
         '<script type="application/json" data-day-cal>'
-        f"{_cal_data(iso, today, dates_with_matches)}</script>"
+        f"{_cal_data(iso, today, dates_with_matches, base)}</script>"
         "</div>"
         f'<script defer src="{escape(js)}"></script>'
         "</nav>"
@@ -480,96 +491,105 @@ def _nearest(dates_with_matches, iso, forward):
     return earlier[-1] if earlier else ""
 
 
-def _empty_body(iso, dates_with_matches):
+def _empty_body(iso, today, dates_with_matches, base=""):
+    """"No matches", and the nearest dates either side that do have some."""
     links = []
     prev = _nearest(dates_with_matches, iso, forward=False)
     nxt = _nearest(dates_with_matches, iso, forward=True)
     if prev:
-        links.append(f'<a class="club-link" href="{prev}.html">'
+        links.append(f'<a class="day-jump-link" href="{base}{prev}.html">'
                      f"&#x2190; {escape(short_date_label(prev))}</a>")
     if nxt:
-        links.append(f'<a class="club-link" href="{nxt}.html">'
+        links.append(f'<a class="day-jump-link" href="{base}{nxt}.html">'
                      f"{escape(short_date_label(nxt))} &#x2192;</a>")
-    jump = (f'<p class="day-jump">{" &middot; ".join(links)}</p>'
-            if links else "")
-    return ('<p class="v2-empty">No matches on this date.</p>' + jump)
+    jump = (f'<p class="day-jump">{"".join(links)}</p>' if links else "")
+    rel = relative_label(iso, today)
+    when = rel.lower() if rel else "on this date"
+    return ('<div class="day-empty"><p class="day-empty-msg">'
+            f"No matches {when}.</p>" + jump + "</div>")
+
+
+def _heading(iso, today, day):
+    """"TODAY  Thursday 24 September" and, on the right, how much is on.
+
+    One line rather than the old banner: the chips below already say which
+    day this is, so the heading only has to say it in full — and, off in last
+    season, how far from today you have walked ("41 days ago").
+    """
+    rel = offset_label(iso, today)
+    count = ""
+    if day is not None and day.count:
+        n = day.count
+        count = (f'<span class="day-count">{n} match{"" if n == 1 else "es"}'
+                 "</span>")
+    # The year only when it is not this one: it is what pushed the heading
+    # onto a second line on a phone, and it says nothing in September.
+    d = _parse(iso)
+    label = f"{_WEEKDAYS[d.weekday()]} {d.day} {d.strftime('%B')}"
+    if iso[:4] != today[:4]:
+        label += f" {d.year}"
+    return ('<div class="day-head"><h2 class="day-title">'
+            f'<span class="day-rel">{escape(rel)}</span>'
+            f"{escape(label)}</h2>{count}</div>")
 
 
 def render_day(ds, day, iso, today, dates, dates_with_matches, static_dir,
-               css_prefix, club_hub_ids, fl):
-    """The page body for one date."""
-    eyebrow = escape(offset_label(iso, today).upper())
-    crest = _crest_finder(static_dir, css_prefix)
-    venues = ds.venues
+               css_prefix, club_hub_ids, fl, base=""):
+    """The day region of the page: heading, date bar, every match on it.
 
+    `css_prefix` is the page's depth ("" on the homepage, "../" under
+    /matches/); `base` is where the date pages are from here ("matches/" on
+    the homepage, "" beside them).
+    """
+    crest = _crest_finder(static_dir, css_prefix)
     out = [
-        '<div class="v2-content">',
-        '<div class="v2-mini-banner">',
-        f'<p class="v2-season">{eyebrow}</p>',
-        f'<h2 class="v2-mini-league">{escape(full_date_label(iso).upper())}</h2>',
-        "</div>",
-        _date_bar(iso, today, dates, dates_with_matches, css_prefix),
+        _heading(iso, today, day),
+        _date_bar(iso, today, dates, dates_with_matches, css_prefix, base),
     ]
 
     if day is None or day.count == 0:
-        out.append(_empty_body(iso, dates_with_matches))
-        out.append("</div>")
+        out.append(_empty_body(iso, today, dates_with_matches, base))
         return "\n".join(out)
 
-    n = day.count
-    comps = len(day.groups) + (1 if day.nt_matches else 0)
-    out.append(
-        f'<p class="day-summary">{n} match{"" if n == 1 else "es"} '
-        f'&middot; {comps} competition{"" if comps == 1 else "s"}</p>'
-    )
-    out.append('<div class="v2-results-outer">')
-    out.append('<table class="v2-results-table v2-results-compact">')
-    out.append('<thead><tr><th class="v2-res-th-home">HOME</th>'
-               '<th class="v2-res-th-score">RESULT</th>'
-               '<th class="v2-res-th-away">AWAY</th></tr></thead>')
-
+    out.append('<div class="day-comps">')
     if day.nt_matches:
-        out.append('<tbody class="day-group">')
-        out.append('<tr class="v2-md-row day-comp-row"><td colspan="3">'
-                   '<span class="day-comp-head">'
-                   f'<a class="day-comp-link" href="../{nt_page.SLUG}/">'
-                   f"{escape(nt_page.DISPLAY_NAME.upper())}</a>"
-                   "</span></td></tr>")
-        out += _nt_rows(day, fl)
-        out.append("</tbody>")
+        logo = fl.img_for(nt_page.OUR_COUNTRY, "day-comp-logo")
+        head = (f'<a class="day-comp-head" href="{css_prefix}{nt_page.SLUG}/">'
+                f"{logo}"
+                f'<span class="day-comp-name">{escape(nt_page.DISPLAY_NAME)}</span>'
+                '<span class="day-comp-arrow" aria-hidden="true">&#x203A;</span>'
+                "</a>")
+        out.append(_card(head, _nt_rows(day, fl, css_prefix)))
 
     for group in day.groups:
         logo = render._league_logo_lookup(
             static_dir, css_prefix, group.slug, group.competition_id)
         img = (f'<img class="day-comp-logo" src="{escape(logo)}" alt="">'
-               if logo else "")
+               if logo else '<span class="day-comp-logo" aria-hidden="true"></span>')
         round_txt = (f'<span class="day-comp-round">{escape(group.round_label)}'
                      "</span>" if group.round_label else "")
-        out.append('<tbody class="day-group">')
-        out.append(
-            '<tr class="v2-md-row day-comp-row"><td colspan="3">'
-            '<span class="day-comp-head">'
-            f'<a class="day-comp-link" href="../{escape(group.slug)}/results.html">'
-            f"{img}{escape(group.name.upper())}</a>{round_txt}"
-            "</span></td></tr>"
-        )
-        out += _match_rows(ds, group, crest, club_hub_ids, venues)
-        out.append("</tbody>")
+        head = (f'<a class="day-comp-head" '
+                f'href="{css_prefix}{escape(group.slug)}/results.html">'
+                f'{img}<span class="day-comp-name">{escape(group.name)}</span>'
+                f"{round_txt}"
+                '<span class="day-comp-arrow" aria-hidden="true">&#x203A;</span>'
+                "</a>")
+        out.append(_card(head, _match_rows(ds, group, crest, club_hub_ids,
+                                           css_prefix)))
+    out.append("</div>")
 
-    out.append("</table>")
     if any(m.confidence == "unconfirmed" and m.counts_for_table
            for g in day.groups for m in g.matches):
-        out.append('<p class="v2-res-legend">* result not yet confirmed</p>')
-    out.append("</div>")
-    out.append("</div>")
+        out.append('<p class="day-legend">* result not yet confirmed</p>')
     return "\n".join(out)
 
 
-# The /matches/ index is baked with the build's today. CI builds once a day at
-# 07:07 CAT, so between midnight and the build a visitor's "today" is one day
-# ahead of the page. The window is contiguous around today, so today+1 always
-# has a page — hop to it rather than showing yesterday's football under a
-# heading that says Today. Only ever moves by a day, and only on the index.
+# A page is baked with the build's today. CI builds daily at 07:07 CAT, so
+# between midnight and the build a visitor's "today" is one day ahead of the
+# page. The window is contiguous around today, so today+1 always has a page —
+# hop to it rather than showing yesterday's football under a heading that
+# says Today. Only ever moves by a day, and only on the two "today" pages (the
+# homepage and /matches/), never on a dated one somebody shared.
 _TODAY_JS = """
 (function(){
   var el=document.querySelector('[data-day-today]');
@@ -579,154 +599,88 @@ _TODAY_JS = """
   if(now===baked) return;
   var d=new Date(baked+'T00:00:00Z');
   d.setUTCDate(d.getUTCDate()+1);
-  if(now===d.toISOString().slice(0,10)) location.replace(now+'.html');
+  if(now===d.toISOString().slice(0,10)) location.replace(%s+now+'.html');
 })();
 """
 
 
+def today_script(today, base, tz_offset_hours) -> str:
+    """The marker + midnight hop for a page that stands for "today"."""
+    return (f'<div data-day-today="{today}" hidden></div>'
+            f"<script>{_TODAY_JS % (tz_offset_hours, json.dumps(base))}</script>")
+
+
+def set_versions(static_dir):
+    """Stamp the calendar script's cache-buster before any page embeds it."""
+    global CAL_JS_VERSION
+    CAL_JS_VERSION = render.file_version(os.path.join(static_dir, "calendar.js"))
+
+
+def home_day(ds, days, today, static_dir, club_hub_ids, fl):
+    """(day region, is it empty) for the homepage: today, dates under matches/."""
+    dates = page_dates(days, today)
+    dates_with_matches = sorted(d for d in days if days[d].count)
+    day = days.get(today)
+    html = render_day(ds, day, today, today, dates, dates_with_matches,
+                      static_dir, "", set(club_hub_ids), fl, base=f"{SLUG}/")
+    return html, (day is None or day.count == 0)
+
+
+def _page(ds, days, iso, today, dates, dates_with_matches, static_dir, updated,
+          css_ver, club_hub_ids, fl, leagues_html, title, social, scripts=""):
+    day = days.get(iso)
+    body = render_day(ds, day, iso, today, dates, dates_with_matches,
+                      static_dir, "../", club_hub_ids, fl)
+    return home.page(
+        title=f"{title} · {render.SITE_NAME}", social=social,
+        css_prefix="../", css_ver=css_ver, fl=fl, day_html=body,
+        leagues_html=leagues_html, updated=updated,
+        empty=(day is None or day.count == 0),
+        scripts=scripts)
+
+
 def build_pages(dist, templates_dir, static_dir, ds, updated, today,
-                nt_data=None, club_hub_ids=(), tz_offset_hours=2, days=None):
+                nt_data=None, club_hub_ids=(), tz_offset_hours=2, days=None,
+                leagues_html="", nav_js=""):
     """Write /matches/ and one page per date. Returns (pages, dates with matches).
 
     `today` is the build's date in Malawi time — passed in rather than read
     here, so the whole build stamps one date and tests can pin it. `days` is
-    an already-collected index (build.py needs one for the landing card before
+    an already-collected index (build.py needs one for the homepage before
     these pages are written); omit it and one is collected here.
+
+    `leagues_html` is the competition list for the sidebar, already rendered
+    for a page one directory down, and `nav_js` the script its tabs need.
+    `templates_dir` is unused since these pages took the homepage's shell; it
+    stays in the signature so callers need not change.
     """
-    global CAL_JS_VERSION
     out_dir = os.path.join(dist, SLUG)
     os.makedirs(out_dir, exist_ok=True)
-    base = render._read(os.path.join(templates_dir, "base.html"))
     css_ver = render.css_version(static_dir)
-    CAL_JS_VERSION = render.file_version(os.path.join(static_dir, "calendar.js"))
+    set_versions(static_dir)
     fl = flags.Flags(static_dir, prefix="../")
 
     days = collect(ds, nt_data) if days is None else days
     dates = page_dates(days, today)
     dates_with_matches = sorted(d for d in days if days[d].count)
     club_hub_ids = set(club_hub_ids)
+    scripts = f"<script>{nav_js}</script>" if nav_js else ""
 
     for iso in dates:
-        body = render_day(ds, days.get(iso), iso, today, dates,
-                          dates_with_matches, static_dir, "../",
-                          club_hub_ids, fl)
         title = f"Matches · {full_date_label(iso)}"
-        html = (
-            base.replace("{{TITLE}}", escape(f"{title} · {render.SITE_NAME}"))
-            .replace("{{LEAGUE_NAME}}", escape("Matches"))
-            .replace("{{LEAGUE_LOGO}}", "")
-            .replace("{{LAST_UPDATED}}", escape(updated))
-            .replace("{{NAV}}", render._nav("", items=(("../", "Home"),)))
-            .replace("{{SEARCH}}", render.search_widget("../"))
-            .replace("{{CONTENT}}", body)
-            .replace("{{CSS_PREFIX}}", "../")
-            .replace("{{CSS_VER}}", css_ver)
-            .replace("{{BACK_LINK}}", BACK_LINK)
-            .replace("{{FOOTER}}", render.footer(updated))
-            .replace("{{SOCIAL}}", render.social_meta(title))
-        )
+        html = _page(ds, days, iso, today, dates, dates_with_matches,
+                     static_dir, updated, css_ver, club_hub_ids, fl,
+                     leagues_html, title, render.social_meta(title), scripts)
         render._write(os.path.join(out_dir, f"{iso}.html"), html)
 
     # /matches/ is today's page again, with the date-drift hop. Same directory,
     # so every relative link in the body already resolves.
-    index = html_for_index(base, ds, days, today, dates, dates_with_matches,
-                           static_dir, updated, css_ver, club_hub_ids, fl,
-                           tz_offset_hours)
+    title = "Matches today"
+    index = _page(ds, days, today, today, dates, dates_with_matches,
+                  static_dir, updated, css_ver, club_hub_ids, fl, leagues_html,
+                  title,
+                  render.social_meta(title, url=render.SITE_URL + f"/{SLUG}/"),
+                  scripts + today_script(today, "", tz_offset_hours))
     render._write(os.path.join(out_dir, "index.html"), index)
 
     return len(dates) + 1, len(dates_with_matches)
-
-
-def html_for_index(base, ds, days, today, dates, dates_with_matches,
-                   static_dir, updated, css_ver, club_hub_ids, fl,
-                   tz_offset_hours):
-    body = render_day(ds, days.get(today), today, today, dates,
-                      dates_with_matches, static_dir, "../", club_hub_ids, fl)
-    body = (f'<div data-day-today="{today}"></div>' + body
-            + f"<script>{_TODAY_JS % tz_offset_hours}</script>")
-    title = "Matches today"
-    return (
-        base.replace("{{TITLE}}", escape(f"{title} · {render.SITE_NAME}"))
-        .replace("{{LEAGUE_NAME}}", escape("Matches"))
-        .replace("{{LEAGUE_LOGO}}", "")
-        .replace("{{LAST_UPDATED}}", escape(updated))
-        .replace("{{NAV}}", render._nav("", items=(("../", "Home"),)))
-        .replace("{{SEARCH}}", render.search_widget("../"))
-        .replace("{{CONTENT}}", body)
-        .replace("{{CSS_PREFIX}}", "../")
-        .replace("{{CSS_VER}}", css_ver)
-        .replace("{{BACK_LINK}}", BACK_LINK)
-        .replace("{{FOOTER}}", render.footer(updated))
-        .replace("{{SOCIAL}}", render.social_meta(
-            title, url=render.SITE_URL + f"/{SLUG}/"))
-    )
-
-
-# ── The landing-page entry point ─────────────────────────────────────────────
-
-def landing_target(days, today: str) -> "tuple[str, Day | None]":
-    """(date to link at, its Day) — today when it has football, else the next
-    date that does, else the last one that did. "" when there is no data."""
-    if days.get(today) is not None and days[today].count:
-        return today, days[today]
-    with_matches = sorted(d for d in days if days[d].count)
-    nxt = _nearest(with_matches, today, forward=True)
-    if nxt:
-        return nxt, days[nxt]
-    prev = _nearest(with_matches, today, forward=False)
-    if prev:
-        return prev, days[prev]
-    return "", None
-
-
-def landing_card(days, today: str) -> str:
-    """The homepage card into the date browser, or "" when there is no football.
-
-    One <a> around the whole card, like the featured Scorchers card above it —
-    the whole thing is the tap target, which is the point on a phone.
-    """
-    iso, day = landing_target(days, today)
-    if not day:
-        return ""
-    d = _parse(iso)
-    rel = relative_label(iso, today)
-    eyebrow = rel or _WEEKDAYS[d.weekday()]
-    href = f"{SLUG}/" if iso == today else f"{SLUG}/{iso}.html"
-
-    n = day.count
-    played = day.played_count
-    remaining = n - played
-    if remaining == 0:
-        # Nothing left to submit — the day reads as a set of results, not an
-        # outstanding count.
-        title = f"{n} result{'' if n == 1 else 's'}"
-    elif played == 0:
-        title = f"{n} match{'' if n == 1 else 'es'}"
-    else:
-        # The count decrements as results come in, so a reporter watching the
-        # homepage sees the outstanding work shrink rather than a static total.
-        title = f"{remaining} match{'' if remaining == 1 else 'es'} left"
-    if not rel:
-        title += f" on {d.day} {d.strftime('%b')}"
-    elif rel != "Today":
-        title += f" {rel.lower()}"
-
-    names = day.competition_names
-    sub = " &middot; ".join(escape(x) for x in names[:2])
-    if len(names) > 2:
-        sub += f" &middot; +{len(names) - 2} more"
-
-    return (
-        f'<a class="el-today" href="{escape(href)}">'
-        '<span class="el-today-cal" aria-hidden="true">'
-        f'<span class="el-today-dow">{_WEEKDAYS_SHORT[d.weekday()].upper()}</span>'
-        f'<span class="el-today-day">{d.day}</span>'
-        "</span>"
-        '<span class="el-today-main">'
-        f'<span class="el-today-eyebrow">{escape(eyebrow)}</span>'
-        f'<span class="el-today-title">{escape(title)}</span>'
-        f'<span class="el-today-sub">{sub}</span>'
-        "</span>"
-        '<span class="el-today-arrow" aria-hidden="true">&#x2192;</span>'
-        "</a>"
-    )

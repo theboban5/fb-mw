@@ -29,8 +29,8 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
 import validate  # noqa: E402
-from src import (adapt, dataset, flags, hubs, matches_page, nt, nt_page,  # noqa: E402
-                 officials, render, scorers, search, standings, trending)
+from src import (adapt, dataset, flags, home, hubs, matches_page, nt,  # noqa: E402
+                 nt_page, officials, render, scorers, search, standings, trending)
 
 STATIC = os.path.join(ROOT, "static")
 TEMPLATES = os.path.join(ROOT, "templates")
@@ -249,30 +249,30 @@ def _live_item(ds, league):
     }
 
 
-def _logo_html(item):
+def _logo_html(item, prefix=""):
     """League logo <img> when one exists on disk (new naming, then old)."""
     if item.get("logo"):
-        return f'<img class="lc-logo" src="{item["logo"]}" alt="">'
+        return f'<img class="lc-logo" src="{prefix}{item["logo"]}" alt="">'
     for subdir, key in (("competitions", item.get("competition_id", "")),
                         ("leagues", item.get("slug", ""))):
         if not key:
             continue
         for ext in (".svg", ".png"):
             if os.path.exists(os.path.join(STATIC, "logos", subdir, key + ext)):
-                return (f'<img class="lc-logo" '
-                        f'src="logos/{subdir}/{key}{ext}" alt="">')
+                return (f'<img class="lc-logo" loading="lazy" '
+                        f'src="{prefix}logos/{subdir}/{key}{ext}" alt="">')
     return ""
 
 
-def _row(item):
+def _row(item, prefix=""):
     tier = item["tier"]
     name = item["name"]
     if item["live"]:
         meta = item.get("meta") or f"{tier} &middot; Season {item['season']}"
-        href = item.get("href") or f"{item['slug']}/"
+        href = prefix + (item.get("href") or f"{item['slug']}/")
         return (
             f'<a href="{href}" class="lc-row">'
-            f"{_logo_html(item)}"
+            f"{_logo_html(item, prefix)}"
             f'<span class="lc-main">'
             f'<span class="lc-name">{name}</span>'
             f'<span class="lc-meta">{meta}</span>'
@@ -293,8 +293,8 @@ def _row(item):
     )
 
 
-def _group(group):
-    rows = "\n      ".join(_row(item) for item in group["items"])
+def _group(group, prefix=""):
+    rows = "\n      ".join(_row(item, prefix) for item in group["items"])
     extra = group.get("extra", "")
     return (
         f'<h3 class="lc-group">{group["label"]}</h3>\n'
@@ -303,9 +303,9 @@ def _group(group):
     )
 
 
-def _panel(cat, active=False):
+def _panel(cat, active=False, prefix=""):
     hidden = "" if active else " hidden"
-    inner = "\n    ".join(_group(g) for g in cat["groups"])
+    inner = "\n    ".join(_group(g, prefix) for g in cat["groups"])
     return (
         f'<section class="comp-panel" data-panel="{cat["key"]}"{hidden}>\n    '
         f"{inner}\n  </section>"
@@ -400,25 +400,31 @@ def _landing_categories(ds, leagues, scorchers_meta=None):
     ]
 
 
-def _brand_header(fl):
-    """The Everyleague hero: wordmark + country label, then the tagline.
+def _leagues_nav(categories, prefix=""):
+    """The Men's / Women's / Youth competition tabs, for a page at `prefix`.
 
-    The country label uses the same flag PNGs as the rest of the site rather
-    than a flag emoji, which renders as two letters on Windows.
+    What used to be the whole homepage, and is now its sidebar (src/home.py)
+    — on the homepage and on every /matches/ date page, which is why it takes
+    a prefix: the same list is written from two directory depths.
     """
-    flag = fl.img_for("Malawi", cls="el-flag")
-    return f"""<header class="el-hero">
-    <div class="el-brand-row">
-      <div class="el-brand">
-        <img class="el-brand-logo" src="everyleague_logo.png" alt=""
-             width="360" height="242" decoding="async">
-        <span class="el-brand-name">Everyleague</span>
-      </div>
-      <p class="el-locale">{flag}Malawi <span class="el-locale-sep">&middot;</span> Beta</p>
+    tabs = "".join(
+        f'<button class="comp-tab{" active" if i == 0 else ""}" type="button" '
+        f'data-tab="{cat["key"]}" aria-selected="{"true" if i == 0 else "false"}">'
+        f'{cat["label"]}</button>'
+        for i, cat in enumerate(categories)
+    )
+    panels = "\n    ".join(
+        _panel(cat, active=(i == 0), prefix=prefix)
+        for i, cat in enumerate(categories)
+    )
+    return f"""<div class="comp-nav">
+    <div class="comp-sticky">
+      <div class="comp-tab-row" role="tablist" aria-label="Competition category">{tabs}</div>
     </div>
-    <h1 class="el-title">Every league. Every level.</h1>
-    <p class="el-tagline">Fixtures, results and tables across Malawian football.</p>
-  </header>"""
+    <div class="comp-panels">
+    {panels}
+    </div>
+  </div>"""
 
 
 def _scorchers_feature(fl, team_data):
@@ -562,78 +568,40 @@ def _trending_images(cards, dist):
     return urls
 
 
-def _write_landing(dist, ds, leagues, updated, scorchers_meta=None, scorchers=None,
-                   today_card="", trending_html=""):
+def _write_landing(dist, ds, updated, days, today, categories, club_hub_ids,
+                   scorchers_meta=None, scorchers=None, trending_html=""):
+    """The homepage: today's football, the feature, every competition.
+
+    The shell is src/home.py's, shared with every /matches/ date page; the
+    day region is matches_page's. See home.py for why the day leads now.
+    """
     css_ver = render.css_version(STATIC)
-    categories = _landing_categories(ds, leagues, scorchers_meta)
     fl = flags.Flags(STATIC)
     # THE EDITORIAL SLOT, and there is only one of it. A published trending
     # card is what an administrator decided the site should lead with today,
     # so it wins; the hand-written Scorchers card below is the fallback for an
     # empty `trending` table — which is every build before 0030 and every
     # offline build — and NOT a second card stacked underneath. Two features
-    # competing above the fold is how neither gets read.
+    # competing for the same slot is how neither gets read.
     #
     # And no national-team page built means even the fallback would link at a
-    # 404, so the hero then runs straight into the tabs.
+    # 404, so the slot is then simply absent.
     feature = trending_html or (
         _scorchers_feature(fl, scorchers) if scorchers_meta else "")
 
-    tabs = "".join(
-        f'<button class="comp-tab{" active" if i == 0 else ""}" type="button" '
-        f'data-tab="{cat["key"]}" aria-selected="{"true" if i == 0 else "false"}">'
-        f'{cat["label"]}</button>'
-        for i, cat in enumerate(categories)
-    )
-    tabs = (
-        '<div class="comp-tab-row" role="tablist" '
-        f'aria-label="Competition category">{tabs}</div>'
-    )
-    panels = "\n    ".join(
-        _panel(cat, active=(i == 0)) for i, cat in enumerate(categories)
-    )
-
-    html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<title>Malawi Football</title>
-{render.social_meta("Everyleague — Malawi football", url=render.SITE_URL + "/")}
-<link rel="stylesheet" href="style.css?v={css_ver}">
-<link rel="icon" href="favicon.ico" sizes="any">
-<link rel="icon" type="image/png" href="favicon-48.png" sizes="48x48">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-RCV8V3DEKV"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){{dataLayer.push(arguments);}}
-  gtag('js', new Date());
-
-  gtag('config', 'G-RCV8V3DEKV');
-</script>
-</head>
-<body class="landing">
-<main class="landing-main">
-  {_brand_header(fl)}
-  {render.search_widget("", variant="hero")}
-  {today_card}
-  {feature}
-  <div class="comp-nav">
-    <div class="comp-sticky">
-      {tabs}
-    </div>
-    <div class="comp-panels">
-    {panels}
-    </div>
-  </div>
-</main>
-{render.footer(updated)}
-<script>{_NAV_JS}{trending.CAROUSEL_JS if trending_html else ""}</script>
-</body>
-</html>"""
+    day_html, empty = matches_page.home_day(ds, days, today, STATIC,
+                                            club_hub_ids, fl)
+    scripts = (f"<script>{_NAV_JS}"
+               f"{trending.CAROUSEL_JS if trending_html else ''}</script>"
+               + matches_page.today_script(today, f"{matches_page.SLUG}/",
+                                           TZ_OFFSET_HOURS))
+    html = home.page(
+        title="Malawi Football",
+        social=render.social_meta("Everyleague — Malawi football",
+                                  url=render.SITE_URL + "/"),
+        css_prefix="", css_ver=css_ver, fl=fl, day_html=day_html,
+        leagues_html=_leagues_nav(categories), feature_html=feature,
+        updated=updated, empty=empty, scripts=scripts)
     render._write(os.path.join(dist, "index.html"), html)
 
 
@@ -855,10 +823,12 @@ def main(argv):
     nt_page.build_page(dist, TEMPLATES, STATIC, scorchers, ds, updated,
                        club_hub_ids=club_hub_ids, player_page_ids=player_pages)
 
-    # The by-date view (/matches/). Collected before the landing page, which
-    # shows a card for the day it links at, and reused when the pages
-    # themselves are written below.
+    # The by-date view. Collected before the homepage, which IS today's page
+    # of it, and reused when the dated pages themselves are written below.
     days = matches_page.collect(ds, nt_data)
+    matches_page.set_versions(STATIC)
+    scorchers_meta = nt_page.landing_meta(scorchers)
+    categories = _landing_categories(ds, leagues, scorchers_meta)
 
     # The homepage carousel (0030). Its photos are fetched before the page is
     # written because the markup names their local filenames; a card whose
@@ -871,10 +841,8 @@ def main(argv):
     trending_html = trending.carousel(live_cards,
                                       _trending_images(live_cards, dist))
 
-    _write_landing(dist, ds, leagues, updated,
-                   scorchers_meta=nt_page.landing_meta(scorchers),
-                   scorchers=scorchers,
-                   today_card=matches_page.landing_card(days, today),
+    _write_landing(dist, ds, updated, days, today, categories, club_hub_ids,
+                   scorchers_meta=scorchers_meta, scorchers=scorchers,
                    trending_html=trending_html)
 
     # Cross-competition pages: club hubs and player pages.
@@ -889,7 +857,8 @@ def main(argv):
     # The by-date pages, written after the club hubs they link into.
     n_day_pages, n_match_dates = matches_page.build_pages(
         dist, TEMPLATES, STATIC, ds, updated, today, nt_data=nt_data,
-        club_hub_ids=club_hub_ids, tz_offset_hours=TZ_OFFSET_HOURS, days=days)
+        club_hub_ids=club_hub_ids, tz_offset_hours=TZ_OFFSET_HOURS, days=days,
+        leagues_html=_leagues_nav(categories, prefix="../"), nav_js=_NAV_JS)
 
     # Site search: the index every page's bar fetches, plus the /search/ page
     # the bar's form submits to. Built last because the index covers the club

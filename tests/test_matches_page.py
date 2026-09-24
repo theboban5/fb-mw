@@ -150,7 +150,8 @@ class BuiltPagesTest(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.pages, cls.match_dates = matches_page.build_pages(
             cls.tmp.name, TEMPLATES, STATIC, cls.ds, "1 January 2026, 00:00 CAT",
-            TODAY, nt_data=cls.nt_data, club_hub_ids=cls.club_hub_ids)
+            TODAY, nt_data=cls.nt_data, club_hub_ids=cls.club_hub_ids,
+            leagues_html='<a class="lc-row" href="../sl/">Super League</a>')
         cls.dir = os.path.join(cls.tmp.name, matches_page.SLUG)
         cls.files = sorted(f for f in os.listdir(cls.dir) if f.endswith(".html"))
         # The dates that actually have matches, so a test can pick one that
@@ -171,7 +172,8 @@ class BuiltPagesTest(unittest.TestCase):
         self.assertEqual(self.pages, len(self.files))
 
     def test_index_is_todays_page(self):
-        self.assertIn("WEDNESDAY 5 AUGUST 2026", self._body("index.html"))
+        self.assertIn('<span class="day-rel">Today</span>Wednesday 5 August<',
+                      self._body("index.html"))
         self.assertIn(f'data-day-today="{TODAY}"', self._body("index.html"))
 
     def test_every_date_link_resolves(self):
@@ -238,18 +240,21 @@ class BuiltPagesTest(unittest.TestCase):
 
     def test_a_fixture_shows_its_kickoff_where_a_result_shows_the_score(self):
         name, body = self._first_page_matching(
-            r'class="v2-res-score day-res-time">\d{2}:\d{2}<')
-        # The kickoff stands in the score column, so the same row must not also
-        # carry a score cell.
-        before = body.split("day-res-time")[0][-200:]
-        self.assertNotIn('v2-res-score">', before, name)
+            r'class="dm-time day-res-time">\d{2}:\d{2}<')
+        # The kickoff stands where the score would, so the same line must not
+        # also carry one.
+        line = body.split("day-res-time")[0].rsplit("<li", 1)[1]
+        self.assertNotIn("dm-score", line, name)
+        self.assertIn('class="dm is-fixture"', line, name)
 
     def test_an_empty_date_says_so_and_offers_the_nearest(self):
         empty = [f for f in self.files
                  if f != "index.html" and f[:-5] not in self.days]
         self.assertTrue(empty, "the window should span at least one empty date")
         body = self._body(empty[0])
-        self.assertIn("No matches on this date.", body)
+        self.assertRegex(body, r"No matches (on this date|today|yesterday|tomorrow)\.")
+        # Nothing to put a sidebar beside: the layout collapses to one column.
+        self.assertIn('class="hm-grid is-empty"', body)
         # It has to offer a way out: a link to some date that does have matches.
         self.assertRegex(body, r'href="\d{4}-\d{2}-\d{2}\.html"')
 
@@ -279,6 +284,64 @@ class BuiltPagesTest(unittest.TestCase):
         for d in have:
             reachable = (lo <= d <= hi) or d in set(payload["match"])
             self.assertTrue(reachable, f"{d} has a page the picker cannot reach")
+
+    def test_every_date_page_carries_the_competition_list(self):
+        """The sidebar is the same on every date — that is what makes stepping
+        to yesterday feel like the same page. (build.py renders the real list;
+        this checks that whatever it hands over lands on every page.)"""
+        for name in self.files:
+            body = self._body(name)
+            self.assertIn('id="leagues"', body, name)
+            self.assertIn('href="../sl/"', body, name)
+
+
+class HomeDayTest(unittest.TestCase):
+    """The homepage is today's date page one directory up, so every link in
+    its day region has to reach into matches/ — and a link that forgot to is
+    a 404 on the most visited page on the site."""
+
+    @classmethod
+    def setUpClass(cls):
+        texts = _load(dataset.TABS)
+        nt_texts = _load(dataset.NT_TABS)
+        if texts is None or nt_texts is None:
+            raise unittest.SkipTest("data/canonical/ snapshot not present")
+        cls.ds = dataset.parse_all(texts)
+        cls.days = matches_page.collect(cls.ds, nt.parse_all(nt_texts))
+        cls.hubs = {t.club_id for t in cls.ds.teams.values() if t.club_id}
+        from src import flags
+        cls.fl = flags.Flags(STATIC)
+
+    def _home(self, today):
+        return matches_page.home_day(self.ds, self.days, today, STATIC,
+                                     self.hubs, self.fl)
+
+    def test_date_links_point_into_matches(self):
+        html, empty = self._home(TODAY)
+        self.assertFalse(empty)
+        written = set(matches_page.page_dates(self.days, TODAY))
+        chips = re.findall(r'class="day-chip[^"]*" href="([^"]+)"', html)
+        self.assertEqual(len(chips), 3)
+        for href in chips:
+            self.assertTrue(href.startswith("matches/"), href)
+            self.assertIn(href[len("matches/"):-len(".html")], written)
+        payload = json.loads(re.search(
+            r"data-day-cal>(.*?)</script>", html, re.S).group(1))
+        self.assertEqual(payload["base"], "matches/")
+
+    def test_page_links_are_relative_to_the_site_root(self):
+        html, _ = self._home(TODAY)
+        self.assertNotIn('href="../', html)
+        self.assertRegex(html, r'href="clubs/[^"]+\.html"')
+        self.assertRegex(html, r'href="[a-z0-9-]+/results\.html"')
+
+    def test_an_empty_today_says_so(self):
+        empty_day = next(d for d in matches_page.page_dates(self.days, TODAY)
+                         if d not in self.days)
+        html, empty = self._home(empty_day)
+        self.assertTrue(empty)
+        self.assertIn("No matches today.", html)
+        self.assertRegex(html, r'href="matches/\d{4}-\d{2}-\d{2}\.html"')
 
 
 if __name__ == "__main__":

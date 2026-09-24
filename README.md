@@ -23,7 +23,8 @@ src/scorers.py       ← goalscorer aggregation
 src/render.py        ← data → HTML
 src/lineups.py       ← team sheets: folding + markup, shared league/national
 src/hubs.py          ← club hub + player pages (cross-competition views)
-src/matches_page.py  ← /matches/ — every match on one date, any date
+src/matches_page.py  ← every match on one date, any date (the homepage is today)
+src/home.py          ← the homepage shell, shared with every /matches/ date page
 src/trending.py      ← the homepage carousel (the `trending` tab)
 src/nt.py            ← national-team tabs (nt_*), filtered to one team
 src/nt_page.py       ← the national-team pages (/scorchers/)
@@ -41,6 +42,14 @@ enforces (placeholder exclusion, own-goal handling, season resolution, the
 separate `nt_*` national-team schema, …).
 
 ### The by-date view
+
+**The homepage is today's page of it.** Since Sep 2026 the front of the site
+leads with the day's matches under a Yesterday / Today / Tomorrow bar and a
+calendar, FotMob-style, with the competition list as a sidebar (below the
+matches on a phone, with a "Leagues" jump in the header). Every
+`/matches/YYYY-MM-DD.html` uses the same shell (`src/home.py`), so stepping a
+day keeps you on the same page. A date with no football collapses to one
+centred column with the competitions straight under "No matches".
 
 `/matches/` is today's football across every competition, and
 `/matches/YYYY-MM-DD.html` is any other date — written for every date that has

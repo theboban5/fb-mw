@@ -87,6 +87,7 @@ src/hubs.py            club hubs + player profiles (cross-competition)
 src/officials.py       referee + coach pages (the officials registry, 0024)
 src/trending.py        the homepage carousel (the `trending` tab, 0030)
 src/matches_page.py    /matches/ — every match on one date, any date
+src/home.py            the homepage shell: the day first, leagues beside it
 static/report/results_grid.js  the matchday grid's rules, DOM-free and tested
 static/report/fixture_import.js  the fixture importer's rules, same bargain
 static/report/error_report.js  what to report when a screen breaks (0052)
@@ -185,6 +186,30 @@ fixture and clean up, and they never mutate a real match.
 ---
 
 ## Recent work (Sep 2026)
+
+The day is the front page, no migration — `/` and `/matches/`:
+
+- **The homepage answered the question every visitor has on its SECOND
+  page.** It led with a hero, a search box, a card *about* today's matches and
+  a feature, then the competition list; the matches were a tap away on
+  `/matches/`. It now IS today's `/matches/` page, FotMob's shape: date bar,
+  one card per competition, one line per match.
+- **One shell for both** (`src/home.py`). Every `/matches/YYYY-MM-DD.html`
+  carries the same header and competition sidebar, so Yesterday is the same
+  page with a different date, not a different kind of page. The sidebar is
+  ~2 kB gzipped on each; that is the trade.
+- **Three regions, one DOM order, CSS places them.** Phone: day, feature,
+  leagues (a "Leagues" pill in the header jumps there). ≥960px: leagues are
+  a sticky left sidebar. ≥1240px: the feature takes a right rail. A date with
+  no football is `.is-empty`: one centred column, leagues straight under "No
+  matches", feature after them.
+- **The venue did not survive the move.** It was a second row on every match;
+  it is still on the competition's results page, one tap from the card header.
+- The day view used the V2 tables' hardcoded white, so it was a white slab on
+  a dark page; it is theme tokens now. The date links take a `base`
+  (`matches/` from the root) — `calendar.js` reads it from the inlined JSON.
+- Gone: the "N matches on Sat" card (`landing_card`), the hero headline and
+  tagline. The midnight hop (`today_script`) runs on the homepage too.
 
 A matchday's scorers in one submission, migration `0053` — `#/results`:
 
