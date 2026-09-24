@@ -111,6 +111,15 @@ main.is-wide { max-width: 900px; }
 .rp-group-head:first-of-type { margin-top: 14px; }
 .rp-group-head .rp-count { color: var(--line); }
 
+/* One overdue matchday (awaitingGroups): its name, then the grid link, then
+   its cards. The heading is a notch quieter than the bucket it sits in. */
+.rp-md-block { margin: 0 0 18px; }
+.rp-md-head {
+  margin: 14px 0 8px; font-size: 0.9rem; font-weight: 700;
+}
+.rp-md-head .rp-count { color: var(--muted); font-weight: 600; margin-left: 4px; }
+.rp-md-link { margin-bottom: 10px; }
+
 .rp-empty {
   padding: 22px 16px; border: 1px dashed var(--line); border-radius: var(--radius);
   color: var(--muted); font-size: 0.9rem; text-align: center;

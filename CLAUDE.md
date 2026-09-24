@@ -215,6 +215,15 @@ A card per match, no migration — `src/og_card.py`:
 - `tests/test_og_card.py` holds the repo's first assertions about a page's
   `og:` tags.
 
+Overdue results by matchday, no migration — portal home:
+
+- The "Awaiting result" list was flat, and every card opened ONE match. A
+  result is late a matchday at a time, so it is now one block per competition
+  · matchday with **Fill in this matchday →** into `#/results?comp=&md=`,
+  which takes the whole matchday in one publish. The "N matches need a
+  result" box lands on the same blocks. No new query: `loadHome` already had
+  every row.
+
 A page per match, no migration — `/match/<match_id>.html` (`src/match_page.py`):
 
 - There was no URL that meant "this match", so a result could not be sent to

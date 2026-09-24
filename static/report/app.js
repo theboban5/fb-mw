@@ -395,6 +395,51 @@ function group(title, matches, names, options = {}) {
     + matches.map((m) => matchCard(m, names, options)).join("");
 }
 
+/** Overdue matches, one block per competition · matchday.
+ *
+ *  They were one flat list, oldest first across every league, and every card
+ *  opened ONE match. But a result is late a matchday at a time — the graphic
+ *  never arrived, or it arrived and nobody typed it — so the list was eight
+ *  cards that all wanted the same screen, reached eight times. Each block now
+ *  says which matchday it is and links to it on the grid (#/results), which
+ *  takes the whole matchday in one publish. The cards stay under it for the
+ *  match that really is on its own.
+ *
+ *  Returns the markup and the matches in the order drawn, because the "next
+ *  match" queue must follow the screen, not the query. A match with no stage
+ *  gets a block with no grid link: the grid has no way to open it. */
+function awaitingGroups(title, matches, names, options = {}) {
+  if (!matches.length) return { html: "", ordered: [] };
+  const blocks = new Map();
+  for (const m of matches) {
+    const key = `${m.competition_id}|${m.stage || ""}`;
+    if (!blocks.has(key)) blocks.set(key, []);
+    blocks.get(key).push(m);
+  }
+  const ordered = [];
+  const html = [...blocks.values()].map((ms) => {
+    ordered.push(...ms);
+    const { competition_id: comp, stage } = ms[0];
+    const label = [names[comp] || comp, stage ? stageLabel(stage) : ""]
+      .filter(Boolean).join(" · ");
+    const grid = stage && options.canGrid
+      ? `<a class="rp-btn is-ghost rp-md-link" href="#/results?${esc(
+          new URLSearchParams({ comp, md: stage }).toString())}">Fill in this matchday →</a>`
+      : "";
+    return `<section class="rp-md-block">
+        <h3 class="rp-md-head">${esc(label)}
+          <span class="rp-count">${ms.length}</span></h3>
+        ${ms.length > 1 ? grid : ""}
+        ${ms.map((m) => matchCard(m, names, options)).join("")}
+      </section>`;
+  }).join("");
+  return {
+    html: `<h2 class="rp-group-head">${esc(title)}
+             <span class="rp-count">${matches.length}</span></h2>${html}`,
+    ordered,
+  };
+}
+
 // ── Carrying the list into the match, and back out ───────────────────────────
 // A reporter working through a matchday sets three filters, taps a match,
 // publishes, and used to land back on an unfiltered list with all of it to do
@@ -956,19 +1001,28 @@ async function renderHome(params) {
   // reason the home screen is useful at all.
   let body;
   let ordered;
+  const canAdd = context.isAdmin || context.competitions.length > 0;
   if (filters.show === "all" && !filters.date && !filters.md) {
     const bucket = (name) => shown.filter((m) => bucketOf(m, today) === name);
     const today_ = bucket("today");
-    const awaiting = bucket("awaiting");
+    const awaiting = awaitingGroups("Awaiting result", bucket("awaiting"), names,
+                                    { showScore: true, from, canGrid: canAdd });
     const upcoming = bucket("upcoming");
     const reported = bucket("reported").slice(0, 12);
     body = [
       group("Today", today_, names, { showScore: true, from }),
-      group("Awaiting result", awaiting, names, { showScore: true, from }),
+      awaiting.html,
       group("Upcoming", upcoming, names, { from }),
       group("Recently reported", reported, names, { from }),
     ].join("");
-    ordered = [...today_, ...awaiting, ...upcoming, ...reported];
+    ordered = [...today_, ...awaiting.ordered, ...upcoming, ...reported];
+  } else if (filters.show === "awaiting") {
+    // Arrived from the "N matches need a result" box: the same blocks, so the
+    // box leads to the matchdays rather than to a longer version of itself.
+    const heading = filters.md ? stageLabel(filters.md)
+      : filters.date ? formatDate(filters.date) : "Awaiting result";
+    ({ html: body, ordered } = awaitingGroups(
+      heading, shown, names, { showScore: true, from, canGrid: canAdd }));
   } else {
     // The most specific filter names the list, because that is what the
     // reporter just asked for.
@@ -992,7 +1046,6 @@ async function renderHome(params) {
     })),
   };
 
-  const canAdd = context.isAdmin || context.competitions.length > 0;
   // Only offered to someone who has a national team to report: for an ordinary
   // league reporter the whole section is empty and the link would be a dead
   // end. Resolved rather than assumed because an admin always has one.
