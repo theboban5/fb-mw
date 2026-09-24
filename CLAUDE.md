@@ -187,6 +187,28 @@ fixture and clean up, and they never mutate a real match.
 
 ## Recent work (Sep 2026)
 
+A page per match, no migration — `/match/<match_id>.html` (`src/match_page.py`):
+
+- There was no URL that meant "this match", so a result could not be sent to
+  anyone. Scoreboard, scorers, open team sheets, form going in, the table with
+  both sides highlighted (own cluster only; none for a cup), head-to-head. All
+  of it is data the build already had; every section renders only when full.
+- **`match_page.match_page_ids` is the single source**, `player_page_ids`'
+  rule: every non-placeholder match in a built competition+season. The day
+  view, results tabs and club hubs link through `render.match_href_for`, and
+  a callback with no set links nothing.
+- **A day-view line is now one link to the match**, a stretched `.dm-go`
+  anchor — its team names are plain text there; the clubs are one tap on.
+  On results tables the SCORE is the link. National-team lines are unchanged.
+- Form and head-to-head read `ds.matches` by team_id, any competition or
+  season, and never look forward: strictly earlier date, never the match
+  itself (tests pin both). The table is today's, not a pre-match snapshot.
+- Share button ships `hidden`: Web Share, else Copy link, else nothing. The
+  preview image is the site's own; only the title names the match.
+- ~20 kB raw / ~5 kB gzipped a page, ~19 MB across ~1,000 in the Pages
+  artifact; `docs/` is not committed by CI, so git does not grow.
+- Not built: links from player/official profile rows and the cup bracket.
+
 The day is the front page, no migration — `/` and `/matches/`:
 
 - **The homepage answered the question every visitor has on its SECOND

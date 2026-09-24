@@ -470,6 +470,21 @@ def official_href_for(prefix="../", page_ids=None):
     return href
 
 
+def match_href_for(prefix="../", page_ids=None):
+    """A `match_id -> URL` callback for /match/{match_id}.html, at a depth.
+
+    `page_ids` is match_page.match_page_ids — the set a page was written for.
+    Every list of matches on the site is rendered before those pages are, so
+    this is the only thing standing between a score and a 404; a callback
+    with no set links nothing, because a guess here is exactly that.
+    """
+    def href(match_id) -> str:
+        if not match_id or page_ids is None or match_id not in page_ids:
+            return ""
+        return f"{prefix}match/{match_id}.html"
+    return href
+
+
 _player_href = player_href_for()
 
 
@@ -765,27 +780,36 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
     return "\n".join(v2)
 
 
-def _score_cell(m):
+def _score_cell(m, href=""):
     """The RESULT cell + row modifier class for one match.
 
     Played (and awarded) matches show the score — with an asterisk when the
     result is unconfirmed. postponed/cancelled/abandoned show a status badge.
     Anything else is an upcoming fixture ("vs"). getattr defaults keep the
     old-schema Match objects working unchanged.
+
+    `href` is the match's own page (match_href_for), and the score is the
+    link: the names beside it already go to the clubs, and the score is the
+    one thing in the row that is about the match rather than a side of it.
     """
+    def cell(cls, inner):
+        if href:
+            inner = f'<a class="v2-res-link" href="{escape(href)}">{inner}</a>'
+        return f'<td class="{cls}">{inner}</td>'
+
     if m.played:
         star = '<span class="v2-res-unconf">*</span>' if getattr(m, "unconfirmed", False) else ""
         # Knockout context — "(4–3 pens)" / "(AET)". Always "" on league
         # matches, so their pages keep rendering byte-identically.
         note = getattr(m, "score_note", "")
         note_html = f'<span class="v2-res-note">{escape(note)}</span>' if note else ""
-        return (f'<td class="v2-res-score">{m.home_goals}:{m.away_goals}{star}'
-                f'{note_html}</td>'), ""
+        return cell("v2-res-score",
+                    f"{m.home_goals}:{m.away_goals}{star}{note_html}"), ""
     badge = getattr(m, "status_badge", "")
     if badge:
-        return (f'<td class="v2-res-score v2-res-badge">{escape(badge)}</td>',
+        return (cell("v2-res-score v2-res-badge", escape(badge)),
                 " v2-res-row-fixture")
-    return '<td class="v2-res-score v2-res-vs">vs</td>', " v2-res-row-fixture"
+    return cell("v2-res-score v2-res-vs", "vs"), " v2-res-row-fixture"
 
 
 def _match_meta(m, date):
@@ -818,7 +842,8 @@ def _unconfirmed_legend(matches):
 def render_results(matches, teams, season="", league_name="", crest=None, league_logo="",
                    goals_by_match=None, compact=False, club_hrefs=None,
                    md_labels=None, md_chips=None, lineups_by_match=None,
-                   player_pages=None, official_pages=None, groups=None):
+                   player_pages=None, official_pages=None, groups=None,
+                   match_pages=None):
     # `md_labels`/`md_chips` (cup pages) override the round header and the
     # pager chip text per matchday — "SEMI-FINALS"/"SF" instead of
     # "MATCHDAY 1"/"1". Leagues never pass them.
@@ -838,6 +863,7 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
     lineups_by_match = lineups_by_match or {}
     groups = groups or {}
     has_groups = bool(groups)
+    match_href = match_href_for("../", match_pages)
 
     def cluster_of(m):
         return groups.get(m.home_code) or groups.get(m.away_code, "")
@@ -969,7 +995,7 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                 )
                 # A fixture (no goals yet) shows "vs" in place of the score;
                 # postponed/cancelled/abandoned show a badge instead.
-                score_cell, fix_cls = _score_cell(m)
+                score_cell, fix_cls = _score_cell(m, match_href(m.match_id))
                 date = escape(_format_date(m.date))
                 # The wide table has a DATE column, so the kickoff goes under
                 # the date rather than into a caption row: same information,
@@ -1223,7 +1249,7 @@ def _ordinal(n):
 
 def _club_match_rows(m, teams, crest, goals_by_match, show_scorers,
                      lineups_by_match=None, player_pages=None,
-                     official_pages=None):
+                     official_pages=None, match_pages=None):
     """The compact meta-row + result-row (+ optional scorers) for one match.
 
     Same markup as the compact branch of render_results, so a club page inherits
@@ -1233,7 +1259,8 @@ def _club_match_rows(m, teams, crest, goals_by_match, show_scorers,
     away = escape(teams[m.away_code].name)
     home_c = _crest_img(crest(m.home_code), "crest-post")
     away_c = _crest_img(crest(m.away_code), "crest-pre")
-    score_cell, fix_cls = _score_cell(m)
+    score_cell, fix_cls = _score_cell(
+        m, match_href_for("../../", match_pages)(m.match_id))
     meta = _match_meta(m, escape(_format_date(m.date)))
     home_link = f'<a class="club-link" href="{escape(m.home_code)}.html">{home}{home_c}</a>'
     away_link = f'<a class="club-link" href="{escape(m.away_code)}.html">{away_c}{away}</a>'
@@ -1270,13 +1297,14 @@ def _club_match_rows(m, teams, crest, goals_by_match, show_scorers,
 
 def _club_match_table(section_matches, teams, crest, goals_by_match, show_scorers,
                       empty_msg, lineups_by_match=None, player_pages=None,
-                      official_pages=None):
+                      official_pages=None, match_pages=None):
     """A compact results table for one club section, or an empty-state paragraph."""
     if not section_matches:
         return f'<p class="v2-empty">{escape(empty_msg)}</p>'
     body = "".join(
         _club_match_rows(m, teams, crest, goals_by_match, show_scorers,
-                         lineups_by_match, player_pages, official_pages)
+                         lineups_by_match, player_pages, official_pages,
+                         match_pages)
         for m in section_matches
     )
     return (
@@ -1295,7 +1323,7 @@ def _club_match_table(section_matches, teams, crest, goals_by_match, show_scorer
 def render_club(code, matches, teams, rows, season="", league_name="", crest=None,
                 club_logo="", form=None, goals_by_match=None,
                 club_hub_href=None, club_name=None, lineups_by_match=None,
-                player_pages=None, official_pages=None):
+                player_pages=None, official_pages=None, match_pages=None):
     """A single club's overview: crest, table position + form, fixtures, results.
 
     Scoped to one team within one league (the team you clicked). Fixtures are
@@ -1368,12 +1396,13 @@ def render_club(code, matches, teams, rows, season="", league_name="", crest=Non
     v2 += [
         '<h3 class="v2-sec-title">Upcoming Fixtures</h3>',
         _club_match_table(
-            upcoming, teams, crest, goals_by_match, False, "No upcoming fixtures."
+            upcoming, teams, crest, goals_by_match, False, "No upcoming fixtures.",
+            match_pages=match_pages,
         ),
         '<h3 class="v2-sec-title">Recent Results</h3>',
         _club_match_table(
             results, teams, crest, goals_by_match, show_scorers, "No results yet.",
-            lineups_by_match, player_pages, official_pages,
+            lineups_by_match, player_pages, official_pages, match_pages,
         ),
         "</div>",  # /v2-content
     ]
@@ -1566,7 +1595,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
                competition_id="", club_hrefs=None, club_names=None,
                kind="league", md_labels=None, md_chips=None,
                bracket_rounds=None, stage_labels=None, lineups_by_match=None,
-               player_pages=None, official_pages=None):
+               player_pages=None, official_pages=None, match_pages=None):
     os.makedirs(dist, exist_ok=True)
     base = _read(os.path.join(templates_dir, "base.html"))
 
@@ -1597,6 +1626,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
         md_labels=md_labels, md_chips=md_chips,
         lineups_by_match=lineups_by_match, player_pages=player_pages,
         official_pages=official_pages, groups=groups,
+        match_pages=match_pages,
     ))
 
     if kind == "cup":
@@ -1691,7 +1721,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             form=form, goals_by_match=goals_by_match,
             club_hub_href=hub_href, club_name=club_names.get(code, team.name),
             lineups_by_match=lineups_by_match, player_pages=player_pages,
-            official_pages=official_pages,
+            official_pages=official_pages, match_pages=match_pages,
         )
         html = (
             base.replace("{{TITLE}}", escape(f"{team.name} · {league_name}"))

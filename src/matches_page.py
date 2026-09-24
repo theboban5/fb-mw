@@ -26,9 +26,10 @@ Shape of the thing:
 Unlike the league pages this reads `Dataset` directly (like src/hubs.py), so a
 match in a season that is not the one currently built for its competition —
 the Women's Premiership 25/26 while 26/27 runs elsewhere — still shows up on
-its date. That is also why team names link to the cross-competition club hub
-and only when the hub exists: `club_hub_ids` is the set build.py knows was
-written, and a link to anything else would be a 404.
+its date. That is also why every link here is checked against a set build.py
+knows was written — `match_pages` for the line itself (src/match_page.py),
+`club_hub_ids` for the team names on a line that has no match page — because a
+link to anything else would be a 404.
 """
 
 from dataclasses import dataclass, field
@@ -321,24 +322,61 @@ def _crest(url):
     return f'<img class="dm-crest" src="{escape(url)}" alt="" loading="lazy">'
 
 
-def _team_side(ds, team_id, crest, club_hub_ids, side, prefix):
+def _team_side(ds, team_id, crest, club_hub_ids, side, prefix, link=True):
     team = ds.teams.get(team_id)
     name = escape(team.display_name if team else team_id)
     club_id = team.club_id if team else ""
     href = (f"{prefix}clubs/{club_id}.html"
-            if club_id and club_id in club_hub_ids else "")
+            if link and club_id and club_id in club_hub_ids else "")
     return _side(name, _crest(crest(team)), href, side)
 
 
-def _row(home, mid, away, notes, fixture):
+def _row(home, mid, away, notes, fixture, href="", label=""):
+    """One line. With `href`, the whole line is a link to the match's page.
+
+    THE LINE GOES TO THE MATCH, NOT THE CLUBS. FotMob's rule, and for its
+    reason: on a phone the two names ARE the line, so names that went to the
+    clubs left a 4rem strip in the middle as the only way into the match — and
+    a reader tapping "Bullets 2–1 Wanderers" means that result. The clubs are
+    one tap further, on the match page's scoreboard. A match with no page
+    (the national team's) keeps its club links, since there is nowhere else
+    for the line to go.
+
+    It is an anchor stretched over the row rather than an anchor AROUND it,
+    because the row is a grid of the <li> and the list's dividers key off
+    `.dm:first-child`; the label is what a screen reader announces for it.
+    """
     note = (f'<span class="dm-note">{" &middot; ".join(notes)}</span>'
             if notes else "")
     cls = "dm is-fixture" if fixture else "dm"
+    go = ""
+    if href:
+        cls += " has-go"
+        go = (f'<a class="dm-go" href="{escape(href)}" '
+              f'aria-label="{escape(label)}"></a>')
     return (f'<li class="{cls}">{home}<span class="dm-mid">{mid}</span>'
-            f"{away}{note}</li>")
+            f"{away}{note}{go}</li>")
 
 
-def _match_rows(ds, group, crest, club_hub_ids, prefix):
+def match_row(ds, m, mid, notes, fixture, crest, club_hub_ids, prefix,
+              href=""):
+    """A league/cup line: both sides, the middle, and the link when there is one."""
+    link = not href
+    label = ""
+    if href:
+        home = ds.teams.get(m.home_team_id)
+        away = ds.teams.get(m.away_team_id)
+        score = (f" {m.home_goals}–{m.away_goals} " if _is_played(m) else " v ")
+        label = ((home.display_name if home else m.home_team_id) + score
+                 + (away.display_name if away else m.away_team_id))
+    return _row(
+        _team_side(ds, m.home_team_id, crest, club_hub_ids, "home", prefix, link),
+        mid,
+        _team_side(ds, m.away_team_id, crest, club_hub_ids, "away", prefix, link),
+        notes, fixture, href, label)
+
+
+def _match_rows(ds, group, crest, club_hub_ids, prefix, match_href=None):
     """One line per match in a competition group."""
     out = []
     for m in group.matches:
@@ -352,11 +390,9 @@ def _match_rows(ds, group, crest, club_hub_ids, prefix):
         notes = [escape(n) for n in notes]
         if m.awarded_note:
             notes.append(f"Awarded: {escape(m.awarded_note)}")
-        out.append(_row(
-            _team_side(ds, m.home_team_id, crest, club_hub_ids, "home", prefix),
-            mid,
-            _team_side(ds, m.away_team_id, crest, club_hub_ids, "away", prefix),
-            notes, fixture))
+        href = match_href(m.match_id) if match_href else ""
+        out.append(match_row(ds, m, mid, notes, fixture, crest, club_hub_ids,
+                             prefix, href))
     return out
 
 
@@ -534,14 +570,17 @@ def _heading(iso, today, day):
 
 
 def render_day(ds, day, iso, today, dates, dates_with_matches, static_dir,
-               css_prefix, club_hub_ids, fl, base=""):
+               css_prefix, club_hub_ids, fl, base="", match_pages=None):
     """The day region of the page: heading, date bar, every match on it.
 
     `css_prefix` is the page's depth ("" on the homepage, "../" under
     /matches/); `base` is where the date pages are from here ("matches/" on
-    the homepage, "" beside them).
+    the homepage, "" beside them). `match_pages` is match_page.match_page_ids:
+    a line links to its match only where a page was written.
     """
     crest = _crest_finder(static_dir, css_prefix)
+    match_href = (render.match_href_for(css_prefix, match_pages)
+                  if match_pages is not None else None)
     out = [
         _heading(iso, today, day),
         _date_bar(iso, today, dates, dates_with_matches, css_prefix, base),
@@ -575,7 +614,7 @@ def render_day(ds, day, iso, today, dates, dates_with_matches, static_dir,
                 '<span class="day-comp-arrow" aria-hidden="true">&#x203A;</span>'
                 "</a>")
         out.append(_card(head, _match_rows(ds, group, crest, club_hub_ids,
-                                           css_prefix)))
+                                           css_prefix, match_href)))
     out.append("</div>")
 
     if any(m.confidence == "unconfirmed" and m.counts_for_table
@@ -616,21 +655,24 @@ def set_versions(static_dir):
     CAL_JS_VERSION = render.file_version(os.path.join(static_dir, "calendar.js"))
 
 
-def home_day(ds, days, today, static_dir, club_hub_ids, fl):
+def home_day(ds, days, today, static_dir, club_hub_ids, fl, match_pages=None):
     """(day region, is it empty) for the homepage: today, dates under matches/."""
     dates = page_dates(days, today)
     dates_with_matches = sorted(d for d in days if days[d].count)
     day = days.get(today)
     html = render_day(ds, day, today, today, dates, dates_with_matches,
-                      static_dir, "", set(club_hub_ids), fl, base=f"{SLUG}/")
+                      static_dir, "", set(club_hub_ids), fl, base=f"{SLUG}/",
+                      match_pages=match_pages)
     return html, (day is None or day.count == 0)
 
 
 def _page(ds, days, iso, today, dates, dates_with_matches, static_dir, updated,
-          css_ver, club_hub_ids, fl, leagues_html, title, social, scripts=""):
+          css_ver, club_hub_ids, fl, leagues_html, title, social, scripts="",
+          match_pages=None):
     day = days.get(iso)
     body = render_day(ds, day, iso, today, dates, dates_with_matches,
-                      static_dir, "../", club_hub_ids, fl)
+                      static_dir, "../", club_hub_ids, fl,
+                      match_pages=match_pages)
     return home.page(
         title=f"{title} · {render.SITE_NAME}", social=social,
         css_prefix="../", css_ver=css_ver, fl=fl, day_html=body,
@@ -641,7 +683,7 @@ def _page(ds, days, iso, today, dates, dates_with_matches, static_dir, updated,
 
 def build_pages(dist, templates_dir, static_dir, ds, updated, today,
                 nt_data=None, club_hub_ids=(), tz_offset_hours=2, days=None,
-                leagues_html="", nav_js=""):
+                leagues_html="", nav_js="", match_pages=None):
     """Write /matches/ and one page per date. Returns (pages, dates with matches).
 
     `today` is the build's date in Malawi time — passed in rather than read
@@ -670,7 +712,8 @@ def build_pages(dist, templates_dir, static_dir, ds, updated, today,
         title = f"Matches · {full_date_label(iso)}"
         html = _page(ds, days, iso, today, dates, dates_with_matches,
                      static_dir, updated, css_ver, club_hub_ids, fl,
-                     leagues_html, title, render.social_meta(title), scripts)
+                     leagues_html, title, render.social_meta(title), scripts,
+                     match_pages)
         render._write(os.path.join(out_dir, f"{iso}.html"), html)
 
     # /matches/ is today's page again, with the date-drift hop. Same directory,
@@ -680,7 +723,8 @@ def build_pages(dist, templates_dir, static_dir, ds, updated, today,
                   static_dir, updated, css_ver, club_hub_ids, fl, leagues_html,
                   title,
                   render.social_meta(title, url=render.SITE_URL + f"/{SLUG}/"),
-                  scripts + today_script(today, "", tz_offset_hours))
+                  scripts + today_script(today, "", tz_offset_hours),
+                  match_pages)
     render._write(os.path.join(out_dir, "index.html"), index)
 
     return len(dates) + 1, len(dates_with_matches)

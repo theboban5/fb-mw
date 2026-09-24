@@ -29,8 +29,9 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
 import validate  # noqa: E402
-from src import (adapt, dataset, flags, home, hubs, matches_page, nt,  # noqa: E402
-                 nt_page, officials, render, scorers, search, standings, trending)
+from src import (adapt, dataset, flags, home, hubs, match_page,  # noqa: E402
+                 matches_page, nt, nt_page, officials, render, scorers, search,
+                 standings, trending)
 
 STATIC = os.path.join(ROOT, "static")
 TEMPLATES = os.path.join(ROOT, "templates")
@@ -87,7 +88,7 @@ def _tier_label(comp: "dataset.Competition") -> str:
 
 
 def _build_league(ds, cs, dist_root, updated, player_pages=frozenset(),
-                  official_pages=frozenset()):
+                  official_pages=frozenset(), match_pages=frozenset()):
     """Render one competition+season into dist_root/<slug>/."""
     league = adapt.league_data(ds, cs.competition_id, cs.season_id)
 
@@ -140,7 +141,7 @@ def _build_league(ds, cs, dist_root, updated, player_pages=frozenset(),
         css_prefix="../", back_link=BACK_LINK, copy_static=False,
         goals_by_match=goals_by_match, top_scorers=top_scorers,
         lineups_by_match=league.lineups, player_pages=player_pages,
-        official_pages=official_pages,
+        official_pages=official_pages, match_pages=match_pages,
         # own_goal_total from the adapter, not the scorer rows: it includes
         # own goals by unresolved (CAF_MW_UNKNOWN) players.
         own_goal_total=league.own_goal_total,
@@ -569,7 +570,8 @@ def _trending_images(cards, dist):
 
 
 def _write_landing(dist, ds, updated, days, today, categories, club_hub_ids,
-                   scorchers_meta=None, scorchers=None, trending_html=""):
+                   scorchers_meta=None, scorchers=None, trending_html="",
+                   match_pages=None):
     """The homepage: today's football, the feature, every competition.
 
     The shell is src/home.py's, shared with every /matches/ date page; the
@@ -590,7 +592,7 @@ def _write_landing(dist, ds, updated, days, today, categories, club_hub_ids,
         _scorchers_feature(fl, scorchers) if scorchers_meta else "")
 
     day_html, empty = matches_page.home_day(ds, days, today, STATIC,
-                                            club_hub_ids, fl)
+                                            club_hub_ids, fl, match_pages)
     scripts = (f"<script>{_NAV_JS}"
                f"{trending.CAROUSEL_JS if trending_html else ''}</script>"
                + matches_page.today_script(today, f"{matches_page.SLUG}/",
@@ -799,13 +801,18 @@ def main(argv):
     # function: a referee's name under a result links only where a page was
     # written, and every one of those links is rendered before the pages are.
     official_pages = officials.official_page_ids(ds)
+    # And the matches, for the same reason again: every list of matches on
+    # the site — a day, a results tab, a club — links a score to its page,
+    # and all of them are rendered before match_page writes a single one.
+    match_pages = match_page.match_page_ids(ds)
 
     leagues = []
     standings_by_slug = {}
     parts = []
     for cs in adapt.current_competition_seasons(ds):
         league, rows, n_played = _build_league(ds, cs, dist, updated,
-                                              player_pages, official_pages)
+                                              player_pages, official_pages,
+                                              match_pages)
         leagues.append(league)
         standings_by_slug[league.slug] = rows
         parts.append(f"{league.slug}: {len(league.teams)} teams, {n_played} results")
@@ -843,22 +850,27 @@ def main(argv):
 
     _write_landing(dist, ds, updated, days, today, categories, club_hub_ids,
                    scorchers_meta=scorchers_meta, scorchers=scorchers,
-                   trending_html=trending_html)
+                   trending_html=trending_html, match_pages=match_pages)
 
     # Cross-competition pages: club hubs and player pages.
     n_clubs = hubs.build_club_hubs(
         dist, TEMPLATES, STATIC, ds, leagues, standings_by_slug, updated,
-        official_pages=official_pages)
+        official_pages=official_pages, match_pages=match_pages)
     n_players = hubs.build_player_pages(dist, TEMPLATES, STATIC, ds, updated,
                                         club_hub_ids=club_hub_ids, ntd=nt_data)
     n_officials = officials.build_official_pages(
         dist, TEMPLATES, STATIC, ds, updated)
+    n_matches = match_page.build_pages(
+        dist, TEMPLATES, STATIC, ds, leagues, standings_by_slug, updated,
+        club_hub_ids=club_hub_ids, player_pages=player_pages,
+        official_pages=official_pages, page_ids=match_pages)
 
     # The by-date pages, written after the club hubs they link into.
     n_day_pages, n_match_dates = matches_page.build_pages(
         dist, TEMPLATES, STATIC, ds, updated, today, nt_data=nt_data,
         club_hub_ids=club_hub_ids, tz_offset_hours=TZ_OFFSET_HOURS, days=days,
-        leagues_html=_leagues_nav(categories, prefix="../"), nav_js=_NAV_JS)
+        leagues_html=_leagues_nav(categories, prefix="../"), nav_js=_NAV_JS,
+        match_pages=match_pages)
 
     # Site search: the index every page's bar fetches, plus the /search/ page
     # the bar's form submits to. Built last because the index covers the club
@@ -874,6 +886,7 @@ def main(argv):
     print(f"Built {dist}/  " + " | ".join(parts)
           + (f" | {len(live_cards)} trending" if live_cards else "")
           + f" | {n_clubs} club hubs | {n_players} player pages"
+          + f" | {n_matches} match pages"
           + (f" | {n_officials} official pages" if n_officials else "")
           + f" | {nt_page.SLUG}: {len(scorchers.results)} results,"
           + f" {len(scorchers.fixtures)} fixtures"

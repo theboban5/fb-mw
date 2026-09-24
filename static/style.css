@@ -2865,3 +2865,266 @@ h1.el-brand-name { margin: 0; font-size: 1.15rem; line-height: 1.2; }
   .dm { grid-template-columns: minmax(0, 1fr) 3.5rem minmax(0, 1fr); padding: 8px 6px; }
   .dm-team { font-size: 0.84rem; gap: 6px; }
 }
+
+/* ─── A match line as a link (/matches/, the homepage) ─────────────
+   The whole line goes to /match/<id>.html. An anchor stretched over the row
+   rather than wrapped around it: the row is the grid, and the dividers key
+   off .dm:first-child. The names inside are plain text on these rows. */
+.dm.has-go { position: relative; }
+.dm-go {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  -webkit-tap-highlight-color: transparent;
+}
+.dm.has-go:hover { background: var(--panel-hover); }
+.dm-go:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* The score on a results table is the way into that match's page. A faint
+   box, because a bare number never reads as something to tap. */
+.v2-res-link {
+  display: inline-block;
+  min-width: 3.2em;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: #eef3ef;
+  color: inherit;
+  text-decoration: none;
+}
+.v2-res-link:hover { background: #dcebe1; }
+.v2-res-vs .v2-res-link { min-width: 0; padding: 3px 8px; }
+
+/* ─── Match page (/match/<id>.html) ───────────────────────────────
+   Theme tokens throughout, like the day view — except the team sheets, whose
+   el- markup has fixed light ink and so sits on its own light card. */
+.mp-board {
+  margin-top: 4px;
+  padding: 12px 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+}
+.mp-comp {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+  text-align: center;
+}
+.mp-comp:hover .mp-comp-name { color: var(--accent); }
+.mp-comp-logo { width: 20px; height: 20px; object-fit: contain; flex: 0 0 auto; }
+.mp-round { font-weight: 600; }
+.mp-teams {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: 8px;
+  margin-top: 16px;
+}
+.mp-team {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ink);
+  text-decoration: none;
+  text-align: center;
+}
+a.mp-team:hover .mp-name { color: var(--accent); }
+.mp-crest { width: 56px; height: 56px; object-fit: contain; }
+.mp-name {
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.mp-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 5.5rem;
+  padding-top: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.mp-score {
+  font-size: 2.3rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.mp-dash { margin: 0 0.18em; font-weight: 600; color: var(--muted); }
+.mp-time { font-size: 1.6rem; font-weight: 800; line-height: 1; color: var(--accent); }
+.mp-vs {
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.mp-badge {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.mp-under { font-size: 0.74rem; font-weight: 600; color: var(--muted); }
+
+/* Scorers: each side's column under its own team, meeting in the middle. */
+.mp-scorers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 24px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 0.82rem;
+}
+.mp-goals { list-style: none; margin: 0; padding: 0; }
+.mp-goals li { line-height: 1.6; }
+.mp-goals-home { text-align: right; }
+.mp-min { color: var(--muted); white-space: nowrap; }
+.mp-link { color: var(--ink); text-decoration: none; }
+.mp-link:hover { color: var(--accent); text-decoration: underline; }
+
+.mp-facts {
+  margin: 14px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 0.84rem;
+}
+.mp-fact { display: flex; gap: 12px; padding: 3px 0; }
+.mp-fact dt { flex: 0 0 5.2rem; color: var(--muted); font-weight: 600; }
+.mp-fact dd { margin: 0; min-width: 0; color: var(--ink); }
+
+.mp-actions { display: flex; justify-content: center; margin-top: 14px; }
+.mp-share {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 20px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.mp-share:hover { background: var(--accent); color: var(--bg); }
+.mp-share-i { width: 18px; height: 18px; }
+
+.mp-sheet {
+  padding: 4px 14px 14px;
+  border-radius: 12px;
+  background: #fafafa;
+  border: 1px solid #e4e4e4;
+}
+@media (min-width: 560px) {
+  .mp-sides {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 22px;
+  }
+  .mp-sides .el-lineup-side + .el-lineup-side {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+}
+
+.mp-form {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.mp-form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 8px 12px;
+}
+.mp-form-row + .mp-form-row { border-top: 1px solid var(--line); }
+.mp-form-crest { width: 20px; height: 20px; object-fit: contain; flex: 0 0 auto; }
+.mp-form-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+.mp-form-badges { flex: 0 0 auto; white-space: nowrap; }
+.mp-form-badges .v2-form-badge { width: 22px; height: 22px; line-height: 22px; font-size: 0.66rem; }
+.mp-form-a { text-decoration: none; }
+
+table.mp-table td { padding: 8px 6px; }
+table.mp-table td.v2-team-name {
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  padding-left: 10px;
+}
+table.mp-table .v2-pos { font-size: 0.82rem; }
+table.mp-table .v2-pts { font-size: 0.95rem; }
+table.mp-table { table-layout: fixed; }
+.mp-table th:nth-child(1), .mp-table td:nth-child(1) { width: 2.6rem; }
+.mp-table th:nth-child(3), .mp-table td:nth-child(3) { width: 2.4rem; }
+.mp-table th:nth-child(4), .mp-table td:nth-child(4) { width: 3.4rem; }
+.mp-table th:nth-child(5), .mp-table td:nth-child(5) { width: 3.2rem; }
+.mp-table tr.mp-hl td { background: #e3f3e8 !important; }
+.mp-table tr.mp-hl .v2-team-name a,
+.mp-table tr.mp-hl .v2-team-name { color: #0b6b3a; }
+
+.mp-more { margin: 8px 2px 0; font-size: 0.8rem; color: var(--muted); }
+.mp-more a { color: var(--accent); font-weight: 700; text-decoration: none; }
+
+.mp-h2h {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.mp-h2h-t {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  text-align: center;
+}
+.mp-h2h-n { font-size: 1.5rem; font-weight: 900; line-height: 1; color: var(--ink); }
+.mp-h2h-l {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.mp-sec { margin-top: 8px; }

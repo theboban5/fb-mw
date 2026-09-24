@@ -70,7 +70,8 @@ def _page(base, title, content, updated, css_ver, header_logo="",
 
 # ── Club hubs ────────────────────────────────────────────────────────────────
 
-def _club_result_row(m, league, goals_by_match=None, official_pages=None):
+def _club_result_row(m, league, goals_by_match=None, official_pages=None,
+                     match_pages=None):
     """One compact result row from the club's perspective, with league tag.
 
     Carries the scorers and the line-up toggle too. This hub is where someone
@@ -87,7 +88,8 @@ def _club_result_row(m, league, goals_by_match=None, official_pages=None):
     away_name = league.teams[m.away_code].name if m.away_code in league.teams else m.away_code
     home = escape(home_name)
     away = escape(away_name)
-    score_cell, fix_cls = render._score_cell(m)
+    score_cell, fix_cls = render._score_cell(
+        m, render.match_href_for("../", match_pages)(m.match_id))
     date = escape(render._format_date(m.date))
     # Same order as every other match caption on the site: date, kickoff, then
     # the competition in place of the results table's venue.
@@ -113,7 +115,7 @@ def _club_result_row(m, league, goals_by_match=None, official_pages=None):
 
 
 def render_club_hub(club, club_teams, crest_url, goals_by_slug=None,
-                    official_pages=None):
+                    official_pages=None, match_pages=None):
     """The hub page body for one club.
 
     `club_teams` is a list of (team, league, standing, position, played,
@@ -203,7 +205,7 @@ def render_club_hub(club, club_teams, crest_url, goals_by_slug=None,
     if all_recent:
         body = "".join(
             _club_result_row(m, league, (goals_by_slug or {}).get(league.slug),
-                             official_pages)
+                             official_pages, match_pages)
             for _d, m, league in all_recent)
         v2 += [
             '<div class="v2-results-outer">',
@@ -221,7 +223,7 @@ def render_club_hub(club, club_teams, crest_url, goals_by_slug=None,
 
 
 def build_club_hubs(dist, templates_dir, static_dir, ds, leagues, standings_by_slug,
-                    updated, official_pages=None):
+                    updated, official_pages=None, match_pages=None):
     """Write /clubs/{club_id}.html for every club with a team in a built league.
 
     `leagues` is the list of LeagueData that were built; `standings_by_slug`
@@ -275,7 +277,7 @@ def build_club_hubs(dist, templates_dir, static_dir, ds, leagues, standings_by_s
             (crest(t.legacy_code) for t, *_ in club_teams if t.legacy_code and crest(t.legacy_code)),
             None)
         content = render_club_hub(club, club_teams, crest_url or "",
-                                  goals_by_slug, official_pages)
+                                  goals_by_slug, official_pages, match_pages)
         html = _page(base, club.name, content, updated, css_ver)
         render._write(os.path.join(out_dir, f"{club.club_id}.html"), html)
         count += 1
