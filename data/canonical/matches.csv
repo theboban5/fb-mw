@@ -1049,7 +1049,7 @@ MW_BDU14_2627_071,MW_BDU14,MW_2026_27,md_13,13,2026-09-26,02:00,MW_B_COMPANY,MW_
 MW_BDU14_2627_072,MW_BDU14,MW_2026_27,md_13,13,2026-09-26,03:00,MW_B_COMPANY,MW_SB_M1,MW_HEBW_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_NRFA_2627_085,MW_NRFA,MW_2026_27,md_12,12,2026-09-27,,MW_LUVI_G,MW_LVFC_M1,MW_RFC_M1,,,scheduled,,reporter,https://www.facebook.com/share/p/1ELAPRDu6E/,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_NRFA_2627_086,MW_NRFA,MW_2026_27,md_12,12,2026-09-26,14:30,MW_CHISUMBU,MW_CHB_M1,MW_CAS_M1,,,scheduled,,reporter,https://www.facebook.com/share/p/1BzYUNMEv1/,,,unconfirmed,,,,,,,,,,,,,,,,,
-MW_NRFA_2627_087,MW_NRFA,MW_2026_27,md_12,12,2026-09-26,14:30,MW_KAVITOWO,MW_MMW_M1,MW_MAFU_M1,,,scheduled,,reporter,https://www.facebook.com/share/p/1BzYUNMEv1/,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_NRFA_2627_087,MW_NRFA,MW_2026_27,md_12,12,2026-09-26,14:30,MW_KAVITOWO,MW_MMW_M1,MW_MAFU_M1,1,0,played,,reporter,https://www.facebook.com/share/p/1BzYUNMEv1/,MW_REP_004,2026-09-26T15:13:49.48401+00:00,confirmed,MW_REP_004,2026-09-26T15:13:49.48401+00:00,,,,,,,,,,,,,,,
 MW_NRFA_2627_088,MW_NRFA,MW_2026_27,md_12,12,2026-09-27,14:30,MW_BOTA_G,MW_VSA_M1,MW_CHIN_M1,,,scheduled,,reporter,https://www.facebook.com/share/p/1BzYUNMEv1/,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_NRFA_2627_089,MW_NRFA,MW_2026_27,md_12,12,2026-09-27,14:30,MW_CHIB_G,MW_CRS_M1,MW_CZU_M1,,,scheduled,,reporter,https://www.facebook.com/share/p/1BzYUNMEv1/,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_NRFA_2627_090,MW_NRFA,MW_2026_27,md_12,12,2026-09-27,14:30,MW_JENDA,MW_JU_M1,MW_EKW_M1,,,scheduled,,reporter,https://www.facebook.com/share/p/1BzYUNMEv1/,,,unconfirmed,,,,,,,,,,,,,,,,,
