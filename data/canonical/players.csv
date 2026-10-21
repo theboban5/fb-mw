@@ -247,14 +247,14 @@ CAF_MW_000126,Kondwani Dundu,,,,,active
 CAF_MW_000592,Dastan Banda,,,,,active
 CAF_MW_000127,Kondwani Kucheza,,,,,active
 CAF_MW_000593,Eddie Jamu,,,GK,,active
-CAF_MW_000594,Pilirani Thulu,,,,,active
 CAF_MW_000128,Kondwani Langa,,,,,active
-CAF_MW_000595,Innocent Chitete,,,,,active
+CAF_MW_000594,Pilirani Thulu,,,DF,,active
 CAF_MW_000129,Kondwani Mhone,,,,,active
+CAF_MW_000595,Innocent Chitete,,,DF,,active
 CAF_MW_000596,Yusuf Adesola Abdul-Waheed,,,,,active
 CAF_MW_000130,Kondwani Phiri,,,,,active
 CAF_MW_000131,Kondwani Siliya,,,,,active
-CAF_MW_000597,William Mwalwimba,,,,,active
+CAF_MW_000597,William Mwalwimba,,,DF,,active
 CAF_MW_000598,Casto Kayuni,,,,,active
 CAF_MW_000132,Kondwani Thwadya,,,,,active
 CAF_MW_000599,Erick Mandanda,,,,,active
@@ -264,7 +264,7 @@ CAF_MW_000134,Lameck Mithi,,,,,active
 CAF_MW_000601,Steven Steven,,,,,active
 CAF_MW_000135,Landwell Nyirenda,,,,,active
 CAF_MW_000136,Laurent Banda,,,,,active
-CAF_MW_000602,Lovemore Ngolombe,,,,,active
+CAF_MW_000602,Lovemore Ngolombe,,,DF,,active
 CAF_MW_000603,Micheal Mwalilino,,,,,active
 CAF_MW_000137,Legani Saidi,,,,,active
 CAF_MW_000604,Samson Sakanya,,,,,active
@@ -277,7 +277,7 @@ CAF_MW_000607,Raphael Nkhoma,,,,,active
 CAF_MW_000141,Leonard Mpanje,,,,,active
 CAF_MW_000608,Anthony Mwalilino,,,,,active
 CAF_MW_000142,Levison Mnyenyembe,,,,,active
-CAF_MW_000609,Thomson Khunga,,,,,active
+CAF_MW_000609,Thomson Khunga,,,DF,,active
 CAF_MW_000143,Lucky Mkandawire,,,,,active
 CAF_MW_000610,Ganizani Banda,,,,,active
 CAF_MW_000144,Luke Ntope,,,,,active
@@ -1201,3 +1201,6 @@ CAF_MW_001201,James Hermes,,,,,active
 CAF_MW_001202,James Gundogan,,,,,active
 CAF_MW_001203,Richard Nyirenda,,,GK,,active
 CAF_MW_001204,Mastano Mziza,,,GK,,active
+CAF_MW_001205,Nangie Songa,,,DF,,active
+CAF_MW_001206,Wakisa Mwasamata,,,DF,,active
+CAF_MW_001207,Lumbani Kamtoma,,,DF,,active
