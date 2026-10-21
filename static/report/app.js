@@ -11872,7 +11872,10 @@ const OPS_TABS = [
     head: "Rounds and fixture gaps", blank: "Every round is the right size." },
   { key: "scorers",      label: "Scorers",      flag: "missing_scorers",
     head: "Missing scorers", blank: "Every goal is accounted for." },
-  { key: "venues",       label: "Venues",       flag: "missing_venue",
+  // Per team rather than per match (0056): a team sheet is one side's, and
+  // the job it sets is finding that club's match reports.
+  { key: "lineups",      label: "Lineups",      flag: null },
+  { key: "venues",      label: "Venues",       flag: "missing_venue",
     head: "Missing venues", blank: "Every fixture has a ground." },
   { key: "sources",      label: "Sources",      flag: "missing_source",
     head: "Missing sources", blank: "Every result cites a source." },
@@ -12138,6 +12141,85 @@ function opsRoundsPanel(rounds, comps) {
                : `<p class="rp-empty">Every round is the right size.</p>`),
       Boolean(faults.length) && comps.length === 1);
   }).join("");
+}
+
+// ── The Lineups tab: whose team sheets are still missing (0056) ──────────────
+// A sheet belongs to a SIDE, and arrives a club report at a time, so the useful
+// unit is the team: "Silver Strikers — 9 missing" says whose report to go and
+// find. One row per team per competition, worst first; the red chip opens the
+// matches it is counting, from the same view, so the two cannot disagree.
+
+async function loadOpsTeamLineups() {
+  const { data, error } = await supabase.from("ops_team_lineups")
+    .select("competition_id,competition_name,competition_tier,team_id,team_name," +
+            "played,with_lineup,missing");
+  if (error) throw error;
+  return data || [];
+}
+
+async function loadOpsMissingLineups(comp, team) {
+  const { data, error } = await supabase.from("ops_lineup_sides")
+    .select("match_id,public_id,competition_id,competition_type,round_key,date," +
+            "kickoff,home_name,away_name,home_goals,away_goals,is_pre_tracker,team_name")
+    .eq("competition_id", comp).eq("team_id", team).is("has_lineup", false)
+    // Newest first: a club's recent reports are the ones still on its page.
+    .order("date", { ascending: false, nullsFirst: false });
+  if (error) throw error;
+  return data || [];
+}
+
+function opsLineupChip(t) {
+  if (!t.missing) {
+    return `<span class="ops-glance-chip is-ok">✓ lineups up to date</span>`;
+  }
+  return `<a class="ops-glance-chip is-bad"
+             href="#/ops?tab=lineups&comp=${encodeURIComponent(t.competition_id)}&team=${encodeURIComponent(t.team_id)}">
+             ⚠ ${t.missing} lineup${t.missing === 1 ? "" : "s"} missing</a>`;
+}
+
+function opsLineupsPanel(teams, comp) {
+  const byComp = new Map();
+  teams.slice().sort((a, b) =>
+    b.missing - a.missing || a.team_name.localeCompare(b.team_name))
+    .forEach((t) => {
+      if (!byComp.has(t.competition_id)) byComp.set(t.competition_id, []);
+      byComp.get(t.competition_id).push(t);
+    });
+
+  const sum = (rows, key) => rows.reduce((n, r) => n + r[key], 0);
+  // Competitions where sheets are being entered first, then tier. Tier alone
+  // put a district U19 league above the Super League — tier is a rung inside
+  // one pyramid (0039), and both are rung 1.
+  const groups = [...byComp.values()].sort((a, b) =>
+    sum(b, "with_lineup") - sum(a, "with_lineup")
+    || (a[0].competition_tier ?? 99) - (b[0].competition_tier ?? 99)
+    || a[0].competition_name.localeCompare(b[0].competition_name));
+  const sections = groups.map((rows) => {
+    const have = sum(rows, "with_lineup");
+    const rowsHtml = rows.map((t) => `
+      <div class="ops-glance-row${t.missing ? " is-attn" : " is-good"}">
+        <div class="ops-glance-comp">
+          <span class="ops-comp">${esc(t.team_name)}</span>
+          <span class="ops-sub">${t.with_lineup} of ${t.played} team sheets</span>
+        </div>
+        <div class="ops-glance-status">${opsLineupChip(t)}</div>
+      </div>`).join("");
+    // Open where there is something to look at. A league with no sheet at all
+    // is every team red, which is one fact, not sixteen; it stays folded.
+    const open = comp || have > 0;
+    return `<details class="rp-sec"${open ? " open" : ""}>
+      <summary><span class="rp-sec-name">${esc(rows[0].competition_name)}</span>
+        <span class="rp-sec-note">${have} of ${sum(rows, "played")}</span></summary>
+      <div class="rp-sec-body"><div class="ops-glance">${rowsHtml}</div></div>
+    </details>`;
+  }).join("");
+
+  const total = sum(teams, "played");
+  return `<h2 class="rp-group-head">Team sheets
+            <span class="rp-count">${sum(teams, "with_lineup")} of ${total}</span></h2>
+          <p class="rp-hint">One sheet per side of every played match this
+            season. Tap a red count to see which matches are missing one.</p>
+          ${sections || '<p class="rp-empty">No played matches this season.</p>'}`;
 }
 
 async function opsRoundFixtures(comp, roundKey) {
@@ -13207,6 +13289,26 @@ async function renderOps(params) {
                 filed it first.</p>
               <div class="ops-glance">${rows
                 || '<p class="rp-empty">No reporters yet.</p>'}</div>`);
+      return;
+    }
+
+    if (tab === "lineups") {
+      const team = params.get("team");
+      if (team && comp) {
+        const rows = await loadOpsMissingLineups(comp, team);
+        const name = rows[0]?.team_name || team;
+        header(`<a class="rp-btn is-ghost" href="#/ops?tab=lineups&comp=${encodeURIComponent(comp)}">&larr; All teams</a>
+                <h2 class="rp-group-head">${esc(name)} · no team sheet
+                  <span class="rp-count">${rows.length}</span></h2>
+                <p class="rp-hint">${esc(names[comp] || comp)}, newest first.
+                  Open a match and use “Fill in from a match report”.</p>
+                ${rows.map((m) => opsMatchRow(m, names)).join("")
+                  || '<p class="rp-empty">Every played match has this team’s sheet.</p>'}`);
+        return;
+      }
+      const teams = await loadOpsTeamLineups();
+      header(opsLineupsPanel(
+        comp ? teams.filter((t) => t.competition_id === comp) : teams, comp));
       return;
     }
 

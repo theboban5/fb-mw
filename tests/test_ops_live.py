@@ -47,6 +47,9 @@ OPS_VIEWS = (
     # visible, the is_admin() in the body is the gate — so it belongs to the
     # same access sweep.
     "ops_submissions",
+    # 0056. The Lineups tab: a side per played match, and its count per team.
+    "ops_lineup_sides",
+    "ops_team_lineups",
 )
 OPS_TABLES = ("ops_competition_settings",)
 
@@ -301,6 +304,26 @@ class OpsDashboardTest(unittest.TestCase):
             "competition_seasons", columns="competition_id,season_id,status")
             if cs["season_id"] == self.season and cs["status"] == "active"}
         self.assertEqual(comps, active)
+
+    def test_lineup_counts_match_an_independent_count(self):
+        """Two sides per played match, and a side has a sheet when any lineups
+        row carries its team. Recomputed from the raw tables, per team."""
+        sheets = {(r["match_id"], r["team_id"]) for r in sb.select(
+            "lineups", columns="match_id,team_id", require_secret=True)}
+        expected = {}
+        for m in self.matches:
+            if m["status"] != "played":
+                continue
+            for team in (m["home_team_id"], m["away_team_id"]):
+                key = (m["competition_id"], team)
+                played, have = expected.get(key, (0, 0))
+                expected[key] = (played + 1,
+                                 have + ((m["match_id"], team) in sheets))
+        got = {(r["competition_id"], r["team_id"]): (r["played"], r["with_lineup"])
+               for r in self.admin_rows("ops_team_lineups?select=*")}
+        self.assertEqual(got, expected)
+        for r in self.admin_rows("ops_team_lineups?select=*"):
+            self.assertEqual(r["played"], r["with_lineup"] + r["missing"])
 
 
 if __name__ == "__main__":

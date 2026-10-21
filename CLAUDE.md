@@ -191,6 +191,23 @@ fixture and clean up, and they never mutate a real match.
 
 ## Recent work (Oct 2026)
 
+Whose team sheets are missing, migration `0056` — `#/ops?tab=lineups`:
+
+- One row per team per competition, worst first: "✓ lineups up to date" or
+  "⚠ N lineups missing", and the red chip opens those matches
+  (`&team=<team_id>`), newest first, each linking to `#/m/<id>` where "Fill in
+  from a match report" lives. A sheet is one SIDE's, so the unit is the team —
+  the job is finding that club's reports.
+- `ops_lineup_sides` (a row per side of every played match, `has_lineup`) and
+  `ops_team_lineups` (its count per team) — the second selects from the first,
+  so a chip and its list cannot disagree. 0016's arrangement; admin gate in
+  each body, anon revoked.
+- `played` only: a walkover has no sheet to find. Any lineups row counts — a
+  partial sheet is the match screen's problem, not this list's.
+- Competitions with sheets being entered sort first, then tier: tier alone put
+  a district U19 league above the Super League. A league with no sheet at all
+  stays folded — sixteen red rows are one fact.
+
 Team sheets, cards and assists from a club's match report, migrations
 `0054`–`0055` — **on the match's own screen** ("Fill in from a match report"),
 and from `#/import`:
