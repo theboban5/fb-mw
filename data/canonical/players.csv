@@ -7,7 +7,7 @@ CAF_MW_000003,Adam Alieh,,,,,active
 CAF_MW_000473,Hassan Hussein,,,,,active
 CAF_MW_000004,Akim Mponda,,,,,active
 CAF_MW_000474,Emmanuel Nyi,,,,,active
-CAF_MW_000005,Alex Benson,,,,,active
+CAF_MW_000005,Alex Benson,,,MF,,active
 CAF_MW_000475,Emmanuel Nyirenda,,,,,active
 CAF_MW_000006,Alex Mkolongo,,,,,active
 CAF_MW_000476,Joseph Ziwa,,,,,active
@@ -238,7 +238,7 @@ CAF_MW_000587,Andrew Jovinala,,,,,active
 CAF_MW_000588,Maclean Mwale,,,,,active
 CAF_MW_000122,Kelvin Chimodzi,,,,,active
 CAF_MW_000589,Aaron Chilipa,,,,,active
-CAF_MW_000123,Kennedy Mwakabaghe,,,,,active
+CAF_MW_000123,Kennedy Mwakabaghe,,,MF,,active
 CAF_MW_000590,Madalitso Safuli,,,,,active
 CAF_MW_000124,Khumbo Mhone,,,,,active
 CAF_MW_000591,Sean McBrams,,,,,active
@@ -257,7 +257,7 @@ CAF_MW_000131,Kondwani Siliya,,,,,active
 CAF_MW_000597,William Mwalwimba,,,DF,,active
 CAF_MW_000598,Casto Kayuni,,,,,active
 CAF_MW_000132,Kondwani Thwadya,,,,,active
-CAF_MW_000599,Erick Mandanda,,,,,active
+CAF_MW_000599,Erick Mandanda,,,MF,,active
 CAF_MW_000133,Kwandwani Twaja,,,,,active
 CAF_MW_000600,Godfry Siwale,,,,,active
 CAF_MW_000134,Lameck Mithi,,,,,active
@@ -272,7 +272,7 @@ CAF_MW_000138,Lennox Kiwambe,,,,,active
 CAF_MW_000139,Leo Kachikho,,,,,active
 CAF_MW_000605,Gracian Kazembe,,,GK,,active
 CAF_MW_000140,Leo Kaira,,,,,active
-CAF_MW_000606,Chimwemwe Myombe,,,,,active
+CAF_MW_000606,Chimwemwe Myombe,,,MF,,active
 CAF_MW_000607,Raphael Nkhoma,,,,,active
 CAF_MW_000141,Leonard Mpanje,,,,,active
 CAF_MW_000608,Anthony Mwalilino,,,,,active
@@ -460,7 +460,7 @@ CAF_MW_000232,Sylvester Phiri Saizi,,,,,active
 CAF_MW_000699,Believe June,,,,,active
 CAF_MW_000233,Tafu Fole,,,,,active
 CAF_MW_000700,Joseph Kabila,,,,,active
-CAF_MW_000234,Tambulani Mwale,,,,,active
+CAF_MW_000234,Tambulani Mwale,,,MF,,active
 CAF_MW_000701,Alista Sindo,,,,,active
 CAF_MW_000235,Temwa Ndhlovu,,,,,active
 CAF_MW_000702,Chifundo Duwa,,,,,active
@@ -870,7 +870,7 @@ CAF_MW_000438,Rashid Daah,,,,,active
 CAF_MW_000904,Benjamin Nyirenda,,,,,active
 CAF_MW_000439,Nicholas Kalondole,,,,,active
 CAF_MW_000905,Kumbukani Banya,,,,,active
-CAF_MW_000440,Yusuf Adesola,,,,,active
+CAF_MW_000440,Yusuf Adesola,,,MF,,active
 CAF_MW_000906,Timothy Katapa,,,,,active
 CAF_MW_000441,Baba Nkhoma,,,,,active
 CAF_MW_000907,Expert Kamanga,,,,,active
@@ -1205,3 +1205,7 @@ CAF_MW_001205,Nangie Songa,,,DF,,active
 CAF_MW_001206,Wakisa Mwasamata,,,DF,,active
 CAF_MW_001207,Lumbani Kamtoma,,,DF,,active
 CAF_MW_001208,Wilson Mwakhwana,,,DF,,active
+CAF_MW_001209,Alick Austin,,,MF,,active
+CAF_MW_001210,Michael,,,MF,,active
+CAF_MW_001211,Essau Mbughi,,,MF,,active
+CAF_MW_001212,Antony Mwalilno,,,MF,,active
