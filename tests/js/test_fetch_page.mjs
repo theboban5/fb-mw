@@ -282,3 +282,16 @@ test("scripts and styles do not reach the model", () => {
 test("entities and whitespace are tidied", () => {
   assert.equal(htmlToText("<p>A&nbsp;&amp;&nbsp;B</p>\n\n  <p>C</p>"), "A & B C");
 });
+
+test("numeric entities are decoded, so a WordPress apostrophe is an apostrophe", () => {
+  // Every club match report is a WordPress page, and WordPress writes ’ as
+  // &#8217;. Left encoded, O'Neil reaches the squad matcher as O&#8217;Neil.
+  assert.equal(htmlToText("<p>Shema&#8217;s header &#038; O&#x2019;Neil</p>"),
+               "Shema’s header & O’Neil");
+});
+
+test("an escaped entity is decoded once, not twice", () => {
+  assert.equal(htmlToText("<code>&amp;#39;</code>"), "&#39;");
+  // A code point no character has is a space, never a throw.
+  assert.equal(htmlToText("a&#0;b&#xD800;c"), "a b c");
+});

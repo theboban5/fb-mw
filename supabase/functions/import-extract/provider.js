@@ -138,7 +138,7 @@ export function fakeProvider(messages, { failWith = null } = {}) {
  *  "this import cost twice" is the fact worth being able to see when deciding
  *  whether the escalation is earning its place. */
 export async function runExtraction({
-  provider, model, fallbackModel = "", input = {}, maxTokens = 8000,
+  provider, model, fallbackModel = "", input = {}, maxTokens = 16000,
 } = {}) {
   if (!provider) throw new Error("runExtraction needs a provider");
   if (!model) throw new Error("runExtraction needs a model");

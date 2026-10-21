@@ -34,6 +34,11 @@ Two files in tests/import_eval/cases/, sharing a name:
     my-case.jpg     the screenshot, exactly as a reporter would send it
     my-case.json    what is actually in it
 
+or, for a page a reporter would paste a link to, my-case.txt in place of the
+image: the text htmlToText() makes of it, which is what the model is sent.
+A match report's JSON adds a "report" block — the players listed per side,
+the substitutions and the cards — and those are scored as sets.
+
 The JSON:
 
     {
@@ -136,21 +141,31 @@ def load_contract():
     return payload["schema"], payload["prompt"]
 
 
-def call_model(image_bytes, media_type, schema, prompt, model, api_key):
+def call_model(image_bytes, media_type, schema, prompt, model, api_key,
+               text=None):
+    """One extraction. `text` instead of an image is a pasted or fetched page,
+    worded exactly as buildContent() words it, so a text case measures what a
+    reporter's pasted link actually sends."""
+    if text is not None:
+        content = [{"type": "text", "text": (
+            f"Text supplied with this submission:\n\n{text.strip()}\n\n"
+            "Read the football results in the text above.")}]
+    else:
+        content = [
+            {"type": "image", "source": {
+                "type": "base64", "media_type": media_type,
+                "data": base64.standard_b64encode(image_bytes).decode()}},
+            {"type": "text", "text": "Read the football results in this image."},
+        ]
     body = {
         "model": model,
-        "max_tokens": 8000,
+        "max_tokens": 16000,
         "system": [{"type": "text", "text": prompt,
                     "cache_control": {"type": "ephemeral"}}],
         "thinking": {"type": "adaptive"},
         "output_config": {"effort": "low",
                           "format": {"type": "json_schema", "schema": schema}},
-        "messages": [{"role": "user", "content": [
-            {"type": "image", "source": {
-                "type": "base64", "media_type": media_type,
-                "data": base64.standard_b64encode(image_bytes).decode()}},
-            {"type": "text", "text": "Read the football results in this image."},
-        ]}],
+        "messages": [{"role": "user", "content": content}],
     }
     request = urllib.request.Request(API, data=json.dumps(body).encode(),
                                      method="POST")
@@ -266,6 +281,51 @@ def score_case(expected, got):
     }
 
 
+def score_report(expected, got):
+    """A match report's sheets, substitutions and cards, as sets per side.
+
+    Only for a case whose JSON has a "report" block, and only against the first
+    row read. Names are compared normalized — the same rule as team names —
+    because the squad matcher is what decides whether a spelling reaches a
+    player, and holding it to the golden string would score obedience as
+    error. An INVENTED player is the one to watch: a name on a sheet that the
+    source never listed is a match on somebody's profile they did not play.
+    """
+    want = expected.get("report")
+    if not want:
+        return None
+    row = ((got or {}).get("results") or [{}])[0]
+
+    def players(side):
+        names = set()
+        for sheet in row.get("team_sheets") or []:
+            if sheet.get("team_side") == side:
+                for p in (sheet.get("starting") or []) + (sheet.get("bench") or []):
+                    names.add(normalize(p.get("name_raw")))
+        return names
+
+    out = {"missed": [], "invented": []}
+    for side, sheet in (want.get("team_sheets") or {}).items():
+        wanted = {normalize(n) for n in sheet}
+        have = players(side)
+        out["missed"] += [f"{side}: {n}" for n in sorted(wanted - have)]
+        out["invented"] += [f"{side}: {n}" for n in sorted(have - wanted)]
+
+    def subs(rows):
+        return {(normalize(r.get("on_raw") or r.get("on")),
+                 normalize(r.get("off_raw") or r.get("off")),
+                 str(r.get("minute") or "")) for r in rows or []}
+    out["subs_wrong"] = sorted(map(str, subs(want.get("substitutions"))
+                                   ^ subs(row.get("substitutions"))))
+
+    def cards(rows):
+        return {(normalize(r.get("person_raw") or r.get("person")), r.get("card"))
+                for r in rows or []}
+    out["cards_wrong"] = sorted(map(str, cards(want.get("cards"))
+                                    ^ cards(row.get("cards"))))
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--case", help="run one case by name")
@@ -300,19 +360,26 @@ def main():
         expected = json.loads((CASES / f"{name}.json").read_text())
         image = next((CASES / f"{name}{ext}" for ext in MEDIA
                       if (CASES / f"{name}{ext}").exists()), None)
-        if image is None:
-            report.append({"case": name, "error": "no image beside the json"})
+        page = CASES / f"{name}.txt"
+        if image is None and not page.exists():
+            report.append({"case": name,
+                           "error": "no image or .txt beside the json"})
             continue
 
         started = time.time()
-        message, error = call_model(image.read_bytes(), MEDIA[image.suffix],
-                                    schema, prompt, args.model, api_key)
+        if image is not None:
+            message, error = call_model(image.read_bytes(), MEDIA[image.suffix],
+                                        schema, prompt, args.model, api_key)
+        else:
+            message, error = call_model(None, None, schema, prompt, args.model,
+                                        api_key, text=page.read_text())
         if error:
             report.append({"case": name, "error": error})
             continue
 
         got = extracted_results(message)
         result = score_case(expected, got)
+        result["report"] = score_report(expected, got)
         result["case"] = name
         result["seconds"] = round(time.time() - started, 1)
         usage = message.get("usage", {})
@@ -352,6 +419,18 @@ def main():
             print(f"      missed   {m}")
         for i in row["invented"]:
             print(f"      INVENTED {i}")
+        sheet = row.get("report")
+        if sheet is not None:
+            if not any(sheet.values()):
+                print("      sheets   every player, substitution and card read")
+            for m in sheet["missed"]:
+                print(f"      missed player    {m}")
+            for i in sheet["invented"]:
+                print(f"      INVENTED player  {i}")
+            for x in sheet["subs_wrong"]:
+                print(f"      sub differs      {x}")
+            for x in sheet["cards_wrong"]:
+                print(f"      card differs     {x}")
 
     print(f"\n  {totals['correct']}/{totals['expected']} scorelines correct"
           f"   {totals['missed']} missed   {totals['wrong']} misread"

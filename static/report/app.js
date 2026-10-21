@@ -36,6 +36,9 @@ import * as graphics from "./graphics.js";
 import * as grid from "./results_grid.js";
 // The fixture importer's rules, out here for the same reason.
 import * as fx from "./fixture_import.js";
+// A club's match report staged onto the match screen's editors — the same
+// bargain again, tested in tests/js/test_match_report.mjs.
+import * as mr from "./match_report.js";
 // What to report when a screen breaks, and how often. Out here because it must
 // work on a page that has already gone wrong — see 0052.
 import * as crash from "./error_report.js";
@@ -3039,8 +3042,8 @@ async function renderImport(params) {
          <label class="rp-label" for="im-file">Screenshot or photo</label>
          <input class="rp-input" id="im-file" type="file" data-file
                 accept="image/jpeg,image/png,image/webp" capture="environment">
-         <p class="rp-hint">A results graphic, or a photo of a printed sheet.
-           It is shrunk on this phone before it is sent.</p>
+         <p class="rp-hint">A results graphic, a team-sheet graphic, or a photo
+           of a printed sheet. It is shrunk on this phone before it is sent.</p>
          ${state.preview
            ? `<img class="rp-imp-preview" src="${esc(state.preview)}" alt="">`
            : ""}
@@ -3050,6 +3053,8 @@ async function renderImport(params) {
                 value="${esc(state.url)}" placeholder="https://facebook.com/..."
                 autocapitalize="off" autocorrect="off" spellcheck="false">
          <p class="rp-hint">Kept as the source whether or not it can be read.
+           A club's match report on its own website can usually be read
+           straight from the link — line-ups, cards, officials and all.
            Facebook usually cannot be — send a screenshot with it.</p>
 
          <label class="rp-label" for="im-text">…or paste the text</label>
@@ -3961,6 +3966,21 @@ async function renderImport(params) {
         <span>${esc(raw.home || "?")}${esc(score)} ${esc(raw.away || "?")}</span></p>`;
     };
 
+    // A MATCH REPORT CARRIES MORE THAN THIS SCREEN EDITS. The score publishes
+    // here like any other row; the team sheets, cards and officials go to the
+    // match's own screen, which already has an editor for each, staged and
+    // unsaved (match_report.js). There is one sheet editor, not two.
+    const reportLink = (row) => {
+      const source = (state.extracted?.results || [])[Number(row.item.idx) - 1];
+      if (!mr.hasReport(source) || !row.publicId) return "";
+      return `<a class="rp-btn is-ghost rp-imp-use"
+          href="#/m/${esc(row.publicId)}?import=${esc(state.importId)}">
+          Team sheets, cards and officials &rarr;</a>
+        <p class="rp-hint">They open on the match's own screen, filled in from
+          this report and not yet saved.${row.saved.home === null
+            ? " Publish the score first if you want its scorers saved too." : ""}</p>`;
+    };
+
     const extra = (row) => {
       const item = row.item;
       const offer = !row.applied && row.proposal
@@ -3968,7 +3988,7 @@ async function renderImport(params) {
              data-use="${row.idx}">Use ${esc(proposalLabel(row.proposal))}</button>`
         : "";
       return `<div class="rp-imp-head">${chip(item)}${asRead(item)}</div>
-              ${reasons(item)}${offer}`;
+              ${reasons(item)}${offer}${reportLink(row)}`;
     };
 
     const groupHtml = (group) => `
@@ -4637,6 +4657,10 @@ async function renderMatch(publicId, params) {
     // then on a scorer saves the moment it is added, because there is
     // something for it to attach to. See stageOrSaveGoal.
     pendingGoals: [],
+    // A match report from #/import, staged onto the editors below by
+    // stageReport the first time the detail block draws. See there.
+    importId: params?.get("import") || "",
+    report: null,
   };
 
   drawMatch(match, names, state);
@@ -5655,6 +5679,321 @@ function captureDetailState(state) {
   });
 }
 
+// ── A match report, staged ──────────────────────────────────────────────────
+// #/import reads a club's report (extract.js "match_report") and the score
+// publishes there like any other row; the rest of the report comes HERE,
+// because this screen already has an editor for every part of it. Nothing is
+// saved by arriving: the sheets are filled in, the scorers staged, the officials
+// typed into their boxes, and the reporter checks them where they will edit
+// them. The rules are match_report.js, which is tested; this is the drawing.
+
+/** Who a printed name is on this side: a linked sheet row first, the squad
+ *  second, "" when neither knows — findPerson's unique-or-nothing rule. */
+function reportPerson(sides, teamId, raw) {
+  const side = sides.find((s) => s.key === teamId);
+  if (!side || !raw) return "";
+  const row = mr.findPerson(raw, side.sheet.rows.filter((r) => r.player_id),
+                            (r) => r.player_name);
+  if (row) return row.player_id;
+  return mr.findPerson(raw, (side.squad || []).filter((p) => p.player_id))
+    ?.player_id || "";
+}
+
+/** Read the import and stage it onto this screen. Never throws: a report that
+ *  cannot be read costs the reporter the shortcut, never the screen. */
+async function stageReport(match, state, sides, teamName) {
+  try {
+    const { data, error } = await supabase.from("report_imports")
+      .select("import_id,extracted,resolved").eq("import_id", state.importId)
+      .limit(1);
+    if (error) throw error;
+    const row = (data || [])[0];
+    if (!row) {
+      return { failed: "That report could not be opened from this account, so "
+        + "nothing from it was filled in." };
+    }
+    const found = mr.reportFor(row.extracted, row.resolved, match.match_id);
+    if (!found) {
+      return { failed: "That report was not matched to this match, so nothing "
+        + "from it was filled in here." };
+    }
+    const { source, flipped } = found;
+    const ctx = { homeTeamId: match.home_team_id, awayTeamId: match.away_team_id,
+                  flipped, teamName };
+
+    // ── Sheets: an empty side is filled; a saved one is only OFFERED ──
+    // save_lineup replaces a whole side, so a saved sheet staying put until
+    // the reporter taps "Replace" is this screen's conflict guard.
+    const { sheets, unplaced } = mr.sheetsFromReport(source, ctx);
+    const staged = [];
+    const replace = {};
+    sides.forEach((side) => {
+      const rows = sheets[side.key];
+      if (!rows) return;
+      mr.linkToSquad(rows, side.squad);
+      if (side.sheet.rows.length) { replace[side.key] = rows; return; }
+      side.sheet.rows = rows;
+      side.sheet.adding = "unused_sub";
+      staged.push(side.key);
+      state.open[`sheet-${side.key}`] = true;
+    });
+
+    // ── The score, when this screen is the one that will publish it ──
+    if (!state.published && source.status === "played"
+        && Number.isInteger(source.home_score) && Number.isInteger(source.away_score)) {
+      state.home = flipped ? source.away_score : source.home_score;
+      state.away = flipped ? source.home_score : source.away_score;
+      state.status = "played";
+      state.refreshPublish?.();
+    }
+
+    // ── Goals: amend what is saved, add what is missing ──
+    const score = {
+      [match.home_team_id]: state.published ? match.home_goals : state.home,
+      [match.away_team_id]: state.published ? match.away_goals : state.away,
+    };
+    const goals = mr.reconcileGoals(state.detail.goals, source.scorers, ctx, score);
+    goals.add.forEach((g) => {
+      g.player_id = reportPerson(sides, g.team_id, g.player_name);
+      g.assist_player_id = reportPerson(sides, g.team_id, g.assist_raw);
+    });
+    if (!state.published) {
+      // The publish button already saves staged scorers after the score; these
+      // join that queue rather than inventing a second one.
+      state.pendingGoals.push(...goals.add);
+      goals.add = [];
+    }
+    if (goals.add.length || goals.amend.length) state.open.goals = true;
+
+    // ── Officials: blank boxes only, identified where the name is exact ──
+    const named = mr.officialsFromReport(source, ctx, state.detail.officials);
+    const officials = {};
+    await Promise.all(Object.entries(named).map(async ([column, name]) => {
+      officials[column] = name;
+      const kind = OFFICIAL_COACHES.includes(column) ? "coach" : "referee";
+      const people = await searchOfficials(name, kind).catch(() => []);
+      const exact = people.filter(
+        (o) => officialLabel(o).toLowerCase() === name.toLowerCase());
+      if (exact.length === 1) officials[`${column}_id`] = exact[0].official_id;
+    }));
+    if (Object.keys(named).length) state.open.officials = true;
+
+    return { staged, replace, goals, officials,
+             unplaced: unplaced.concat(goals.unplaced), done: {} };
+  } catch (error) {
+    console.warn("[everyleague] match report could not be staged:", error);
+    return { failed: "The match report could not be loaded — "
+      + "nothing from it was filled in. You can still enter everything here." };
+  }
+}
+
+/** The panel at the top of the detail block: what arrived, what could not
+ *  be placed, and one button for all of it. */
+function reportBannerHtml(report, teamName, sides, state) {
+  if (report.failed) {
+    return `<p class="rp-hint is-warn" style="margin-top:0">${esc(report.failed)}</p>`;
+  }
+  const lines = [];
+  report.staged.filter((key) => !report.done[`sheet-${key}`]).forEach((key) => {
+    const rows = sides.find((s) => s.key === key)?.sheet.rows || [];
+    const cards = rows.filter((r) => r.yellow_card || r.yellow_red_card
+      || r.red_card).length;
+    const subs = rows.filter((r) => r.role === "sub_on").length;
+    const unlinked = rows.filter((r) => !r.player_id).length;
+    lines.push(`<li><span>${esc(teamName(key))} team sheet
+      <em>${rows.length} players · ${subs} substitution${subs === 1 ? "" : "s"}
+        · ${cards} card${cards === 1 ? "" : "s"}${unlinked
+          ? ` · ${unlinked} not linked to a player yet` : ""}</em></span></li>`);
+  });
+  // Outside the list, not in a row of it: .rp-btn is width:100%, and a list
+  // row is a name and a × side by side (0053's first layout bug).
+  const offers = Object.entries(report.replace).map(([key, rows]) => {
+    const saved = sides.find((s) => s.key === key)?.sheet.rows.length || 0;
+    return `<p class="rp-hint">${esc(teamName(key))} already has a saved sheet
+        of ${saved}. The report has its own, with ${rows.length} players —
+        nothing changes unless you replace it.</p>
+      <button class="rp-btn is-ghost" type="button" data-report-replace="${esc(key)}"
+        >Use the report's ${esc(teamName(key))} sheet instead</button>`;
+  }).join("");
+  if (!report.done.amend) {
+    report.goals.amend.forEach((a) => {
+      const bits = [];
+      if (a.assist_raw) bits.push(`assist ${a.assist_raw}`);
+      if (a.minute) bits.push(`${a.minute}'`);
+      if (a.goal_type) bits.push(a.goal_type.replace("_", " "));
+      lines.push(`<li><span>${esc(a.scorer)}'s goal
+        <em>adds ${esc(bits.join(" · "))}</em></span></li>`);
+    });
+  }
+  if (!report.done.add) {
+    report.goals.add.forEach((g) => lines.push(`<li><span>${esc(g.player_name)}
+      <em>new scorer for ${esc(teamName(g.team_id))}${g.minute
+        ? ` · ${esc(g.minute)}'` : ""}</em></span></li>`));
+  }
+  const waiting = (state.pendingGoals || []).length;
+  if (waiting && !state.published) {
+    lines.push(`<li><span>${waiting} scorer${waiting === 1 ? "" : "s"}
+      <em>saved by the Publish button above, with the score</em></span></li>`);
+  }
+  const officials = OFFICIAL_KEYS.filter((k) => report.officials[k]).length;
+  if (officials && !report.done.officials) {
+    lines.push(`<li><span>${officials} official${officials === 1 ? "" : "s"}
+      and coaches <em>in their boxes below, where they were empty</em></span></li>`);
+  }
+  const pending = report.staged.some((k) => !report.done[`sheet-${k}`])
+    || (!report.done.amend && report.goals.amend.length)
+    || (!report.done.add && report.goals.add.length)
+    || (!report.done.officials && officials);
+  return `
+    <section class="rp-imp-report" data-report>
+      <p class="rp-imp-report-head">From the match report</p>
+      ${lines.length ? `<ul class="rp-list">${lines.join("")}</ul>`
+        : offers ? "" : '<p class="rp-hint">Everything from the report is saved.</p>'}
+      ${offers}
+      ${report.unplaced.length ? `
+        <p class="rp-hint is-warn">Not recorded:</p>
+        <ul class="rp-imp-unplaced">${report.unplaced
+          .map((u) => `<li>${esc(u)}</li>`).join("")}</ul>` : ""}
+      ${pending ? `
+        <button class="rp-btn" type="button" data-report-save>Save everything
+          from the report</button>
+        <p class="rp-hint">Check the sheets below first — anything you change
+          there is what gets saved. Each part saves on its own, so one that
+          fails keeps everything you typed in it.</p>` : ""}
+    </section>`;
+}
+
+/** Wire the report panel's two buttons. */
+function wireReport(host, match, state, sides, teamName) {
+  const report = state.report;
+  if (!report || report.failed) return;
+
+  host.querySelectorAll("[data-report-replace]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.reportReplace;
+      const side = sides.find((s) => s.key === key);
+      if (!side || !report.replace[key]) return;
+      side.sheet.rows = report.replace[key];
+      side.sheet.adding = "unused_sub";
+      delete report.replace[key];
+      report.staged.push(key);
+      state.open[`sheet-${key}`] = true;
+      // Nothing left the phone: the saved sheet is still the saved sheet
+      // until this side's Save (or Save everything) is tapped.
+      drawDetail(match, state, { local: true });
+    });
+  });
+
+  host.querySelector("[data-report-save]")?.addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    if (button.disabled) return;                  // rule 2: never twice
+    clearFlash();
+    button.disabled = true;
+    button.textContent = "Saving…";
+    const failures = [];
+    let wrote = false;
+
+    // 1. Sheets first: the assists below are looked up on them.
+    for (const key of report.staged) {
+      if (report.done[`sheet-${key}`]) continue;
+      const side = sides.find((s) => s.key === key);
+      if (!side) continue;
+      const problems = mr.sheetProblems(side.sheet.rows);
+      if (problems.length) {
+        failures.push(`${teamName(key)}: ${problems[0]}`);
+        continue;
+      }
+      const { error } = await supabase.rpc("save_lineup", {
+        p_match_id: match.match_id, p_team_id: key,
+        p_rows: sheetPayload(side.sheet.rows),
+      });
+      if (error) { failures.push(`${teamName(key)}: ${humanError(error)}`); continue; }
+      report.done[`sheet-${key}`] = true;
+      wrote = true;
+    }
+
+    // 2. What the saved goals are missing (0054). An assist is an id or
+    //    nothing — goals have no column for a name that matched nobody.
+    if (!report.done.amend && report.goals.amend.length) {
+      const rows = [];
+      report.goals.amend.forEach((a) => {
+        const assist = a.assist_raw ? reportPerson(sides, a.team_id, a.assist_raw) : "";
+        if (a.assist_raw && !assist) {
+          failures.push(`${a.assist_raw}'s assist needs ${a.assist_raw} linked `
+            + "to a player on the team sheet first.");
+        }
+        if (assist || a.minute || a.goal_type) {
+          rows.push({ goal_id: a.goal_id, assist_player_id: assist,
+                      minute: a.minute || "", goal_type: a.goal_type || "" });
+        }
+      });
+      if (rows.length) {
+        const { data, error } = await supabase.rpc("amend_match_goals", {
+          p_match_id: match.match_id, p_amendments: rows,
+        });
+        if (error) {
+          failures.push(humanError(error));
+        } else {
+          (data || []).filter((r) => !r.ok).forEach((r) => failures.push(r.message));
+          if ((data || []).some((r) => r.ok)) wrote = true;
+          report.done.amend = true;
+        }
+      }
+    }
+
+    // 3. Scorers the match does not have yet — one at a time, in order, for
+    //    flushPendingGoals' reasons.
+    if (!report.done.add && report.goals.add.length) {
+      const stuck = [];
+      for (const g of report.goals.add) {
+        g.assist_player_id = g.assist_player_id
+          || reportPerson(sides, g.team_id, g.assist_raw);
+        g.player_id = g.player_id || reportPerson(sides, g.team_id, g.player_name);
+        const error = await saveGoal(match, g);
+        if (error) { stuck.push(g); failures.push(`${g.player_name}: ${humanError(error)}`); }
+        else wrote = true;
+      }
+      report.goals.add = stuck;
+      if (!stuck.length) report.done.add = true;
+    }
+
+    // 4. Officials, from the form — what is in the boxes is what the reporter
+    //    has seen, and set_match_officials writes all twelve columns at once.
+    const form = host.querySelector("[data-officials-form]");
+    if (!report.done.officials && form
+        && OFFICIAL_KEYS.some((k) => report.officials[k])) {
+      const args = { p_match_id: match.match_id };
+      OFFICIAL_KEYS.forEach((key) => {
+        args[`p_${key}`] = form[key].value.trim();
+        args[`p_${key}_id`] = form[`${key}_id`].value.trim();
+      });
+      const { error } = await supabase.rpc("set_match_officials", args);
+      if (error) failures.push(humanError(error));
+      else { report.done.officials = true; wrote = true; }
+    }
+
+    if (wrote) {
+      requestRebuild();
+      supabase.rpc("set_import_outcome", {
+        p_import_id: state.importId, p_status: "published",
+      }).then(({ error }) => {
+        if (error) console.warn("[everyleague] import not closed:", error);
+      });
+    }
+    // Saved sheets are re-read (save_lineup derives each starter's Off'); one
+    // that failed keeps its state, which is rule 1.
+    report.staged.forEach((key) => {
+      if (report.done[`sheet-${key}`]) delete state.sheets[key];
+    });
+    state.detail = null;
+    await drawDetail(match, state);
+    flash(failures.length
+      ? `Saved what could be. ${failures.join(" ")}`
+      : "Saved everything from the report. The site updates in a few minutes.",
+      failures.length ? "warn" : "ok", 8000);
+  });
+}
+
 /** Redraw the optional-detail block.
  *
  *  `local` means "nothing on the server changed" — staging a scorer, or
@@ -5680,7 +6019,7 @@ async function drawDetail(match, state, { local = false } = {}) {
   if (!local || !state.detail) {
     const [goalsRes, lineupRes, mediaRes, officialsRes] = await Promise.all([
       supabase.from("goals")
-        .select("goal_id,team_id,reported_player_name,minute,player_id,assist_player_id")
+        .select("goal_id,team_id,reported_player_name,minute,goal_type,player_id,assist_player_id")
         .eq("match_id", match.match_id).order("ord"),
       supabase.from("lineups").select("*")
         .eq("match_id", match.match_id).order("ord"),
@@ -5723,6 +6062,18 @@ async function drawDetail(match, state, { local = false } = {}) {
     side.sheet = sheetState(state, side.key,
       lineup.filter((r) => r.team_id === side.key));
   });
+
+  // Once per visit: after this the report lives in the editors' own state
+  // (state.sheets, state.pendingGoals) and in state.report, and a refetch of
+  // what is saved does not re-stage it over what the reporter has since done.
+  if (state.importId && !state.report) {
+    state.report = await stageReport(match, state, sides, teamName);
+  }
+  const report = state.report && !state.report.failed ? state.report : null;
+  // Staged officials show IN the form until they are saved, so the reporter
+  // checks them where they will edit them. Only blank columns were staged.
+  const shownOfficials = report && !report.done.officials
+    ? { ...officials, ...report.officials } : officials;
 
   // A goal names its scorer twice over: reported_player_name is what someone
   // typed, and player_id is who that turned out to be. The list shows the
@@ -5798,6 +6149,10 @@ async function drawDetail(match, state, { local = false } = {}) {
   host.innerHTML = `
     <div data-detail-body>
     <h2 class="rp-field-head">Match detail <span class="rp-optional">optional</span></h2>
+    ${state.report ? reportBannerHtml(state.report, teamName, sides, state)
+      : `<p class="rp-hint" style="margin-top:0">Have the club's match report or
+          a team-sheet picture? <a href="#/import">Fill this in from it</a> —
+          the line-ups, cards and officials arrive here, ready to check.</p>`}
 
     ${section("goals", "Goalscorers",
       goals.length + (state.pendingGoals || []).length,
@@ -5809,7 +6164,7 @@ async function drawDetail(match, state, { local = false } = {}) {
 
     ${section("officials", "Officials and coaches",
       OFFICIAL_ROLES.filter(([key]) => officials[key]).length,
-      officialsForm(match, officials), open.officials)}
+      officialsForm(match, shownOfficials), open.officials)}
 
     ${section("photo", "Photos", media.length, `
       <ul class="rp-list">${media.map((m) => `
@@ -6056,6 +6411,7 @@ function wireDetail(match, state, goals, sides) {
 
   wirePlayerPickers(host, match);
   wireOfficialPickers(host);
+  wireReport(host, match, state, sides || [], teamName);
 
   // ADDING A SCORER MEANS TWO DIFFERENT THINGS, DEPENDING ON ONE FACT.
   //
@@ -6126,6 +6482,9 @@ function wireDetail(match, state, goals, sides) {
       p_match_id: match.match_id, p_team_id: side.key, p_rows: rows,
     })).error,
     saved: () => {
+      // A staged report sheet saved by its own button is as saved as one
+      // saved by the report panel's, and the panel must stop offering it.
+      if (state.report?.done) state.report.done[`sheet-${side.key}`] = true;
       // Re-read after a save: save_lineup derives each starter's minute_off
       // from the substitutions, so what came back is not quite what went up.
       state.detail = null;
@@ -6150,6 +6509,8 @@ function wireDetail(match, state, goals, sides) {
       // A referee and a coach both render on the public site, under the
       // result, so they earn a build the same way a scorer does.
       if (!error) requestRebuild();
+      // ...and staged report officials in these boxes are now the saved ones.
+      if (!error && state.report?.done) state.report.done.officials = true;
       return error;
     }, match, state);
   });
@@ -9461,6 +9822,24 @@ function setCardState(row, key) {
 
 const STARTING_XI = 11;
 
+/** A sheet's rows as save_lineup takes them: every field it reads, and none
+ *  of the screen's own bookkeeping. One mapper for the sheet's Save button
+ *  and the match report's "Save everything", so the two cannot send
+ *  different shapes for the same sheet. */
+function sheetPayload(rows) {
+  return rows.map((r) => ({
+    player_name: r.player_name, player_id: r.player_id || "",
+    shirt_number: r.shirt_number || "", position: r.position || "",
+    role: r.role || "starting", captain: Boolean(r.captain),
+    motm: Boolean(r.motm),
+    minute_on: r.minute_on || "", minute_off: r.minute_off || "",
+    replaced_player: r.replaced_player || "",
+    yellow_card: Boolean(r.yellow_card),
+    yellow_red_card: Boolean(r.yellow_red_card),
+    red_card: Boolean(r.red_card),
+  }));
+}
+
 function blankSheetRow(player = {}) {
   return {
     player_name: player.name || "", player_id: player.player_id || "",
@@ -10365,17 +10744,7 @@ function wireSheet(root, ctx, redraw) {
       save.disabled = true;
       const label = save.textContent;
       save.textContent = "Saving…";
-      const error = await ctx.save(sheet.rows.map((r) => ({
-        player_name: r.player_name, player_id: r.player_id || "",
-        shirt_number: r.shirt_number || "", position: r.position || "",
-        role: r.role || "starting", captain: Boolean(r.captain),
-        motm: Boolean(r.motm),
-        minute_on: r.minute_on || "", minute_off: r.minute_off || "",
-        replaced_player: r.replaced_player || "",
-        yellow_card: Boolean(r.yellow_card),
-        yellow_red_card: Boolean(r.yellow_red_card),
-        red_card: Boolean(r.red_card),
-      })));
+      const error = await ctx.save(sheetPayload(sheet.rows));
       save.disabled = false;
       save.textContent = label;
       // Rule 1: the sheet stays in state on failure, so nothing typed is lost.
@@ -10607,6 +10976,10 @@ async function drawNTDetail(match, state, { local = false } = {}) {
   host.innerHTML = `
     <div data-detail-body>
     <h2 class="rp-field-head">Match detail <span class="rp-optional">optional</span></h2>
+    ${state.report ? reportBannerHtml(state.report, teamName, sides, state)
+      : `<p class="rp-hint" style="margin-top:0">Have the club's match report or
+          a team-sheet picture? <a href="#/import">Fill this in from it</a> —
+          the line-ups, cards and officials arrive here, ready to check.</p>`}
 
     ${section("ntgoals", "Goalscorers", goals.length,
       `<ul class="rp-list">${goalList}</ul>${goalForm}`, open.ntgoals)}

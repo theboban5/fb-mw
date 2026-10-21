@@ -203,19 +203,29 @@ export const isLoginWalled = (input) => {
 const TEXTUAL = /^(text\/|application\/(json|xhtml\+xml|xml))/i;
 
 /** Very small HTML-to-text. Not a parser and not trying to be: scripts and
- *  styles out, tags out, entities for the five that matter, whitespace
- *  collapsed. The result is fed to a model, which does not need markup. */
+ *  styles out, tags out, entities decoded, whitespace collapsed. The result is
+ *  fed to a model, which does not need markup.
+ *
+ *  NUMERIC ENTITIES ARE DECODED because WordPress writes every apostrophe as
+ *  `&#8217;`, and a club's match report is a WordPress page. With only the
+ *  five named entities, "Shema&#8217;s header" reached the model as written,
+ *  and a player called O'Neil would have arrived as `O&#8217;Neil` — a name
+ *  the squad matcher can never equal. `&amp;` goes LAST, so `&amp;#39;` is
+ *  the literal text `&#39;` rather than an apostrophe decoded twice. */
 export function htmlToText(html) {
+  const codePoint = (n) => (n > 0 && n <= 0x10ffff && (n < 0xd800 || n > 0xdfff)
+    ? String.fromCodePoint(n) : " ");
   return String(html)
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
+    .replace(/&#x([0-9a-f]{1,6});/gi, (_, hex) => codePoint(parseInt(hex, 16)))
+    .replace(/&#(\d{1,7});/g, (_, dec) => codePoint(Number(dec)))
+    .replace(/&amp;/gi, "&")
     .replace(/\s+/g, " ")
     .trim();
 }

@@ -20,14 +20,15 @@ import assert from "node:assert/strict";
 
 import {
   EXTRACTION_SCHEMA, IMPORT_STATUSES, SYSTEM_PROMPT, buildContent, buildRequest,
-  normalizeItem, parseExtraction, shouldEscalate, usageRecord,
+  normalizeItem, normalizeMatchReport, parseExtraction, shouldEscalate,
+  usageRecord,
 } from "../../supabase/functions/import-extract/extract.js";
 import { anthropicProvider, fakeProvider, runExtraction }
   from "../../supabase/functions/import-extract/provider.js";
 import {
   CLEAN_GRAPHIC, MESSY_TEXT, ABBREVIATED, FIXTURE_LIST, ABANDONED_WITH_SCORE,
   POSTPONED, INVENTED_IDS, HALF_SCORE, ABSURD_SCORES, WITH_SCORERS, WITH_OWN_GOAL,
-  UNREADABLE,
+  MATCH_REPORT, UNREADABLE,
   RESCUED, NOT_JSON, EMPTY_CONTENT, REFUSED, TRUNCATED, WRONG_SHAPE,
 } from "./fixtures/extractions.mjs";
 
@@ -80,6 +81,32 @@ test("nullable fields use anyOf, not a type union", () => {
     if (node.items) walk(node.items, `${path}[]`);
   };
   walk(EXTRACTION_SCHEMA, "root");
+});
+
+test("the schema stays inside the structured-outputs limits", () => {
+  // THE API COUNTS, AND REFUSES EVERY REQUEST PAST THE LINE. Structured
+  // outputs allow 16 parameters using anyOf (or a type array) and 24 optional
+  // parameters — a property its object does not list in `required` — summed
+  // over the whole schema. The results half had already spent 15 and 13
+  // before match reports, so the obvious way to add them (more nullable
+  // fields) would have been a 400 on every import, of every kind, the moment
+  // it deployed. This is the number that stops the next field doing that.
+  let unions = 0;
+  let optional = 0;
+  const walk = (node) => {
+    if (!node || typeof node !== "object") return;
+    const required = new Set(node.required ?? []);
+    for (const [key, value] of Object.entries(node.properties ?? {})) {
+      if (value.anyOf || Array.isArray(value.type)) unions += 1;
+      if (!required.has(key)) optional += 1;
+      walk(value);
+    }
+    (node.anyOf ?? []).forEach(walk);
+    if (node.items) walk(node.items);
+  };
+  walk(EXTRACTION_SCHEMA);
+  assert.ok(unions <= 16, `${unions} union-typed parameters; the API allows 16`);
+  assert.ok(optional <= 24, `${optional} optional parameters; the API allows 24`);
 });
 
 test("every nullable field can still express null", () => {
@@ -232,6 +259,80 @@ test("the prompt tells the model what a scorer field means", () => {
   // These are the two sentences that stop that being true again.
   assert.match(SYSTEM_PROMPT, /team_side is WHERE THE NAME IS PRINTED/);
   assert.match(SYSTEM_PROMPT, /own_goal is true only when the source marks it/);
+});
+
+test("a club's match report reads through as one match carrying its sheet", () => {
+  const out = parseExtraction(MATCH_REPORT);
+  assert.equal(out.documentKind, "match_report");
+  assert.equal(out.items.length, 1);
+  const item = out.items[0];
+  assert.equal(item.away_score, 1);
+  assert.equal(item.team_sheets.length, 1, "one sheet is the ordinary case");
+  const sheet = item.team_sheets[0];
+  assert.equal(sheet.team_side, "away");
+  assert.equal(sheet.starting.length, 11);
+  assert.equal(sheet.bench.length, 9);
+  assert.equal(sheet.starting[0].position, "GK");
+  assert.equal(sheet.starting.find((p) => p.captain).name_raw, "Zebron Kalima");
+  assert.deepEqual(item.substitutions.map((x) => x.minute), ["39", "63", "63", "63"]);
+  assert.equal(item.scorers[0].assist_raw, "Chinsisi Maonga");
+  assert.equal(item.scorers[0].method, "header");
+  assert.equal(item.motm_raw, "Ernest Petro");
+  assert.equal(item.officials.fourth_official, "Mercy Kayira");
+  assert.deepEqual(item.coaches, [{ team_side: "away", name_raw: "Patricio Kulemeka" }]);
+});
+
+test("a card for someone who is not a player is kept, and says so", () => {
+  // The team manager's red is worth showing the reporter and has nowhere to
+  // be written; is_player is how the client tells the two apart.
+  const cards = parseExtraction(MATCH_REPORT).items[0].cards;
+  assert.equal(cards.length, 5);
+  const manager = cards.find((c) => c.person_raw === "Emmanuel Chipatala");
+  assert.equal(manager.is_player, false);
+  assert.equal(manager.card, "red");
+});
+
+test("an unrecognised card is dropped, never read as a yellow", () => {
+  const out = normalizeMatchReport({ cards: [
+    { team_side: "home", person_raw: "A", card: "orange", is_player: true },
+    { team_side: "home", person_raw: "B", card: "second_yellow" },
+  ] });
+  assert.deepEqual(out.cards.map((c) => c.person_raw), ["B"]);
+  assert.equal(out.cards[0].is_player, true, "only an explicit false is not a player");
+});
+
+test("a minute is kept only in a shape a team sheet accepts", () => {
+  const minutes = ["39'", "90 + 2", "63’", "second half", "", "1000"].map((minute) =>
+    normalizeMatchReport({ substitutions: [{ on_raw: "X", minute }] })
+      .substitutions[0].minute);
+  assert.deepEqual(minutes, ["39", "90+2", "63", "", "", ""]);
+});
+
+test("a position that landed in the shirt box is not a shirt", () => {
+  const out = normalizeMatchReport({ team_sheets: [{ team_side: "home",
+    starting: [{ name_raw: "A", shirt_number: "GK", position: "goalie" },
+               { name_raw: "B", shirt_number: " 7 ", position: "MF" }],
+    bench: [] }] });
+  assert.deepEqual(out.team_sheets[0].starting.map((p) => [p.shirt_number, p.position]),
+                   [["", ""], ["7", "MF"]]);
+});
+
+test("a row stored before match reports existed reads as an empty report", () => {
+  // report_imports keeps every extraction, and the client re-reads old ones
+  // through normalizeMatchReport. None of those rows has these keys.
+  const out = normalizeMatchReport(normalizeItem(
+    { home_team_raw: "A", away_team_raw: "B", status: "played",
+      home_score: 1, away_score: 0, scorers: [{ player_raw: "X", team_side: "home" }] }, 1));
+  assert.deepEqual(out.team_sheets, []);
+  assert.deepEqual(out.cards, []);
+  assert.equal(out.motm_raw, "");
+  assert.equal(out.officials.referee, "");
+});
+
+test("the prompt says which of two tellings of a substitution to believe", () => {
+  assert.match(SYSTEM_PROMPT, /the list is the answer/);
+  assert.match(SYSTEM_PROMPT, /Never build a sheet from players merely mentioned/);
+  assert.match(SYSTEM_PROMPT, /assist_raw is the player the source credits/);
 });
 
 test("a fixture list is recognised rather than published", () => {

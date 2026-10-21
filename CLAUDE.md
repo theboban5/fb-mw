@@ -93,6 +93,7 @@ src/og_card.py         a link-preview PNG per match (/og/match/), cached in CI
 static/report/results_grid.js  the matchday grid's rules, DOM-free and tested
 static/report/fixture_import.js  the fixture importer's rules, same bargain
 static/report/error_report.js  what to report when a screen breaks (0052)
+static/report/match_report.js  a club's match report → the match screen's editors
 src/nt.py, nt_page.py  national teams (the nt_* tabs, /scorchers/)
 src/search.py          the site search index
 static/report/app.js   the reporter portal (one file, no framework)
@@ -154,9 +155,10 @@ and this is still not a Node project** — the root `package.json` exists only
 because Node reads a bare `.js` as CommonJS unless a package.json says
 otherwise, and the portal's modules are ESM because browsers load them that
 way. It covers `static/report/results_grid.js`,
-`static/report/fixture_import.js` and `static/report/error_report.js`, which
-import nothing; the moment one of them needs `document` or `supabase`, its
-tests stop meaning anything.
+`static/report/fixture_import.js`, `static/report/error_report.js` and
+`static/report/match_report.js`, which import nothing but each other; the
+moment one of them needs `document` or `supabase`, its tests stop meaning
+anything.
 
 `python3 -m unittest discover` is **green**. It ended with one long-standing
 failure until 7 Sep 2026 — the search index's raw-byte ceiling, which had been
@@ -186,6 +188,51 @@ fixture and clean up, and they never mutate a real match.
   (goals, team sheets), and plain RLS policies where it could not (media).
 
 ---
+
+## Recent work (Oct 2026)
+
+Team sheets, cards and assists from a club's match report, migration `0054` —
+`#/import` → `#/m/<id>?import=<id>`:
+
+- Only 32 matches had a team sheet, every one typed a row at a time, while
+  every FDH Bank Premiership club publishes a full match report: XI, bench,
+  subs with minutes, cards, captain, man of the match, scorer AND assister,
+  coach, all four officials. **Every column for that already existed** —
+  cards are booleans on `lineups` since 0018. What was missing was a way in.
+- **A match report is a results import with one row** (`document_kind:
+  "match_report"`). `results[0]` is the match, so the matcher, the team fixer
+  and the score's `channel='import'` are all unchanged; the row carries
+  `team_sheets`, `substitutions`, `cards`, `motm_raw`, `officials`, `coaches`,
+  and each scorer an `assist_raw` and `method`. Stored imports replay.
+- **The schema budget is real.** Structured outputs allow **16 `anyOf` and 24
+  optional parameters across the whole schema**, and results had spent 15 and
+  13. So the new fields are required and non-nullable — `""`, `false`, `[]`
+  mean "not shown" — and a test counts both totals. The obvious version (more
+  nullable fields) would have been a 400 on every import of every kind.
+  Not verified against the live API from here (no key on this machine): the
+  first import after deploy is the test of the unpublished grammar-size limit.
+- **The review is the match screen**, not a second sheet editor. The import
+  review row links to `#/m/<public_id>?import=<id>`, and `stageReport` fills
+  the editors that were already there: an EMPTY side gets the sheet (linked to
+  the club's squad by `findPerson` — exact, then initial+surname or bare
+  surname, **unique or nothing**); a SAVED side is only offered ("Use the
+  report's sheet instead"), because `save_lineup` replaces a side whole. Nothing
+  saves until a tap; "Save everything" runs sheets → amendments → new scorers →
+  officials, each independently.
+- **What cannot be placed is said, not dropped**: a card for a player on no
+  sheet (one club's report has one sheet), a red card for a team manager
+  (`is_player: false`; `lineups` holds players), a sub with no minute.
+- **0054 `amend_match_goals`**: the assist was the point — 232 of 248 Super
+  League goals had none and no way to get one short of delete-and-retype. Fill
+  blanks, never overwrite; never make a goal an own goal, never give one an
+  assist. The assist rules moved into `goal_assist_id`, called by
+  `apply_match_goal` too (0053's move again).
+- `htmlToText` decodes numeric entities: club reports are WordPress, and
+  `Shema&#8217;s` reached the model as written. `max_tokens` 8000 → 16000.
+- The eval takes a `.txt` case and scores sheets, subs and cards as sets;
+  `ss-moyale-report` is its first case.
+- Not built: card minutes and shots/corners (no columns), team-official
+  cards, lineup provenance (`save_lineup` has no `p_import_id`).
 
 ## Recent work (Sep 2026)
 

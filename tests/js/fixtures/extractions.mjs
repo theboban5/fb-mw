@@ -207,6 +207,74 @@ export const WITH_OWN_GOAL = asMessage({
   notes: "The goal is marked OG in the graphic.",
 });
 
+// ── A club's match report ────────────────────────────────────────────────────
+// silverstrikers.mw, 18 Oct 2026: Moyale Barracks 0-1 Silver Strikers, read
+// the way the prompt asks. It is the shape every FDH Bank Premiership club
+// report takes, and every awkward thing in it is ordinary:
+//   - ONE team sheet. The club lists its own XI; Moyale's players are named
+//     only where they did something.
+//   - A card for a player on no sheet (Viyuyi), and a red card for a TEAM
+//     MANAGER, who is not a player and has no lineups row to carry it.
+//   - The 63' changes are told twice, once as a sentence in another order;
+//     the substitutions here are the explicit list, which is the answer.
+//   - The goal already exists in the database; the assist does not.
+const ssPlayer = (name_raw, over = {}) => ({
+  name_raw, shirt_number: "", position: "", captain: false, ...over });
+
+export const MATCH_REPORT = asMessage({
+  document_kind: "match_report",
+  competition_hint: null, date: "2026-10-18", matchday: null,
+  results: [
+    result("Moyale Barracks", "Silver Strikers", 0, 1, {
+      date: "2026-10-18", venue_raw: "Mzuzu Stadium",
+      fields_not_present: ["kickoff", "matchday"],
+      scorers: [
+        { player_raw: "Innocent Shema", team_side: "away", minute: 7,
+          own_goal: false, penalty: false, assist_raw: "Chinsisi Maonga",
+          method: "header" },
+      ],
+      team_sheets: [{
+        team_side: "away",
+        starting: [
+          ssPlayer("George Chikooka", { position: "GK" }),
+          ssPlayer("Innocent Shema"), ssPlayer("Dan Sandukira"),
+          ssPlayer("Lumbani Nyondo"), ssPlayer("Nickson Mwase"),
+          ssPlayer("Yankho Billiat"),
+          ssPlayer("Zebron Kalima", { captain: true }),
+          ssPlayer("Ernest Petro"), ssPlayer("Charles Chipala"),
+          ssPlayer("Chinsisi Maonga"), ssPlayer("Emmanuel Allan"),
+        ],
+        bench: [
+          ssPlayer("Festus Duwe"), ssPlayer("Aubrey Khumbula"),
+          ssPlayer("Daah Rashid"), ssPlayer("Andrew Joseph"),
+          ssPlayer("Christopher Mikuwa"), ssPlayer("Austin Yasin"),
+          ssPlayer("Felix Dumakude"), ssPlayer("Innocent Smart"),
+          ssPlayer("Lasuli Jali"),
+        ],
+      }],
+      substitutions: [
+        { team_side: "away", on_raw: "Festus Duwe", off_raw: "Zebron Kalima", minute: "39" },
+        { team_side: "away", on_raw: "Aubrey Khumbula", off_raw: "Charles Chipala", minute: "63" },
+        { team_side: "away", on_raw: "Daah Rashid", off_raw: "Chinsisi Maonga", minute: "63" },
+        { team_side: "away", on_raw: "Andrew Joseph", off_raw: "Emmanuel Allan", minute: "63" },
+      ],
+      cards: [
+        { team_side: "away", person_raw: "Nickson Mwase", card: "yellow", is_player: true },
+        { team_side: "away", person_raw: "Charles Chipala", card: "yellow", is_player: true },
+        { team_side: "away", person_raw: "Innocent Shema", card: "yellow", is_player: true },
+        { team_side: "away", person_raw: "Emmanuel Chipatala", card: "red", is_player: false },
+        { team_side: "home", person_raw: "Jimmy Viyuyi", card: "yellow", is_player: true },
+      ],
+      motm_raw: "Ernest Petro",
+      officials: { referee: "Melluce Nyirongo", assistant_1: "Stammy Msukwa",
+                   assistant_2: "Jailosi Ngoma", fourth_official: "Mercy Kayira" },
+      coaches: [{ team_side: "away", name_raw: "Patricio Kulemeka" }],
+      evidence: "Silver Strikers Starting XI George Chikooka (GK), Innocent Shema, …",
+    }),
+  ],
+  notes: "The report covers Silver Strikers only; Moyale Barracks' line-up is not given.",
+});
+
 // ── Nothing readable ─────────────────────────────────────────────────────────
 export const UNREADABLE = asMessage({
   document_kind: "unreadable",

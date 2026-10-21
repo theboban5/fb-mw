@@ -1,0 +1,32 @@
+{
+  "note": "silverstrikers.mw match report, 18 Oct 2026, as htmlToText makes it. One club's sheet; a team manager's red; the 63' changes told twice in different orders.",
+  "document_kind": "match_report",
+  "results": [
+    {"home": "Moyale Barracks", "away": "Silver Strikers",
+     "home_score": 0, "away_score": 1, "status": "played"}
+  ],
+  "report": {
+    "team_sheets": {
+      "away": ["George Chikooka", "Innocent Shema", "Dan Sandukira",
+               "Lumbani Nyondo", "Nickson Mwase", "Yankho Billiat",
+               "Zebron Kalima", "Ernest Petro", "Charles Chipala",
+               "Chinsisi Maonga", "Emmanuel Allan",
+               "Festus Duwe", "Aubrey Khumbula", "Daah Rashid", "Andrew Joseph",
+               "Christopher Mikuwa", "Austin Yasin", "Felix Dumakude",
+               "Innocent Smart", "Lasuli Jali"]
+    },
+    "substitutions": [
+      {"on": "Festus Duwe", "off": "Zebron Kalima", "minute": "39"},
+      {"on": "Aubrey Khumbula", "off": "Charles Chipala", "minute": "63"},
+      {"on": "Daah Rashid", "off": "Chinsisi Maonga", "minute": "63"},
+      {"on": "Andrew Joseph", "off": "Emmanuel Allan", "minute": "63"}
+    ],
+    "cards": [
+      {"person": "Nickson Mwase", "card": "yellow"},
+      {"person": "Charles Chipala", "card": "yellow"},
+      {"person": "Innocent Shema", "card": "yellow"},
+      {"person": "Emmanuel Chipatala", "card": "red"},
+      {"person": "Jimmy Viyuyi", "card": "yellow"}
+    ]
+  }
+}

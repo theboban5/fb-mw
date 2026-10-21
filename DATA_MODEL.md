@@ -233,6 +233,14 @@ matches (home/away team_id, venue_id, competition_id, season_id)
   reader scans as one fact. The credit renders on the team sheet, beside the
   person who earned it; where no sheet has been entered it renders nowhere,
   and their own profile still counts it.
+- **A saved goal can be amended, never overwritten** (`amend_match_goals`,
+  0054). Its `assist_player_id`, `minute` and `goal_type` are filled in only
+  where they are blank; a different value already there refuses the row and
+  names it. It is how a club's match report adds the assist to a goal the
+  league's graphic entered on the day. Two things it never does: make a goal an
+  own goal (that changes which side the scorer plays for, since `team_id` is
+  the beneficiary), or give an own goal an assist. A correction is still delete
+  and re-enter.
 - Only `status=played` matches count for standings; `awarded` matches count
   with their recorded score (and show `awarded_note`).
 - Dates are strict `YYYY-MM-DD`; a blank match date is allowed (fixture not

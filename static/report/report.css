@@ -1461,6 +1461,25 @@ a { color: var(--accent); }
 
 .rp-imp-group + .rp-imp-group { margin-top: 22px; }
 
+/* A match report staged onto #/m (match_report.js). Washed like the published
+   panel, because it is the same kind of thing — a summary of what is about to
+   be true — and set apart from the editors below it, which are where the
+   checking actually happens. */
+.rp-imp-report {
+  padding: 14px 14px 4px; margin-bottom: 16px;
+  border: 1px solid var(--accent); border-radius: var(--radius);
+  background: var(--accent-wash);
+}
+.rp-imp-report-head { margin: 0 0 8px; font-weight: 800; color: var(--accent); }
+/* What could not be placed. Plain sentences, each its own line: a fact that
+   vanished between the report and this screen is one the reporter will
+   assume was recorded. */
+.rp-imp-unplaced {
+  margin: 0 0 10px; padding-left: 18px;
+  color: var(--warn); font-size: 0.8rem; line-height: 1.45;
+}
+.rp-imp-unplaced li + li { margin-top: 4px; }
+
 .rp-imp-head {
   display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px;
   margin-bottom: 6px;
