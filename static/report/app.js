@@ -471,9 +471,10 @@ function backHash(params) {
 
 // ── Home filters ─────────────────────────────────────────────────────────────
 // The unfiltered list is one long scroll in no order a reporter cares about,
-// because it is ordered by date across every competition at once. These three
+// because it is ordered by date across every competition at once. These
 // filters are the questions actually asked of it: which league, which bucket,
-// which day.
+// which day — and which team, the one a reporter asks first when a club's
+// result is the thing they came to fix.
 
 const SHOW_OPTIONS = [
   { value: "all", label: "Everything" },
@@ -483,12 +484,13 @@ const SHOW_OPTIONS = [
   { value: "reported", label: "Recently reported" },
 ];
 
-/** Filters live in the URL (#/?comp=…&show=…&date=…&md=…), not in a variable.
+/** Filters live in the URL (#/?comp=…&show=…&date=…&md=…&team=…), not in a variable.
  *  The back button then works, a reload keeps the view, and "my league,
  *  matchday 5" is a link a reporter can keep. Every value is validated on the
  *  way in — the hash is user input. */
 function readFilters(params) {
   const show = params.get("show");
+  const team = params.get("team") || "";
   const date = params.get("date") || "";
   const md = params.get("md") || "";
   return {
@@ -498,6 +500,9 @@ function readFilters(params) {
     // A stage value: md_<n> on a league, a knockout round on a cup. Anything
     // else came from a hand-edited URL and is ignored rather than queried.
     md: /^(md_\d{1,3}|r64|r32|r16|qf|sf|final|3p)$/.test(md) ? md : "",
+    // A team_id (MW_BULL_M1). Interpolated into a PostgREST or() filter by
+    // loadHome, so anything that is not the shape of an id is dropped here.
+    team: /^[A-Za-z0-9_-]{1,64}$/.test(team) ? team : "",
   };
 }
 
@@ -507,6 +512,7 @@ function filterHash(filters) {
   if (filters.show !== "all") query.set("show", filters.show);
   if (filters.date) query.set("date", filters.date);
   if (filters.md) query.set("md", filters.md);
+  if (filters.team) query.set("team", filters.team);
   const encoded = query.toString();
   return encoded ? `#/?${encoded}` : "#/";
 }
@@ -596,16 +602,23 @@ const DECIDED = ["played", "awarded", "postponed", "abandoned", "cancelled"];
 /** What a cached list is a list OF. Anything that changes which rows the
  *  database is asked for belongs here, or a filter silently reuses the wrong
  *  cache. */
-const homeKey = (filters) => `${filters.comp || "*"}|${filters.date || ""}`;
+const homeKey = (filters) =>
+  `${filters.comp || "*"}|${filters.date || ""}|${filters.team || ""}`;
 
 async function loadHome(filters) {
-  const { comp, date } = filters;
+  const { comp, date, team } = filters;
   const key = homeKey(filters);
   if (homeCache && homeCache.key === key) return homeCache;
 
   // Scoping every query the same way, in one place: a reporter sees their own
   // competitions, an admin sees all of them, and a chosen one wins over both.
   const scope = (query) => {
+    // A team is a question about rows the capped list may not hold, the same
+    // as a competition: "every Moyale Barracks match" has to reach back past
+    // the sixty newest results from everywhere else. It narrows ON TOP of the
+    // competition scope, never instead of it. readFilters has already pinned
+    // the id to [A-Za-z0-9_-], so it cannot smuggle a comma into the or().
+    if (team) query = query.or(`home_team_id.eq.${team},away_team_id.eq.${team}`);
     if (comp) return query.eq("competition_id", comp);
     // An admin reports everywhere and has no assignments to narrow by.
     if (!context.isAdmin) return query.in("competition_id", context.competitions);
@@ -619,7 +632,9 @@ async function loadHome(filters) {
   let other = scope(supabase.from("matches").select(MATCH_FIELDS)
     .in("status", DECIDED).order("date", { ascending: false }));
   // The cap is for the list nobody has narrowed. See the note above homeCache.
-  if (!comp) other = other.limit(RESULT_LIMIT);
+  // One team's whole history is a few dozen rows a season, so it is fetched
+  // whole for the same reason one competition is.
+  if (!comp && !team) other = other.limit(RESULT_LIMIT);
 
   // A date is a precise question — "the match in that Facebook report, on the
   // 30th" — and one day across every competition is a handful of rows, so it
@@ -850,9 +865,10 @@ function bucketOf(match, today) {
 }
 
 const anyFilterSet = (filters) =>
-  Boolean(filters.comp || filters.show !== "all" || filters.date || filters.md);
+  Boolean(filters.comp || filters.show !== "all" || filters.date || filters.md
+          || filters.team);
 
-function filterBar(filters, names, competitions, stages) {
+function filterBar(filters, names, competitions, stages, teamName) {
   // A competition in the hash that is not in the list — a hand-edited URL, or
   // an assignment removed since the link was saved — is still shown as the
   // chosen one. Dropping it silently would leave the menu reading "All
@@ -878,9 +894,21 @@ function filterBar(filters, names, competitions, stages) {
         ${esc(stageLabel(s))}</option>`))
     .join("");
 
+  // The team box is not a <select> and carries no data-filter: a club list is
+  // hundreds long, so it is a search (wireTeamFinder), and its answer is a
+  // tap that sets the hash rather than a change the bar's listener reads.
   return `
     <div class="rp-filters" data-filters>
-      <label class="rp-filter">
+      <div class="rp-filter rp-filter-wide rp-pick" data-team-find>
+        <span class="rp-filter-label">Team${filters.team ? `
+          <button class="rp-team-clear" type="button" data-team-clear>All teams</button>` : ""}</span>
+        <input class="rp-input" type="search" data-team-input
+               value="${esc(teamName || "")}" placeholder="Find a team, e.g. Moyale"
+               autocomplete="off" autocorrect="off" autocapitalize="words"
+               spellcheck="false" enterkeyhint="search" aria-label="Find a team">
+        <ul class="rp-suggest" data-team-suggest hidden></ul>
+      </div>
+      <label class="rp-filter rp-filter-wide">
         <span class="rp-filter-label">Competition</span>
         <select class="rp-select" data-filter="comp">${compOptions}</select>
       </label>
@@ -978,6 +1006,19 @@ async function renderHome(params) {
   const { names } = data;
   const competitions = choices.map((c) => c.competition_id);
 
+  // The chosen team's name, read off its own matches rather than asked for:
+  // every row loadHome returned names it on one side or the other. A team with
+  // no match in scope falls back to its id, which is still an honest answer
+  // to "which team is this list about".
+  let teamName = "";
+  if (filters.team) {
+    const m = data.matches.find((x) =>
+      x.home_team_id === filters.team || x.away_team_id === filters.team);
+    teamName = !m ? filters.team
+      : m.home_team_id === filters.team ? (m.home?.display_name || filters.team)
+      : (m.away?.display_name || filters.team);
+  }
+
   // The matchday menu lists the stages available in the CHOSEN COMPETITION,
   // not in the filtered result — otherwise picking matchday 5 would leave 5 as
   // the only option and no way back. Competition is the only filter that
@@ -1011,12 +1052,15 @@ async function renderHome(params) {
     const awaiting = awaitingGroups("Awaiting result", bucket("awaiting"), names,
                                     { showScore: true, from, canGrid: canAdd });
     const upcoming = bucket("upcoming");
-    const reported = bucket("reported").slice(0, 12);
+    // Twelve is "what happened lately" across every league. Asked about one
+    // team, the reporter wants its season, so nothing is cut.
+    const reported = filters.team ? bucket("reported")
+      : bucket("reported").slice(0, 12);
     body = [
       group("Today", today_, names, { showScore: true, from }),
       awaiting.html,
       group("Upcoming", upcoming, names, { from }),
-      group("Recently reported", reported, names, { from }),
+      group(filters.team ? "Reported" : "Recently reported", reported, names, { from }),
     ].join("");
     ordered = [...today_, ...awaiting.ordered, ...upcoming, ...reported];
   } else if (filters.show === "awaiting") {
@@ -1083,7 +1127,7 @@ async function renderHome(params) {
         context.isAdmin ? " · administrator" : ""}</p>
      ${overdueBox(overdue)}
      ${actions}
-     ${filterBar(filters, names, competitions, stages)}
+     ${filterBar(filters, names, competitions, stages, teamName)}
      ${body || `<p class="rp-empty">Nothing matches these filters.${
         anyFilterSet(filters) ? " Try clearing them." : ""}</p>`}`);
 
@@ -1108,6 +1152,7 @@ async function renderHome(params) {
   });
   const clear = view.querySelector("[data-clear]");
   if (clear) clear.onclick = () => { location.hash = "#/"; };
+  wireTeamFinder(filters);
   // Refresh means "forget everything you think you know" — including the
   // competition menu, which is stale after someone else creates a league.
   view.querySelector("[data-refresh]").onclick = () => {
@@ -1115,6 +1160,94 @@ async function renderHome(params) {
     invalidateReference();
     renderHome(params);
   };
+}
+
+/** The team box on the home screen: type part of a name, tap the team, and
+ *  the list becomes that team's matches.
+ *
+ *  The list comes from search_report_teams (0046) — the teams screen's own
+ *  search — because it already answers the two things this needs: only teams
+ *  this account may report (so a tap can never lead to an empty list the
+ *  reporter could not fill anyway), and the competitions beside each name,
+ *  which is what tells Moyale Barracks from Moyale Sisters.
+ *
+ *  Picking a team clears the other filters. A competition chosen first would
+ *  otherwise quietly hide every match the team played in a cup, and "all the
+ *  games of that team" is what was asked; narrowing afterwards still works. */
+function wireTeamFinder(filters) {
+  const wrap = view.querySelector("[data-team-find]");
+  if (!wrap) return;
+  const input = wrap.querySelector("[data-team-input]");
+  const list = wrap.querySelector("[data-team-suggest]");
+  const shown = input.value;
+  let rows = [];
+  let timer = null;
+  // Only the newest search may paint — on a slow connection the answer to
+  // "Mo" arrives after the answer to "Moyale" often enough to matter.
+  let latest = 0;
+
+  const close = () => { list.hidden = true; };
+  const pick = (teamId) => {
+    location.hash = filterHash({ comp: "", show: "all", date: "", md: "", team: teamId });
+  };
+
+  function draw(message) {
+    if (message) {
+      list.innerHTML = `<li><button class="rp-suggest-btn" type="button" disabled>${
+        esc(message)}</button></li>`;
+    } else {
+      list.innerHTML = rows.map((t) => `
+        <li><button class="rp-suggest-btn" type="button" data-team-pick="${esc(t.team_id)}">
+          ${esc(t.display_name)}${t.competitions ? `<em>${esc(t.competitions)}</em>` : ""}
+        </button></li>`).join("");
+    }
+    list.hidden = false;
+  }
+
+  async function search() {
+    const term = input.value.trim();
+    const mine = ++latest;
+    // The box arrives holding the chosen team's name. That is a label, not a
+    // question, so it opens nothing until the reporter changes it.
+    if (!term || term === shown) { rows = []; close(); return; }
+    let found;
+    try {
+      found = await searchReportTeams(term, null);
+    } catch {
+      // A lookup is optional: the list below is still there and still works.
+      if (mine === latest) draw("Could not search just now");
+      return;
+    }
+    if (mine !== latest) return;
+    rows = found.slice(0, 8);
+    draw(rows.length ? "" : `No team of yours matches “${term}”`);
+  }
+
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(search, 250);
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") { close(); return; }
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    // Enter takes the top answer, which after "moyale b" is the only one.
+    // Before the answer has arrived it does nothing rather than guess.
+    if (!list.hidden && rows.length) pick(rows[0].team_id);
+  });
+  // A tap on the box once a team is chosen selects its name, so typing the
+  // next one replaces it instead of being appended to it.
+  input.addEventListener("focus", () => { if (filters.team) input.select(); });
+  list.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-team-pick]");
+    if (button) pick(button.dataset.teamPick);
+  });
+  wrap.querySelector("[data-team-clear]")?.addEventListener("click", () => {
+    location.hash = filterHash({ ...filters, team: "" });
+  });
+  // One listener for the screen, the scorer pickers' arrangement; route()
+  // clears it on the way out.
+  dismissPicker = (event) => { if (!wrap.contains(event.target)) close(); };
 }
 
 function firstName() {

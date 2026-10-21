@@ -702,6 +702,16 @@ a { color: var(--accent); }
   text-transform: uppercase; color: var(--muted);
 }
 .rp-filter-clear { flex-basis: 100%; margin-top: 2px; min-height: 40px; }
+/* "All teams" sits on the Team label's line, at its right end, so undoing the
+   one filter costs no extra row on a phone. Not an .rp-btn: that is
+   width:100% and would take a line of its own. */
+.rp-team-clear {
+  float: right; padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 0.78rem; font-weight: 600; letter-spacing: 0;
+  text-transform: none; color: var(--accent);
+}
+/* The search box's own clear (×) in WebKit duplicates the button above. */
+[data-team-input]::-webkit-search-cancel-button { display: none; }
 
 .rp-select {
   width: 100%; min-height: var(--tap); padding: 10px 12px;
