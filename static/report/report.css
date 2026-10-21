@@ -1584,3 +1584,62 @@ a { color: var(--accent); }
   flex: none; width: auto; margin-top: 0;
   min-height: 36px; padding: 6px 12px; font-size: 0.82rem;
 }
+
+/* ─── #/squad (0057) ─────────────────────────────────────────────────────────
+   A squad list is thirty rows on a phone, so each row is the existing
+   collapsed section with a face (or the shirt, when there is no photo) in
+   front of the name. The shirt is bold inside the name rather than a column
+   of its own: at 390px a column costs the name its width, and the name is
+   what identifies anybody. */
+.rp-squad-row > summary { gap: 10px; }
+.rp-squad-thumb {
+  flex: none; width: 32px; height: 32px; border-radius: 50%;
+  object-fit: cover; background: var(--line);
+}
+.rp-squad-thumb.is-empty {
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 0.78rem; font-weight: 800;
+}
+.rp-squad-thumb.is-big { width: 72px; height: 72px; }
+.rp-squad-row .rp-sec-name b { color: var(--muted); margin-right: 2px; }
+
+/* Two short fields side by side — shirt and position, date and age. Each is
+   a handful of characters, so a whole line apiece would make the form twice
+   as long for nothing. */
+.rp-squad-pair { display: flex; gap: 10px; }
+.rp-squad-pair > div { flex: 1 1 0; min-width: 0; }
+
+.rp-squad-photo { display: flex; align-items: center; gap: 12px; }
+.rp-squad-photo > div { flex: 1 1 auto; min-width: 0; }
+.rp-squad-photo img {
+  flex: none; width: 72px; height: 72px; border-radius: 50%; object-fit: cover;
+}
+.rp-squad-photo .rp-inline { margin-top: 8px; }
+
+/* Pasted names waiting to be added. Shirt, name, position and the × on one
+   line; what the line resolved to underneath, because that sentence is the
+   reason to look at the row at all. The name shrinks and wraps — never the
+   boxes, which are already as narrow as a thumb allows. */
+.rp-stage-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.rp-stage-row { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.rp-stage-row.is-warn { background: var(--warn-wash); margin: 0 -8px; padding: 10px 8px; }
+.rp-stage-line { display: flex; align-items: center; gap: 8px; }
+.rp-stage-line .rp-input { margin-top: 0; }
+.rp-stage-shirt { flex: none; width: 52px; text-align: center; }
+.rp-stage-pos { flex: none; width: 72px; }
+.rp-stage-name { flex: 1 1 auto; min-width: 0; font-weight: 600; word-break: break-word; }
+.rp-stage-row > em {
+  display: block; margin-top: 6px; font-style: normal; font-size: 0.8rem;
+}
+.rp-stage-row > .rp-input { margin-top: 8px; }
+.rp-stage-row em.is-good { color: var(--accent); }
+.rp-stage-row em.is-warn { color: var(--warn); font-weight: 600; }
+.rp-stage-row em.is-bad { color: var(--danger); font-weight: 600; }
+/* The name is what identifies anybody, so on a squad row it keeps its width
+   and a long job title ("Media & Communication Officer") is what ellipsises —
+   the reverse of #/players, where the note is a club and equally a name. */
+.rp-squad-row .rp-sec-name { flex: 0 1 auto; }
+.rp-squad-row .rp-sec-note { flex: 1 1000 auto; min-width: 3.5em; }
+/* Clear is the lesser tap beside Add, so it takes its own width and leaves
+   the rest to the button that says how many. */
+.rp-btn-row .rp-stage-clear { flex: 0 0 auto; width: auto; padding-left: 18px; padding-right: 18px; }

@@ -89,7 +89,14 @@ matches (home/away team_id, venue_id, competition_id, season_id)
 - **trending** — homepage carousel cards (0030). The one editorial table:
   it references nothing and nothing references it, because it is copy about
   football rather than football. Only `status = live` rows render.
-- **registrations**, **reporters** — present, currently empty.
+- **registrations** — a team's squad list for a season: one row per player,
+  with the shirt number the club issued (0057). Written only by
+  `save_squad_player` / `remove_squad_player` from `#/squad`. Read into the
+  Dataset; nothing renders it yet.
+- **team_staff** — a team's staff for a season (0057): `official_id` (kind
+  `coach`) and a free-text `role` ("Second Assistant Coach"). Not part of the
+  Dataset.
+- **reporters** — present, currently empty.
 - **aliases** — every spelling an entity has ever been filed under.
   `entity_type` is `player`, `official`, `team` or `club`. People's spellings
   are written by `rename_player`/`merge_players` (0022) and their official
@@ -332,6 +339,27 @@ and the picker — which showed names and nothing else — had no way to say so.
 The guarantee is therefore weaker than "the database will not let you", and
 deliberately so: the database cannot know whether two Gift Phiris are one
 person, and the reporter looking at both clubs can.
+
+## Squads (0057)
+
+A squad list is written a person at a time, because it arrives that way.
+
+- **A fact goes where it is true.** The shirt is the squad's
+  (`registrations.shirt_number`, reissued every season). Position, `dob`,
+  `birth_year` and `photo_path` are the person's, on `players` —
+  `players.position` is what a profile shows when no team sheet says
+  otherwise, so writing it does reach the site.
+- **NULL leaves a field alone and '' clears it**, in both save functions.
+- **`players.birth_year`** is set from `dob` when there is one, otherwise from
+  an age a list stated (current year − age, possibly one year late). It never
+  disagrees with `dob`: a date sets it, and a contradicting age is refused.
+- **Staff are officials of kind `coach`.** `kind` separates the people who
+  belong to no side (referees) from those who belong to one; the job is
+  `team_staff.role`. `save_squad_staff` refuses a referee.
+- **`photo_path`** (players and officials) is an object name in the public
+  `squad-media` bucket, `players/<id>/…` or `staff/<id>/…`, or blank.
+- The scope is `can_name_team` (0046): a reporter writes the squads of teams
+  they report.
 
 ## Officials (0024)
 

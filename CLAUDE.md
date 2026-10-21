@@ -94,6 +94,7 @@ static/report/results_grid.js  the matchday grid's rules, DOM-free and tested
 static/report/fixture_import.js  the fixture importer's rules, same bargain
 static/report/error_report.js  what to report when a screen breaks (0052)
 static/report/match_report.js  a club's match report → the match screen's editors
+static/report/squad.js  a pasted squad/staff list → one person per line (0057)
 src/nt.py, nt_page.py  national teams (the nt_* tabs, /scorchers/)
 src/search.py          the site search index
 static/report/app.js   the reporter portal (one file, no framework)
@@ -155,8 +156,9 @@ and this is still not a Node project** — the root `package.json` exists only
 because Node reads a bare `.js` as CommonJS unless a package.json says
 otherwise, and the portal's modules are ESM because browsers load them that
 way. It covers `static/report/results_grid.js`,
-`static/report/fixture_import.js`, `static/report/error_report.js` and
-`static/report/match_report.js`, which import nothing but each other; the
+`static/report/fixture_import.js`, `static/report/error_report.js`,
+`static/report/match_report.js` and `static/report/squad.js`, which import
+nothing but each other; the
 moment one of them needs `document` or `supabase`, its tests stop meaning
 anything.
 
@@ -190,6 +192,50 @@ fixture and clean up, and they never mutate a real match.
 ---
 
 ## Recent work (Oct 2026)
+
+A team's squad and staff, migration `0057` — `#/squad?team=<team_id>`,
+reached from each card on `#/teams`:
+
+- **The table was already there.** `registrations` (player, team, season,
+  shirt) has existed since 0001, is read into the Dataset and repointed by
+  `merge_players` — and had never had a row, because nothing could write one.
+  A squad list IS that table. Staff are new: `team_staff` (team, season,
+  official, free-text `role`) against the officials registry, kind `coach`,
+  which here means "on a team's side of the touchline" — so a head coach
+  typed on the squad screen is the id the match screen's coach box finds.
+- **A squad arrives a few names at a time, so everything is one person at a
+  time.** `save_squad_player` / `save_squad_staff` add or update ONE row;
+  there is no whole-list save, because save_lineup's shape would make "add
+  these three" mean "forget the other twenty-five". The whole website list
+  and three names off a signing graphic go through the same paste box.
+- **NULL leaves a field alone, '' clears it.** Shirt is the registration's;
+  position, `dob`, `birth_year` and `photo_path` are the person's, on
+  `players`. Adding an existing player from a pasted line must never clear a
+  date of birth another reporter entered. The row editor sends every field
+  (it shows them all); the paste sends only what the line said.
+- **An age is a `birth_year`, never an invented date** — current year minus
+  age, one year late for anyone whose birthday is still to come. A date sets
+  the year from itself; an age contradicting a stored date is refused and
+  names the date.
+- **Who each pasted name is** (`squad.js` `resolveSquadName`): on the list
+  already → updated; someone this team has fielded, scored through or listed
+  → linked, findPerson's unique-or-nothing; a similar name elsewhere →
+  offered with their club (0034), and the row waits amber while the greens
+  add; nobody → new. A search hit is never green on its own.
+- Photos: a public `squad-media` bucket, `players/<id>/…` and `staff/<id>/…`,
+  shrunk to 800px on the phone. Any live reporter may upload; a path reaches
+  a row only through the RPCs, which carry `can_name_team`. Nothing deletes
+  an object.
+- **The payoff inside the portal:** `clubSquad` reads this season's
+  registrations, so the team-sheet editor offers a squad as chips before the
+  first sheet exists, a registered shirt beating the tally; `search_players`
+  counts a registration as a club hint. `merge_officials` repoints
+  `team_staff`, or its FK would refuse every merge.
+- **What renders: position only** (a profile's fallback when no sheet says
+  otherwise), so a save nudges a rebuild. Not built: a squad page on the club
+  hub, photos and ages on profiles, `team_staff` in the Dataset, past
+  seasons' squads, `browse_players`' Team filter reading registrations, and
+  carrying a loser's dob/photo through `merge_players`.
 
 Whose team sheets are missing, migration `0056` — `#/ops?tab=lineups`:
 

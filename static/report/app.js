@@ -13,6 +13,7 @@
  *   #/import      read those results off a screenshot, post or pasted text
  *   #/add         add a whole fixture list to a competition you cover
  *   #/league/new  create a competition and its teams (administrators only)
+ *   #/squad       one team's squad and staff for the season (from #/teams)
  *   #/account     who am I, change password, sign out
  *
  * Three rules the code keeps:
@@ -42,6 +43,8 @@ import * as mr from "./match_report.js";
 // What to report when a screen breaks, and how often. Out here because it must
 // work on a page that has already gone wrong — see 0052.
 import * as crash from "./error_report.js";
+// A squad list read line by line, and who each name is (0057).
+import * as sq from "./squad.js";
 
 const view = document.querySelector("[data-view]");
 const flashEl = document.querySelector("[data-flash]");
@@ -205,7 +208,19 @@ function humanError(error) {
       || message.includes("too short to match")
       || message.includes("the graphic prints")
       || message.includes("not in a competition you report")
-      || message.includes("not a team alias")) {
+      || message.includes("not a team alias")
+      // ...and the squad rules from 0057. "date of birth is already recorded
+      // as 4 May 2003" names the fact an age off a graphic disagreed with,
+      // which is the only thing that lets the reporter decide which is right.
+      || message.includes("do not report a competition this team")
+      || message.includes("shirt number is up to")
+      || message.includes("position must be")
+      || message.includes("date of birth")
+      || message.includes("age is not possible")
+      || message.includes("birth year is")
+      || message.includes("photo did not upload")
+      || message.includes("referees' list")
+      || message.includes("role is too long")) {
     return error.message.charAt(0).toUpperCase() + error.message.slice(1);
   }
   // The RPC's own validation, which is phrased for a person to read.
@@ -7522,7 +7537,8 @@ async function renderTeams(params) {
      <h1 class="rp-login-head">Teams</h1>
      <p class="rp-login-sub">The names each team is printed under. Record the
        one a league's graphics use and the importer will resolve it by itself
-       next time. Leave the box blank to browse.</p>
+       next time. Open a team for its squad and staff. Leave the box blank to
+       browse.</p>
      <form class="rp-form" data-team-search autocomplete="off">
        <input class="rp-input" name="q" value="${esc(state.term)}"
               autocomplete="off" autocapitalize="words"
@@ -7558,6 +7574,8 @@ function teamCard(t) {
         aliases.length
           ? `<span class="rp-sec-count">${aliases.length}</span>` : ""}</summary>
       <div class="rp-sec-body">
+        <a class="rp-btn is-ghost" style="margin-top:0"
+           href="#/squad?team=${encodeURIComponent(t.team_id)}">Squad and staff &rarr;</a>
         <h2 class="rp-field-head">Also printed as</h2>
         ${aliases.length ? `<ul class="rp-alias-list">${aliases.map((a) => `
           <li><span>${esc(a.alias_text)}</span>${context.isAdmin ? `
@@ -7673,6 +7691,783 @@ function wireTeamCards(host, redraw) {
       redraw();
     });
   });
+}
+
+
+// ── Squad: who a team has, written down before the first team sheet ─────────
+// #/squad?team=<team_id> (0057), reached from a card on #/teams.
+//
+// A SQUAD ARRIVES A FEW NAMES AT A TIME, SO EVERYTHING HERE IS ONE PERSON AT A
+// TIME. The whole list off a club website goes through the same box as three
+// names off a signing graphic: paste, check, add. Each line is its own save,
+// a line that fails stays on screen with its reason, and nothing ever replaces
+// the list whole — the save_lineup shape would make "add these three" mean
+// "and forget the rest".
+//
+// WHO EACH NAME IS comes from squad.js: linked only to someone this team has
+// already fielded or listed, unique or nothing; anyone else of a similar name
+// is OFFERED with their club beside them (0034's rule), and the row waits for
+// a tap rather than guessing. The greens around it still add.
+//
+// THE DETAILS COME AFTER. A pasted line carries a shirt and a position when
+// the list printed them; a date of birth, an age and a photo are filled in on
+// each person's row in the list, whenever they turn up. Nothing is required
+// but the name.
+//
+// THE LIST IS REDRAWN BY KEY, never wholesale. Adding twenty players while a
+// reporter has one row open half-way through typing a date of birth must not
+// throw that row away — the team-sheet lesson (redraw-on-blur) again.
+
+const SQUAD_BUCKET = "squad-media";
+
+const squadPhotoUrl = (path) => (path
+  ? supabase.storage.from(SQUAD_BUCKET).getPublicUrl(path).data.publicUrl : "");
+
+/** Shrink a head shot and send it; returns the object name. 800px is plenty
+ *  for a face and keeps the upload small on the connection this is for. */
+async function uploadSquadPhoto(folder, personId, file) {
+  const blob = await shrinkImage(file, 800, 0.82);
+  const path = `${folder}/${personId}/${crypto.randomUUID()}.jpg`;
+  const { error } = await supabase.storage.from(SQUAD_BUCKET)
+    .upload(path, blob, { contentType: "image/jpeg", upsert: false });
+  if (error) throw error;
+  return path;
+}
+
+/** `limit` at a time, in order. A full squad is thirty lookups, and thirty at
+ *  once on one bar of signal is thirty timeouts. */
+async function inBatches(items, limit, work) {
+  const out = new Array(items.length);
+  let next = 0;
+  async function lane() {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await work(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
+  return out;
+}
+
+async function loadSquad(teamId, seasonId) {
+  const [team, players, staff] = await Promise.all([
+    supabase.from("teams").select("team_id,display_name").eq("team_id", teamId).limit(1),
+    supabase.from("registrations")
+      .select("player_id,shirt_number,players(full_name,known_as,position,dob,birth_year,photo_path)")
+      .eq("team_id", teamId).eq("season_id", seasonId),
+    supabase.from("team_staff")
+      .select("official_id,role,officials(full_name,known_as,photo_path)")
+      .eq("team_id", teamId).eq("season_id", seasonId).order("ord"),
+  ]);
+  if (team.error) throw team.error;
+  if (players.error) throw players.error;
+  // No team_staff yet means 0057 is not applied; the players half still works.
+  if (staff.error) console.warn("[everyleague] team_staff unavailable:", staff.error);
+  return {
+    team: (team.data || [])[0] || null,
+    players: (players.data || []).map((r) => squadPlayerFrom({
+      player_id: r.player_id, shirt_number: r.shirt_number, ...(r.players || {}) })),
+    staff: (staff.data || []).map((r) => squadStaffFrom({
+      official_id: r.official_id, role: r.role, ...(r.officials || {}) })),
+  };
+}
+
+/** One shape for a player whether it came from the table or from an RPC. */
+const squadPlayerFrom = (r) => ({
+  player_id: r.player_id,
+  name: r.known_as || r.full_name || r.player_id,
+  shirt_number: r.shirt_number || "",
+  position: r.position || "",
+  dob: r.dob || "",
+  birth_year: r.birth_year || null,
+  photo_path: r.photo_path || "",
+});
+
+const squadStaffFrom = (r) => ({
+  official_id: r.official_id,
+  name: r.known_as || r.full_name || r.official_id,
+  role: r.role || "",
+  photo_path: r.photo_path || "",
+});
+
+async function renderSquad(params) {
+  const teamId = params.get("team") || "";
+  const back = '<a class="rp-btn is-quiet" href="#/teams" style="margin-top:0">&larr; Teams</a>';
+  if (!teamId) {
+    h(`${back}<p class="rp-empty">Pick a team on the Teams screen first.</p>`);
+    return;
+  }
+  h(`${back}<p class="rp-hint">Loading the squad…</p>`);
+
+  const season = await activeSeason().catch(() => null);
+  if (!season) {
+    h(`${back}<p class="rp-empty">There is no active season to write a squad for.</p>`);
+    return;
+  }
+  let loaded;
+  let canEdit = false;
+  try {
+    [loaded, canEdit] = await Promise.all([
+      loadSquad(teamId, season.season_id),
+      supabase.rpc("can_name_team", { p_team_id: teamId })
+        .then(({ data }) => Boolean(data), () => false),
+    ]);
+  } catch (error) {
+    h(`${back}<p class="rp-empty">The squad could not be loaded.</p>`);
+    flash(humanError(error), "error");
+    return;
+  }
+  if (!loaded.team) {
+    h(`${back}<p class="rp-empty">That team is not in the database.</p>`);
+    return;
+  }
+
+  const state = {
+    players: loaded.players,
+    staff: loaded.staff,
+    staged: [],          // pasted players, checked, not yet added
+    stagedStaff: [],     // pasted staff, not yet added
+    checking: false,
+    adding: false,
+  };
+  let uid = 0;           // keys for staged rows, which have no id yet
+
+  h(`${back}
+     <h1 class="rp-login-head">${esc(loaded.team.display_name)}</h1>
+     <p class="rp-login-sub">${esc(season.label)} squad and staff. Add the whole
+       list at once or a few names at a time — each person saves on their own,
+       and only the name is ever required.</p>
+     ${canEdit ? "" : `<p class="rp-hint is-warn">You can read this squad but
+       not change it: you do not report a competition this team plays in.</p>`}
+
+     <h2 class="rp-field-head">Players <span class="rp-sec-count" data-player-count></span></h2>
+     <div data-squad-players></div>
+
+     ${canEdit ? `
+     <h2 class="rp-field-head">Add players</h2>
+     <form data-add-players autocomplete="off">
+       <textarea class="rp-input rp-textarea" name="list" rows="6"
+                 autocapitalize="words" spellcheck="false"
+                 placeholder="One per line, e.g.&#10;1 Charles Thom GK&#10;7. John Banda&#10;Patrick Phiri | Forward | 24"></textarea>
+       <p class="rp-hint">Paste a club's list or type a few names. A number in
+         front is the shirt; GK, DF, MF or FW (or Goalkeeper, Defender…) is the
+         position, and a heading like <em>Defenders</em> applies to the names
+         under it. An age needs saying as one — <em>(23)</em> or
+         <em>23 yrs</em> — or a column of its own.</p>
+       <button class="rp-btn is-ghost" type="submit">Check these names</button>
+     </form>
+     <div data-staged-players></div>` : ""}
+
+     <h2 class="rp-field-head">Staff <span class="rp-sec-count" data-staff-count></span></h2>
+     <div data-squad-staff></div>
+
+     ${canEdit ? `
+     <h2 class="rp-field-head">Add staff</h2>
+     <form data-add-staff autocomplete="off">
+       <textarea class="rp-input rp-textarea" name="list" rows="4"
+                 autocapitalize="words" spellcheck="false"
+                 placeholder="One per line, e.g.&#10;Audlow Makonyola - Head Coach&#10;Team Doctor: Fred Chiwambo"></textarea>
+       <p class="rp-hint">Name and job, either way round — or the name on one
+         line and the job on the next, the way a club's website lists them.
+         The job is optional.</p>
+       <button class="rp-btn is-ghost" type="submit">Check these names</button>
+     </form>
+     <div data-staged-staff></div>` : ""}`);
+
+  const playersHost = view.querySelector("[data-squad-players]");
+  const staffHost = view.querySelector("[data-squad-staff]");
+  const stagedHost = view.querySelector("[data-staged-players]");
+  const stagedStaffHost = view.querySelector("[data-staged-staff]");
+
+  // ── the list ───────────────────────────────────────────────────────────────
+
+  const playerById = (id) => state.players.find((p) => p.player_id === id);
+  const staffById = (id) => state.staff.find((s) => s.official_id === id);
+
+  function thumb(path, fallback) {
+    const url = squadPhotoUrl(path);
+    return url
+      ? `<img class="rp-squad-thumb" src="${esc(url)}" alt="" loading="lazy">`
+      : `<span class="rp-squad-thumb is-empty">${esc(fallback)}</span>`;
+  }
+
+  function playerSummary(p) {
+    const note = [p.position, sq.ageLabel(p)].filter(Boolean).join(" · ");
+    // The shirt sits in the circle when there is no face to put there, and
+    // beside the name when there is — once, either way.
+    return `${thumb(p.photo_path, p.shirt_number || "–")}
+      <span class="rp-sec-name">${p.photo_path && p.shirt_number
+        ? `<b>${esc(p.shirt_number)}</b> ` : ""}${esc(p.name)}</span>${note ? `<span class="rp-sec-note">${esc(note)}</span>` : ""}`;
+  }
+
+  function staffSummary(s) {
+    return `${thumb(s.photo_path, "")}
+      <span class="rp-sec-name">${esc(s.name)}</span>${
+        s.role ? `<span class="rp-sec-note">${esc(s.role)}</span>` : ""}`;
+  }
+
+  const photoField = (path, id) => `
+    <label class="rp-label" for="${id}">Photo <span class="rp-optional">optional</span></label>
+    <div class="rp-squad-photo">
+      ${path ? `<img src="${esc(squadPhotoUrl(path))}" alt="" data-photo-preview>`
+             : '<span class="rp-squad-thumb is-empty is-big" data-photo-preview></span>'}
+      <div>
+        <input class="rp-input" id="${id}" type="file" name="photo"
+               accept="image/jpeg,image/png,image/webp">
+        ${path ? `<label class="rp-inline"><input type="checkbox" name="clear_photo">
+          Remove this photo</label>` : ""}
+      </div>
+    </div>`;
+
+  function playerRowHtml(p) {
+    const id = esc(p.player_id);
+    const lock = canEdit ? "" : " disabled";
+    // An age shown for a stored year, so resaving the row unchanged sends the
+    // same year back; a stored date shows as the date and leaves age empty.
+    const age = !p.dob && p.birth_year ? String(new Date().getFullYear() - p.birth_year) : "";
+    return `
+      <details class="rp-sec rp-squad-row" data-squad-player="${id}">
+        <summary>${playerSummary(p)}</summary>
+        <div class="rp-sec-body">
+          <form data-squad-edit autocomplete="off">
+            <div class="rp-squad-pair">
+              <div>
+                <label class="rp-label" for="sq-shirt-${id}">Shirt</label>
+                <input class="rp-input" id="sq-shirt-${id}" name="shirt_number"
+                       inputmode="numeric" maxlength="3" value="${esc(p.shirt_number)}"${lock}>
+              </div>
+              <div>
+                <label class="rp-label" for="sq-pos-${id}">Position</label>
+                <select class="rp-input" id="sq-pos-${id}" name="position"${lock}>
+                  ${["", ...sq.POSITIONS].map((pos) => `<option value="${pos}"${
+                    pos === p.position ? " selected" : ""}>${pos || "—"}</option>`).join("")}
+                </select>
+              </div>
+            </div>
+            <div class="rp-squad-pair">
+              <div>
+                <label class="rp-label" for="sq-dob-${id}">Date of birth</label>
+                <input class="rp-input" id="sq-dob-${id}" name="dob" type="date"
+                       value="${esc(p.dob)}"${lock}>
+              </div>
+              <div>
+                <label class="rp-label" for="sq-age-${id}">or age</label>
+                <input class="rp-input" id="sq-age-${id}" name="age" inputmode="numeric"
+                       maxlength="2" value="${esc(age)}"${lock}>
+              </div>
+            </div>
+            <p class="rp-hint">A date of birth when you have one; an age when
+              that is all the list says. Either is optional.</p>
+            ${canEdit ? photoField(p.photo_path, `sq-photo-${id}`) : ""}
+            ${canEdit ? `<div class="rp-btn-row">
+              <button class="rp-btn" type="submit">Save</button>
+              <button class="rp-btn is-quiet" type="button" data-remove>Remove</button>
+            </div>` : ""}
+            <p class="rp-hint">Spelling wrong? <a href="#/players?q=${
+              encodeURIComponent(p.name)}">Rename them in Players</a> — every
+              page that names them follows.</p>
+          </form>
+        </div>
+      </details>`;
+  }
+
+  function staffRowHtml(s) {
+    const id = esc(s.official_id);
+    return `
+      <details class="rp-sec rp-squad-row" data-squad-staff="${id}">
+        <summary>${staffSummary(s)}</summary>
+        <div class="rp-sec-body">
+          <form data-staff-edit autocomplete="off">
+            <label class="rp-label" for="st-role-${id}">Job</label>
+            <input class="rp-input" id="st-role-${id}" name="role" maxlength="60"
+                   value="${esc(s.role)}" list="rp-staff-roles" autocapitalize="sentences"
+                   ${canEdit ? "" : "disabled"}>
+            ${canEdit ? photoField(s.photo_path, `st-photo-${id}`) : ""}
+            ${canEdit ? `<div class="rp-btn-row">
+              <button class="rp-btn" type="submit">Save</button>
+              <button class="rp-btn is-quiet" type="button" data-remove>Remove</button>
+            </div>` : ""}
+          </form>
+        </div>
+      </details>`;
+  }
+
+  const fromHtml = (html) => {
+    const t = document.createElement("template");
+    t.innerHTML = html.trim();
+    return t.content.firstElementChild;
+  };
+
+  /** Keyed redraw: an existing row keeps its node — and so whatever is typed
+   *  in it and whether it is open — and only its summary line is rewritten. */
+  function drawList(host, rows, keyAttr, keyOf, rowHtml, summary, wire, empty) {
+    const existing = new Map([...host.querySelectorAll(`[${keyAttr}]`)]
+      .map((n) => [n.getAttribute(keyAttr), n]));
+    const frag = document.createDocumentFragment();
+    rows.forEach((r) => {
+      let node = existing.get(keyOf(r));
+      if (node) {
+        node.querySelector("summary").innerHTML = summary(r);
+      } else {
+        node = fromHtml(rowHtml(r));
+        wire(node, keyOf(r));
+      }
+      frag.appendChild(node);
+    });
+    host.replaceChildren(frag);
+    if (!rows.length) host.innerHTML = `<p class="rp-empty">${empty}</p>`;
+  }
+
+  function drawPlayers() {
+    drawList(playersHost, sq.sortSquad(state.players), "data-squad-player",
+      (p) => p.player_id, playerRowHtml, playerSummary, wirePlayerRow,
+      "No players yet.");
+    view.querySelector("[data-player-count]").textContent = state.players.length || "";
+  }
+
+  function drawStaff() {
+    drawList(staffHost, state.staff, "data-squad-staff",
+      (s) => s.official_id, staffRowHtml, staffSummary, wireStaffRow,
+      "No staff yet.");
+    view.querySelector("[data-staff-count]").textContent = state.staff.length || "";
+  }
+
+  /** Two taps, like every other removal in this app. */
+  function armRemove(button, label, act) {
+    let armed = false;
+    let timer = null;
+    button.addEventListener("click", async () => {
+      if (button.disabled) return;
+      if (!armed) {
+        armed = true;
+        button.textContent = "Sure?";
+        timer = setTimeout(() => { armed = false; button.textContent = label; }, 4000);
+        return;
+      }
+      clearTimeout(timer);
+      armed = false;
+      button.disabled = true;
+      button.textContent = "Removing…";
+      await act();
+      button.disabled = false;
+      button.textContent = label;
+    });
+  }
+
+  /** The photo half of a row's save. A failed upload does not stop the rest of
+   *  the row saving — it is reported, and the file stays chosen for a retry. */
+  async function photoFor(form, folder, personId) {
+    if (form.clear_photo?.checked) return "";
+    const file = form.photo?.files?.[0];
+    if (!file) return null;
+    try {
+      return await uploadSquadPhoto(folder, personId, file);
+    } catch (error) {
+      console.warn("[everyleague] squad photo upload failed:", error);
+      flash(/unsupported/.test(error?.message || "")
+        ? "That photo is not a JPEG, PNG or WebP. The rest was saved."
+        : "The photo did not upload — the rest was saved. Try the photo again.",
+      "error", 8000);
+      return undefined;     // "leave it alone", distinct from cleared
+    }
+  }
+
+  function wirePhotoPreview(form) {
+    form.photo?.addEventListener("change", () => {
+      const file = form.photo.files?.[0];
+      const old = form.querySelector("[data-photo-preview]");
+      if (!file || !old) return;
+      const img = document.createElement("img");
+      img.dataset.photoPreview = "";
+      img.alt = "";
+      img.src = URL.createObjectURL(file);
+      old.replaceWith(img);
+    });
+  }
+
+  function wirePlayerRow(node, playerId) {
+    const form = node.querySelector("[data-squad-edit]");
+    if (!canEdit || !form) return;
+    wirePhotoPreview(form);
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const button = form.querySelector('button[type="submit"]');
+      if (button.disabled) return;
+      // A date wins; an age is used only when there is no date; both empty
+      // clears both. The edit form shows every field, so whole is right here.
+      const dob = form.dob.value.trim();
+      const ageText = form.age.value.trim();
+      const age = ageText ? sq.ageFrom(ageText) : null;
+      if (!dob && ageText && age === null) {
+        flash("An age is a number between 10 and 75.", "error");
+        return;
+      }
+      button.disabled = true;
+      button.textContent = "Saving…";
+      const photo = await photoFor(form, "players", playerId);
+      const { data, error } = await supabase.rpc("save_squad_player", {
+        p_team_id: teamId, p_season_id: season.season_id, p_player_id: playerId,
+        p_shirt_number: form.shirt_number.value.trim(),
+        p_position: form.position.value,
+        p_dob: dob,
+        p_birth_year: dob ? null : (age === null ? "" : String(sq.birthYearFromAge(age))),
+        p_photo_path: photo === undefined ? null : photo,
+      });
+      button.disabled = false;
+      button.textContent = "Save";
+      if (error) { flash(humanError(error), "error", 8000); return; }
+      Object.assign(playerById(playerId), squadPlayerFrom(data));
+      if (photo !== null && photo !== undefined) {
+        // The row's photo field is drawn from the saved path; redraw that one
+        // row so the remove box matches what is now stored.
+        node.replaceWith(fromHtml(playerRowHtml(playerById(playerId))));
+        const fresh = playersHost.querySelector(`[data-squad-player="${CSS.escape(playerId)}"]`);
+        if (fresh) { fresh.open = true; wirePlayerRow(fresh, playerId); }
+      }
+      drawPlayers();
+      invalidateSquad(teamId);
+      // Position renders on a profile with no team sheet behind it.
+      requestRebuild();
+      flash("Saved.", "ok");
+    });
+
+    armRemove(form.querySelector("[data-remove]"), "Remove", async () => {
+      const { error } = await supabase.rpc("remove_squad_player", {
+        p_team_id: teamId, p_season_id: season.season_id, p_player_id: playerId,
+      });
+      if (error) { flash(humanError(error), "error"); return; }
+      const name = playerById(playerId)?.name || "Player";
+      state.players = state.players.filter((p) => p.player_id !== playerId);
+      drawPlayers();
+      invalidateSquad(teamId);
+      flash(`${name} removed from the squad. Their matches and goals are untouched.`, "ok");
+    });
+  }
+
+  function wireStaffRow(node, officialId) {
+    const form = node.querySelector("[data-staff-edit]");
+    if (!canEdit || !form) return;
+    wirePhotoPreview(form);
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const button = form.querySelector('button[type="submit"]');
+      if (button.disabled) return;
+      button.disabled = true;
+      button.textContent = "Saving…";
+      const photo = await photoFor(form, "staff", officialId);
+      const { data, error } = await supabase.rpc("save_squad_staff", {
+        p_team_id: teamId, p_season_id: season.season_id, p_official_id: officialId,
+        p_role: form.role.value.trim(),
+        p_photo_path: photo === undefined ? null : photo,
+      });
+      button.disabled = false;
+      button.textContent = "Save";
+      if (error) { flash(humanError(error), "error", 8000); return; }
+      Object.assign(staffById(officialId), squadStaffFrom(data));
+      if (photo !== null && photo !== undefined) {
+        node.replaceWith(fromHtml(staffRowHtml(staffById(officialId))));
+        const fresh = staffHost.querySelector(`[data-squad-staff="${CSS.escape(officialId)}"]`);
+        if (fresh) { fresh.open = true; wireStaffRow(fresh, officialId); }
+      }
+      drawStaff();
+      // NO REBUILD: no page renders team_staff yet.
+      flash("Saved.", "ok");
+    });
+
+    armRemove(form.querySelector("[data-remove]"), "Remove", async () => {
+      const { error } = await supabase.rpc("remove_squad_staff", {
+        p_team_id: teamId, p_season_id: season.season_id, p_official_id: officialId,
+      });
+      if (error) { flash(humanError(error), "error"); return; }
+      const name = staffById(officialId)?.name || "They";
+      state.staff = state.staff.filter((s) => s.official_id !== officialId);
+      drawStaff();
+      flash(`${name} removed from the staff.`, "ok");
+    });
+  }
+
+  // ── adding players ─────────────────────────────────────────────────────────
+
+  const ready = (r) => r.kind === "new" || r.kind === "linked" || r.kind === "squad"
+    || (r.kind === "choose" && r.choice);
+
+  function stagedStatus(r) {
+    const extra = [r.dob ? `born ${r.dob}` : "", r.age !== null ? `age ${r.age}` : ""]
+      .filter(Boolean).join(", ");
+    const tail = extra ? ` · ${esc(extra)}` : "";
+    if (r.error) return `<em class="is-bad">${esc(r.error)}</em>`;
+    if (r.kind === "squad") {
+      return `<em class="is-good">Already in the squad as ${esc(r.match_name)} — saving
+        updates their row${tail}</em>`;
+    }
+    if (r.kind === "linked") {
+      return `<em class="is-good">Has played for this team as ${esc(r.match_name)}${tail}</em>`;
+    }
+    if (r.kind === "new") return `<em class="is-good">New player${tail}</em>`;
+    return `<em class="is-warn">Someone of a similar name is already in the
+      database. Who is this?${tail}</em>
+      <select class="rp-input" data-stage-choice>
+        <option value="">Choose…</option>
+        ${r.options.map((o) => `<option value="${esc(o.player_id)}"${
+          r.choice === o.player_id ? " selected" : ""}>${esc(o.name)}${
+          o.teams ? ` — ${esc(o.teams)}` : " — no club yet"}</option>`).join("")}
+        <option value="new"${r.choice === "new" ? " selected" : ""}>A different person — add as new</option>
+      </select>`;
+  }
+
+  function drawStaged() {
+    if (!stagedHost) return;
+    if (state.checking) {
+      stagedHost.innerHTML = '<p class="rp-hint">Checking names…</p>';
+      return;
+    }
+    if (!state.staged.length) { stagedHost.innerHTML = ""; return; }
+    const n = state.staged.filter(ready).length;
+    const waiting = state.staged.length - n;
+    stagedHost.innerHTML = `
+      <ul class="rp-stage-list">
+        ${state.staged.map((r) => `
+          <li class="rp-stage-row${r.kind === "choose" && !r.choice ? " is-warn" : ""}${
+            r.error ? " is-bad" : ""}" data-stage="${r.key}">
+            <div class="rp-stage-line">
+              <input class="rp-input rp-stage-shirt" data-stage-shirt inputmode="numeric"
+                     maxlength="3" value="${esc(r.shirt_number)}" aria-label="Shirt">
+              <span class="rp-stage-name">${esc(r.name)}</span>
+              <select class="rp-input rp-stage-pos" data-stage-pos aria-label="Position">
+                ${["", ...sq.POSITIONS].map((pos) => `<option value="${pos}"${
+                  pos === r.position ? " selected" : ""}>${pos || "—"}</option>`).join("")}
+              </select>
+              <button class="rp-x" type="button" data-stage-drop
+                      aria-label="Leave ${esc(r.name)} out">×</button>
+            </div>
+            ${stagedStatus(r)}
+          </li>`).join("")}
+      </ul>
+      <div class="rp-btn-row">
+        <button class="rp-btn" type="button" data-stage-add${n && !state.adding ? "" : " disabled"}>${
+          state.adding ? "Adding…" : `Add ${n} to the squad`}</button>
+        <button class="rp-btn is-quiet rp-stage-clear" type="button" data-stage-clear>Clear</button>
+      </div>
+      ${waiting ? `<p class="rp-hint is-warn">${waiting} waiting for you to say who
+        they are. The rest add without them.</p>` : ""}`;
+
+    stagedHost.querySelectorAll("[data-stage]").forEach((li) => {
+      const row = state.staged.find((r) => String(r.key) === li.dataset.stage);
+      // Text boxes write to state and never redraw (the redraw-on-blur
+      // lesson); only a <select> may, because its change lands when it closes.
+      li.querySelector("[data-stage-shirt]").addEventListener("input", (e) => {
+        row.shirt_number = e.target.value.trim();
+      });
+      li.querySelector("[data-stage-pos]").addEventListener("change", (e) => {
+        row.position = e.target.value;
+      });
+      li.querySelector("[data-stage-choice]")?.addEventListener("change", (e) => {
+        row.choice = e.target.value;
+        row.error = "";
+        drawStaged();
+      });
+      li.querySelector("[data-stage-drop]").addEventListener("click", () => {
+        state.staged = state.staged.filter((r) => r !== row);
+        drawStaged();
+      });
+    });
+    stagedHost.querySelector("[data-stage-clear]").addEventListener("click", () => {
+      state.staged = [];
+      drawStaged();
+    });
+    stagedHost.querySelector("[data-stage-add]").addEventListener("click", addStaged);
+  }
+
+  view.querySelector("[data-add-players]")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (state.checking) return;
+    const form = e.target;
+    const lines = sq.dedupeLines(sq.parseSquadList(form.list.value));
+    if (!lines.length) { flash("There are no names in that box.", "error"); return; }
+    state.checking = true;
+    drawStaged();
+    // Who this team already has: its list, and everyone it has fielded or
+    // scored through. A lookup that fails costs links, never the lines.
+    const played = (await clubSquad(teamId)).filter((p) => p.player_id);
+    const registered = state.players.map((p) => ({ player_id: p.player_id, name: p.name }));
+    const already = new Set(state.staged.map((r) => sq.normalizeName(r.name)));
+    const fresh = lines.filter((l) => !already.has(sq.normalizeName(l.name)));
+    const resolved = await inBatches(fresh, 4, async (line) => {
+      let res = sq.resolveSquadName(line.name, { teamId, registered, played });
+      if (res.kind === "new") {
+        const candidates = await searchPlayers(line.name).catch(() => []);
+        res = sq.resolveSquadName(line.name, { teamId, registered, played, candidates });
+      }
+      return { ...line, ...res, match_name: res.name || "", name: line.name,
+               key: ++uid, choice: "", error: "" };
+    });
+    state.staged = state.staged.concat(resolved);
+    state.checking = false;
+    // The box is emptied only once every line is safely staged below it.
+    form.list.value = "";
+    drawStaged();
+  });
+
+  async function addStaged() {
+    if (state.adding) return;
+    const rows = state.staged.filter(ready);
+    if (!rows.length) return;
+    state.adding = true;
+    drawStaged();
+    let added = 0;
+    await inBatches(rows, 3, async (row) => {
+      row.error = "";
+      let playerId = row.kind === "choose" && row.choice !== "new" ? row.choice : row.player_id;
+      if (!playerId) {
+        const { data, error } = await supabase.rpc("create_player", {
+          p_full_name: row.name, p_force: Boolean(row.kind === "choose" && row.force),
+        });
+        if (error) { row.error = humanError(error); return; }
+        playerId = (Array.isArray(data) ? data[0] : data)?.player_id;
+        if (!playerId) { row.error = "That player could not be created. Try again."; return; }
+        // Once minted, a retry must reuse this id rather than mint another.
+        row.kind = "linked";
+        row.player_id = playerId;
+        row.match_name = row.name;
+      }
+      // NULL for anything the line did not say, so adding someone already in
+      // the database never clears a fact another reporter entered.
+      const { data, error } = await supabase.rpc("save_squad_player", {
+        p_team_id: teamId, p_season_id: season.season_id, p_player_id: playerId,
+        p_shirt_number: row.shirt_number || null,
+        p_position: row.position || null,
+        p_dob: row.dob || null,
+        p_birth_year: !row.dob && row.age !== null
+          ? String(sq.birthYearFromAge(row.age)) : null,
+      });
+      if (error) { row.error = humanError(error); return; }
+      const saved = squadPlayerFrom(data);
+      const have = playerById(saved.player_id);
+      if (have) Object.assign(have, saved);
+      else state.players.push(saved);
+      row.done = true;
+      added += 1;
+    });
+    state.staged = state.staged.filter((r) => !r.done);
+    state.adding = false;
+    drawStaged();
+    drawPlayers();
+    if (added) {
+      invalidateSquad(teamId);
+      requestRebuild();
+    }
+    const failed = state.staged.filter((r) => r.error).length;
+    flash(failed
+      ? `${added} added. ${failed} could not be — each says why above.`
+      : `${added} added to the squad.`, failed ? "error" : "ok", failed ? 8000 : 4000);
+  }
+
+  // ── adding staff ───────────────────────────────────────────────────────────
+
+  function drawStagedStaff() {
+    if (!stagedStaffHost) return;
+    if (!state.stagedStaff.length) { stagedStaffHost.innerHTML = ""; return; }
+    stagedStaffHost.innerHTML = `
+      <ul class="rp-stage-list">
+        ${state.stagedStaff.map((r) => `
+          <li class="rp-stage-row${r.error ? " is-bad" : ""}" data-stage="${r.key}">
+            <div class="rp-stage-line">
+              <span class="rp-stage-name">${esc(r.name)}</span>
+              <button class="rp-x" type="button" data-stage-drop
+                      aria-label="Leave ${esc(r.name)} out">×</button>
+            </div>
+            <input class="rp-input" data-stage-role maxlength="60" list="rp-staff-roles"
+                   value="${esc(r.role)}" placeholder="Job, e.g. Assistant coach"
+                   aria-label="Job" autocapitalize="sentences">
+            ${r.error ? `<em class="is-bad">${esc(r.error)}</em>` : ""}
+          </li>`).join("")}
+      </ul>
+      <div class="rp-btn-row">
+        <button class="rp-btn" type="button" data-stage-add${state.adding ? " disabled" : ""}>${
+          state.adding ? "Adding…" : `Add ${state.stagedStaff.length} to the staff`}</button>
+        <button class="rp-btn is-quiet rp-stage-clear" type="button" data-stage-clear>Clear</button>
+      </div>`;
+    stagedStaffHost.querySelectorAll("[data-stage]").forEach((li) => {
+      const row = state.stagedStaff.find((r) => String(r.key) === li.dataset.stage);
+      li.querySelector("[data-stage-role]").addEventListener("input", (e) => {
+        row.role = e.target.value;
+      });
+      li.querySelector("[data-stage-drop]").addEventListener("click", () => {
+        state.stagedStaff = state.stagedStaff.filter((r) => r !== row);
+        drawStagedStaff();
+      });
+    });
+    stagedStaffHost.querySelector("[data-stage-clear]").addEventListener("click", () => {
+      state.stagedStaff = [];
+      drawStagedStaff();
+    });
+    stagedStaffHost.querySelector("[data-stage-add]").addEventListener("click", addStagedStaff);
+  }
+
+  view.querySelector("[data-add-staff]")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const rows = sq.parseStaffList(form.list.value);
+    if (!rows.length) { flash("There are no names in that box.", "error"); return; }
+    state.stagedStaff = state.stagedStaff.concat(
+      rows.map((r) => ({ ...r, key: ++uid, error: "" })));
+    form.list.value = "";
+    drawStagedStaff();
+  });
+
+  async function addStagedStaff() {
+    if (state.adding || !state.stagedStaff.length) return;
+    state.adding = true;
+    drawStagedStaff();
+    let added = 0;
+    await inBatches(state.stagedStaff, 3, async (row) => {
+      row.error = "";
+      // create_official is idempotent on name and kind, so a head coach typed
+      // here is the same id the match screen's coach box finds on Saturday.
+      if (!row.official_id) {
+        const { data, error } = await supabase.rpc("create_official", {
+          p_full_name: row.name, p_kind: "coach",
+        });
+        if (error) { row.error = humanError(error); return; }
+        row.official_id = (Array.isArray(data) ? data[0] : data)?.official_id || "";
+        if (!row.official_id) { row.error = "That name could not be saved. Try again."; return; }
+      }
+      const { data, error } = await supabase.rpc("save_squad_staff", {
+        p_team_id: teamId, p_season_id: season.season_id,
+        p_official_id: row.official_id, p_role: row.role.trim() || null,
+      });
+      if (error) { row.error = humanError(error); return; }
+      const saved = squadStaffFrom(data);
+      const have = staffById(saved.official_id);
+      if (have) Object.assign(have, saved);
+      else state.staff.push(saved);
+      row.done = true;
+      added += 1;
+    });
+    state.stagedStaff = state.stagedStaff.filter((r) => !r.done);
+    state.adding = false;
+    drawStagedStaff();
+    drawStaff();
+    const failed = state.stagedStaff.length;
+    flash(failed
+      ? `${added} added. ${failed} could not be — each says why above.`
+      : `${added} added to the staff.`, failed ? "error" : "ok", failed ? 8000 : 4000);
+  }
+
+  // One list of common jobs for every job box on the screen. A datalist, so
+  // "Second Assistant Coach" is still one keystroke away from "Assistant coach".
+  view.insertAdjacentHTML("beforeend", `<datalist id="rp-staff-roles">${
+    sq.STAFF_ROLES.map((r) => `<option value="${esc(r)}">`).join("")}</datalist>`);
+
+  drawPlayers();
+  drawStaff();
+}
+
+/** A saved squad changes what the team-sheet editor offers as chips. */
+function invalidateSquad(teamId) {
+  delete referenceCache[`squad:${teamId}`];
 }
 
 
@@ -10196,12 +10991,14 @@ function commonest(counts) {
   return best;
 }
 
-/** Everyone this side has already fielded or scored through.
+/** Everyone this side has already fielded, scored through, or listed.
  *
- *  Deliberately derived rather than maintained: there is no squad-registration
- *  screen for club football, and asking for one before team sheets exist would
- *  be asking reporters to enter the same names twice. The list grows by itself
- *  as sheets are saved, which means week two is taps and week one is typing.
+ *  Mostly derived: the list grows by itself as sheets are saved, which means
+ *  week two is taps and week one is typing. Since 0057 a squad written on
+ *  #/squad joins it too — that screen exists for the squad that arrives before
+ *  the first sheet, and its whole payoff is that week one is taps as well. A
+ *  registered shirt beats the tally, because it is the number the club issued
+ *  rather than the one reporters happened to type most.
  *  A failure returns an empty list — the paste box still works, so a squad
  *  that cannot load costs convenience, never the entry. */
 function clubSquad(teamId) {
@@ -10266,6 +11063,29 @@ function clubSquad(teamId) {
       delete entry.shirts;
       delete entry.positions;
     });
+    // This season's squad list. Read after the tally, so a registered shirt
+    // overwrites a guessed one; a position stays the sheet's when it has one,
+    // because a sheet says where someone actually played. A sheet row typed
+    // before the player had an id is folded in by name rather than listed
+    // twice.
+    if (season) {
+      const { data: regs } = await supabase.from("registrations")
+        .select("player_id,shirt_number,players(full_name,known_as,position)")
+        .eq("team_id", teamId).eq("season_id", season.season_id);
+      (regs || []).forEach((r) => {
+        const name = playerLabel({ player_id: r.player_id, ...(r.players || {}) });
+        const loose = `name:${name.toLowerCase()}`;
+        if (!by.has(r.player_id) && by.has(loose)) {
+          by.set(r.player_id, { ...by.get(loose), player_id: r.player_id, name });
+          by.delete(loose);
+        }
+        const entry = by.get(r.player_id)
+          || { player_id: r.player_id, name, shirt_number: "", position: "" };
+        entry.shirt_number = r.shirt_number || entry.shirt_number;
+        entry.position = entry.position || r.players?.position || "";
+        by.set(r.player_id, entry);
+      });
+    }
     // A scorer who has never been on a sheet is still someone this club has
     // played, so they belong in the list — with no shirt and no position,
     // because nothing here knows them.
@@ -13489,6 +14309,7 @@ async function route() {
   if (path === "/account") return renderAccount();
   if (path === "/players") return renderPlayers(params);
   if (path === "/teams") return renderTeams(params);
+  if (path === "/squad") return renderSquad(params);
   if (path === "/trending") return renderTrending(params);
   if (path === "/graphics") return renderGraphics(params);
   if (path === "/reporters") return renderReporters();
