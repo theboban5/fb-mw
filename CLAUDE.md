@@ -231,6 +231,11 @@ reached from each card on `#/teams`:
   first sheet exists, a registered shirt beating the tally; `search_players`
   counts a registration as a club hint. `merge_officials` repoints
   `team_staff`, or its FK would refuse every merge.
+- **Sources, migration `0058`**: one `squad_sources` row per team per
+  season — the squad's, not one per person, because one club page gives
+  twenty players. Written whole by `set_squad_sources` (the match source
+  box's rule, not 0055's append), 2,000 characters, readable only by a
+  signed-in reporter, never in the Dataset.
 - **What renders: position only** (a profile's fallback when no sheet says
   otherwise), so a save nudges a rebuild. Not built: a squad page on the club
   hub, photos and ages on profiles, `team_staff` in the Dataset, past

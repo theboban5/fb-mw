@@ -360,6 +360,10 @@ A squad list is written a person at a time, because it arrives that way.
   `squad-media` bucket, `players/<id>/…` or `staff/<id>/…`, or blank.
 - The scope is `can_name_team` (0046): a reporter writes the squads of teams
   they report.
+- **`squad_sources`** (0058) — where a squad list came from: one free-text
+  row per team per season, for the whole squad, written whole by
+  `set_squad_sources`. Never rendered, readable only by a signed-in
+  reporter, not part of the Dataset.
 
 ## Officials (0024)
 

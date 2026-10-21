@@ -86,6 +86,8 @@ class TeamSquadTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        delete("squad_sources", f"team_id=eq.{cls.team_id}&updated_by=in.("
+               + ",".join(cls.identities.ids.values()) + ")")
         delete("registrations", f"player_id=eq.{cls.player_id}")
         for oid in cls.official_ids:
             delete("team_staff", f"official_id=eq.{oid}")
@@ -198,6 +200,55 @@ class TeamSquadTest(unittest.TestCase):
         self.assertEqual(status, 200, body)
         hit = next(r for r in body if r["player_id"] == self.player_id)
         self.assertIn(self.team_id, hit["team_ids"])
+
+    # ── sources (0058) ───────────────────────────────────────────────────────
+
+    def sources(self, text, token=UNSET):
+        return rpc("set_squad_sources", {
+            "p_team_id": self.team_id, "p_season_id": None, "p_source_ref": text,
+        }, token=self.tokens["a"] if token is UNSET else token)
+
+    def read_sources(self, token):
+        return call(f"squad_sources?team_id=eq.{self.team_id}"
+                    f"&season_id=eq.{self.season}&select=source_ref", token=token)
+
+    def test_sources_are_written_whole_and_a_blank_clears_them(self):
+        # The test team is a real one, so whatever is there is put back.
+        before = sb.select("squad_sources", columns="source_ref,updated_by",
+                           params={"team_id": f"eq.{self.team_id}",
+                                   "season_id": f"eq.{self.season}"},
+                           require_secret=True)
+        try:
+            status, body = self.sources("https://example.test/team   \n\nWhatsApp, team manager\n\n")
+            self.assertEqual(status, 200, body)
+            self.assertEqual(body, "https://example.test/team\n\nWhatsApp, team manager")
+            status, rows = self.read_sources(self.tokens["a"])
+            self.assertEqual(rows, [{"source_ref": body}])
+            self.assertEqual(self.sources(""), (200, ""))
+        finally:
+            # updated_by too: the test reporter is deleted in teardown, and a
+            # row still pointing at it would block that delete.
+            if before:
+                sb.upsert("squad_sources", [{
+                    "team_id": self.team_id, "season_id": self.season,
+                    **before[0]}], on_conflict="team_id,season_id")
+            else:
+                delete("squad_sources", f"team_id=eq.{self.team_id}"
+                       f"&season_id=eq.{self.season}")
+
+    def test_sources_are_not_public(self):
+        status, rows = self.read_sources(None)
+        # Refused, or an empty answer — never a row.
+        self.assertTrue(status in (401, 403) or rows == [], (status, rows))
+
+    def test_sources_follow_the_squad_scope(self):
+        status, body = self.sources("x", token=self.tokens["b"])
+        self.assertEqual(status, 403, body)
+
+    def test_sources_too_long_are_refused_not_cut(self):
+        status, body = self.sources("x" * 2001)
+        self.assertEqual(status, 400, body)
+        self.assertIn("too long", message(body))
 
     # ── staff ────────────────────────────────────────────────────────────────
 

@@ -220,7 +220,8 @@ function humanError(error) {
       || message.includes("birth year is")
       || message.includes("photo did not upload")
       || message.includes("referees' list")
-      || message.includes("role is too long")) {
+      || message.includes("role is too long")
+      || message.includes("sources are too long")) {
     return error.message.charAt(0).toUpperCase() + error.message.slice(1);
   }
   // The RPC's own validation, which is phrased for a person to read.
@@ -7750,7 +7751,7 @@ async function inBatches(items, limit, work) {
 }
 
 async function loadSquad(teamId, seasonId) {
-  const [team, players, staff] = await Promise.all([
+  const [team, players, staff, sources] = await Promise.all([
     supabase.from("teams").select("team_id,display_name").eq("team_id", teamId).limit(1),
     supabase.from("registrations")
       .select("player_id,shirt_number,players(full_name,known_as,position,dob,birth_year,photo_path)")
@@ -7758,12 +7759,19 @@ async function loadSquad(teamId, seasonId) {
     supabase.from("team_staff")
       .select("official_id,role,officials(full_name,known_as,photo_path)")
       .eq("team_id", teamId).eq("season_id", seasonId).order("ord"),
+    supabase.from("squad_sources").select("source_ref")
+      .eq("team_id", teamId).eq("season_id", seasonId).limit(1),
   ]);
   if (team.error) throw team.error;
   if (players.error) throw players.error;
   // No team_staff yet means 0057 is not applied; the players half still works.
   if (staff.error) console.warn("[everyleague] team_staff unavailable:", staff.error);
+  // The same for 0058. `null` rather than "", so the screen can tell "nothing
+  // recorded" from "could not be read" and never offers to save over a list
+  // it did not manage to load.
+  if (sources.error) console.warn("[everyleague] squad_sources unavailable:", sources.error);
   return {
+    sources: sources.error ? null : ((sources.data || [])[0]?.source_ref || ""),
     team: (team.data || [])[0] || null,
     players: (players.data || []).map((r) => squadPlayerFrom({
       player_id: r.player_id, shirt_number: r.shirt_number, ...(r.players || {}) })),
@@ -7872,7 +7880,21 @@ async function renderSquad(params) {
          The job is optional.</p>
        <button class="rp-btn is-ghost" type="submit">Check these names</button>
      </form>
-     <div data-staged-staff></div>` : ""}`);
+     <div data-staged-staff></div>` : ""}
+
+     ${loaded.sources !== null && (canEdit || loaded.sources) ? `
+     <h2 class="rp-field-head">Sources (where is this squad from?)</h2>
+     <form data-squad-sources autocomplete="off">
+       <textarea class="rp-input rp-textarea" name="sources" rows="4" maxlength="2000"
+                 autocorrect="off" spellcheck="false"${canEdit ? "" : " disabled"}
+                 placeholder="One per line, e.g.&#10;https://www.karongaunitedfc.online/team&#10;Signing graphic on the club's Facebook, 3 Oct">${
+         esc(loaded.sources)}</textarea>
+       <p class="rp-hint">For the whole squad, not one per person. Never shown
+         publicly — it is there so a shirt number or a date of birth can be
+         checked later. Links, or plain words like &ldquo;team manager on
+         WhatsApp&rdquo;.</p>
+       ${canEdit ? '<button class="rp-btn is-ghost" type="submit">Save sources</button>' : ""}
+     </form>` : ""}`);
 
   const playersHost = view.querySelector("[data-squad-players]");
   const staffHost = view.querySelector("[data-squad-staff]");
@@ -8460,6 +8482,31 @@ async function renderSquad(params) {
   // "Second Assistant Coach" is still one keystroke away from "Assistant coach".
   view.insertAdjacentHTML("beforeend", `<datalist id="rp-staff-roles">${
     sq.STAFF_ROLES.map((r) => `<option value="${esc(r)}">`).join("")}</datalist>`);
+
+  // ── sources ────────────────────────────────────────────────────────────────
+  // Written whole, like the match screen's source box: the text on screen IS
+  // the list, so a blank save clears it. Never reaches a page, so no rebuild.
+  view.querySelector("[data-squad-sources]")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const button = form.querySelector('button[type="submit"]');
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    button.textContent = "Saving…";
+    const { data, error } = await supabase.rpc("set_squad_sources", {
+      p_team_id: teamId, p_season_id: season.season_id,
+      p_source_ref: form.sources.value,
+    });
+    button.disabled = false;
+    button.textContent = "Save sources";
+    // On failure the box keeps exactly what was typed.
+    if (error) { flash(humanError(error), "error", 8000); return; }
+    // Only if nothing was typed while the save was in flight.
+    if (form.sources.value.trim() === String(data ?? "").trim()) {
+      form.sources.value = data || "";
+    }
+    flash(data ? "Sources saved." : "Sources cleared.", "ok");
+  });
 
   drawPlayers();
   drawStaff();
