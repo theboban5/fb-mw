@@ -191,8 +191,24 @@ fixture and clean up, and they never mutate a real match.
 
 ## Recent work (Oct 2026)
 
-Team sheets, cards and assists from a club's match report, migration `0054` —
-`#/import` → `#/m/<id>?import=<id>`:
+Team sheets, cards and assists from a club's match report, migrations
+`0054`–`0055` — **on the match's own screen** ("Fill in from a match report"),
+and from `#/import`:
+
+- **The match comes first.** The first cut sent a report through `#/import`,
+  which has to MATCH it before anything else, and a club report is the hardest
+  thing there is to match — the first real one came back "these teams meet
+  more than once". On `#/m/<id>` the reporter has already said which match:
+  link, text or screenshot → `extractImport(id, "match_report")` →
+  `runReportOnly` (the report pass alone, one call) → `stageReport`. The
+  resolver is asked only which way round the report printed it, with
+  `orientationByName` behind it for a name it has no alias for.
+  `createImport`/`extractImport` are lifted out of `renderImport` for this.
+- **0055 `add_match_source`** appends the report's link to `source_ref` —
+  comma-separated, the format reporters were already typing two links into
+  one box with; a duplicate is a no-op, and nothing is ever replaced. The
+  score screen's source box still edits the whole column, so it is brought up
+  to date when it still shows what was saved.
 
 - Only 32 matches had a team sheet, every one typed a row at a time, while
   every FDH Bank Premiership club publishes a full match report: XI, bench,

@@ -134,6 +134,29 @@ export function reportFor(extracted, resolved, matchId) {
   return { item, source, flipped: orientation === "flipped" };
 }
 
+const teamKey = (name) => String(name || "").normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const sameTeam = (a, b) => {
+  const x = teamKey(a);
+  const y = teamKey(b);
+  return Boolean(x && y) && (x === y
+    || (Math.min(x.length, y.length) >= 6 && (x.includes(y) || y.includes(x))));
+};
+
+/** Which way round a report printed THIS match, by the team names alone —
+ *  for a report read from the match's own screen that the resolver could not
+ *  place (a name it has no alias for). The reporter chose the match, so the
+ *  only question left is orientation, and it is answered only when both names
+ *  agree one way and not the other. Otherwise null, and nothing is staged. */
+export function orientationByName(source, homeName, awayName) {
+  const h = source?.home_team_raw;
+  const a = source?.away_team_raw;
+  const asGiven = sameTeam(h, homeName) && sameTeam(a, awayName);
+  const flipped = sameTeam(h, awayName) && sameTeam(a, homeName);
+  if (asGiven === flipped) return null;
+  return { flipped };
+}
+
 /** A printed side, as the fixture is stored. THE ORIENTATION GOES WITH IT:
  *  a report that wrote the fixture the other way round has its sheets on the
  *  other side too — scorersFromImport's rule, one field over. */

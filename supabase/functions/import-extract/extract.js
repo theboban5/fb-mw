@@ -81,6 +81,11 @@ export const REPORT_SCHEMA = strict({
   // this pass up with the first one's row — the matcher never sees them.
   home_team_raw: plain,
   away_team_raw: plain,
+  // The final score as printed digits, or "". Read here as well as by the
+  // results pass because a match report read from the match's own screen
+  // (runReportOnly) has no results pass to read it.
+  home_score: plain,
+  away_score: plain,
   players: { type: "array", items: strict({
     team_side: sideField,
     role: { type: "string", enum: ["starting", "bench"] },
@@ -267,7 +272,7 @@ NAMES EXACTLY AS PRINTED. Do not expand "A. Josephy" into a full name, do not co
 
 NOTHING THE SOURCE DOES NOT SAY. Text that is not shown is "", a list that is not shown is empty, and a flag that is not shown is false. A missing minute, a missing shirt number and a missing position are all normal.
 
-home_team_raw and away_team_raw are the two teams in the order the report prints the fixture ("Moyale Barracks 0-1 Silver Strikers": Moyale Barracks first). Every team_side below means "home" for the first of those and "away" for the second; "unknown" only when you genuinely cannot tell. A club's report usually covers only its own team, which may be either side.
+home_team_raw and away_team_raw are the two teams in the order the report prints the fixture ("Moyale Barracks 0-1 Silver Strikers": Moyale Barracks first), and home_score and away_score the final score in that same order, as digits, or "" when the report gives none. When the headline scoreline and a sentence in the story disagree, the scoreline as printed is the answer. Every team_side below means "home" for the first of those and "away" for the second; "unknown" only when you genuinely cannot tell. A club's report usually covers only its own team, which may be either side.
 
 - players: everyone the source LISTS in a line-up — the starting XI with role "starting", in the order printed, and every listed substitute, used or unused, with role "bench". Never add a player who is merely mentioned in the story, and never list the opponent's players unless the source lists them too. name_raw is the name without the brackets or markers around it. shirt_number only if printed. position only when marked, as GK, DF, MF or FW ("(GK)" is GK). captain true when marked "(C)" or when the text calls that player the captain.
 - substitutions: one per change — the player coming on in on_raw, going off in off_raw, and minute as printed digits ("39", "90+2") or "". When the source gives the pairings twice, once in the story and once as a list such as "Aubrey Khumbula (Charles Chipala-63')", the list is the answer: a sentence naming three players on and three off does not say who replaced whom.
@@ -668,6 +673,23 @@ export function mergeReport(item, raw) {
   }).filter((g) => g.player_raw);
 
   return { ...item, ...fields, scorers: goals.length ? goals : item.scorers };
+}
+
+/** A results row built from the report pass alone, for a report read from
+ *  the match's own screen where there is no results pass. The match is
+ *  already known there, so this row is never matched by the resolver to
+ *  decide WHICH match — only to say which way round the report printed it. */
+export function reportOnlyRow(raw) {
+  const r = raw && typeof raw === "object" ? raw : {};
+  const goals = (v) => (/^\s*\d{1,2}\s*$/.test(String(v ?? "")) ? Number(v) : null);
+  const home = goals(r.home_score);
+  const away = goals(r.away_score);
+  const scored = home !== null && away !== null;
+  return mergeReport(normalizeItem({
+    home_team_raw: r.home_team_raw, away_team_raw: r.away_team_raw,
+    status: scored ? "played" : "unknown",
+    home_score: home, away_score: away, fields_not_present: [],
+  }, 1), r);
 }
 
 /** Is the cheap pass good enough, or is this one of the hard ones?

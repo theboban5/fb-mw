@@ -16,6 +16,7 @@ import { mergeReport, parseExtraction }
   from "../../supabase/functions/import-extract/extract.js";
 import {
   findPerson, hasReport, linkToSquad, normalizeName, officialsFromReport,
+  orientationByName,
   reconcileGoals, reportFor, sheetProblems, sheetsFromReport, teamFor,
 } from "../../static/report/match_report.js";
 import { MATCH_REPORT, MATCH_REPORT_PAYLOAD } from "./fixtures/extractions.mjs";
@@ -88,6 +89,18 @@ test("a man of the match printed with his club still finds his row", () => {
   const rows = sheetsFromReport(report, ctx()).sheets[SS];
   assert.deepEqual(rows.filter((r) => r.motm).map((r) => r.player_name),
                    ["Ernest Petro"]);
+});
+
+test("a report the resolver could not place is turned round by its names", () => {
+  const src = { home_team_raw: "Silver Strikers FC", away_team_raw: "Moyale" };
+  assert.deepEqual(orientationByName(src, "Moyale Barracks", "Silver Strikers"),
+                   { flipped: true });
+  assert.deepEqual(orientationByName({ home_team_raw: "Moyale Barracks",
+    away_team_raw: "Silver Strikers" }, "Moyale Barracks", "Silver Strikers"),
+                   { flipped: false });
+  // One name agreeing is not enough: that is a different match.
+  assert.equal(orientationByName({ home_team_raw: "Moyale Barracks",
+    away_team_raw: "Bullets" }, "Moyale Barracks", "Silver Strikers"), null);
 });
 
 test("a red item is never staged against a match", () => {

@@ -21,14 +21,15 @@ import assert from "node:assert/strict";
 import {
   EXTRACTION_SCHEMA, IMPORT_STATUSES, REPORT_PROMPT, REPORT_SCHEMA, SYSTEM_PROMPT,
   buildContent, buildReportRequest, buildRequest, mergeReport, normalizeItem,
-  normalizeMatchReport, parseExtraction, parseReport, shouldEscalate, usageRecord,
+  normalizeMatchReport, parseExtraction, parseReport, reportOnlyRow,
+  shouldEscalate, usageRecord,
 } from "../../supabase/functions/import-extract/extract.js";
-import { anthropicProvider, fakeProvider, runExtraction }
+import { anthropicProvider, fakeProvider, runExtraction, runReportOnly }
   from "../../supabase/functions/import-extract/provider.js";
 import {
   CLEAN_GRAPHIC, MESSY_TEXT, ABBREVIATED, FIXTURE_LIST, ABANDONED_WITH_SCORE,
   POSTPONED, INVENTED_IDS, HALF_SCORE, ABSURD_SCORES, WITH_SCORERS, WITH_OWN_GOAL,
-  MATCH_REPORT, MATCH_REPORT_PASS, MATCH_REPORT_PAYLOAD, UNREADABLE,
+  MATCH_REPORT, MATCH_REPORT_PASS, MATCH_REPORT_PAYLOAD, UNREADABLE, asMessage,
   RESCUED, NOT_JSON, EMPTY_CONTENT, REFUSED, TRUNCATED, WRONG_SHAPE,
 } from "./fixtures/extractions.mjs";
 
@@ -706,4 +707,39 @@ test("a report pass that fails leaves the result importable", async () => {
   assert.deepEqual(out.items[0].team_sheets, []);
   assert.equal(out.reportError.category, "provider_error");
   assert.equal(provider.calls.length, 3, "main model, then the fallback once");
+});
+
+// ── From the match's own screen: the report pass alone ───────────────────────
+
+test("a report sent from its match is read once, by the report pass", async () => {
+  // The match is already chosen there, so the results pass — which match,
+  // and is it a report at all — has nothing to answer.
+  const provider = fakeProvider(asMessage({ ...MATCH_REPORT_PAYLOAD,
+    home_score: "0", away_score: "1" }));
+  const out = await runReportOnly({ provider, model: "claude-sonnet-5",
+                                    input: { text: "report" } });
+  assert.equal(provider.calls.length, 1);
+  assert.equal(provider.calls[0].output_config.format.schema, REPORT_SCHEMA);
+  assert.equal(out.ok, true);
+  assert.equal(out.documentKind, "match_report");
+  const row = out.items[0];
+  assert.deepEqual([row.home_team_raw, row.home_score, row.away_score, row.status],
+                   ["Moyale Barracks", 0, 1, "played"]);
+  assert.equal(row.team_sheets[0].team_side, "away");
+  assert.equal(row.scorers[0].assist_raw, "Chinsisi Maonga");
+});
+
+test("a report with no score printed is a row with no score, not 0-0", () => {
+  const row = reportOnlyRow({ ...MATCH_REPORT_PAYLOAD, home_score: "", away_score: "" });
+  assert.equal(row.home_score, null);
+  assert.equal(row.status, "unknown");
+});
+
+test("a report pass that fails from the match screen is a failure, said once", async () => {
+  const provider = fakeProvider(null, { failWith: "provider_error" });
+  const out = await runReportOnly({ provider, model: "claude-sonnet-5",
+                                    input: { text: "x" } });
+  assert.equal(out.ok, false);
+  assert.equal(out.errorCategory, "provider_error");
+  assert.deepEqual(out.items, []);
 });

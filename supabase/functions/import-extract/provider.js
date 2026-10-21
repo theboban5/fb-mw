@@ -20,7 +20,7 @@
 
 import {
   buildReportRequest, buildRequest, mergeReport, parseExtraction, parseReport,
-  shouldEscalate, usageRecord,
+  reportOnlyRow, shouldEscalate, usageRecord,
 } from "./extract.js";
 
 const API_VERSION = "2023-06-01";
@@ -215,32 +215,70 @@ export async function runExtraction({
         || !result.items.length) {
       return result;
     }
-    const tries = [[model, "low"]];
-    if (canEscalate) tries.push([fallbackModel, "high"]);
-    let failure = null;
-    for (const [useModel, effort] of tries) {
-      const outcome = await provider(buildReportRequest({
-        model: useModel, effort, maxTokens, ...input }));
-      if (!outcome.ok) {
-        failure = { category: outcome.errorCategory || "provider_error",
-                    status: outcome.status || 0,
-                    detail: (outcome.detail || "").slice(0, 400), model: useModel };
-        continue;
-      }
-      const record = usageRecord(useModel, outcome.message?.usage,
-                                 { escalated: useModel !== model });
-      record.pass = "report";
-      usage.push(record);
-      const parsed = parseReport(outcome.message);
-      if (!parsed.ok) {
-        failure = { category: parsed.errorCategory, status: 0, detail: "",
-                    model: useModel };
-        continue;
-      }
-      const items = [mergeReport(result.items[0], parsed.report),
-                     ...result.items.slice(1)];
-      return { ...result, items, usage };
-    }
-    return { ...result, usage, reportError: failure };
+    const read = await readReport({ provider, model, fallbackModel, input,
+                                    maxTokens, usage });
+    if (!read.ok) return { ...result, usage, reportError: read.failure };
+    const items = [mergeReport(result.items[0], read.report),
+                   ...result.items.slice(1)];
+    return { ...result, items, usage };
   }
+}
+
+/** The report pass, with its one retry: the main model first and, only if
+ *  that does not come back usable, the fallback once. Appends to `usage`. */
+async function readReport({ provider, model, fallbackModel = "", input = {},
+                            maxTokens = 16000, usage }) {
+  const tries = [[model, "low"]];
+  if (fallbackModel && fallbackModel !== model) tries.push([fallbackModel, "high"]);
+  let failure = null;
+  for (const [useModel, effort] of tries) {
+    const outcome = await provider(buildReportRequest({
+      model: useModel, effort, maxTokens, ...input }));
+    if (!outcome.ok) {
+      failure = { category: outcome.errorCategory || "provider_error",
+                  status: outcome.status || 0,
+                  detail: (outcome.detail || "").slice(0, 400), model: useModel };
+      continue;
+    }
+    const record = usageRecord(useModel, outcome.message?.usage,
+                               { escalated: useModel !== model });
+    record.pass = "report";
+    usage.push(record);
+    const parsed = parseReport(outcome.message);
+    if (!parsed.ok) {
+      failure = { category: parsed.errorCategory, status: 0, detail: "",
+                  model: useModel };
+      continue;
+    }
+    return { ok: true, report: parsed.report, model: useModel };
+  }
+  return { ok: false, failure };
+}
+
+/** A match report read from the match's OWN screen: the report pass alone.
+ *
+ *  The reporter chose the match before sending anything, so there is no
+ *  question for the results pass to answer — which match, and is it a
+ *  report at all — and asking it anyway is what produced "these teams meet
+ *  more than once" on a report the reporter had already placed. Half the cost,
+ *  and the same shape out as runExtraction, so index.ts stores either. */
+export async function runReportOnly({
+  provider, model, fallbackModel = "", input = {}, maxTokens = 16000,
+} = {}) {
+  if (!provider) throw new Error("runReportOnly needs a provider");
+  if (!model) throw new Error("runReportOnly needs a model");
+  const usage = [];
+  const read = await readReport({ provider, model, fallbackModel, input,
+                                  maxTokens, usage });
+  if (!read.ok) {
+    return { ok: false, errorCategory: read.failure?.category || "provider_error",
+             status: read.failure?.status || 0, detail: read.failure?.detail || "",
+             items: [], usage };
+  }
+  return {
+    ok: true, errorCategory: "", documentKind: "match_report",
+    items: [reportOnlyRow(read.report)], dropped: 0,
+    competitionHint: null, date: null, matchday: null, notes: null,
+    model: read.model, usage, escalated: read.model !== model,
+  };
 }

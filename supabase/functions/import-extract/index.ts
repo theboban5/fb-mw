@@ -41,7 +41,7 @@
 //
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected by the platform.
 
-import { anthropicProvider, runExtraction } from "./provider.js";
+import { anthropicProvider, runExtraction, runReportOnly } from "./provider.js";
 import { fetchPage } from "./fetch_page.js";
 
 // Same rules, and the same reasoning, as trigger-rebuild's: the only caller
@@ -144,9 +144,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // ── 2. The import must exist and belong to them ────────────────────────────
   let importId = "";
+  // "match_report" when the reporter sent this from a match's own screen: the
+  // match is already chosen, so only the report pass runs (runReportOnly).
+  let mode = "";
   try {
     const body = await req.json();
     importId = String(body?.import_id ?? "");
+    mode = body?.mode === "match_report" ? "match_report" : "";
   } catch {
     return json({ error: "send an import_id" }, 400);
   }
@@ -257,7 +261,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ── 5. Read it ─────────────────────────────────────────────────────────────
   let result;
   try {
-    result = await runExtraction({
+    result = await (mode === "match_report" ? runReportOnly : runExtraction)({
       provider: anthropicProvider({ apiKey, workspaceId }),
       model, fallbackModel,
       input: { imageBase64, mediaType, text, sourceUrl },

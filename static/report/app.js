@@ -3013,6 +3013,51 @@ function applyProposal(row) {
   return row;
 }
 
+/** Upload the photo, if there is one, and open an import row for whatever
+ *  was sent. Returns the import id; throws, because each caller owns its own
+ *  screen and decides what a failure there looks like.
+ *
+ *  Shared by #/import and the match screen's "Fill in from a match report":
+ *  one place that knows the storage path rule and the channel vocabulary. */
+async function createImport({ file, url = "", text = "" }) {
+  let storagePath = "";
+  if (file) {
+    // '<reporter_id>/<uuid>.jpg' — the path IS the authorization, which is
+    // what the storage policy in 0042 reads. The bucket is private.
+    storagePath = `${context.reporter.reporter_id}/${crypto.randomUUID()}.jpg`;
+    const { error } = await supabase.storage.from(IMPORT_BUCKET)
+      .upload(storagePath, file, { contentType: "image/jpeg" });
+    if (error) throw error;
+  }
+  const channel = file && url ? "image_url"
+    : file ? "image" : url && !text ? "url" : "text";
+  const { data: importId, error } = await supabase.rpc("create_report_import", {
+    p_channel: channel,
+    p_source_url: url,
+    p_pasted_text: text,
+    p_storage_path: storagePath,
+  });
+  if (error) throw error;
+  return importId;
+}
+
+/** Run import-extract on an import. Returns {payload} on an answer — which
+ *  may itself be an expected "could not read the link" — {reason} for a
+ *  refusal the caller words, or {error}. Never throws.
+ *
+ *  `mode: "match_report"` reads ONLY the report (runReportOnly): the caller
+ *  already knows the match. */
+async function extractImport(importId, mode = "") {
+  try {
+    const body = mode ? { import_id: importId, mode } : { import_id: importId };
+    const { data, error } = await supabase.functions.invoke("import-extract", { body });
+    if (error) return { reason: await functionError(error, data) };
+    return { payload: data };
+  } catch (error) {
+    return { error };
+  }
+}
+
 async function renderImport(params) {
   const state = {
     step: "submit",
@@ -3112,38 +3157,11 @@ async function renderImport(params) {
     clearFlash();
     drawReading("Sending…");
 
-    let storagePath = "";
     try {
-      if (state.file) {
-        // '<reporter_id>/<uuid>.jpg' — the path IS the authorization, which is
-        // what the storage policy in 0042 reads. The bucket is private.
-        storagePath = `${context.reporter.reporter_id}/${crypto.randomUUID()}.jpg`;
-        const { error } = await supabase.storage.from(IMPORT_BUCKET)
-          .upload(storagePath, state.file, { contentType: "image/jpeg" });
-        if (error) throw error;
-      }
+      state.importId = await createImport(state);
     } catch (error) {
       state.busy = false;
       state.note = "";
-      drawSubmit();
-      flash(humanError(error), "error");
-      return;
-    }
-
-    const channel = state.file && state.url ? "image_url"
-      : state.file ? "image" : state.url && !state.text ? "url" : "text";
-
-    try {
-      const { data: importId, error } = await supabase.rpc("create_report_import", {
-        p_channel: channel,
-        p_source_url: state.url,
-        p_pasted_text: state.text,
-        p_storage_path: storagePath,
-      });
-      if (error) throw error;
-      state.importId = importId;
-    } catch (error) {
-      state.busy = false;
       drawSubmit();
       flash(humanError(error), "error");
       return;
@@ -3157,33 +3175,27 @@ async function renderImport(params) {
    *  reporter's identity and so has to run as them. */
   async function read() {
     drawReading("Reading it…");
-    let payload = null;
-    try {
-      const { data, error } = await supabase.functions.invoke("import-extract", {
-        body: { import_id: state.importId },
-      });
-      if (error) {
-        const reason = await functionError(error, data);
-        state.busy = false;
-        if (reason === "import_disabled") {
-          state.note = "Reading from screenshots is not switched on yet.";
-          drawSubmit();
-          flash("Reading from screenshots is not switched on. You can still "
-                + "enter results by hand.", "warn", 8000);
-          return;
-        }
-        drawSubmit();
-        flash(reason === "not an active reporter"
-          ? "Your reporter account is inactive. Ask an administrator."
-          : "I could not read that one. You can still enter the results by "
-            + "hand.", "error");
-        return;
-      }
-      payload = data;
-    } catch (error) {
+    const { payload, reason, error } = await extractImport(state.importId);
+    if (error) {
       state.busy = false;
       drawSubmit();
       flash(humanError(error), "error");
+      return;
+    }
+    if (reason) {
+      state.busy = false;
+      if (reason === "import_disabled") {
+        state.note = "Reading from screenshots is not switched on yet.";
+        drawSubmit();
+        flash("Reading from screenshots is not switched on. You can still "
+              + "enter results by hand.", "warn", 8000);
+        return;
+      }
+      drawSubmit();
+      flash(reason === "not an active reporter"
+        ? "Your reporter account is inactive. Ask an administrator."
+        : "I could not read that one. You can still enter the results by "
+          + "hand.", "error");
       return;
     }
 
@@ -5727,18 +5739,29 @@ function reportPerson(sides, teamId, raw) {
 async function stageReport(match, state, sides, teamName) {
   try {
     const { data, error } = await supabase.from("report_imports")
-      .select("import_id,extracted,resolved").eq("import_id", state.importId)
-      .limit(1);
+      .select("import_id,extracted,resolved,source_url")
+      .eq("import_id", state.importId).limit(1);
     if (error) throw error;
     const row = (data || [])[0];
     if (!row) {
       return { failed: "That report could not be opened from this account, so "
         + "nothing from it was filled in." };
     }
-    const found = mr.reportFor(row.extracted, row.resolved, match.match_id);
+    let found = mr.reportFor(row.extracted, row.resolved, match.match_id);
+    // Read from this screen, the reporter has already said which match it is;
+    // a team name the resolver has no alias for should not undo that. The
+    // names then only have to say which way round it was printed.
+    const only = (row.extracted?.results || []).length === 1
+      ? row.extracted.results[0] : null;
+    if (!found && only && row.extracted?.document_kind === "match_report") {
+      const turn = mr.orientationByName(only, teamName(match.home_team_id),
+                                        teamName(match.away_team_id));
+      if (turn) found = { source: only, flipped: turn.flipped };
+    }
     if (!found) {
-      return { failed: "That report was not matched to this match, so nothing "
-        + "from it was filled in here." };
+      const read = only ? ` It is about ${only.home_team_raw} v ${only.away_team_raw}.` : "";
+      return { failed: "That report does not look like it is about this match, "
+        + `so nothing from it was filled in here.${read}` };
     }
     const { source, flipped } = found;
     const ctx = { homeTeamId: match.home_team_id, awayTeamId: match.away_team_id,
@@ -5802,12 +5825,128 @@ async function stageReport(match, state, sides, teamName) {
     if (Object.keys(named).length) state.open.officials = true;
 
     return { staged, replace, goals, officials,
+             sourceUrl: (row.source_url || "").trim(),
              unplaced: unplaced.concat(goals.unplaced), done: {} };
   } catch (error) {
     console.warn("[everyleague] match report could not be staged:", error);
     return { failed: "The match report could not be loaded — "
       + "nothing from it was filled in. You can still enter everything here." };
   }
+}
+
+/** "Fill in from a match report", on the match's own screen.
+ *
+ *  THE MATCH COMES FIRST. A report sent to #/import has to be matched before
+ *  anything else can happen, and a club report is the hardest thing to match:
+ *  two clubs meet twice a season and its post date is not a match date the
+ *  importer trusts, so it came back "these teams meet more than once" on a
+ *  report whose match the reporter knew perfectly well. Here the reporter is
+ *  already on it. Only the report pass runs (runReportOnly), and the resolver
+ *  is asked only which way round the report printed the fixture.
+ *
+ *  What is typed lives in state.reportIn, so a redraw — any save below —
+ *  does not lose it (rule 1). */
+function reportInHtml(state) {
+  const ri = state.reportIn || {};
+  return `
+    <p class="rp-hint" style="margin-top:0">The club's match report, a
+      team-sheet graphic, or the text of either. The line-ups, substitutions,
+      cards, assists and officials are filled in below for you to check —
+      nothing is saved until you say so.</p>
+    <label class="rp-label" for="ri-url">Link</label>
+    <input class="rp-input" id="ri-url" type="url" inputmode="url" data-ri-url
+           value="${esc(ri.url || "")}" placeholder="https://…"
+           autocapitalize="off" autocorrect="off" spellcheck="false">
+    <p class="rp-hint">A club's own website can usually be read from the link,
+      and the link is added to this match's sources. Facebook cannot — paste
+      the text or add a screenshot as well.</p>
+    <label class="rp-label" for="ri-text">…or paste the text</label>
+    <textarea class="rp-input rp-textarea" id="ri-text" data-ri-text rows="4"
+              placeholder="Starting XI: …">${esc(ri.text || "")}</textarea>
+    <label class="rp-label" for="ri-file">…or a screenshot</label>
+    <input class="rp-input" id="ri-file" type="file" data-ri-file
+           accept="image/jpeg,image/png,image/webp">
+    ${ri.preview ? `<img class="rp-imp-preview" src="${esc(ri.preview)}" alt="">` : ""}
+    ${ri.note ? `<p class="rp-hint is-warn">${esc(ri.note)}</p>` : ""}
+    <button class="rp-btn" type="button" data-ri-read>Read the report</button>`;
+}
+
+function wireReportIn(host, match, state) {
+  const button = host.querySelector("[data-ri-read]");
+  if (!button) return;
+  state.reportIn = state.reportIn || {};
+  const ri = state.reportIn;
+  const urlEl = host.querySelector("[data-ri-url]");
+  const textEl = host.querySelector("[data-ri-text]");
+  urlEl.addEventListener("input", () => { ri.url = urlEl.value; });
+  textEl.addEventListener("input", () => { ri.text = textEl.value; });
+  host.querySelector("[data-ri-file]").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      ri.file = await shrinkImage(file);
+      ri.preview = URL.createObjectURL(ri.file);
+      ri.note = "";
+    } catch {
+      ri.file = null; ri.preview = "";
+      ri.note = "That file is not a photo I can read. Try a JPG or PNG.";
+    }
+    state.open["report-in"] = true;
+    drawDetail(match, state, { local: true });
+  });
+
+  button.addEventListener("click", async () => {
+    if (button.disabled) return;                  // rule 2
+    const url = (ri.url || "").trim();
+    const text = (ri.text || "").trim();
+    if (!url && !text && !ri.file) {
+      flash("Add a link, some text or a screenshot.", "warn");
+      return;
+    }
+    clearFlash();
+    button.disabled = true;
+    button.textContent = "Reading the report… (up to a minute)";
+    const stop = (note, kind = "warn") => {
+      ri.note = note;
+      button.disabled = false;
+      button.textContent = "Read the report";
+      state.open["report-in"] = true;
+      drawDetail(match, state, { local: true });
+      if (kind === "error") flash(note, "error");
+    };
+
+    let importId = "";
+    try {
+      importId = await createImport({ file: ri.file, url, text });
+    } catch (error) {
+      stop(humanError(error), "error");
+      return;
+    }
+    const { payload, reason, error } = await extractImport(importId, "match_report");
+    if (error) { stop(humanError(error), "error"); return; }
+    if (reason) {
+      stop(reason === "import_disabled"
+        ? "Reading reports is not switched on yet."
+        : "I could not read that one. Everything below can still be typed in.");
+      return;
+    }
+    if (payload?.error) {
+      stop(payload.message || "I could not read that one.");
+      return;
+    }
+    // Which way round the report printed the match. Best effort: a report
+    // the resolver cannot place still stages by its team names (stageReport).
+    await supabase.rpc("resolve_and_save_import", { p_import_id: importId })
+      .then(({ error: e }) => {
+        if (e) console.warn("[everyleague] report not resolved:", e);
+      });
+    state.importId = importId;
+    state.report = null;
+    state.reportIn = {};
+    state.detail = null;
+    await drawDetail(match, state);
+    view.querySelector("[data-report]")?.scrollIntoView({ block: "start" });
+  });
 }
 
 /** The panel at the top of the detail block: what arrived, what could not
@@ -5863,10 +6002,16 @@ function reportBannerHtml(report, teamName, sides, state) {
     lines.push(`<li><span>${officials} official${officials === 1 ? "" : "s"}
       and coaches <em>in their boxes below, where they were empty</em></span></li>`);
   }
+  if (report.sourceUrl && !report.done.source) {
+    lines.push(`<li><span>Source <em>${esc(report.sourceUrl)} — added to this
+      match's sources, beside any already there</em></span></li>`);
+  }
   const pending = report.staged.some((k) => !report.done[`sheet-${k}`])
     || (!report.done.amend && report.goals.amend.length)
     || (!report.done.add && report.goals.add.length)
-    || (!report.done.officials && officials);
+    || (!report.done.officials && officials)
+    // Parts saved by their own buttons still leave the link to be listed.
+    || (report.sourceUrl && !report.done.source);
   return `
     <section class="rp-imp-report" data-report>
       <p class="rp-imp-report-head">From the match report</p>
@@ -5993,6 +6138,31 @@ function wireReport(host, match, state, sides, teamName) {
       const { error } = await supabase.rpc("set_match_officials", args);
       if (error) failures.push(humanError(error));
       else { report.done.officials = true; wrote = true; }
+    }
+
+    // 5. The report's link joins the match's sources (0055) — appended, never
+    //    replacing the score's own. Only once something from it was saved: a
+    //    source is a claim that this match's data came from there.
+    const savedAny = wrote || Object.values(report.done).some(Boolean);
+    if (savedAny && report.sourceUrl && !report.done.source) {
+      const { data, error } = await supabase.rpc("add_match_source", {
+        p_match_id: match.match_id, p_source: report.sourceUrl,
+      });
+      if (error) {
+        failures.push(`The link was not added to the sources: ${humanError(error)}`);
+      } else {
+        report.done.source = true;
+        // The score's source box edits the whole column. If it still shows
+        // what was saved, it is brought up to date, or the next publish would
+        // write the old list back over this one. If the reporter has typed in
+        // it, their words stand.
+        const box = view.querySelector("[data-source]");
+        if (box && box.value.trim() === (match.source_ref || "").trim()) {
+          box.value = data || "";
+          state.source = data || "";
+        }
+        match.source_ref = data || "";
+      }
     }
 
     if (wrote) {
@@ -6172,10 +6342,10 @@ async function drawDetail(match, state, { local = false } = {}) {
   host.innerHTML = `
     <div data-detail-body>
     <h2 class="rp-field-head">Match detail <span class="rp-optional">optional</span></h2>
-    ${state.report ? reportBannerHtml(state.report, teamName, sides, state)
-      : `<p class="rp-hint" style="margin-top:0">Have the club's match report or
-          a team-sheet picture? <a href="#/import">Fill this in from it</a> —
-          the line-ups, cards and officials arrive here, ready to check.</p>`}
+    ${state.report ? reportBannerHtml(state.report, teamName, sides, state) : ""}
+    ${!state.report || state.report.failed
+      ? section("report-in", "Fill in from a match report", 0,
+                reportInHtml(state), open["report-in"]) : ""}
 
     ${section("goals", "Goalscorers",
       goals.length + (state.pendingGoals || []).length,
@@ -6435,6 +6605,7 @@ function wireDetail(match, state, goals, sides) {
   wirePlayerPickers(host, match);
   wireOfficialPickers(host);
   wireReport(host, match, state, sides || [], teamName);
+  wireReportIn(host, match, state);
 
   // ADDING A SCORER MEANS TWO DIFFERENT THINGS, DEPENDING ON ONE FACT.
   //
@@ -10999,10 +11170,10 @@ async function drawNTDetail(match, state, { local = false } = {}) {
   host.innerHTML = `
     <div data-detail-body>
     <h2 class="rp-field-head">Match detail <span class="rp-optional">optional</span></h2>
-    ${state.report ? reportBannerHtml(state.report, teamName, sides, state)
-      : `<p class="rp-hint" style="margin-top:0">Have the club's match report or
-          a team-sheet picture? <a href="#/import">Fill this in from it</a> —
-          the line-ups, cards and officials arrive here, ready to check.</p>`}
+    ${state.report ? reportBannerHtml(state.report, teamName, sides, state) : ""}
+    ${!state.report || state.report.failed
+      ? section("report-in", "Fill in from a match report", 0,
+                reportInHtml(state), open["report-in"]) : ""}
 
     ${section("ntgoals", "Goalscorers", goals.length,
       `<ul class="rp-list">${goalList}</ul>${goalForm}`, open.ntgoals)}
