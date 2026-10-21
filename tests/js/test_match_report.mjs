@@ -3,8 +3,8 @@
  *     node --test 'tests/js/*.mjs'            (or: npm test)
  *
  * Driven end to end from MATCH_REPORT — the silverstrikers.mw report of
- * Moyale Barracks 0-1 Silver Strikers, read through parseExtraction exactly as
- * the Edge Function stores it — because every awkward case worth testing is in
+ * Moyale Barracks 0-1 Silver Strikers, read through both passes and merged
+ * exactly as the Edge Function stores it — because every awkward case worth testing is in
  * that one ordinary article: one side's sheet, a card for a player on no sheet,
  * a red card for a team manager, a goal that already exists without its assist.
  */
@@ -12,13 +12,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseExtraction }
+import { mergeReport, parseExtraction }
   from "../../supabase/functions/import-extract/extract.js";
 import {
   findPerson, hasReport, linkToSquad, normalizeName, officialsFromReport,
   reconcileGoals, reportFor, sheetProblems, sheetsFromReport, teamFor,
 } from "../../static/report/match_report.js";
-import { MATCH_REPORT } from "./fixtures/extractions.mjs";
+import { MATCH_REPORT, MATCH_REPORT_PAYLOAD } from "./fixtures/extractions.mjs";
 
 const MB = "MW_MB";   // Moyale Barracks, home
 const SS = "MW_SS";   // Silver Strikers, away
@@ -26,7 +26,9 @@ const NAMES = { [MB]: "Moyale Barracks", [SS]: "Silver Strikers" };
 const ctx = (flipped = false) => ({
   homeTeamId: MB, awayTeamId: SS, flipped, teamName: (id) => NAMES[id],
 });
-const source = () => parseExtraction(MATCH_REPORT).items[0];
+// Both passes, merged, exactly as runExtraction stores the row.
+const source = () =>
+  mergeReport(parseExtraction(MATCH_REPORT).items[0], MATCH_REPORT_PAYLOAD);
 
 // ── Names ────────────────────────────────────────────────────────────────────
 

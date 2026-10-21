@@ -199,18 +199,22 @@ Team sheets, cards and assists from a club's match report, migration `0054` —
   subs with minutes, cards, captain, man of the match, scorer AND assister,
   coach, all four officials. **Every column for that already existed** —
   cards are booleans on `lineups` since 0018. What was missing was a way in.
-- **A match report is a results import with one row** (`document_kind:
-  "match_report"`). `results[0]` is the match, so the matcher, the team fixer
-  and the score's `channel='import'` are all unchanged; the row carries
-  `team_sheets`, `substitutions`, `cards`, `motm_raw`, `officials`, `coaches`,
-  and each scorer an `assist_raw` and `method`. Stored imports replay.
-- **The schema budget is real.** Structured outputs allow **16 `anyOf` and 24
-  optional parameters across the whole schema**, and results had spent 15 and
-  13. So the new fields are required and non-nullable — `""`, `false`, `[]`
-  mean "not shown" — and a test counts both totals. The obvious version (more
-  nullable fields) would have been a 400 on every import of every kind.
-  Not verified against the live API from here (no key on this machine): the
-  first import after deploy is the test of the unpublished grammar-size limit.
+- **A match report is a results import with one row, read twice.** The first
+  pass is the results schema exactly as it was, plus `document_kind:
+  "match_report"`, so the matcher, the team fixer and the score's
+  `channel='import'` are unchanged. Only when it says `match_report` does a
+  second pass run with `REPORT_SCHEMA`/`REPORT_PROMPT` (players with side and
+  role, subs, goals with assister, cards, officials, coaches), and
+  `mergeReport` puts it on `results[0]`, swapping sides if the report printed
+  the fixture the other way round.
+- **The first version broke every import for an hour.** It grew each results
+  row instead, stayed inside both PUBLISHED limits (16 `anyOf`, 24 optional
+  parameters) and hit the unpublished one: **"The compiled grammar is too
+  large"**, on every results and fixture import too, because they share the
+  schema. Reverted within minutes; the shape now cannot repeat it — the report
+  schema has no optional and no nullable property (a test says so), the
+  results schema is pinned field by field, and a failed second pass leaves the
+  result importable with `extracted.report_error` saying why.
 - **The review is the match screen**, not a second sheet editor. The import
   review row links to `#/m/<public_id>?import=<id>`, and `stageReport` fills
   the editors that were already there: an EMPTY side gets the sheet (linked to

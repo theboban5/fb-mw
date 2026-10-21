@@ -18,8 +18,10 @@
  * extra steps and a way to accidentally hit the network in CI.
  */
 
-import { buildRequest, parseExtraction, shouldEscalate, usageRecord }
-  from "./extract.js";
+import {
+  buildReportRequest, buildRequest, mergeReport, parseExtraction, parseReport,
+  shouldEscalate, usageRecord,
+} from "./extract.js";
 
 const API_VERSION = "2023-06-01";
 
@@ -162,7 +164,7 @@ export async function runExtraction({
 
   const canEscalate = Boolean(fallbackModel) && fallbackModel !== model;
   if (!shouldEscalate(first, { hasFallback: canEscalate })) {
-    return { ...first, usage, escalated: false };
+    return withReport({ ...first, usage, escalated: false });
   }
 
   const second = await attempt(fallbackModel, "high", true);
@@ -193,5 +195,52 @@ export async function runExtraction({
   if (escalatedRecord) escalatedRecord.helped = secondIsBetter;
 
   const chosen = secondIsBetter ? second : first;
-  return { ...chosen, usage, escalated: true, escalationHelped: secondIsBetter };
+  return withReport({ ...chosen, usage, escalated: true,
+                      escalationHelped: secondIsBetter });
+
+  /** The second pass, for a match report only (see REPORT_SCHEMA).
+   *
+   *  IT CAN ONLY ADD. Whatever happens here, the results pass's answer is what
+   *  is returned — with the report merged onto its first row on success, and
+   *  with `reportError` beside it on failure, which index.ts stores on the
+   *  import so a report that did not read is diagnosable rather than silent.
+   *  The first version had one schema for both and a match report's schema
+   *  broke every results import; this is the shape that cannot.
+   *
+   *  The main model first and, only if that call fails outright, the fallback
+   *  once — a report is one match, and reading it twice over is cheap next to
+   *  a reporter typing two team sheets. */
+  async function withReport(result) {
+    if (!result.ok || result.documentKind !== "match_report"
+        || !result.items.length) {
+      return result;
+    }
+    const tries = [[model, "low"]];
+    if (canEscalate) tries.push([fallbackModel, "high"]);
+    let failure = null;
+    for (const [useModel, effort] of tries) {
+      const outcome = await provider(buildReportRequest({
+        model: useModel, effort, maxTokens, ...input }));
+      if (!outcome.ok) {
+        failure = { category: outcome.errorCategory || "provider_error",
+                    status: outcome.status || 0,
+                    detail: (outcome.detail || "").slice(0, 400), model: useModel };
+        continue;
+      }
+      const record = usageRecord(useModel, outcome.message?.usage,
+                                 { escalated: useModel !== model });
+      record.pass = "report";
+      usage.push(record);
+      const parsed = parseReport(outcome.message);
+      if (!parsed.ok) {
+        failure = { category: parsed.errorCategory, status: 0, detail: "",
+                    model: useModel };
+        continue;
+      }
+      const items = [mergeReport(result.items[0], parsed.report),
+                     ...result.items.slice(1)];
+      return { ...result, items, usage };
+    }
+    return { ...result, usage, reportError: failure };
+  }
 }

@@ -39,9 +39,10 @@ export const IMPORT_STATUSES = [
 // how every fixture graphic sent before 0049 became importable.
 //
 // "match_report" is ONE match described in detail: a club's post-match
-// article, a team-sheet graphic. It is still read into results[0], so the
-// matcher finds the fixture exactly as it finds a result; what it adds is the
-// team sheets, substitutions, cards and officials on that one row.
+// article, a team-sheet graphic. The first pass reads it into results[0] like
+// any result, so the matcher finds the fixture exactly as it always has; a
+// SECOND pass with REPORT_SCHEMA reads the team sheets, cards and officials,
+// and mergeReport() puts them on that row.
 export const DOCUMENT_KINDS = [
   "results", "fixtures", "mixed", "match_report", "other", "unreadable",
 ];
@@ -50,37 +51,51 @@ export const SIDES = ["home", "away", "unknown"];
 export const POSITIONS = ["", "GK", "DF", "MF", "FW"];
 export const CARDS = ["yellow", "second_yellow", "red"];
 
-// ── The match-report half of a result row ────────────────────────────────────
-// NONE OF THIS IS NULLABLE, AND THAT IS A BUDGET, NOT A STYLE. Structured
-// outputs allow 16 parameters using `anyOf` and 24 optional parameters across
-// the whole schema, and the results half already spent 15 and 13 of them. So
-// "not shown" is the empty value here — "", false, [] — which is the same
-// answer for the same reason the rest of the schema gives null: the source did
-// not say. Every property of these objects is required, so none of them counts
-// as optional; only the six containers on the result row do. The test
-// "the schema stays inside the structured-outputs limits" counts both.
+// ── The match-report schema: a second pass, and why ────────────────────────
+// THE FIRST VERSION PUT ALL OF THIS INSIDE EVERY RESULT ROW, and the API
+// refused every import — results and fixtures included — with "The compiled
+// grammar is too large". It was inside both PUBLISHED limits (16 anyOf, 24
+// optional parameters) and outside the one that is not published: the size of
+// the grammar compiled from the schema. A results row is an object with
+// thirteen optional fields in an array of up to sixty, and giving it six more
+// containers of nested arrays multiplied what it compiles to.
+//
+// So a match report is read TWICE, and only a match report. The first pass is
+// the results schema exactly as it always was, plus one enum value so it can
+// say "match_report"; the second is this, for that one match. It is flat — a
+// list of players carrying their side and role, not sheets holding lists —
+// and every property is required with no anyOf: "" or false or [] is "not
+// shown". Required fields compile to a sequence, not to the combinations an
+// optional one admits. And if this pass fails for any reason, the first
+// pass's results still stand: a match report can no longer take the results
+// importer down with it.
 const sideField = { type: "string", enum: SIDES };
 const plain = { type: "string" };
 const strict = (properties) => ({
   type: "object", additionalProperties: false,
   required: Object.keys(properties), properties,
 });
-const SHEET_PLAYER = strict({
-  name_raw: plain,
-  shirt_number: plain,
-  position: { type: "string", enum: POSITIONS },
-  captain: { type: "boolean" },
-});
-const MATCH_REPORT_FIELDS = {
-  // One per side the document lists. A club writes about its own XI, so one
-  // sheet and not two is the ordinary case, not a failure.
-  team_sheets: { type: "array", items: strict({
+
+export const REPORT_SCHEMA = strict({
+  // The two teams in the order the report prints them. Only used to line
+  // this pass up with the first one's row — the matcher never sees them.
+  home_team_raw: plain,
+  away_team_raw: plain,
+  players: { type: "array", items: strict({
     team_side: sideField,
-    starting: { type: "array", items: SHEET_PLAYER },
-    bench: { type: "array", items: SHEET_PLAYER },
+    role: { type: "string", enum: ["starting", "bench"] },
+    name_raw: plain,
+    shirt_number: plain,
+    position: { type: "string", enum: POSITIONS },
+    captain: { type: "boolean" },
   }) },
   substitutions: { type: "array", items: strict({
     team_side: sideField, on_raw: plain, off_raw: plain, minute: plain,
+  }) },
+  goals: { type: "array", items: strict({
+    team_side: sideField, scorer_raw: plain, assist_raw: plain, minute: plain,
+    kind: { type: "string",
+            enum: ["", "penalty", "own_goal", "header", "free_kick"] },
   }) },
   // is_player is false for a coach or team manager. lineups is the only place
   // a card can be recorded, and it holds players, so those are read — they
@@ -90,11 +105,12 @@ const MATCH_REPORT_FIELDS = {
     card: { type: "string", enum: CARDS }, is_player: { type: "boolean" },
   }) },
   motm_raw: plain,
-  officials: strict({
-    referee: plain, assistant_1: plain, assistant_2: plain, fourth_official: plain,
-  }),
+  referee: plain,
+  assistant_1: plain,
+  assistant_2: plain,
+  fourth_official: plain,
   coaches: { type: "array", items: strict({ team_side: sideField, name_raw: plain }) },
-};
+});
 
 /** The JSON Schema the API is asked to constrain the response to.
  *
@@ -165,21 +181,16 @@ export const EXTRACTION_SCHEMA = {
             items: {
               type: "object",
               additionalProperties: false,
-              required: ["player_raw", "team_side", "assist_raw", "method"],
+              required: ["player_raw", "team_side"],
               properties: {
                 player_raw: { type: "string" },
                 team_side: { type: "string", enum: ["home", "away", "unknown"] },
                 minute: { anyOf: [{ type: "integer" }, { type: "null" }] },
                 own_goal: { anyOf: [{ type: "boolean" }, { type: "null" }] },
                 penalty: { anyOf: [{ type: "boolean" }, { type: "null" }] },
-                // Required, so they cost nothing against the optional budget
-                // above. "" is "not said", exactly as null is elsewhere.
-                assist_raw: plain,
-                method: { type: "string", enum: ["", "header", "free_kick"] },
               },
             },
           },
-          ...MATCH_REPORT_FIELDS,
           // The words this row was read from. It is what a reporter checks
           // against the picture when a row looks wrong, and it is the reason
           // a bad extraction is diagnosable at all.
@@ -230,7 +241,7 @@ DOCUMENT KIND
 - "results": played matches with scores. This is the normal case.
 - "fixtures": a list of upcoming matches with no scores.
 - "mixed": both.
-- "match_report": ONE match described in detail — a club's post-match article, a team-sheet graphic, a line-up post. Return that match as the only row in results, with its team sheets and everything else under MATCH REPORTS below. A results graphic that happens to name scorers is still "results".
+- "match_report": ONE match described in detail — a club's post-match article, a team-sheet graphic, a line-up post. Return that match as the only row in results, with its score and scorers like any other; its line-ups are read separately. A results graphic that happens to name scorers is still "results".
 - "other": football-related but neither, e.g. a league table or a squad list.
 - "unreadable": you cannot make out enough to return anything. Return an empty results array.
 
@@ -244,24 +255,27 @@ Return a scorer for every goal the source names, and none it does not. Most grap
 - Do not reorder, relabel or move a scorer to the side you think the goal counted for. On an own goal those two sides differ, graphics disagree with each other about which one to print it under, and something downstream asks a person. Moving it destroys the only evidence of what the picture actually said.
 - penalty is true only when the source marks it — "(P)", "pen", "penalty". A goal marked both a penalty and an own goal is a misread: report what is printed and say so in notes.
 - minute is the number printed beside the name, as an integer, and null when none is. "45+2" is 45. A scorer with no minute shown is normal and is not a reason to leave the scorer out.
-- assist_raw is the player the source credits with SETTING UP the goal — "assisted by", "set up by", "X's cross found Y", "X's free kick found Y in the box" — named exactly as printed. "" when the source credits nobody. A player who merely won the free kick or was fouled is not the assist.
-- method is "header" or "free_kick" only when the source says so ("free_kick" is a goal scored DIRECTLY from a free kick, not a header from one). "" otherwise. Penalties and own goals keep their own fields.
-
-MATCH REPORTS
-
-Only when document_kind is "match_report". On every other kind, leave team_sheets, substitutions, cards and coaches empty, motm_raw "", and every officials field "".
-
-In this section team_side means the side of the match row you returned: "home" is the team in home_team_raw, "away" the team in away_team_raw. A club's report usually covers only its own team; that team may be either side, and "unknown" is for when you genuinely cannot tell. Text that is not shown is "", a list that is not shown is empty, and a flag that is not shown is false — the same rule as null everywhere else.
-
-- team_sheets: one entry per team whose players the source LISTS. Never build a sheet from players merely mentioned in the story, and never add a second sheet for the opponent unless the source lists its players too. starting is the starting XI in the order printed. bench is every listed substitute, used or unused, in the order printed.
-- For each player: name_raw exactly as printed, without the brackets or markers around it. shirt_number only if printed. position only when marked, as GK, DF, MF or FW ("(GK)" is GK); "" otherwise. captain true when marked "(C)" or when the text calls that player the captain.
-- substitutions: one per change, the player coming on in on_raw and going off in off_raw, with minute as printed digits — "39", "90+2" — or "" when none is given. When a source gives the pairings twice, once in the story and once as a list such as "Aubrey Khumbula (Charles Chipala-63')", the list is the answer: a sentence that names three players on and three off does not say who replaced whom.
-- cards: every booking or sending-off the source reports, for any person on either side. card is "yellow", "second_yellow" for a red that followed a second booking, or "red" for a straight red. is_player is false for a coach, team manager or anyone else not playing. A card with no minute is normal.
-- motm_raw: the man of the match, or "".
-- officials: the referee, first and second assistant and fourth official, each exactly as printed, or "".
-- coaches: each team's head coach (or interim head coach) as printed, with that team's side. A team manager, assistant coach or chairman is not a coach.
 
 Put anything a person should know in notes — a cut-off edge, a column you could not interpret, two matches that looked like duplicates.`;
+
+/** The second pass's instructions, for a match report only. Its own system
+ *  prompt, so it is its own cache entry; the first pass's prompt is unchanged
+ *  by it, which is what keeps every results import reading exactly as before. */
+export const REPORT_PROMPT = `You read one football match report from Malawi — a club's post-match article, a team-sheet graphic, a line-up post — and return its line-ups, substitutions, goals, cards and officials as structured data.
+
+NAMES EXACTLY AS PRINTED. Do not expand "A. Josephy" into a full name, do not correct a spelling, and do not turn a nickname into a full club name. Something downstream matches names to people; you do not, and guessing destroys the only evidence of what was written. Never return an identifier, code or database key of any kind.
+
+NOTHING THE SOURCE DOES NOT SAY. Text that is not shown is "", a list that is not shown is empty, and a flag that is not shown is false. A missing minute, a missing shirt number and a missing position are all normal.
+
+home_team_raw and away_team_raw are the two teams in the order the report prints the fixture ("Moyale Barracks 0-1 Silver Strikers": Moyale Barracks first). Every team_side below means "home" for the first of those and "away" for the second; "unknown" only when you genuinely cannot tell. A club's report usually covers only its own team, which may be either side.
+
+- players: everyone the source LISTS in a line-up — the starting XI with role "starting", in the order printed, and every listed substitute, used or unused, with role "bench". Never add a player who is merely mentioned in the story, and never list the opponent's players unless the source lists them too. name_raw is the name without the brackets or markers around it. shirt_number only if printed. position only when marked, as GK, DF, MF or FW ("(GK)" is GK). captain true when marked "(C)" or when the text calls that player the captain.
+- substitutions: one per change — the player coming on in on_raw, going off in off_raw, and minute as printed digits ("39", "90+2") or "". When the source gives the pairings twice, once in the story and once as a list such as "Aubrey Khumbula (Charles Chipala-63')", the list is the answer: a sentence naming three players on and three off does not say who replaced whom.
+- goals: one per goal. team_side is where the source puts the scorer — the team it lists them under — not a conclusion about who the goal counted for. assist_raw is the player the source credits with SETTING UP the goal ("assisted by", "set up by", "X's cross found Y", "X's free kick found Y in the box"), or "". A player who merely won a free kick or was fouled is not the assist. minute as printed digits or "". kind is "penalty" or "own_goal" only when the source says so, "header" when it says the goal was headed, "free_kick" only for a goal scored DIRECTLY from a free kick (a header from a free kick is "header"); otherwise "".
+- cards: every booking or sending-off, for anyone on either side. card is "yellow", "second_yellow" for a red that followed a second booking, or "red" for a straight red. is_player is false for a coach, team manager or anyone else not playing. A card with no minute is normal.
+- motm_raw: the man of the match, or "".
+- referee, assistant_1, assistant_2, fourth_official: the officials exactly as printed, or "".
+- coaches: each team's head coach (or interim head coach) as printed, with that team's side. A team manager, assistant coach or chairman is not a coach.`;
 
 // ── Building the request ─────────────────────────────────────────────────────
 
@@ -272,7 +286,8 @@ Put anything a person should know in notes — a cut-off edge, a column you coul
  *  matching and it is the wrong place to do it: the model would then be
  *  choosing between rows we handed it, which is the same thing as asking it
  *  for an id. Matching happens in Postgres, against everything, afterwards. */
-export function buildContent({ imageBase64, mediaType, text, sourceUrl } = {}) {
+export function buildContent({ imageBase64, mediaType, text, sourceUrl,
+                               subject = "the football results" } = {}) {
   const content = [];
   if (imageBase64) {
     content.push({
@@ -293,8 +308,8 @@ export function buildContent({ imageBase64, mediaType, text, sourceUrl } = {}) {
                + `context only): ${sourceUrl.trim()}`);
   }
   parts.push(imageBase64
-    ? "Read the football results in this image."
-    : "Read the football results in the text above.");
+    ? `Read ${subject} in this image.`
+    : `Read ${subject} in the text above.`);
   content.push({ type: "text", text: parts.join("\n\n") });
   return content;
 }
@@ -335,6 +350,26 @@ export function buildRequest({ model, imageBase64, mediaType, text, sourceUrl,
   };
 }
 
+/** The second pass, for a document the first pass called a match report.
+ *  The same picture or words, its own instructions and schema. */
+export function buildReportRequest({ model, imageBase64, mediaType, text,
+                                     sourceUrl, effort = "low",
+                                     maxTokens = 16000 } = {}) {
+  return {
+    model,
+    max_tokens: maxTokens,
+    system: [{ type: "text", text: REPORT_PROMPT,
+               cache_control: { type: "ephemeral" } }],
+    thinking: { type: "adaptive" },
+    output_config: {
+      effort,
+      format: { type: "json_schema", schema: REPORT_SCHEMA },
+    },
+    messages: [{ role: "user", content: buildContent({
+      imageBase64, mediaType, text, sourceUrl, subject: "the match report" }) }],
+  };
+}
+
 // ── Accepting the answer ─────────────────────────────────────────────────────
 
 const clampScore = (value) => {
@@ -362,6 +397,18 @@ const minuteText = (value) => {
   const m = /^\s*(\d{1,3})\s*(?:\+\s*(\d{1,2}))?\s*['’]?\s*$/.exec(String(value ?? ""));
   return m ? (m[2] ? `${m[1]}+${m[2]}` : m[1]) : "";
 };
+
+// assist_raw and method come only from the report pass (mergeReport); on a
+// first-pass row they are always blank.
+const normalizeScorer = (s) => ({
+  player_raw: str(s?.player_raw) || "",
+  team_side: side(s?.team_side),
+  minute: Number.isInteger(s?.minute) ? s.minute : null,
+  own_goal: s?.own_goal === true,
+  penalty: s?.penalty === true,
+  assist_raw: str(s?.assist_raw) || "",
+  method: ["header", "free_kick"].includes(s?.method) ? s.method : "",
+});
 
 const sheetPlayer = (p) => ({
   name_raw: str(p?.name_raw) || "",
@@ -450,15 +497,7 @@ export function normalizeItem(raw, idx) {
     matchday: str(item.matchday),
     competition_hint: str(item.competition_hint),
     venue_raw: str(item.venue_raw),
-    scorers: list(item.scorers, 20).map((s) => ({
-      player_raw: str(s?.player_raw) || "",
-      team_side: side(s?.team_side),
-      minute: Number.isInteger(s?.minute) ? s.minute : null,
-      own_goal: s?.own_goal === true,
-      penalty: s?.penalty === true,
-      assist_raw: str(s?.assist_raw) || "",
-      method: ["header", "free_kick"].includes(s?.method) ? s.method : "",
-    })).filter((s) => s.player_raw),
+    scorers: list(item.scorers, 20).map(normalizeScorer).filter((s) => s.player_raw),
     ...normalizeMatchReport(item),
     evidence: str(item.evidence),
     fields_not_present: Array.isArray(item.fields_not_present)
@@ -537,6 +576,98 @@ export function parseExtraction(message) {
     notes: str(payload.notes),
     raw: payload,
   };
+}
+
+/** The report pass's answer, or a category. The same failure vocabulary as
+ *  parseExtraction, for the same reason: it may reach a reporter. */
+export function parseReport(message) {
+  if (!message || typeof message !== "object") {
+    return { ok: false, errorCategory: "no_response" };
+  }
+  if (message.stop_reason === "refusal") return { ok: false, errorCategory: "refused" };
+  if (message.stop_reason === "max_tokens") return { ok: false, errorCategory: "too_long" };
+  let payload = message.parsed_output ?? null;
+  if (!payload) {
+    const text = (message.content || []).filter((b) => b && b.type === "text")
+      .map((b) => b.text).join("");
+    if (!text.trim()) return { ok: false, errorCategory: "empty_output" };
+    try { payload = JSON.parse(text); } catch {
+      return { ok: false, errorCategory: "bad_output" };
+    }
+  }
+  if (!payload || typeof payload !== "object") {
+    return { ok: false, errorCategory: "bad_output" };
+  }
+  return { ok: true, errorCategory: "", report: payload };
+}
+
+const teamKey = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const sameTeam = (a, b) => {
+  const x = teamKey(a);
+  const y = teamKey(b);
+  return Boolean(x && y) && (x === y
+    || (x.length >= 6 && y.length >= 6 && (x.includes(y) || y.includes(x))));
+};
+
+/** Put the report pass's answer onto the first pass's row.
+ *
+ *  THE TWO PASSES MAY DISAGREE ABOUT WHICH TEAM IS HOME, and the row is the
+ *  one the matcher reads, so the row wins: when the report printed the
+ *  fixture the other way round, every side in it is swapped onto the row's
+ *  orientation here. Neither team recognisable means the sides cannot be
+ *  trusted at all, and they become "unknown" — which match_report.js turns
+ *  into sentences rather than guesses.
+ *
+ *  The goals replace the first pass's scorers only when the report names any,
+ *  because they are the same goals read with more care (an assister, a
+ *  header); a report silent about goals leaves the first pass's alone. */
+export function mergeReport(item, raw) {
+  const r = raw && typeof raw === "object" ? raw : {};
+  const asGiven = sameTeam(r.home_team_raw, item.home_team_raw)
+    || sameTeam(r.away_team_raw, item.away_team_raw);
+  const reversed = !asGiven && (sameTeam(r.home_team_raw, item.away_team_raw)
+    || sameTeam(r.away_team_raw, item.home_team_raw));
+  const sideOf = (value) => {
+    const v = side(value);
+    if (v === "unknown" || asGiven) return v;
+    if (reversed) return v === "home" ? "away" : "home";
+    return "unknown";
+  };
+
+  const players = list(r.players, 60);
+  const sheets = ["home", "away", "unknown"].map((printed) => {
+    const mine = players.filter((p) => side(p?.team_side) === printed);
+    return {
+      team_side: sideOf(printed),
+      starting: mine.filter((p) => p?.role === "starting"),
+      bench: mine.filter((p) => p?.role !== "starting"),
+    };
+  }).filter((t) => t.starting.length || t.bench.length);
+
+  const fields = normalizeMatchReport({
+    team_sheets: sheets,
+    substitutions: list(r.substitutions, 20).map((x) => ({ ...x, team_side: sideOf(x?.team_side) })),
+    cards: list(r.cards, 30).map((c) => ({ ...c, team_side: sideOf(c?.team_side) })),
+    motm_raw: r.motm_raw,
+    officials: { referee: r.referee, assistant_1: r.assistant_1,
+                 assistant_2: r.assistant_2, fourth_official: r.fourth_official },
+    coaches: list(r.coaches, 4).map((c) => ({ ...c, team_side: sideOf(c?.team_side) })),
+  });
+
+  const goals = list(r.goals, 20).map((g) => {
+    const minute = /^\s*(\d{1,3})/.exec(String(g?.minute ?? ""));
+    return normalizeScorer({
+      player_raw: g?.scorer_raw,
+      team_side: sideOf(g?.team_side),
+      minute: minute ? Number(minute[1]) : null,
+      own_goal: g?.kind === "own_goal",
+      penalty: g?.kind === "penalty",
+      assist_raw: g?.kind === "own_goal" ? "" : g?.assist_raw,
+      method: g?.kind,
+    });
+  }).filter((g) => g.player_raw);
+
+  return { ...item, ...fields, scorers: goals.length ? goals : item.scorers };
 }
 
 /** Is the cheap pass good enough, or is this one of the hard ones?

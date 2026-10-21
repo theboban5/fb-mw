@@ -301,6 +301,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       notes: result.notes ?? null,
       results: result.items,
       link_reason: linkNote || null,
+      // A match report whose second pass failed still imports as a result;
+      // this is the only record of why its line-ups did not come with it.
+      report_error: result.reportError ?? null,
     },
     model: result.model ?? model,
     usage: result.usage ?? null,
@@ -317,6 +320,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       notes: result.notes ?? null,
       results: result.items,
       link_reason: linkNote || null,
+      // A match report whose second pass failed still imports as a result;
+      // this is the only record of why its line-ups did not come with it.
+      report_error: result.reportError ?? null,
     },
     model: result.model ?? model,
     escalated: Boolean(result.escalated),

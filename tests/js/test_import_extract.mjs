@@ -19,16 +19,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  EXTRACTION_SCHEMA, IMPORT_STATUSES, SYSTEM_PROMPT, buildContent, buildRequest,
-  normalizeItem, normalizeMatchReport, parseExtraction, shouldEscalate,
-  usageRecord,
+  EXTRACTION_SCHEMA, IMPORT_STATUSES, REPORT_PROMPT, REPORT_SCHEMA, SYSTEM_PROMPT,
+  buildContent, buildReportRequest, buildRequest, mergeReport, normalizeItem,
+  normalizeMatchReport, parseExtraction, parseReport, shouldEscalate, usageRecord,
 } from "../../supabase/functions/import-extract/extract.js";
 import { anthropicProvider, fakeProvider, runExtraction }
   from "../../supabase/functions/import-extract/provider.js";
 import {
   CLEAN_GRAPHIC, MESSY_TEXT, ABBREVIATED, FIXTURE_LIST, ABANDONED_WITH_SCORE,
   POSTPONED, INVENTED_IDS, HALF_SCORE, ABSURD_SCORES, WITH_SCORERS, WITH_OWN_GOAL,
-  MATCH_REPORT, UNREADABLE,
+  MATCH_REPORT, MATCH_REPORT_PASS, MATCH_REPORT_PAYLOAD, UNREADABLE,
   RESCUED, NOT_JSON, EMPTY_CONTENT, REFUSED, TRUNCATED, WRONG_SHAPE,
 } from "./fixtures/extractions.mjs";
 
@@ -83,14 +83,9 @@ test("nullable fields use anyOf, not a type union", () => {
   walk(EXTRACTION_SCHEMA, "root");
 });
 
-test("the schema stays inside the structured-outputs limits", () => {
-  // THE API COUNTS, AND REFUSES EVERY REQUEST PAST THE LINE. Structured
-  // outputs allow 16 parameters using anyOf (or a type array) and 24 optional
-  // parameters — a property its object does not list in `required` — summed
-  // over the whole schema. The results half had already spent 15 and 13
-  // before match reports, so the obvious way to add them (more nullable
-  // fields) would have been a 400 on every import, of every kind, the moment
-  // it deployed. This is the number that stops the next field doing that.
+// Counted the way the API counts: a property its object does not list in
+// `required` is optional; one using anyOf or a type array is a union.
+const budget = (schema) => {
   let unions = 0;
   let optional = 0;
   const walk = (node) => {
@@ -104,9 +99,41 @@ test("the schema stays inside the structured-outputs limits", () => {
     (node.anyOf ?? []).forEach(walk);
     if (node.items) walk(node.items);
   };
-  walk(EXTRACTION_SCHEMA);
-  assert.ok(unions <= 16, `${unions} union-typed parameters; the API allows 16`);
-  assert.ok(optional <= 24, `${optional} optional parameters; the API allows 24`);
+  walk(schema);
+  return { unions, optional };
+};
+
+test("each schema stays inside the structured-outputs limits", () => {
+  // THE API COUNTS, AND REFUSES EVERY REQUEST PAST THE LINE: 16 parameters
+  // using anyOf and 24 optional ones, per request. Each pass sends one schema.
+  for (const [name, schema] of [["results", EXTRACTION_SCHEMA],
+                                ["report", REPORT_SCHEMA]]) {
+    const { unions, optional } = budget(schema);
+    assert.ok(unions <= 16, `${name}: ${unions} union-typed parameters; the API allows 16`);
+    assert.ok(optional <= 24, `${name}: ${optional} optional parameters; the API allows 24`);
+  }
+});
+
+test("the report schema has nothing optional and nothing nullable", () => {
+  // The limit that broke production was neither of the published two: "the
+  // compiled grammar is too large". Optional properties and unions are what
+  // multiply a grammar, so the second pass's schema has none at all.
+  assert.deepEqual(budget(REPORT_SCHEMA), { unions: 0, optional: 0 });
+});
+
+test("the results schema is the one that already compiled", () => {
+  // THE FIRST VERSION GREW EVERY RESULT ROW, and every import of every kind
+  // came back "The compiled grammar is too large" until it was reverted. A
+  // results row is in an array of sixty; anything a match report needs goes
+  // in REPORT_SCHEMA, the second pass, never here.
+  const row = EXTRACTION_SCHEMA.properties.results.items.properties;
+  assert.deepEqual(Object.keys(row).sort(), [
+    "away_score", "away_team_raw", "competition_hint", "date", "evidence",
+    "fields_not_present", "home_score", "home_team_raw", "kickoff", "matchday",
+    "scorers", "status", "venue_raw",
+  ]);
+  assert.deepEqual(Object.keys(row.scorers.items.properties).sort(),
+                   ["minute", "own_goal", "penalty", "player_raw", "team_side"]);
 });
 
 test("every nullable field can still express null", () => {
@@ -261,12 +288,17 @@ test("the prompt tells the model what a scorer field means", () => {
   assert.match(SYSTEM_PROMPT, /own_goal is true only when the source marks it/);
 });
 
-test("a club's match report reads through as one match carrying its sheet", () => {
-  const out = parseExtraction(MATCH_REPORT);
-  assert.equal(out.documentKind, "match_report");
-  assert.equal(out.items.length, 1);
-  const item = out.items[0];
-  assert.equal(item.away_score, 1);
+const mergedReport = () =>
+  mergeReport(parseExtraction(MATCH_REPORT).items[0], MATCH_REPORT_PAYLOAD);
+
+test("a club's match report is one result, then its sheet on top", () => {
+  const first = parseExtraction(MATCH_REPORT);
+  assert.equal(first.documentKind, "match_report");
+  assert.equal(first.items.length, 1);
+  assert.deepEqual(first.items[0].team_sheets, [], "the first pass reads no sheet");
+
+  const item = mergedReport();
+  assert.equal(item.away_score, 1, "the result is the first pass's");
   assert.equal(item.team_sheets.length, 1, "one sheet is the ordinary case");
   const sheet = item.team_sheets[0];
   assert.equal(sheet.team_side, "away");
@@ -275,17 +307,45 @@ test("a club's match report reads through as one match carrying its sheet", () =
   assert.equal(sheet.starting[0].position, "GK");
   assert.equal(sheet.starting.find((p) => p.captain).name_raw, "Zebron Kalima");
   assert.deepEqual(item.substitutions.map((x) => x.minute), ["39", "63", "63", "63"]);
-  assert.equal(item.scorers[0].assist_raw, "Chinsisi Maonga");
-  assert.equal(item.scorers[0].method, "header");
+  assert.deepEqual(item.scorers, [{ player_raw: "Innocent Shema", team_side: "away",
+    minute: 7, own_goal: false, penalty: false, assist_raw: "Chinsisi Maonga",
+    method: "header" }]);
   assert.equal(item.motm_raw, "Ernest Petro");
   assert.equal(item.officials.fourth_official, "Mercy Kayira");
   assert.deepEqual(item.coaches, [{ team_side: "away", name_raw: "Patricio Kulemeka" }]);
 });
 
+test("a report printing the fixture the other way round is turned to match", () => {
+  // The row is what the matcher read, so the row's orientation wins.
+  const item = parseExtraction(MATCH_REPORT).items[0];
+  const reversed = { ...MATCH_REPORT_PAYLOAD,
+    home_team_raw: "Silver Strikers FC", away_team_raw: "Moyale Barracks",
+    players: MATCH_REPORT_PAYLOAD.players.map((p) => ({ ...p, team_side: "home" })),
+    goals: [{ team_side: "home", scorer_raw: "Innocent Shema", assist_raw: "",
+              minute: "7", kind: "" }] };
+  const merged = mergeReport(item, reversed);
+  assert.equal(merged.team_sheets[0].team_side, "away");
+  assert.equal(merged.scorers[0].team_side, "away");
+});
+
+test("teams the row does not recognise leave every side unknown", () => {
+  const item = parseExtraction(MATCH_REPORT).items[0];
+  const merged = mergeReport(item, { ...MATCH_REPORT_PAYLOAD,
+    home_team_raw: "Wanderers", away_team_raw: "Bullets" });
+  assert.ok(merged.team_sheets.every((t) => t.team_side === "unknown"));
+});
+
+test("a report silent about goals leaves the first pass's scorers", () => {
+  const merged = mergeReport(parseExtraction(MATCH_REPORT).items[0],
+                             { ...MATCH_REPORT_PAYLOAD, goals: [] });
+  assert.equal(merged.scorers[0].player_raw, "Innocent Shema");
+  assert.equal(merged.scorers[0].assist_raw, "");
+});
+
 test("a card for someone who is not a player is kept, and says so", () => {
   // The team manager's red is worth showing the reporter and has nowhere to
   // be written; is_player is how the client tells the two apart.
-  const cards = parseExtraction(MATCH_REPORT).items[0].cards;
+  const cards = mergedReport().cards;
   assert.equal(cards.length, 5);
   const manager = cards.find((c) => c.person_raw === "Emmanuel Chipatala");
   assert.equal(manager.is_player, false);
@@ -329,10 +389,29 @@ test("a row stored before match reports existed reads as an empty report", () =>
   assert.equal(out.officials.referee, "");
 });
 
-test("the prompt says which of two tellings of a substitution to believe", () => {
-  assert.match(SYSTEM_PROMPT, /the list is the answer/);
-  assert.match(SYSTEM_PROMPT, /Never build a sheet from players merely mentioned/);
-  assert.match(SYSTEM_PROMPT, /assist_raw is the player the source credits/);
+test("the report prompt says which of two tellings of a substitution to believe", () => {
+  assert.match(REPORT_PROMPT, /the list is the answer/);
+  assert.match(REPORT_PROMPT, /Never add a player who is merely mentioned/);
+  assert.match(REPORT_PROMPT, /assist_raw is the player the source credits/);
+  // ...and none of it leaked into the results prompt, which is cached and
+  // read by every results import.
+  assert.doesNotMatch(SYSTEM_PROMPT, /assist_raw/);
+});
+
+test("the report pass sends the same picture with its own schema", () => {
+  const request = buildReportRequest({ model: "m", text: "Moyale 0-1 Silver" });
+  assert.equal(request.output_config.format.schema, REPORT_SCHEMA);
+  assert.equal(request.system[0].text, REPORT_PROMPT);
+  assert.match(request.messages[0].content.at(-1).text, /Read the match report/);
+  assert.match(buildRequest({ model: "m", text: "x" }).messages[0].content.at(-1).text,
+               /Read the football results/);
+});
+
+test("a report answer that is not one becomes a category", () => {
+  assert.equal(parseReport(REFUSED).errorCategory, "refused");
+  assert.equal(parseReport(TRUNCATED).errorCategory, "too_long");
+  assert.equal(parseReport(NOT_JSON).errorCategory, "bad_output");
+  assert.equal(parseReport(MATCH_REPORT_PASS).ok, true);
 });
 
 test("a fixture list is recognised rather than published", () => {
@@ -590,4 +669,41 @@ test("an unknown model records tokens but claims no price", () => {
 test("missing usage does not throw", () => {
   const record = usageRecord("claude-sonnet-5", undefined);
   assert.equal(record.input_tokens, 0);
+});
+
+// ── The second pass ──────────────────────────────────────────────────────────
+
+test("a match report is read twice and the sheet lands on its row", async () => {
+  const provider = fakeProvider([MATCH_REPORT, MATCH_REPORT_PASS]);
+  const out = await runExtraction({ provider, model: "claude-sonnet-5",
+                                    input: { text: "report" } });
+  assert.equal(provider.calls.length, 2);
+  assert.equal(provider.calls[1].output_config.format.schema, REPORT_SCHEMA);
+  assert.equal(out.ok, true);
+  assert.equal(out.items[0].team_sheets[0].starting.length, 11);
+  assert.equal(out.items[0].scorers[0].assist_raw, "Chinsisi Maonga");
+  assert.deepEqual(out.usage.map((u) => u.pass ?? "results"), ["results", "report"]);
+  assert.equal(out.reportError, undefined);
+});
+
+test("a results graphic is read once, exactly as before", async () => {
+  const provider = fakeProvider(CLEAN_GRAPHIC);
+  await runExtraction({ provider, model: "claude-sonnet-5", input: { text: "x" } });
+  assert.equal(provider.calls.length, 1);
+});
+
+test("a report pass that fails leaves the result importable", async () => {
+  // THE PROPERTY THE FIRST VERSION DID NOT HAVE. A match report's schema made
+  // every import fail; now the worst a report can do is arrive without its
+  // line-ups, with the reason kept for whoever looks.
+  const provider = fakeProvider([MATCH_REPORT, { __error: "provider_error" },
+                                 { __error: "provider_error" }]);
+  const out = await runExtraction({ provider, model: "claude-sonnet-5",
+                                    fallbackModel: "claude-opus-5",
+                                    input: { text: "report" } });
+  assert.equal(out.ok, true);
+  assert.equal(out.items[0].away_score, 1);
+  assert.deepEqual(out.items[0].team_sheets, []);
+  assert.equal(out.reportError.category, "provider_error");
+  assert.equal(provider.calls.length, 3, "main model, then the fallback once");
 });

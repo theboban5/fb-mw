@@ -125,7 +125,8 @@ def load_contract():
     script = (
         f'import("{module}").then((m) => '
         'console.log(JSON.stringify('
-        '{schema: m.EXTRACTION_SCHEMA, prompt: m.SYSTEM_PROMPT})))'
+        '{schema: m.EXTRACTION_SCHEMA, prompt: m.SYSTEM_PROMPT,'
+        ' report_schema: m.REPORT_SCHEMA, report_prompt: m.REPORT_PROMPT})))'
     )
     try:
         out = subprocess.run([NODE, "--input-type=module", "-e", script],
@@ -138,24 +139,24 @@ def load_contract():
     except subprocess.CalledProcessError as err:
         sys.exit(f"could not read extract.js:\n{err.stderr.strip()[:500]}")
     payload = json.loads(out.stdout)
-    return payload["schema"], payload["prompt"]
+    return payload
 
 
 def call_model(image_bytes, media_type, schema, prompt, model, api_key,
-               text=None):
+               text=None, subject="the football results"):
     """One extraction. `text` instead of an image is a pasted or fetched page,
     worded exactly as buildContent() words it, so a text case measures what a
     reporter's pasted link actually sends."""
     if text is not None:
         content = [{"type": "text", "text": (
             f"Text supplied with this submission:\n\n{text.strip()}\n\n"
-            "Read the football results in the text above.")}]
+            f"Read {subject} in the text above.")}]
     else:
         content = [
             {"type": "image", "source": {
                 "type": "base64", "media_type": media_type,
                 "data": base64.standard_b64encode(image_bytes).decode()}},
-            {"type": "text", "text": "Read the football results in this image."},
+            {"type": "text", "text": f"Read {subject} in this image."},
         ]
     body = {
         "model": model,
@@ -294,15 +295,13 @@ def score_report(expected, got):
     want = expected.get("report")
     if not want:
         return None
-    row = ((got or {}).get("results") or [{}])[0]
+    # `got` is the SECOND pass's answer (REPORT_SCHEMA): players carry their
+    # own side, as printed in the report.
+    row = got or {}
 
     def players(side):
-        names = set()
-        for sheet in row.get("team_sheets") or []:
-            if sheet.get("team_side") == side:
-                for p in (sheet.get("starting") or []) + (sheet.get("bench") or []):
-                    names.add(normalize(p.get("name_raw")))
-        return names
+        return {normalize(p.get("name_raw")) for p in row.get("players") or []
+                if p.get("team_side") == side}
 
     out = {"missed": [], "invented": []}
     for side, sheet in (want.get("team_sheets") or {}).items():
@@ -346,7 +345,8 @@ def main():
         sys.exit(f"No cases in {CASES.relative_to(ROOT)} — see the docstring "
                  "for how to add one.")
 
-    schema, prompt = load_contract()
+    contract = load_contract()
+    schema, prompt = contract["schema"], contract["prompt"]
     names = sorted({p.stem for p in CASES.glob("*.json")})
     if args.case:
         names = [n for n in names if n == args.case] or sys.exit(
@@ -379,7 +379,20 @@ def main():
 
         got = extracted_results(message)
         result = score_case(expected, got)
-        result["report"] = score_report(expected, got)
+        result["kind"] = (got or {}).get("document_kind")
+        if expected.get("report"):
+            # The second pass, as runExtraction makes it — whatever the first
+            # pass called the document, so the sheets are scored even when the
+            # kind was misread (which the "kind" line then shows).
+            media = ((image.read_bytes(), MEDIA[image.suffix]) if image is not None
+                     else (None, None))
+            second, error = call_model(*media, contract["report_schema"],
+                                       contract["report_prompt"], args.model,
+                                       api_key,
+                                       text=None if image is not None else page.read_text(),
+                                       subject="the match report")
+            result["report"] = ({"error": error} if error
+                                else score_report(expected, extracted_results(second)))
         result["case"] = name
         result["seconds"] = round(time.time() - started, 1)
         usage = message.get("usage", {})
@@ -419,7 +432,12 @@ def main():
             print(f"      missed   {m}")
         for i in row["invented"]:
             print(f"      INVENTED {i}")
+        if row.get("kind"):
+            print(f"      kind     {row['kind']}")
         sheet = row.get("report")
+        if sheet and "error" in sheet:
+            print(f"      report   ERROR  {sheet['error']}")
+            sheet = None
         if sheet is not None:
             if not any(sheet.values()):
                 print("      sheets   every player, substitution and card read")

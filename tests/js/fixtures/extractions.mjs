@@ -209,7 +209,7 @@ export const WITH_OWN_GOAL = asMessage({
 
 // ── A club's match report ────────────────────────────────────────────────────
 // silverstrikers.mw, 18 Oct 2026: Moyale Barracks 0-1 Silver Strikers, read
-// the way the prompt asks. It is the shape every FDH Bank Premiership club
+// the way the two prompts ask. It is the shape every FDH Bank Premiership club
 // report takes, and every awkward thing in it is ordinary:
 //   - ONE team sheet. The club lists its own XI; Moyale's players are named
 //     only where they did something.
@@ -218,9 +218,10 @@ export const WITH_OWN_GOAL = asMessage({
 //   - The 63' changes are told twice, once as a sentence in another order;
 //     the substitutions here are the explicit list, which is the answer.
 //   - The goal already exists in the database; the assist does not.
-const ssPlayer = (name_raw, over = {}) => ({
-  name_raw, shirt_number: "", position: "", captain: false, ...over });
-
+//
+// TWO ANSWERS, because it is read twice: MATCH_REPORT is the first pass (the
+// results schema, which only says what kind of document this is and reads the
+// result), MATCH_REPORT_PASS is the second (REPORT_SCHEMA).
 export const MATCH_REPORT = asMessage({
   document_kind: "match_report",
   competition_hint: null, date: "2026-10-18", matchday: null,
@@ -230,50 +231,55 @@ export const MATCH_REPORT = asMessage({
       fields_not_present: ["kickoff", "matchday"],
       scorers: [
         { player_raw: "Innocent Shema", team_side: "away", minute: 7,
-          own_goal: false, penalty: false, assist_raw: "Chinsisi Maonga",
-          method: "header" },
+          own_goal: false, penalty: false },
       ],
-      team_sheets: [{
-        team_side: "away",
-        starting: [
-          ssPlayer("George Chikooka", { position: "GK" }),
-          ssPlayer("Innocent Shema"), ssPlayer("Dan Sandukira"),
-          ssPlayer("Lumbani Nyondo"), ssPlayer("Nickson Mwase"),
-          ssPlayer("Yankho Billiat"),
-          ssPlayer("Zebron Kalima", { captain: true }),
-          ssPlayer("Ernest Petro"), ssPlayer("Charles Chipala"),
-          ssPlayer("Chinsisi Maonga"), ssPlayer("Emmanuel Allan"),
-        ],
-        bench: [
-          ssPlayer("Festus Duwe"), ssPlayer("Aubrey Khumbula"),
-          ssPlayer("Daah Rashid"), ssPlayer("Andrew Joseph"),
-          ssPlayer("Christopher Mikuwa"), ssPlayer("Austin Yasin"),
-          ssPlayer("Felix Dumakude"), ssPlayer("Innocent Smart"),
-          ssPlayer("Lasuli Jali"),
-        ],
-      }],
-      substitutions: [
-        { team_side: "away", on_raw: "Festus Duwe", off_raw: "Zebron Kalima", minute: "39" },
-        { team_side: "away", on_raw: "Aubrey Khumbula", off_raw: "Charles Chipala", minute: "63" },
-        { team_side: "away", on_raw: "Daah Rashid", off_raw: "Chinsisi Maonga", minute: "63" },
-        { team_side: "away", on_raw: "Andrew Joseph", off_raw: "Emmanuel Allan", minute: "63" },
-      ],
-      cards: [
-        { team_side: "away", person_raw: "Nickson Mwase", card: "yellow", is_player: true },
-        { team_side: "away", person_raw: "Charles Chipala", card: "yellow", is_player: true },
-        { team_side: "away", person_raw: "Innocent Shema", card: "yellow", is_player: true },
-        { team_side: "away", person_raw: "Emmanuel Chipatala", card: "red", is_player: false },
-        { team_side: "home", person_raw: "Jimmy Viyuyi", card: "yellow", is_player: true },
-      ],
-      motm_raw: "Ernest Petro",
-      officials: { referee: "Melluce Nyirongo", assistant_1: "Stammy Msukwa",
-                   assistant_2: "Jailosi Ngoma", fourth_official: "Mercy Kayira" },
-      coaches: [{ team_side: "away", name_raw: "Patricio Kulemeka" }],
-      evidence: "Silver Strikers Starting XI George Chikooka (GK), Innocent Shema, …",
+      evidence: "Moyale Barracks 0-1 Silver Strikers",
     }),
   ],
   notes: "The report covers Silver Strikers only; Moyale Barracks' line-up is not given.",
 });
+
+const ssPlayer = (name_raw, role, over = {}) => ({
+  team_side: "away", role, name_raw, shirt_number: "", position: "",
+  captain: false, ...over });
+
+export const MATCH_REPORT_PAYLOAD = {
+  home_team_raw: "Moyale Barracks", away_team_raw: "Silver Strikers",
+  players: [
+    ssPlayer("George Chikooka", "starting", { position: "GK" }),
+    ...["Innocent Shema", "Dan Sandukira", "Lumbani Nyondo", "Nickson Mwase",
+        "Yankho Billiat"].map((n) => ssPlayer(n, "starting")),
+    ssPlayer("Zebron Kalima", "starting", { captain: true }),
+    ...["Ernest Petro", "Charles Chipala", "Chinsisi Maonga", "Emmanuel Allan"]
+      .map((n) => ssPlayer(n, "starting")),
+    ...["Festus Duwe", "Aubrey Khumbula", "Daah Rashid", "Andrew Joseph",
+        "Christopher Mikuwa", "Austin Yasin", "Felix Dumakude", "Innocent Smart",
+        "Lasuli Jali"].map((n) => ssPlayer(n, "bench")),
+  ],
+  substitutions: [
+    { team_side: "away", on_raw: "Festus Duwe", off_raw: "Zebron Kalima", minute: "39" },
+    { team_side: "away", on_raw: "Aubrey Khumbula", off_raw: "Charles Chipala", minute: "63" },
+    { team_side: "away", on_raw: "Daah Rashid", off_raw: "Chinsisi Maonga", minute: "63" },
+    { team_side: "away", on_raw: "Andrew Joseph", off_raw: "Emmanuel Allan", minute: "63" },
+  ],
+  goals: [
+    { team_side: "away", scorer_raw: "Innocent Shema", assist_raw: "Chinsisi Maonga",
+      minute: "7", kind: "header" },
+  ],
+  cards: [
+    { team_side: "away", person_raw: "Nickson Mwase", card: "yellow", is_player: true },
+    { team_side: "away", person_raw: "Charles Chipala", card: "yellow", is_player: true },
+    { team_side: "away", person_raw: "Innocent Shema", card: "yellow", is_player: true },
+    { team_side: "away", person_raw: "Emmanuel Chipatala", card: "red", is_player: false },
+    { team_side: "home", person_raw: "Jimmy Viyuyi", card: "yellow", is_player: true },
+  ],
+  motm_raw: "Ernest Petro",
+  referee: "Melluce Nyirongo", assistant_1: "Stammy Msukwa",
+  assistant_2: "Jailosi Ngoma", fourth_official: "Mercy Kayira",
+  coaches: [{ team_side: "away", name_raw: "Patricio Kulemeka" }],
+};
+
+export const MATCH_REPORT_PASS = asMessage(MATCH_REPORT_PAYLOAD);
 
 // ── Nothing readable ─────────────────────────────────────────────────────────
 export const UNREADABLE = asMessage({
