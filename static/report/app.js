@@ -3981,6 +3981,27 @@ async function renderImport(params) {
             ? " Publish the score first if you want its scorers saved too." : ""}</p>`;
     };
 
+    // A MATCH REPORT THE MATCHER COULD NOT PLACE IS USUALLY ONE OF TWO. Two
+    // clubs meet twice a season and a report's post date is not a match date
+    // the importer trusts, so "several fixtures" is its commonest red — and a
+    // reporter knows at a glance which of two dates it was. Each candidate is a
+    // link straight to that match with the report; the tap is the choice
+    // (reportFor accepts only a fixture the resolver listed). The score is not
+    // published from here: on the match screen it is the stepper, pre-set.
+    const reportPicker = (item) => {
+      const source = (state.extracted?.results || [])[Number(item.idx) - 1];
+      const fixtures = (item.fixtures || []).filter((f) => f.public_id);
+      if (!mr.hasReport(source) || !fixtures.length) return "";
+      return `<p class="rp-imp-why">Which match is this report about?</p>
+        ${fixtures.map((f) => {
+          const score = f.home_goals == null ? "v" : `${f.home_goals}–${f.away_goals}`;
+          return `<a class="rp-btn is-ghost rp-imp-use"
+              href="#/m/${esc(f.public_id)}?import=${esc(state.importId)}">
+              ${esc(formatDate(f.date) || "No date")} · ${esc(f.home_name)}
+              ${esc(score)} ${esc(f.away_name)} &rarr;</a>`;
+        }).join("")}`;
+    };
+
     const extra = (row) => {
       const item = row.item;
       const offer = !row.applied && row.proposal
@@ -4007,7 +4028,8 @@ async function renderImport(params) {
         <p class="rp-hint" style="margin-top:0">These could not be tied to a
           fixture you report, and nothing here will be published. Where a name
           is the problem, say which team it is and the whole page is matched
-          again; otherwise add the match from the matchday screen.</p>
+          again; where it could be one of several matches, pick it; otherwise
+          add the match from the matchday screen.</p>
         ${state.unmatched.map((item) => `
           <div class="rp-gr is-bad">
             <div class="rp-imp-head">${chip(item)}${asRead(item)}</div>
@@ -4016,6 +4038,7 @@ async function renderImport(params) {
               <p class="rp-imp-why">Could be:
                 ${item.home_candidates.slice(0, 4)
                    .map((c) => esc(c.name)).join(", ")}</p>` : ""}
+            ${reportPicker(item)}
             ${fixerHtml(item)}
           </div>`).join("")}
       </section>` : "";

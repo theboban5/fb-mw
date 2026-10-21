@@ -223,6 +223,12 @@ Team sheets, cards and assists from a club's match report, migration `0054` —
   report's sheet instead"), because `save_lineup` replaces a side whole. Nothing
   saves until a tap; "Save everything" runs sheets → amendments → new scorers →
   officials, each independently.
+- **"Several fixtures" is a match report's commonest red.** Two clubs meet
+  twice a season, and a club report's post date is not a match date the
+  importer trusts (the page header carries TODAY's date too). So the review
+  lists the resolver's candidate fixtures under a report it could not place,
+  each a link to that match; `reportFor` accepts only a fixture the resolver
+  listed, and the tap is the choice.
 - **What cannot be placed is said, not dropped**: a card for a player on no
   sheet (one club's report has one sheet), a red card for a team manager
   (`is_player: false`; `lineups` holds players), a sub with no minute.

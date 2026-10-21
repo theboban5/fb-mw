@@ -68,6 +68,28 @@ test("the report is joined to its match by the resolver's idx", () => {
   assert.equal(reportFor(extracted, resolved, "MW_SL_2627_999"), null);
 });
 
+test("a fixture the reporter picked from a red item's list is accepted", () => {
+  // Two clubs meet twice a season, and a report without a trusted date
+  // resolves red with both fixtures listed; the review links each one here.
+  const resolved = { items: [{ idx: 1, confidence: "red", match: null,
+    fixtures: [
+      { match_id: "MW_SL_2627_011", orientation: "flipped" },
+      { match_id: "MW_SL_2627_134", orientation: "as_given" },
+    ] }] };
+  const extracted = { results: [source()] };
+  assert.equal(reportFor(extracted, resolved, "MW_SL_2627_134").flipped, false);
+  assert.equal(reportFor(extracted, resolved, "MW_SL_2627_011").flipped, true);
+  assert.equal(reportFor(extracted, resolved, "MW_SL_2627_999"), null,
+               "never a fixture the resolver did not offer");
+});
+
+test("a man of the match printed with his club still finds his row", () => {
+  const report = { ...source(), motm_raw: "Ernest Petro-Silver Strikers" };
+  const rows = sheetsFromReport(report, ctx()).sheets[SS];
+  assert.deepEqual(rows.filter((r) => r.motm).map((r) => r.player_name),
+                   ["Ernest Petro"]);
+});
+
 test("a red item is never staged against a match", () => {
   const resolved = { items: [{ idx: 1, confidence: "red",
     match: { match_id: "M", orientation: "as_given" } }] };

@@ -110,16 +110,28 @@ export function hasReport(source) {
  *
  *  Joined by idx exactly as importScorerDrafts joins scorers:
  *  resolve_import_candidates numbers its items 1..n over extracted.results in
- *  order, so results[idx - 1] IS the row that item came from. Only a GREEN or
- *  YELLOW item counts — a red one was never tied to this match, and staging
- *  its sheet here would be the importer guessing which fixture it was. */
+ *  order, so results[idx - 1] IS the row that item came from.
+ *
+ *  TWO WAYS TO BE THIS MATCH. The resolver chose it (green or yellow), or the
+ *  reporter did: a club's report often prints no match date the importer will
+ *  trust, and two clubs meet twice a season, so the commonest red is "several
+ *  fixtures" — and the review screen then lists them, each a link here. That
+ *  tap is the choice; a fixture the resolver never offered is never accepted,
+ *  and a red item with no fixtures ("team not found") gives nothing to choose.
+ *  The orientation comes from whichever answered: the match, or the fixture. */
 export function reportFor(extracted, resolved, matchId) {
-  const item = (resolved?.items || []).find(
+  const items = resolved?.items || [];
+  const chosen = items.find(
     (it) => it.match?.match_id === matchId && it.confidence !== "red");
+  const picked = chosen ? null : items.find(
+    (it) => (it.fixtures || []).some((f) => f.match_id === matchId));
+  const item = chosen || picked;
   if (!item) return null;
   const source = (extracted?.results || [])[Number(item.idx) - 1];
   if (!source) return null;
-  return { item, source, flipped: item.match.orientation === "flipped" };
+  const orientation = chosen ? item.match.orientation
+    : item.fixtures.find((f) => f.match_id === matchId).orientation;
+  return { item, source, flipped: orientation === "flipped" };
 }
 
 /** A printed side, as the fixture is stored. THE ORIENTATION GOES WITH IT:
@@ -253,8 +265,20 @@ export function sheetsFromReport(source, ctx) {
 
   // ── Man of the match ──
   if (source?.motm_raw) {
+    // "Ernest Petro-Silver Strikers" is how one club prints it: the name, then
+    // the club. When the whole string names nobody, a sheet row whose full
+    // name it STARTS with is the player — still one row or none.
+    const motmKey = normalizeName(source.motm_raw);
+    const byPrefix = (rows) => {
+      const hits = rows.filter((r) => {
+        const k = normalizeName(r.player_name);
+        return k && motmKey.startsWith(`${k} `);
+      });
+      return hits.length === 1 ? hits[0] : null;
+    };
     const hits = Object.values(sheets)
-      .map((rows) => byName(rows, source.motm_raw)).filter(Boolean);
+      .map((rows) => byName(rows, source.motm_raw) || byPrefix(rows))
+      .filter(Boolean);
     if (hits.length === 1) {
       hits[0].motm = true;
       // An unused substitute cannot be man of the match (save_lineup), and a
