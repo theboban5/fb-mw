@@ -7197,6 +7197,11 @@ async function renderPlayers(params) {
     totalCount: null,   // null = unknown (fallback path or not yet run)
     lastBatchSize: 0,
     busy: false,
+    // The "add a new player" box under the results. `same` holds the people
+    // who already carry the typed name, once asked; `minted` remembers an id
+    // created for a name, so a retry after a failed registration reuses it
+    // rather than minting a second one.
+    add: { shirt: "", busy: false, same: null, minted: null, done: "" },
   };
 
   let competitions;
@@ -7272,7 +7277,8 @@ async function renderPlayers(params) {
     if (!state.results.length) {
       host.innerHTML = `<p class="rp-empty">Nobody found${
         state.term ? ` for “${esc(state.term)}”` : ""
-      }. Players are created from the match screen, never here.</p>`;
+      }.</p>` + addBoxHtml();
+      wireAddBox(host);
       return;
     }
     // total_count is only known once the RPC (not the fallback) has answered;
@@ -7286,10 +7292,131 @@ async function renderPlayers(params) {
     host.innerHTML = state.results.map(playerCard).join("")
       + (hasMore ? `<button class="rp-btn is-ghost" type="button" data-load-more
            ${state.busy ? "disabled" : ""}>${state.busy ? "Loading…" : "Load more"}</button>` : "")
-      + countLine;
+      + countLine + addBoxHtml();
     wirePlayerCards(host, () => runSearch(true));
+    wireAddBox(host);
     host.querySelector("[data-load-more]")
       ?.addEventListener("click", () => runSearch(false));
+  }
+
+  // The name being added is the search box's, so typing it once both checks
+  // whether they already exist (the list above) and names the new player.
+  const addName = () => lp.displayName(state.term.replace(/\s+/g, " ").trim());
+  const sameName = (a, b) => a.toLowerCase() === b.toLowerCase();
+  const teamName = () =>
+    (state.teams || []).find((t) => t.id === state.teamId)?.name || "";
+
+  function addBoxHtml() {
+    const name = addName();
+    const done = state.add.done
+      ? `<p class="rp-hint rp-add-done">${state.add.done}</p>` : "";
+    if (name.length < 2) return done;
+    const team = state.teamId ? teamName() : "";
+    const same = state.add.same;
+    const sameBlock = same && same.length ? `
+      <p class="rp-hint">Already in the database as “${esc(name)}” — is it
+        one of these? Their clubs are beside them.</p>
+      ${same.map((p) => `<button class="rp-btn is-ghost" type="button"
+          data-add-existing="${esc(p.player_id)}" ${state.add.busy ? "disabled" : ""}>
+          ${team ? `That’s them — add to ${esc(team)}` : "That’s them"}
+          <span class="rp-hint">${esc(playerLabel(p))}${
+            playerHint(p) ? ` · ${esc(playerHint(p))}` : ""}</span></button>`).join("")}
+      <button class="rp-btn" type="button" data-add-force
+              ${state.add.busy ? "disabled" : ""}>＋ No, a different ${esc(name)}</button>` : "";
+    return `
+      ${done}
+      <form class="rp-add-player" data-add-player autocomplete="off">
+        <h2 class="rp-field-head">Add a new player</h2>
+        ${team ? `
+        <label class="rp-label" for="add-shirt">Shirt number (optional)</label>
+        <input class="rp-input" id="add-shirt" name="shirt" inputmode="numeric"
+               maxlength="3" value="${esc(state.add.shirt)}">` : `
+        <p class="rp-hint">Choose a league and team above to put them in that
+          team’s squad as well.</p>`}
+        ${sameBlock || `<button class="rp-btn" type="submit"
+            ${state.add.busy ? "disabled" : ""}>${state.add.busy ? "Adding…"
+            : `＋ Add ${esc(name)}${team ? ` to ${esc(team)}` : ""}`}</button>`}
+      </form>`;
+  }
+
+  function wireAddBox(host) {
+    const form = host.querySelector("[data-add-player]");
+    if (!form) return;
+    form.shirt?.addEventListener("input", () => { state.add.shirt = form.shirt.value; });
+    form.addEventListener("submit", (e) => { e.preventDefault(); addPlayer(null); });
+    form.querySelector("[data-add-force]")
+      ?.addEventListener("click", () => addPlayer({ force: true }));
+    form.querySelectorAll("[data-add-existing]").forEach((b) => b.addEventListener(
+      "click", () => addPlayer({ playerId: b.dataset.addExisting })));
+  }
+
+  /** Mint (or pick) the player, then register them on the chosen team for the
+   *  active season — the two calls #/squad's paste box makes, so a player
+   *  added here is the same row a squad list or a team sheet would have made.
+   *  Nothing typed is cleared until both have answered. */
+  async function addPlayer(choice) {
+    if (state.add.busy) return;
+    const name = addName();
+    if (name.length < 2) return;
+    const teamId = state.teamId;
+    const team = teamId ? teamName() : "";
+    state.add.busy = true;
+    state.add.done = "";
+    drawResults();
+    const stop = (message) => {
+      state.add.busy = false;
+      drawResults();
+      if (message) flash(message, "error", 8000);
+    };
+
+    let playerId = choice?.playerId
+      || (state.add.minted?.name === name ? state.add.minted.id : null);
+    if (!playerId) {
+      // create_player without force hands back whoever already has the name,
+      // which may be a different person entirely, so ask first — the same
+      // question the squad chip's "＋ Add" asks (0034).
+      if (!choice?.force && state.add.same === null) {
+        let hits = [];
+        try { hits = await searchPlayers(name); } catch (error) { hits = []; }
+        const same = hits.filter((p) => sameName(p.full_name || "", name)
+          || sameName(playerLabel(p), name));
+        if (same.length) { state.add.same = same; stop(); return; }
+      }
+      const { data, error } = await supabase.rpc("create_player", {
+        p_full_name: name, p_force: Boolean(choice?.force),
+      });
+      if (error) { stop(humanError(error)); return; }
+      playerId = (Array.isArray(data) ? data[0] : data)?.player_id;
+      if (!playerId) { stop("That player could not be created. Try again."); return; }
+      state.add.minted = { name, id: playerId };
+    }
+
+    if (teamId) {
+      const { error } = await supabase.rpc("save_squad_player", {
+        p_team_id: teamId, p_season_id: null, p_player_id: playerId,
+        p_shirt_number: state.add.shirt.trim() || null,
+      });
+      if (error) {
+        stop(`${name} is saved as a player, but not yet in ${team}’s squad: `
+          + `${humanError(error)} Tap Add again to retry.`);
+        return;
+      }
+      invalidateSquad(teamId);
+      requestRebuild();
+    }
+
+    state.add = { shirt: "", busy: false, same: null, minted: null,
+      done: teamId
+        ? `✓ ${esc(name)} is in ${esc(team)}’s squad. <a href="#/squad?team=${
+            encodeURIComponent(teamId)}">See the squad →</a>`
+        : `✓ ${esc(name)} is saved as a player.` };
+    flash(`${name} added.`, "ok");
+    // The team filter reads team sheets and goals, which a new player has
+    // none of — so the list is re-run on the name alone to show them.
+    state.term = "";
+    const input = view.querySelector('[data-player-search] input[name="q"]');
+    if (input) { input.value = ""; input.focus(); }
+    runSearch(true);
   }
 
   function drawScreen() {
@@ -7306,9 +7433,9 @@ async function renderPlayers(params) {
 
     h(`
       <h1 class="rp-login-head">Players</h1>
-      <p class="rp-login-sub">Correct a name, or merge two ids that turned out
-        to be one person. A rename reaches every team sheet, scorer line and
-        profile at the next build. Leave the search box blank to browse.</p>
+      <p class="rp-login-sub">Find a player to correct their name or merge a
+        duplicate, or type a new name, pick their team and add them to its
+        squad. Leave the search box blank to browse.</p>
       <form class="rp-form" data-player-search autocomplete="off">
         <input class="rp-input" name="q" value="${esc(state.term)}"
                autocomplete="off" autocapitalize="words" placeholder="Search by name">
@@ -7329,6 +7456,8 @@ async function renderPlayers(params) {
     const input = form.querySelector('input[name="q"]');
     input.addEventListener("input", () => {
       state.term = input.value;
+      // A different name is a different question about who already has it.
+      state.add.same = null;
       clearTimeout(searchTimer);
       searchTimer = setTimeout(() => runSearch(true), 250);
     });
@@ -7343,6 +7472,7 @@ async function renderPlayers(params) {
     });
     form.querySelector("[data-team]").addEventListener("change", (e) => {
       state.teamId = e.target.value;
+      state.add.done = "";
       runSearch(true);
     });
 
