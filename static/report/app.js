@@ -6460,7 +6460,10 @@ async function drawDetail(match, state, { local = false } = {}) {
       supabase.from("goals")
         .select("goal_id,team_id,reported_player_name,minute,goal_type,player_id,assist_player_id")
         .eq("match_id", match.match_id).order("ord"),
-      supabase.from("lineups").select("*")
+      // The player's own name rides along: a sheet row keeps the name as it
+      // was typed ("Hermas"), and a rename on #/players must reach this
+      // screen the way it reaches every page (canonicalSheetNames).
+      supabase.from("lineups").select("*,players(full_name,known_as)")
         .eq("match_id", match.match_id).order("ord"),
       supabase.from("match_media").select("*")
         .eq("match_id", match.match_id).order("created_at"),
@@ -6479,7 +6482,7 @@ async function drawDetail(match, state, { local = false } = {}) {
     ]);
     state.detail = {
       goals: goalsRes.data || [],
-      lineup: lineupRes.data || [],
+      lineup: canonicalSheetNames(lineupRes.data || []),
       media: mediaRes.data || [],
       officials: (officialsRes.data || [])[0] || {},
     };
@@ -7572,6 +7575,9 @@ function wirePlayerCards(host, redraw) {
         // A name is on every page this player appears on, so correcting one is
         // a change to the published site, exactly as a scorer is.
         requestRebuild();
+        // And on every squad's chips: those are cached for the session, so
+        // without this the match screen kept the old name until a reload.
+        invalidateSquads();
         flash("Name saved.", "ok");
         redraw();
       });
@@ -7678,6 +7684,8 @@ function wireMergePicker(wrap, loserId, loserName, redraw) {
       return;
     }
     requestRebuild();
+    // The loser's id is gone, and a cached squad would still offer it.
+    invalidateSquads();
     close();
     input.value = "";
     if (note) note.textContent = `Merged into ${winnerName}.`;
@@ -8838,6 +8846,13 @@ async function renderSquad(params) {
 /** A saved squad changes what the team-sheet editor offers as chips. */
 function invalidateSquad(teamId) {
   delete referenceCache[`squad:${teamId}`];
+}
+
+/** Every cached squad — a rename does not say which teams the player is in. */
+function invalidateSquads() {
+  Object.keys(referenceCache).forEach((key) => {
+    if (key.startsWith("squad:")) delete referenceCache[key];
+  });
 }
 
 
@@ -11361,6 +11376,35 @@ function commonest(counts) {
   return best;
 }
 
+/** Saved sheet rows under their players' names, not the names they were typed
+ *  under.
+ *
+ *  A NAME IS A LABEL ON AN ID, and the site has rendered sheets that way since
+ *  0022 — but this screen read `player_name` straight off the row, so a player
+ *  renamed from "Hermas" to "Hermas Masinja" on #/players kept the old name
+ *  here, and the next save wrote it back. `replaced_player` is a name too
+ *  (that is all the schema records, and save_lineup checks it against this
+ *  sheet's names), so a substitution follows its starter's new name, per
+ *  side. A row whose embed did not come back keeps what it had. */
+function canonicalSheetNames(rows) {
+  const renamed = new Map();
+  const out = rows.map((r) => {
+    const { players: person, ...row } = r;
+    if (!row.player_id || !person) return row;
+    const name = playerLabel({ player_id: row.player_id, ...person });
+    if (name && name !== row.player_name) {
+      renamed.set(`${row.team_id}|${row.player_name}`, name);
+      row.player_name = name;
+    }
+    return row;
+  });
+  out.forEach((row) => {
+    const to = row.replaced_player && renamed.get(`${row.team_id}|${row.replaced_player}`);
+    if (to) row.replaced_player = to;
+  });
+  return out;
+}
+
 /** Everyone this side has already fielded, scored through, or listed.
  *
  *  Mostly derived: the list grows by itself as sheets are saved, which means
@@ -11393,7 +11437,7 @@ function clubSquad(teamId) {
         // sheet is deleted and re-inserted whole on save, so created_at is
         // when that sheet was last written, which is the order wanted here.
         supabase.from("lineups")
-          .select("player_id,player_name,shirt_number,position,matches(season_id)")
+          .select("player_id,player_name,shirt_number,position,matches(season_id),players(full_name,known_as)")
           .eq("team_id", teamId)
           .order("created_at", { ascending: false }).limit(600),
         // Own goals excluded: goals.team_id is the BENEFICIARY, so an own
@@ -11415,8 +11459,13 @@ function clubSquad(teamId) {
     (sheets.data || []).forEach((r) => {
       const key = r.player_id || `name:${r.player_name.toLowerCase()}`;
       if (!by.has(key)) {
+        // The player's name, not the sheet's: a chip reading "Hermas" after
+        // he was renamed Hermas Masinja is the row's spelling winning over
+        // the id it belongs to.
         by.set(key, {
-          player_id: r.player_id || "", name: r.player_name,
+          player_id: r.player_id || "",
+          name: r.player_id && r.players
+            ? playerLabel({ player_id: r.player_id, ...r.players }) : r.player_name,
           shirt_number: "", position: "",
           shirts: new Map(), positions: new Map(),
         });
