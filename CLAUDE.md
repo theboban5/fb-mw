@@ -193,6 +193,45 @@ fixture and clean up, and they never mutate a real match.
 
 ## Recent work (Oct 2026)
 
+Backfilling team sheets fast, migration `0059` — the match screen's paste box,
+`#/squad`, and `#/ops?tab=lineups`:
+
+- **The paste box read one name a line and linked only an exact match**, so
+  every FDH graphic ("31. MKUNGULA", a bench run together as "01.SANDE 3 12.
+  LUNGU") and every "J. Banda" arrived unlinked. `static/report/lineup_paste.js`
+  (DOM-free, `tests/js/test_lineup_paste.mjs`) reads the three shapes clubs
+  post: numbered graphics, "Bullets XI: a; b, c (C)" sentences, and full
+  reports with both teams, substitutions inside the starter's brackets
+  ("29 Gumbo (8 Paul Master 46’)"), a colon-less "Substitutes not used", and a
+  Match Statistics block that is skipped. The old one-a-line format parses
+  exactly as before; `parseTeamSheet` in app.js is gone.
+- **The shirt is the tiebreak, never the evidence.** `matchRowsToSquad`
+  (match_report.js, beside `findPerson`) links "MWALE" when the squad has one
+  Mwale, and "23 MWALE" when it has two and only one wears 23. One player, one
+  row, settled to a fixed point. `linkToSquad` (the AI report path) uses it
+  too. `compatible()` ignores a Jnr/Jr/Snr suffix to find the surname, and
+  `personCandidates` prefers whoever carries it.
+- **A paste is a review, not rows.** "Read these names" shows each printed line
+  and who it turned out to be: green (squad), amber (pick one, with clubs),
+  new (create on Add, name editable — type the first name if you know it).
+  Names the squad cannot place are searched (`sq.resolveSquadName`, 0057's
+  rule). Untapped amber rows go on as names, never dropped. A block whose
+  heading names the other team goes to that team's sheet; one that cannot be
+  placed asks. "Rename them to 'Joseph Banda'" is offered when the printed
+  name is fuller than the saved one. "Player of the Match:" sets the star.
+- **0059: `save_lineup` registers everyone it identifies** for (team, the
+  match's season), add-only, shirt blank — a registered shirt beats the
+  tally in `clubSquad`, so copying one match's number would freeze it. Plus a
+  one-time backfill from this season's sheets.
+- `#/squad` offers "players who have played, scored or assisted for this team
+  this season and are not on the list" as green staged rows (`squadFromMatches`).
+- **The walk:** ops lineups rows link with `&walk=lineups&comp=&team=`; the
+  match screen opens that side's paste box, offers "Skip — no sheet found"
+  (sessionStorage), and once that side is saved, "Next missing →".
+- Squad chips sort by shirt, and a number in the filter box finds that shirt.
+  `clubSquad` no longer counts an own goal's scorer as this club's player.
+- Not built: a bare shirt number with no name ("23") linking anyone.
+
 A team's squad and staff, migration `0057` — `#/squad?team=<team_id>`,
 reached from each card on `#/teams`:
 

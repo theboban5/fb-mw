@@ -1643,3 +1643,47 @@ a { color: var(--accent); }
 /* Clear is the lesser tap beside Add, so it takes its own width and leaves
    the rest to the button that says how many. */
 .rp-btn-row .rp-stage-clear { flex: 0 0 auto; width: auto; padding-left: 18px; padding-right: 18px; }
+
+/* A pasted team sheet, checked before it joins the rows. The printed line is
+   on top in the paste's own words, and under it who that turned out to be —
+   so "MKUNGULA → Clement Mkungula · #31" reads as one fact. A row waiting for
+   a choice is amber, the squad screen's convention; a new player is the
+   dashed accent of every other "＋". */
+.rp-review { margin: 4px 0 18px; padding-bottom: 6px; border-bottom: 2px solid var(--line); }
+.rp-review .rp-sheet-group { margin-top: 6px; }
+.rp-review-printed {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+}
+.rp-review-printed span { font-weight: 600; min-width: 0; word-break: break-word; }
+.rp-review-printed b { color: var(--muted); font-variant-numeric: tabular-nums; }
+.rp-review-printed em {
+  flex: none; color: var(--muted); font-style: normal; font-size: 0.78rem;
+}
+.rp-review-who {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  margin: 6px 0 0; font-size: 0.86rem;
+}
+.rp-review-who em { font-style: normal; min-width: 0; }
+.rp-review-who em.is-good { color: var(--accent); font-weight: 600; }
+.rp-review-who em.is-warn { color: var(--warn); font-weight: 600; }
+.rp-review-who .rp-chip { min-height: 32px; padding: 4px 10px; }
+.rp-review-row > .rp-chip { margin-top: 6px; }
+.rp-review-row > .rp-input { margin-top: 8px; }
+.rp-review-row.is-new { box-shadow: inset 3px 0 0 var(--accent); padding-left: 10px; }
+.rp-squad-chip.is-on {
+  border-color: var(--accent); background: var(--accent-wash); color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Walking one club's missing team sheets (#/ops?tab=lineups → a match). It
+   sits above everything on the detail block, because once this side is saved
+   the next match is the only thing left to do here. */
+.rp-walk {
+  margin: 0 0 14px; padding: 12px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--row-alt);
+}
+.rp-walk.is-done { border-color: var(--accent); background: var(--accent-wash); }
+.rp-walk .rp-btn { margin-top: 10px; }
+.rp-known { margin-top: 12px; }
+.rp-known .rp-btn { margin-top: 10px; }

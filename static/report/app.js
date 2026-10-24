@@ -45,6 +45,9 @@ import * as mr from "./match_report.js";
 import * as crash from "./error_report.js";
 // A squad list read line by line, and who each name is (0057).
 import * as sq from "./squad.js";
+// A pasted team sheet in any of the shapes clubs post one, and who each
+// printed name is in the squad (0059).
+import * as lp from "./lineup_paste.js";
 
 const view = document.querySelector("[data-view]");
 const flashEl = document.querySelector("[data-flash]");
@@ -4778,6 +4781,87 @@ async function renderNewLeague() {
   draw();
 }
 
+// ── Walking one club's missing team sheets ───────────────────────────────────
+// #/ops?tab=lineups lists a club's played matches with no sheet, and the job
+// is all of them: find the club's post, paste, save, next. Going back to the
+// list between every match was most of the clicking, so a match opened from
+// that list carries the walk with it (&walk=lineups&comp=&team=) and offers
+// the next one the moment this side is saved — or a Skip, for the match whose
+// sheet the club never posted. The list is the ops view itself, so the walk
+// and the list cannot disagree about what is missing.
+
+const lineupWalkQuery = (comp, team) =>
+  `&walk=lineups&comp=${encodeURIComponent(comp)}&team=${encodeURIComponent(team)}`;
+
+function lineupWalkFrom(params, match) {
+  if (params?.get("walk") !== "lineups") return null;
+  const comp = params.get("comp") || "";
+  const team = params.get("team") || "";
+  if (!comp || !team || comp !== match.competition_id) return null;
+  return { comp, team, next: undefined };
+}
+
+// Skipped matches live for the session only, and a storage that will not
+// answer only means a skipped match is offered again.
+const WALK_SKIP_KEY = "everyleague:lineup-walk-skips";
+function walkSkips() {
+  try { return new Set(JSON.parse(sessionStorage.getItem(WALK_SKIP_KEY) || "[]")); }
+  catch { return new Set(); }
+}
+function skipInWalk(matchId) {
+  try {
+    const skips = walkSkips();
+    skips.add(matchId);
+    sessionStorage.setItem(WALK_SKIP_KEY, JSON.stringify([...skips]));
+  } catch { /* see walkSkips */ }
+}
+
+/** The next match in this walk still missing this team's sheet, or null when
+ *  there is none. Read once per visit; the current match is never its own
+ *  next, saved or not. Undefined while it loads, and on a failed read — the
+ *  ops view is admin-only, and a walk link opened by anyone else simply has
+ *  no Next. */
+async function loadWalkNext(walk, match) {
+  try {
+    const rows = await loadOpsMissingLineups(walk.comp, walk.team);
+    const skips = walkSkips();
+    const left = rows.filter((m) => m.match_id !== match.match_id && !skips.has(m.match_id));
+    walk.left = left.length;
+    walk.teamName = rows[0]?.team_name || "";
+    walk.next = left[0] || null;
+  } catch (err) {
+    console.warn("[everyleague] lineup walk unavailable:", err);
+    walk.next = undefined;
+    walk.failed = true;
+  }
+}
+
+function walkBarHtml(walk, match, teamName, saved) {
+  if (!walk || walk.failed || walk.next === undefined) return "";
+  const team = teamName(walk.team);
+  const href = walk.next
+    ? `#/m/${walk.next.public_id}?from=ops${lineupWalkQuery(walk.comp, walk.team)}` : "";
+  const label = walk.next
+    ? `${walk.next.home_name} v ${walk.next.away_name}${walk.next.date ? `, ${formatDate(walk.next.date)}` : ""}`
+    : "";
+  if (saved) {
+    return `
+      <div class="rp-walk is-done">
+        <p class="rp-hint" style="margin-top:0">✓ ${esc(grid.possessive(team))} sheet is saved.
+          ${walk.next ? `${walk.left} more to go.` : "That was the last one missing."}</p>
+        ${walk.next
+          ? `<a class="rp-btn" href="${esc(href)}">Next missing: ${esc(label)} &rarr;</a>`
+          : `<a class="rp-btn is-ghost" href="#/ops?tab=lineups&comp=${encodeURIComponent(walk.comp)}">All done for ${esc(team)} — back to the list</a>`}
+      </div>`;
+  }
+  return `
+    <div class="rp-walk">
+      <p class="rp-hint" style="margin-top:0">Filling in ${esc(grid.possessive(team))}
+        missing sheets${walk.next ? ` · ${walk.left} after this one` : " · this is the last"}.</p>
+      ${walk.next ? `<button class="rp-btn is-quiet" type="button" data-walk-skip
+                       data-walk-href="${esc(href)}">Skip — no sheet found &rarr;</button>` : ""}
+    </div>`;
+}
 async function renderMatch(publicId, params) {
   h('<div class="rp-loading"><span class="rp-spinner"></span><p>Loading match…</p></div>');
   const back = backHash(params);
@@ -4845,7 +4929,20 @@ async function renderMatch(publicId, params) {
     // stageReport the first time the detail block draws. See there.
     importId: params?.get("import") || "",
     report: null,
+    walk: lineupWalkFrom(params, match),
   };
+  if (state.walk) {
+    // The side this walk is about is the job: its sheet and its paste box
+    // open, and "back" is the list the reporter is working through.
+    state.back = `#/ops?tab=lineups&comp=${encodeURIComponent(state.walk.comp)}`
+      + `&team=${encodeURIComponent(state.walk.team)}`;
+    if (!(state.walk.team === match.home_team_id || state.walk.team === match.away_team_id)) {
+      state.walk = null;
+    } else {
+      state.open[`sheet-${state.walk.team}`] = true;
+      state.open[`paste-${state.walk.team}`] = true;
+    }
+  }
 
   drawMatch(match, names, state);
 }
@@ -6412,6 +6509,9 @@ async function drawDetail(match, state, { local = false } = {}) {
     state.report = await stageReport(match, state, sides, teamName);
   }
   const report = state.report && !state.report.failed ? state.report : null;
+  if (state.walk && state.walk.next === undefined && !state.walk.failed) {
+    await loadWalkNext(state.walk, match);
+  }
   // Staged officials show IN the form until they are saved, so the reporter
   // checks them where they will edit them. Only blank columns were staged.
   const shownOfficials = report && !report.done.officials
@@ -6490,6 +6590,8 @@ async function drawDetail(match, state, { local = false } = {}) {
   // happens on every tap of a squad name, so this stopped being theoretical.
   host.innerHTML = `
     <div data-detail-body>
+    ${walkBarHtml(state.walk, match, teamName,
+                  lineup.some((r) => r.team_id === state.walk?.team))}
     <h2 class="rp-field-head">Match detail <span class="rp-optional">optional</span></h2>
     ${state.report ? reportBannerHtml(state.report, teamName, sides, state) : ""}
     ${!state.report || state.report.failed
@@ -6835,6 +6937,18 @@ function wireDetail(match, state, goals, sides) {
       drawDetail(match, state);
     },
   })), () => drawDetail(match, state, { local: true }));
+
+  host.querySelector("[data-walk-skip]")?.addEventListener("click", (e) => {
+    skipInWalk(match.match_id);
+    location.hash = e.currentTarget.dataset.walkHref;
+  });
+  // Once per visit, the sheet this walk is about is brought into view — it is
+  // below the score and the scorers, and it is the only thing to do here.
+  if (state.walk && !state.walk.scrolled) {
+    state.walk.scrolled = true;
+    host.querySelector(`[data-sec="sheet-${CSS.escape(state.walk.team)}"]`)
+      ?.scrollIntoView({ block: "start" });
+  }
 
   host.querySelector("[data-officials-form]")?.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -7750,6 +7864,45 @@ async function inBatches(items, limit, work) {
   return out;
 }
 
+/** Everyone this team has fielded, scored through or had an assist from in
+ *  this season, who is not on its list yet — the squad it already has.
+ *
+ *  A squad screen opened for the first time was empty even when the season's
+ *  goals had already named most of the club, so the first job on it was
+ *  retyping people the database knew. Season-scoped here, unlike clubSquad's
+ *  chips: a squad list is this season's. Own goals excluded, because
+ *  goals.team_id is the beneficiary. A failure is an empty answer — this is a
+ *  shortcut, and the paste box below it still works. */
+async function squadFromMatches(teamId, seasonId, listed) {
+  const inSeason = (q) => q.eq("team_id", teamId).eq("matches.season_id", seasonId)
+    .limit(1000);
+  const [sheets, scorers, assists] = await Promise.all([
+    inSeason(supabase.from("lineups").select("player_id,matches!inner(season_id)")),
+    inSeason(supabase.from("goals").select("player_id,matches!inner(season_id)")
+      .neq("goal_type", "own_goal")),
+    inSeason(supabase.from("goals").select("assist_player_id,matches!inner(season_id)")
+      .neq("goal_type", "own_goal")),
+  ]);
+  const ids = new Set([
+    ...(sheets.data || []).map((r) => r.player_id),
+    ...(scorers.data || []).map((r) => r.player_id),
+    ...(assists.data || []).map((r) => r.assist_player_id),
+  ].filter((id) => id && id !== UNKNOWN_PLAYER && !listed.has(id)));
+  if (!ids.size) return [];
+  const [{ data: people }, squad] = await Promise.all([
+    supabase.from("players").select("player_id,full_name,known_as,position")
+      .in("player_id", [...ids]),
+    clubSquad(teamId),
+  ]);
+  return (people || []).map((p) => {
+    // The shirt the chips would pre-fill — the season's commonest — so a
+    // registration starts with the number reporters have actually typed.
+    const known = squad.find((q) => q.player_id === p.player_id);
+    return { player_id: p.player_id, name: playerLabel(p),
+             shirt_number: known?.shirt_number || "", position: p.position || "" };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 async function loadSquad(teamId, seasonId) {
   const [team, players, staff, sources] = await Promise.all([
     supabase.from("teams").select("team_id,display_name").eq("team_id", teamId).limit(1),
@@ -7864,6 +8017,7 @@ async function renderSquad(params) {
          <em>23 yrs</em> — or a column of its own.</p>
        <button class="rp-btn is-ghost" type="submit">Check these names</button>
      </form>
+     <div data-squad-known></div>
      <div data-staged-players></div>` : ""}
 
      <h2 class="rp-field-head">Staff <span class="rp-sec-count" data-staff-count></span></h2>
@@ -7899,6 +8053,7 @@ async function renderSquad(params) {
   const playersHost = view.querySelector("[data-squad-players]");
   const staffHost = view.querySelector("[data-squad-staff]");
   const stagedHost = view.querySelector("[data-staged-players]");
+  const knownHost = view.querySelector("[data-squad-known]");
   const stagedStaffHost = view.querySelector("[data-staged-staff]");
 
   // ── the list ───────────────────────────────────────────────────────────────
@@ -8302,6 +8457,43 @@ async function renderSquad(params) {
     stagedHost.querySelector("[data-stage-add]").addEventListener("click", addStaged);
   }
 
+  // The players this team already has, offered as one tap into the staging
+  // list below — where they arrive green, with the shirt the sheets agree on,
+  // and add through the same "Add N" as anything pasted. Nothing is saved by
+  // the tap; the reporter sees who before they are added.
+  let known = [];
+  function drawKnown() {
+    if (!knownHost) return;
+    const listed = new Set([...state.players.map((p) => p.player_id),
+                            ...state.staged.map((r) => r.player_id).filter(Boolean)]);
+    const left = known.filter((p) => !listed.has(p.player_id));
+    knownHost.innerHTML = left.length ? `
+      <div class="rp-card rp-known">
+        <p class="rp-hint" style="margin-top:0"><b>${left.length}
+          ${left.length === 1 ? "player has" : "players have"}</b> played, scored
+          or made an assist for ${esc(loaded.team.display_name)} this season and
+          ${left.length === 1 ? "is" : "are"} not on this list.</p>
+        <button class="rp-btn is-ghost" type="button" data-stage-known>Check and add
+          ${left.length === 1 ? "them" : `all ${left.length}`}</button>
+      </div>` : "";
+    knownHost.querySelector("[data-stage-known]")?.addEventListener("click", () => {
+      state.staged = state.staged.concat(left.map((p) => ({
+        name: p.name, shirt_number: p.shirt_number, position: p.position,
+        dob: "", age: null, kind: "linked", player_id: p.player_id,
+        match_name: p.name, key: ++uid, choice: "", error: "",
+      })));
+      drawStaged();
+      drawKnown();
+      stagedHost?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+  if (canEdit && knownHost) {
+    squadFromMatches(teamId, season.season_id,
+                     new Set(state.players.map((p) => p.player_id)))
+      .then((rows) => { known = rows; drawKnown(); })
+      .catch((err) => console.warn("[everyleague] squad from matches failed:", err));
+  }
+
   view.querySelector("[data-add-players]")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (state.checking) return;
@@ -8376,6 +8568,7 @@ async function renderSquad(params) {
     state.adding = false;
     drawStaged();
     drawPlayers();
+    drawKnown();
     if (added) {
       invalidateSquad(teamId);
       requestRebuild();
@@ -11073,8 +11266,12 @@ function clubSquad(teamId) {
           .select("player_id,player_name,shirt_number,position,matches(season_id)")
           .eq("team_id", teamId)
           .order("created_at", { ascending: false }).limit(600),
+        // Own goals excluded: goals.team_id is the BENEFICIARY, so an own
+        // goal's scorer plays for the other side (0034's rule), and counting
+        // one put the opposition's defender in this club's chips.
         supabase.from("goals").select("player_id")
-          .eq("team_id", teamId).neq("player_id", UNKNOWN_PLAYER).limit(300),
+          .eq("team_id", teamId).neq("player_id", UNKNOWN_PLAYER)
+          .neq("goal_type", "own_goal").limit(300),
       ]),
     ]);
     const by = new Map();
@@ -11228,9 +11425,11 @@ function sheetState(state, key, saved) {
     // starters is being added to at the back, not the front.
     // `samename` is the "there is already a Steve Phiri — is this him?"
     // question, held open until it is answered, or null.
+    // `review` is a pasted sheet being checked name by name before any of it
+    // joins the rows (sheetReview), or null.
     const rows = (saved || []).map((r) => ({ ...r }));
     state.sheets[key] = {
-      rows, filter: "", linking: null, samename: null,
+      rows, filter: "", linking: null, samename: null, review: null,
       adding: rows.filter((r) => r.role === "starting").length >= STARTING_XI
         ? "unused_sub" : "starting",
     };
@@ -11283,11 +11482,23 @@ function samenameHtml(sheet, key) {
     </div>`;
 }
 
+/** Shirt order, then name: a graphic prints its XI by number far more often
+ *  than by name, so the chips run the way the reporter's eye does. Anyone
+ *  with no number follows, alphabetically, never out of the list. */
+const shirtOrder = (a, b) => {
+  const n = (p) => (/^\d+$/.test(p.shirt_number || "") ? Number(p.shirt_number) : 1e3);
+  return n(a) - n(b) || a.name.localeCompare(b.name);
+};
+
 function squadListHtml(sheet, squad, key) {
   if (sheet.samename) return samenameHtml(sheet, key);
   const term = sheet.filter.trim().toLowerCase();
-  const free = squad.filter((p) => !onSheet(sheet, p));
-  const shown = term ? free.filter((p) => p.name.toLowerCase().includes(term)) : free;
+  const free = squad.filter((p) => !onSheet(sheet, p)).sort(shirtOrder);
+  // A number in the box is a shirt: "23" off a graphic finds #23 without
+  // knowing whether he is McLean Mwale or a Mwale with no first name yet.
+  const byShirt = /^\d{1,3}$/.test(term);
+  const shown = !term ? free : free.filter((p) => p.name.toLowerCase().includes(term)
+    || (byShirt && p.shirt_number && Number(p.shirt_number) === Number(term)));
 
   const chips = shown.slice(0, 40).map((p) => `
     <button type="button" class="rp-squad-chip" data-squad-add="${esc(p.player_id)}"
@@ -11298,7 +11509,7 @@ function squadListHtml(sheet, squad, key) {
   // Offered only once the filter is a plausible name and matches nobody, so a
   // reporter part-way through typing a name that IS in the list is never
   // invited to create a second copy of that person.
-  const canCreate = term.length >= 2
+  const canCreate = term.length >= 2 && !byShirt
     && !shown.some((p) => p.name.toLowerCase() === term);
   const create = canCreate ? `
     <button type="button" class="rp-squad-chip is-new"
@@ -11313,6 +11524,194 @@ function squadListHtml(sheet, squad, key) {
       : "No squad on file yet — type the names below, or paste the sheet."}</p>`;
   }
   return `<div class="rp-squad-chips">${chips}${create}</div>`;
+}
+
+// ── A pasted sheet, checked before it joins ─────────────────────────────────
+// The paste box used to put every line straight onto the sheet, linked only
+// when it was letter-for-letter a squad name — so "MKUNGULA" off a graphic
+// arrived as a name, and so did every "J. Banda", and each was a tap on "Link
+// to a player" afterwards. Now a paste becomes a short list first: who each
+// printed name is (lineup_paste.js says, from the squad and the shirt beside
+// it), who is new, who needs a choice. Nothing joins the sheet until "Add",
+// and nothing saves until the sheet's own Save — the paste is still only a
+// faster way of typing.
+
+/** A squad entry, or a search hit, as something a review row can pick. */
+const reviewOption = (p, extra = {}) => ({
+  player_id: p.player_id, name: p.name, shirt_number: p.shirt_number || "",
+  position: p.position || "", teams: "", ...extra,
+});
+
+/** One pasted block, matched against this side's squad. Rows already on the
+ *  sheet are left out (and remembered, so a substitution naming one of them
+ *  still points at the right row). */
+function sheetReview(side, block, { ask = false, motm = "", sides = [] } = {}) {
+  const sheet = side.sheet;
+  const onIt = new Map();
+  const fresh = block.rows.filter((r) => {
+    const hit = mr.findPerson(r.player_name, sheet.rows, (o) => o.player_name);
+    if (hit) onIt.set(r.player_name, hit.player_name);
+    return !hit;
+  });
+  const free = (side.squad || []).filter((p) => !onSheet(sheet, p));
+  const found = lp.matchRowsToSquad(fresh, free);
+  return {
+    block, ask, motm, onIt, sides, adding: false,
+    rows: fresh.map((row, j) => {
+      const m = found[j];
+      const options = m.kind === "squad" ? [reviewOption(m.player)]
+        : m.options.map((p) => reviewOption(p));
+      return {
+        row, options, name: row.player_name, force: false, open: false,
+        pick: m.kind === "squad" ? m.player.player_id : "",
+        // Nobody in the squad: the database is asked next (checkReview).
+        checking: m.kind === "none", note: "", renamed: false,
+      };
+    }),
+  };
+}
+
+/** Ask the database about every name the squad could not place, and redraw
+ *  once. squad.js' rule exactly (resolveSquadName): someone who has played
+ *  for THIS team links; a similar name elsewhere is offered with their club;
+ *  nobody at all is a new player. A failed search costs the check, never the
+ *  row — it stays, as a name, for the reporter to decide. */
+async function checkReview(sheet, review, key, redraw) {
+  const rows = review.rows.filter((r) => r.checking);
+  if (!rows.length) return;
+  await inBatches(rows, 4, async (r) => {
+    let candidates;
+    try {
+      candidates = await searchPlayers(r.row.player_name);
+    } catch (err) {
+      console.warn("[everyleague] review search failed:", err);
+      r.checking = false;
+      r.note = "Could not check the database just now, so this adds as a name "
+        + "only — tap New player if you are sure they are not in it.";
+      return;
+    }
+    const res = sq.resolveSquadName(r.row.player_name,
+      { teamId: key, registered: [], played: [], candidates });
+    const hint = (id) => {
+      const c = candidates.find((x) => x.player_id === id);
+      return c ? playerHint(c) : "";
+    };
+    if (res.kind === "linked") {
+      r.options = [reviewOption(res, { teams: hint(res.player_id) })];
+      r.pick = res.player_id;
+    } else if (res.kind === "choose") {
+      r.options = res.options.slice(0, 6).map((o) => reviewOption(o, { teams: o.teams }));
+      r.force = res.force;
+    } else {
+      r.pick = "new";
+    }
+    r.checking = false;
+  });
+  if (sheet.review === review) redraw();
+}
+
+function reviewRowHtml(r, j, key) {
+  const row = r.row;
+  const where = row.role === "starting" ? "XI"
+    : row.role === "sub_on"
+      ? `on ${row.minute_on || "?"}'${row.replaced_player ? ` for ${row.replaced_player}` : ""}`
+      : "bench";
+  const chosen = r.options.find((o) => o.player_id === r.pick);
+  const tone = r.checking ? "" : chosen ? " is-good" : r.pick === "new" ? " is-new"
+    : r.options.length ? " is-warn" : "";
+  const chip = (value, label, extra = "") => `
+    <button type="button" class="rp-squad-chip${r.pick === value ? " is-on" : ""}${extra}"
+            data-review-pick="${esc(value)}" data-review-i="${j}" data-sheet-key="${esc(key)}"
+            aria-pressed="${r.pick === value}">${label}</button>`;
+
+  let body;
+  if (r.checking) {
+    body = '<p class="rp-review-who"><em>Checking…</em></p>';
+  } else if (chosen && !r.open) {
+    const fuller = !r.renamed && lp.fullerName(row.player_name, chosen.name);
+    body = `
+      <p class="rp-review-who"><em class="is-good">&rarr; ${esc(chosen.name)}${
+        chosen.shirt_number ? ` · #${esc(chosen.shirt_number)}` : ""}${
+        chosen.teams ? ` · ${esc(chosen.teams)}` : ""}</em>
+        <button type="button" class="rp-chip" data-review-change="${j}"
+                data-sheet-key="${esc(key)}">Change</button></p>
+      ${fuller ? `
+        <button type="button" class="rp-chip" data-review-rename="${j}"
+                data-sheet-key="${esc(key)}">Rename them to “${esc(row.player_name)}”</button>` : ""}`;
+  } else {
+    const ask = r.options.length > 1 && r.options.every((o) => !o.teams)
+      ? "More than one player in the squad fits. Which one?"
+      : r.options.length
+        ? "Someone of a similar name is already in the database. Is it one of them?"
+        : "Nobody by this name in the squad or the database.";
+    body = `
+      <p class="rp-review-who"><em class="${r.options.length ? "is-warn" : ""}">${esc(r.note || ask)}</em></p>
+      <div class="rp-squad-chips is-samename">
+        ${r.options.map((o) => chip(o.player_id, `${esc(o.name)}${
+          o.shirt_number || o.teams ? `<em>${esc([o.shirt_number ? `#${o.shirt_number}` : "",
+                                               o.teams].filter(Boolean).join(" · "))}</em>` : ""}`)).join("")}
+        ${chip("new", "＋ New player <em>joins the squad when the sheet saves</em>", " is-new")}
+        ${chip("", "Name only <em>link them later</em>")}
+      </div>
+      ${chosen ? "" : `
+        <input class="rp-input" data-review-name="${j}" data-sheet-key="${esc(key)}"
+               value="${esc(r.name)}" autocomplete="off" autocapitalize="words"
+               aria-label="Name for ${esc(row.player_name)}">
+        ${r.pick === "new" ? `<p class="rp-hint">A first name, if you know it, saves a
+          rename later.</p>` : ""}`}`;
+  }
+  return `
+    <li class="rp-stage-row rp-review-row${tone}">
+      <div class="rp-review-printed">
+        <span>${row.shirt_number ? `<b>${esc(row.shirt_number)}</b> ` : ""}${esc(row.player_name)}${
+          row.captain ? " (C)" : ""}</span>
+        <em>${esc(where)}</em>
+      </div>
+      ${body}
+    </li>`;
+}
+
+function reviewHtml(sheet, key) {
+  const review = sheet.review;
+  const sides = review.sides || [];
+  const counts = { linked: 0, made: 0, plain: 0 };
+  review.rows.forEach((r) => {
+    if (r.options.some((o) => o.player_id === r.pick)) counts.linked += 1;
+    else if (r.pick === "new") counts.made += 1;
+    else counts.plain += 1;
+  });
+  const checking = review.rows.some((r) => r.checking);
+  const total = review.rows.length;
+  const summary = [
+    counts.linked ? `${counts.linked} linked` : "",
+    counts.made ? `${counts.made} new` : "",
+    counts.plain ? `${counts.plain} as ${counts.plain === 1 ? "a name" : "names"} only` : "",
+  ].filter(Boolean).join(" · ");
+  const skipped = review.onIt.size;
+  return `
+    <div class="rp-review" data-review>
+      <h3 class="rp-sheet-group">Check the names <span>${total}</span></h3>
+      ${review.ask ? `
+        <p class="rp-hint is-warn">Which team is this${review.block.heading
+          ? ` — “${esc(review.block.heading)}”` : ""}? The names below are
+          matched against this team until you say otherwise.</p>
+        <div class="rp-btn-row">${sides.map((s) => `
+          <button type="button" class="rp-btn is-ghost" data-review-side="${esc(s.key)}"
+                  data-sheet-key="${esc(key)}">${esc(s.teamName)}</button>`).join("")}</div>` : ""}
+      ${skipped ? `<p class="rp-hint">${skipped} already on the sheet, so left out.</p>` : ""}
+      <ul class="rp-stage-list">${review.rows.map((r, j) => reviewRowHtml(r, j, key)).join("")}</ul>
+      ${summary ? `<p class="rp-hint">${esc(summary)}.</p>` : ""}
+      <div class="rp-btn-row">
+        <button class="rp-btn" type="button" data-review-add data-sheet-key="${esc(key)}"${
+          checking || review.adding || !total ? " disabled" : ""}>${
+          review.adding ? "Adding…" : checking ? "Checking names…"
+            : `Add ${total} to the sheet`}</button>
+        <button class="rp-btn is-quiet rp-stage-clear" type="button" data-review-cancel
+                data-sheet-key="${esc(key)}">Cancel</button>
+      </div>
+      <p class="rp-hint">Nothing is saved yet — the sheet's own Save button does
+        that, and saving it adds everyone linked to this team's squad.</p>
+    </div>`;
 }
 
 function sheetRowHtml(sheet, row, i, key) {
@@ -11526,8 +11925,9 @@ function sheetHtml({ key, teamName, sheet, squad }) {
         ? `Names go into the starting XI. It switches to substitutes by itself
            once there are ${STARTING_XI} — or tap to switch now.`
         : "Names go on the bench. Set who came on, and when, on their row below."}</p>
+      ${sheet.review ? reviewHtml(sheet, key) : ""}
       <input class="rp-input" data-sheet-filter data-sheet-key="${esc(key)}"
-             placeholder="Find or add a player" autocomplete="off"
+             placeholder="Find or add a player, or type a shirt number" autocomplete="off"
              autocapitalize="words" value="${esc(sheet.filter)}">
       <div data-squad-list>${squadListHtml(sheet, squad, key)}</div>
 
@@ -11536,9 +11936,12 @@ function sheetHtml({ key, teamName, sheet, squad }) {
         <div class="rp-sec-body">
           <textarea class="rp-input rp-textarea" data-sheet-paste
                     data-sheet-key="${esc(key)}" rows="7"
-                    placeholder="1 Mercy Sikelo GK (C)&#10;5 Sabina Thom MF [Y]&#10;Subs:&#10;14 Rachel Kundananji 62' for Sabina Thom"></textarea>
-          <p class="rp-hint">One player per line. Everything except the name is
-            optional:</p>
+                    placeholder="31. MKUNGULA&#10;14. LAMECK (C)&#10;SUBS&#10;01. SANDE 12. LUNGU 42. CHIZINGA"></textarea>
+          <p class="rp-hint">Paste it the way the club posted it: a graphic's
+            numbers and surnames, “Bullets XI: Mwale; Mologeni, Mpokera (C), …”,
+            or a whole match report with both teams in it — each team's names
+            go to that team's sheet, and the statistics underneath are
+            ignored. Everything except the name is optional:</p>
           <ul class="rp-legend">
             <li><code>10</code> leading number — shirt</li>
             <li><code>GK DF MF FW</code> — position</li>
@@ -11549,12 +11952,13 @@ function sheetHtml({ key, teamName, sheet, squad }) {
               until the next heading</li>
             <li><code>62'</code> and <code>for Sabina Thom</code> — came on, and for
               whom</li>
+            <li><code>Gumbo (8 Paul Master 46’)</code> — Master came on for Gumbo</li>
           </ul>
-          <p class="rp-hint">Pasted names are matched against the squad above.
-            Anyone who matches nobody comes in as a name only — tap them in the
-            list above afterwards to link them.</p>
+          <p class="rp-hint">Each name is matched against this team's squad —
+            “MWALE” finds McLean Mwale, and the shirt number decides between two
+            Mwales. You check the list before anything goes on the sheet.</p>
           <button class="rp-btn is-ghost" type="button" data-sheet-paste-add
-                  data-sheet-key="${esc(key)}">Add these players</button>
+                  data-sheet-key="${esc(key)}">Read these names</button>
         </div>
       </details>
 
@@ -11609,7 +12013,12 @@ function wireSheet(root, ctx, redraw) {
       return;
     }
     const link = e.target.closest("[data-sheet-link-input]");
-    if (link) paintLinkSuggestions(link);
+    if (link) { paintLinkSuggestions(link); return; }
+    // A name typed on a review row writes to state and never redraws — the
+    // redraw-on-blur lesson, again.
+    const named = e.target.closest("[data-review-name]");
+    const r = named && sheet.review?.rows[Number(named.dataset.reviewName)];
+    if (r) r.name = named.value;
   });
 
   // Searching from a "link to a player" box. Only the list repaints, never the
@@ -11715,6 +12124,94 @@ function wireSheet(root, ctx, redraw) {
     // slot. See sheetRowHtml.
     sheet.linking = null;
     sheet.samename = null;
+    redraw();
+  }
+
+  /** A checked review onto the sheet. New players are created first, three
+   *  at a time; one that cannot be goes on as a name, never off the sheet —
+   *  the portal does not lose what was typed. Then the rows join in printed
+   *  order, each carrying the id, the registry's spelling, and the squad's
+   *  shirt and position where the paste gave none. */
+  async function addReview(review) {
+    review.adding = true;
+    redraw();
+    let failed = 0;
+    await inBatches(review.rows.filter((r) => r.pick === "new"), 3, async (r) => {
+      const name = (r.name || "").trim() || r.row.player_name;
+      const { data, error } = await supabase.rpc("create_player",
+        { p_full_name: name, p_force: Boolean(r.force) });
+      const made = (data || [])[0];
+      if (error || !made) {
+        console.warn("[everyleague] create_player failed:", error);
+        r.pick = "";
+        failed += 1;
+        return;
+      }
+      r.options.push(reviewOption({ player_id: made.player_id, name: playerLabel(made) }));
+      r.pick = made.player_id;
+    });
+    if (sheet.review !== review) return;
+
+    const ids = new Set(sheet.rows.map((x) => x.player_id).filter(Boolean));
+    const names = new Set(sheet.rows.map((x) => x.player_name));
+    const renamed = new Map(review.onIt);
+    const out = [];
+    review.rows.forEach((r) => {
+      const row = { ...r.row };
+      const chosen = r.options.find((o) => o.player_id === r.pick);
+      // One player, one row: a pick that is already on the sheet stays a name.
+      if (chosen && !ids.has(chosen.player_id)) {
+        row.player_id = chosen.player_id;
+        row.player_name = chosen.name;
+        row.shirt_number = row.shirt_number || chosen.shirt_number;
+        row.position = row.position || chosen.position;
+        ids.add(chosen.player_id);
+        if (!squad.some((p) => p.player_id === chosen.player_id)) {
+          squad.push({ player_id: chosen.player_id, name: chosen.name,
+                       shirt_number: "", position: "" });
+        }
+      } else {
+        row.player_id = "";
+        row.player_name = (r.name || "").trim() || row.player_name;
+      }
+      if (names.has(row.player_name)) return;      // save_lineup refuses a repeat
+      names.add(row.player_name);
+      renamed.set(r.row.player_name, row.player_name);
+      setCardState(row, cardStateOf(row));
+      out.push(row);
+    });
+    // A substitution names who it replaced by NAME, so it follows the rename
+    // to the registry's spelling — and is dropped rather than left pointing at
+    // nobody, which save_lineup would refuse.
+    out.forEach((row) => {
+      if (!row.replaced_player) return;
+      const to = renamed.get(row.replaced_player) || row.replaced_player;
+      row.replaced_player = names.has(to) ? to : "";
+    });
+    // The armband is one per side: a sheet that already has a captain keeps him.
+    if (sheet.rows.some((x) => x.captain)) out.forEach((row) => { row.captain = false; });
+    // Man of the match, when the paste named one and nobody holds it yet.
+    const everyone = [sheet, ...(ctx.siblings || []).map((x) => x.sheet)]
+      .flatMap((x) => x.rows);
+    if (review.motm && !everyone.some((x) => x.motm)) {
+      const star = mr.findPerson(review.motm,
+        out.filter((x) => x.role !== "unused_sub"), (x) => x.player_name);
+      if (star) star.motm = true;
+    }
+
+    sheet.rows.push(...out);
+    if (sheet.rows.filter((x) => x.role === "starting").length >= STARTING_XI) {
+      sheet.adding = "unused_sub";
+    }
+    sheet.review = null;
+    sheet.linking = null;
+    if (failed) {
+      flash(`${failed} new player${failed === 1 ? "" : "s"} could not be created, so `
+        + `${failed === 1 ? "is" : "are"} on the sheet as a name — link them later.`,
+            "warn", 8000);
+    } else {
+      flash(`${out.length} on the sheet. Check it, then save.`, "ok");
+    }
     redraw();
   }
 
@@ -11904,30 +12401,126 @@ function wireSheet(root, ctx, redraw) {
     const paste = e.target.closest("[data-sheet-paste-add]");
     if (paste) {
       const box = root.querySelector("[data-sheet-paste]");
-      const added = parseTeamSheet(box?.value || "");
-      if (!added.length) { flash("Type at least one name.", "warn"); return; }
-      const seen = new Set(sheet.rows.map((r) => r.player_name.toLowerCase()));
-      added.forEach((row) => {
-        if (seen.has(row.player_name.toLowerCase())) return;
-        // A pasted name that matches somebody already known arrives LINKED.
-        // That is the whole difference between a sheet of text and a sheet of
-        // players, and it costs the reporter nothing.
-        const hit = squad.find(
-          (p) => p.name.toLowerCase() === row.player_name.toLowerCase());
-        if (hit) {
-          row.player_id = hit.player_id;
-          row.shirt_number = row.shirt_number || hit.shirt_number;
-          row.position = row.position || hit.position;
-        }
-        // A pasted line could carry both [YR] and [R]; the control below
-        // cannot express that and the database refuses it, so it is collapsed
-        // to the single most severe card here rather than rejected on save.
-        setCardState(row, cardStateOf(row));
-        sheet.rows.push(row);
-        seen.add(row.player_name.toLowerCase());
+      const text = box?.value || "";
+      const blocks = lp.parseLineup(text);
+      if (!blocks.length) { flash("There are no names in that box.", "warn"); return; }
+      const sides = [ctx, ...(ctx.siblings || [])];
+      const motm = lp.motmFrom(text);
+      const sideList = sides.map((x) => ({ key: x.key, teamName: x.teamName }));
+      // A national-team sheet is one side: everything pasted is ours.
+      const used = sides.length === 1
+        ? [{ heading: blocks[0].heading, rows: blocks.flatMap((b) => b.rows) }]
+        : blocks.slice(0, 2);
+      if (blocks.length > used.length && sides.length > 1) {
+        flash("That paste has more than two teams in it; only the first two were read.",
+              "warn", 8000);
+      }
+      const routed = sides.length === 1 ? [ctx.key]
+        : lp.routeBlocks(used, sides.map((x) => ({ key: x.key, names: [x.teamName] })),
+                         ctx.key, mr.sameTeam);
+      // A block the headings cannot place is asked about, on whichever side
+      // is still free — this one first, because it is the box it went into.
+      const free = sides.filter((x) => !routed.includes(x.key));
+      const placed = used.map((block, i) => {
+        const side = routed[i] ? sides.find((x) => x.key === routed[i])
+          : (free.shift() || ctx);
+        return { side, block, ask: !routed[i] };
       });
+      placed.forEach(({ side, block, ask }) => {
+        side.sheet.review = sheetReview(side, block, { ask, motm, sides: sideList });
+        checkReview(side.sheet, side.sheet.review, side.key, redraw);
+        if (side !== ctx) {
+          // Open the other team's section, so its half of the paste is seen.
+          const sec = document.querySelector(`[data-sec="sheet-${CSS.escape(side.key)}"]`);
+          if (sec) sec.open = true;
+        }
+      });
+      const elsewhere = placed.filter((p) => p.side !== ctx).map((p) => p.side.teamName);
+      if (elsewhere.length) {
+        flash(`${grid.possessive(elsewhere[0])} names went to their own sheet below.`, "ok", 6000);
+      }
+      // The box is emptied only once every line is safely in a review.
       if (box) box.value = "";
       redraw();
+      return;
+    }
+
+    const side = e.target.closest("[data-review-side]");
+    if (side && sheet.review) {
+      const review = sheet.review;
+      const target = [ctx, ...(ctx.siblings || [])]
+        .find((x) => x.key === side.dataset.reviewSide);
+      if (!target) return;
+      if (target === ctx) {
+        review.ask = false;
+      } else {
+        // Matched again from the top, against the squad it now belongs to.
+        sheet.review = null;
+        target.sheet.review = sheetReview(target, review.block,
+          { motm: review.motm, sides: review.sides });
+        checkReview(target.sheet, target.sheet.review, target.key, redraw);
+        const sec = document.querySelector(`[data-sec="sheet-${CSS.escape(target.key)}"]`);
+        if (sec) sec.open = true;
+      }
+      redraw();
+      return;
+    }
+
+    const pickIt = e.target.closest("[data-review-pick]");
+    if (pickIt && sheet.review) {
+      const r = sheet.review.rows[Number(pickIt.dataset.reviewI)];
+      if (!r) return;
+      r.pick = pickIt.dataset.reviewPick;
+      r.open = false;
+      redraw();
+      return;
+    }
+
+    const change = e.target.closest("[data-review-change]");
+    if (change && sheet.review) {
+      const r = sheet.review.rows[Number(change.dataset.reviewChange)];
+      if (r) { r.open = true; redraw(); }
+      return;
+    }
+
+    const rename = e.target.closest("[data-review-rename]");
+    if (rename && sheet.review) {
+      if (rename.disabled) return;
+      const r = sheet.review.rows[Number(rename.dataset.reviewRename)];
+      const chosen = r?.options.find((o) => o.player_id === r.pick);
+      if (!chosen) return;
+      rename.disabled = true;
+      rename.textContent = "Renaming…";
+      const { data, error } = await supabase.rpc("rename_player", {
+        p_player_id: chosen.player_id, p_full_name: r.row.player_name,
+      });
+      if (error) {
+        rename.disabled = false;
+        rename.textContent = `Rename them to “${r.row.player_name}”`;
+        flash(humanError(error), "error", 8000);
+        return;
+      }
+      const made = (data || [])[0];
+      chosen.name = made ? playerLabel(made) : r.row.player_name;
+      const known = squad.find((p) => p.player_id === chosen.player_id);
+      if (known) known.name = chosen.name;
+      r.renamed = true;
+      // A name is on every page this player appears on.
+      requestRebuild();
+      redraw();
+      return;
+    }
+
+    if (e.target.closest("[data-review-cancel]")) {
+      sheet.review = null;
+      redraw();
+      return;
+    }
+
+    const addAll = e.target.closest("[data-review-add]");
+    if (addAll && sheet.review) {
+      if (addAll.disabled) return;
+      await addReview(sheet.review);
       return;
     }
 
@@ -12293,11 +12886,6 @@ function wireNTDetail(match, state, { sheetKey, sheet, squad }) {
   });
 }
 
-/** "10 Tabitha Chawinga FW" -> {shirt_number, player_name, position}.
- *
- *  Both affixes are optional and the middle is the name, so a line that is
- *  just a name still works. Written for pasting a team sheet off a phone
- *  screenshot, which is how these arrive. */
 /** The minute a substitution already says this starter came off, or "".
  *
  *  Shown as the placeholder on their Off' box so the reporter can see the
@@ -12309,79 +12897,6 @@ function offMinuteFor(sheet, row) {
   const sub = sheet.find((o) => o.role === "sub_on"
     && o.replaced_player === row.player_name && o.minute_on);
   return sub ? `${sub.minute_on}'` : "";
-}
-
-function parseTeamSheet(text) {
-  const out = [];
-  // A heading changes what follows, and holds until the next one. A team sheet
-  // is written that way — "Subs:" then the bench — so reading it that way
-  // means a whole sheet pastes in one go instead of being typed into
-  // fourteen dropdowns afterwards.
-  let role = "starting";
-
-  (text || "").split("\n").forEach((line) => {
-    let rest = line.trim();
-    if (!rest) return;
-
-    if (/:$/.test(rest)) {
-      const head = rest.slice(0, -1).toLowerCase();
-      if (/sub|bench|replac/.test(head)) role = "unused_sub";
-      else if (/start|xi|line/.test(head)) role = "starting";
-      return;                                  // a heading is not a player
-    }
-
-    let rowRole = role;
-    let captain = false;
-    let yellow = false, secondYellow = false, red = false;
-    let minuteOn = "";
-    let replaced = "";
-
-    // Cards are bracketed rather than bare letters: a lone Y or R in a name is
-    // far more likely to be an initial than a booking.
-    rest = rest.replace(/\[([^\]]+)\]/g, (_, token) => {
-      const t = token.trim().toUpperCase();
-      if (t === "Y") yellow = true;
-      else if (t === "YR" || t === "Y2" || t === "2Y") secondYellow = true;
-      else if (t === "R") red = true;
-      else if (t === "C") captain = true;
-      return " ";
-    });
-
-    // "(C)" is how a captain is written on every team sheet.
-    rest = rest.replace(/\((?:c|capt(?:ain)?)\)/i, () => { captain = true; return " "; });
-
-    // "for Vanessa Chikupira" — naming who they replaced also says they came
-    // on, so the role follows from it rather than having to be set as well.
-    rest = rest.replace(/\bfor\s+(.+)$/i, (_, name) => {
-      replaced = name.trim();
-      rowRole = "sub_on";
-      return " ";
-    });
-
-    // A minute, written 62' or 62" or "on 62".
-    rest = rest.replace(/\b(?:on\s+)?(\d{1,3}(?:\+\d{1,2})?)\s*['’"]/, (_, m) => {
-      minuteOn = m; rowRole = "sub_on"; return " ";
-    });
-
-    let shirt = "";
-    const lead = /^(\d{1,2})[.)]?\s+/.exec(rest);
-    if (lead) { shirt = lead[1]; rest = rest.slice(lead[0].length); }
-
-    let position = "";
-    const tail = /\s+(GK|DF|MF|FW)\b/i.exec(rest);
-    if (tail) { position = tail[1].toUpperCase(); rest = rest.replace(tail[0], " "); }
-
-    rest = rest.replace(/\s+/g, " ").trim();
-    if (!rest) return;
-
-    out.push({
-      player_name: rest, shirt_number: shirt, position,
-      role: rowRole, captain, player_id: "",
-      minute_on: minuteOn, minute_off: "", replaced_player: replaced,
-      yellow_card: yellow, yellow_red_card: secondYellow, red_card: red,
-    });
-  });
-  return out;
 }
 
 // ── Competitions: groups, brackets and squads ────────────────────────────────
@@ -12678,7 +13193,7 @@ function wireNTCompetition(state) {
   view.querySelector("[data-squad-form]")?.addEventListener("submit", (e) => {
     e.preventDefault();
     const f = e.target;
-    const players = parseTeamSheet(f.players.value).map((p) => ({
+    const players = lp.parseTeamSheet(f.players.value).map((p) => ({
       player_name: p.player_name, shirt_number: p.shirt_number,
       position: p.position,
     }));
@@ -12926,13 +13441,13 @@ function opsGlance(comps) {
 
 // ── Backlog rows ─────────────────────────────────────────────────────────────
 
-function opsMatchRow(m, names) {
+function opsMatchRow(m, names, extra = "") {
   const bits = [formatDate(m.date), formatKickoff(m.kickoff)].filter(Boolean);
   if (m.round_key) bits.push(m.competition_type === "cup" ? m.round_key : `md${m.round_key}`);
   const score = (m.home_goals != null && m.away_goals != null)
     ? `${m.home_goals}–${m.away_goals}` : "";
   return `
-    <a class="ops-row" href="#/m/${esc(m.public_id)}?from=${encodeURIComponent("ops")}">
+    <a class="ops-row" href="#/m/${esc(m.public_id)}?from=${encodeURIComponent("ops")}${esc(extra)}">
       <span class="ops-row-teams">${esc(m.home_name)} <span class="ops-row-v">v</span> ${esc(m.away_name)}</span>
       <span class="ops-row-score">${esc(score)}</span>
       <span class="ops-row-meta">${esc(names[m.competition_id] || m.competition_id)}
@@ -14168,8 +14683,10 @@ async function renderOps(params) {
                 <h2 class="rp-group-head">${esc(name)} · no team sheet
                   <span class="rp-count">${rows.length}</span></h2>
                 <p class="rp-hint">${esc(names[comp] || comp)}, newest first.
-                  Open a match and use “Fill in from a match report”.</p>
-                ${rows.map((m) => opsMatchRow(m, names)).join("")
+                  Open a match, paste the sheet (or use “Fill in from a match
+                  report” for a screenshot), save — and “Next missing” takes
+                  you straight to the one after it.</p>
+                ${rows.map((m) => opsMatchRow(m, names, lineupWalkQuery(comp, team))).join("")
                   || '<p class="rp-empty">Every played match has this team’s sheet.</p>'}`);
         return;
       }

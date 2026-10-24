@@ -61,7 +61,16 @@ const tokens = (name) => normalizeName(name).split(" ").filter(Boolean);
  *  because the abbreviated one is as likely to be the saved name as the
  *  printed one. Two full first names never match — "John Banda" is not Peter
  *  Banda however few Bandas there are. */
-function compatible(a, b) {
+// "Banda Jnr" is a Banda. A suffix is how a club tells two of them apart, so
+// it is set aside only to find the surname, and preferred again when it is
+// there — see personCandidates.
+const SUFFIX = /^(jnr|jr|junior|snr|sr)$/;
+const suffixOf = (t) => (t.length > 1 && SUFFIX.test(t[t.length - 1]) ? t[t.length - 1] : "");
+const core = (t) => (suffixOf(t) ? t.slice(0, -1) : t);
+
+function compatible(rawA, rawB) {
+  const a = core(rawA);
+  const b = core(rawB);
   if (!a.length || !b.length || a[a.length - 1] !== b[b.length - 1]) return false;
   if (a.length === 1 || b.length === 1) return true;
   const initialOf = (x, y) => x.length === 2 && x[0].length === 1
@@ -80,15 +89,32 @@ function compatible(a, b) {
  *  `nameOf` reads a candidate's name, so the same rule matches sheet rows,
  *  squad chips and saved goals. */
 export function findPerson(raw, people, nameOf = (p) => p.name) {
+  const hits = personCandidates(raw, people, nameOf);
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/** Everyone in `people` this printed name could be: the exact matches if
+ *  there are any, otherwise every compatible() one. findPerson is this with
+ *  "exactly one" on the end; the paste box wants the list itself, because two
+ *  Mwales are a question the shirt number beside the name can answer.
+ *
+ *  A printed suffix narrows the list to the people who carry it — "Banda Jnr"
+ *  against Peter Banda and John Banda Jnr is John — and is ignored when nobody
+ *  does, because a graphic adds "Jnr" that the registry never had. */
+export function personCandidates(raw, people, nameOf = (p) => p.name) {
   const want = tokens(raw);
-  if (!want.length) return null;
+  if (!want.length) return [];
   const pool = (people || []).map((p) => ({ p, t: tokens(nameOf(p)) }))
     .filter((c) => c.t.length);
-  const one = (hits) => (hits.length === 1 ? hits[0].p : null);
 
   const exact = pool.filter((c) => c.t.join(" ") === want.join(" "));
-  if (exact.length) return one(exact);
-  return one(pool.filter((c) => compatible(want, c.t)));
+  if (exact.length) return exact.map((c) => c.p);
+  let hits = pool.filter((c) => compatible(want, c.t));
+  const suffix = suffixOf(want);
+  if (suffix && hits.some((c) => suffixOf(c.t) === suffix)) {
+    hits = hits.filter((c) => suffixOf(c.t) === suffix);
+  }
+  return hits.map((c) => c.p);
 }
 
 // ── Which match, which side ──────────────────────────────────────────────────
@@ -136,7 +162,7 @@ export function reportFor(extracted, resolved, matchId) {
 
 const teamKey = (name) => String(name || "").normalize("NFD")
   .replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-const sameTeam = (a, b) => {
+export const sameTeam = (a, b) => {
   const x = teamKey(a);
   const y = teamKey(b);
   return Boolean(x && y) && (x === y
@@ -321,28 +347,71 @@ export function sheetsFromReport(source, ctx) {
   return { sheets, unplaced };
 }
 
+/** Who in this side's squad each sheet row is.
+ *
+ *  Returns one {kind, player, options} per row, in order:
+ *
+ *    squad    one person in the squad — by name, or by name AND the shirt
+ *             when the name alone fits two ("23 MWALE" with two Mwales).
+ *    choose   several squad members fit and the shirt does not settle it.
+ *    none     nobody in the squad fits; the screen asks the database next.
+ *
+ *  A shirt on its own never links anyone: numbers are reissued, and a wrong
+ *  link looks exactly like a right one. ONE PLAYER, ONE ROW — someone already
+ *  claimed by a row is no longer a candidate for the others, which is what
+ *  lets the second of two Mwales resolve once the first has. Settled to a
+ *  fixed point, so the answer does not depend on which row was printed first. */
+export function matchRowsToSquad(rows, squad) {
+  const known = (squad || []).filter((p) => p.player_id);
+  const cands = rows.map((r) => {
+    const hits = personCandidates(r.player_name, known);
+    if (hits.length <= 1 || !r.shirt_number) return hits;
+    const byShirt = hits.filter((p) => String(p.shirt_number || "") === r.shirt_number);
+    return byShirt.length === 1 ? byShirt : hits;
+  });
+  const chosen = rows.map(() => null);
+  const taken = new Set();
+  let moved = true;
+  while (moved) {
+    moved = false;
+    cands.forEach((hits, i) => {
+      if (chosen[i]) return;
+      const free = hits.filter((p) => !taken.has(p.player_id));
+      if (free.length === 1) {
+        chosen[i] = free[0];
+        taken.add(free[0].player_id);
+        moved = true;
+      }
+    });
+  }
+  return rows.map((_r, i) => {
+    if (chosen[i]) return { kind: "squad", player: chosen[i], options: [] };
+    const free = cands[i].filter((p) => !taken.has(p.player_id));
+    return free.length > 1
+      ? { kind: "choose", player: null, options: free }
+      : { kind: "none", player: null, options: [] };
+  });
+}
+
 /** Link sheet rows to players this club has already fielded.
  *
- *  The paste box's exact-name link (app.js), widened to findPerson's rules.
- *  A squad entry with no player_id is someone known only by a name, and is
- *  not something to link TO. A linked row also takes the squad's shirt and
- *  position where the report gave none — the paste box's behaviour exactly.
- *  Returns how many rows it linked. */
+ *  The paste box's rule (matchRowsToSquad): findPerson's, with the printed
+ *  shirt as the tiebreak between two people of one surname. A squad entry
+ *  with no player_id is someone known only by a name, and is not something to
+ *  link TO. A linked row also takes the squad's shirt and position where the
+ *  report gave none. Rows already linked keep their link and take their
+ *  player out of the running. Returns how many rows it linked. */
 export function linkToSquad(rows, squad) {
-  const known = (squad || []).filter((p) => p.player_id);
   const taken = new Set(rows.map((r) => r.player_id).filter(Boolean));
+  const open = rows.filter((r) => !r.player_id);
+  const free = (squad || []).filter((p) => p.player_id && !taken.has(p.player_id));
   let linked = 0;
-  rows.forEach((row) => {
-    if (row.player_id) return;
-    const hit = findPerson(row.player_name, known);
-    // One player, one row: two printed names resolving to the same person is
-    // a sheet that would be refused for naming him twice, so the second stays
-    // a name for the reporter to look at.
-    if (!hit || taken.has(hit.player_id)) return;
-    row.player_id = hit.player_id;
-    row.shirt_number = row.shirt_number || hit.shirt_number || "";
-    row.position = row.position || hit.position || "";
-    taken.add(hit.player_id);
+  matchRowsToSquad(open, free).forEach((m, i) => {
+    if (m.kind !== "squad") return;
+    const row = open[i];
+    row.player_id = m.player.player_id;
+    row.shirt_number = row.shirt_number || m.player.shirt_number || "";
+    row.position = row.position || m.player.position || "";
     linked += 1;
   });
   return linked;

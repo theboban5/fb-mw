@@ -454,6 +454,46 @@ class MatchDetailTest(unittest.TestCase):
         self.assertEqual(status, 201, rows)
         self.assertEqual(len(rows), 11)
 
+    def test_a_saved_sheet_adds_its_players_to_the_squad(self):
+        """0059: everyone a sheet identifies joins the team's registrations for
+        the match's season — and a later sheet without them does not take them
+        back out, because save_lineup replaces a SIDE, not a squad."""
+        status, made = self.create_player("a", f"Sheet Squadtest {self.identities.suffix}",
+                                          force=True)
+        self.assertEqual(status, 200, made)
+        player_id = made[0]["player_id"]
+        match = self.match_a
+        team = match["home_team_id"]
+        reg = {"player_id": f"eq.{player_id}", "team_id": f"eq.{team}"}
+        try:
+            def save(rows):
+                return call("rpc/save_lineup", token=self.tokens["a"], method="POST",
+                            body={"p_match_id": match["match_id"], "p_team_id": team,
+                                  "p_rows": rows})
+            status, body = save([
+                {"player_name": "Named Squadtest", "player_id": player_id,
+                 "role": "unused_sub"},
+                {"player_name": "Plain Name Only", "role": "starting"},
+            ])
+            self.assertEqual(status, 200, body)
+            rows = sb.select("registrations", params=reg, require_secret=True)
+            self.assertEqual(len(rows), 1, rows)
+            self.assertEqual(rows[0]["season_id"], match["season_id"])
+            # Blank on purpose: a registered shirt would beat the tally.
+            self.assertEqual(rows[0]["shirt_number"], "")
+
+            status, body = save([{"player_name": "Plain Name Only", "role": "starting"}])
+            self.assertEqual(status, 200, body)
+            self.assertEqual(len(sb.select("registrations", params=reg,
+                                           require_secret=True)), 1)
+        finally:
+            for table in ("registrations", "lineups"):
+                sb._request("DELETE", table, query=f"player_id=eq.{player_id}",
+                            headers={"Prefer": "return=minimal"}, require_secret=True)
+            sb._request("DELETE", "lineups", query=f"match_id=eq.{match['match_id']}",
+                        headers={"Prefer": "return=minimal"}, require_secret=True)
+            self.drop_player(player_id)
+
     def test_anon_can_read_detail_but_not_write_it(self):
         self.incident("a", self.match_a)
         status, rows = call("match_incidents?select=*", token=None)
