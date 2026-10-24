@@ -193,6 +193,26 @@ fixture and clean up, and they never mutate a real match.
 
 ## Recent work (Oct 2026)
 
+A merge stopped the site, migration `0060` + `validate.py`:
+
+- **`merge_players` deletes the loser, and check 8 (drift) made that fatal**
+  — 0032's fixture-delete trap one table over. On 24 Oct a stray "Kumwembe"
+  was merged into the real one and every build failed on "players player_id
+  'CAF_MW_001235' … is gone"; a matchday's results published in the portal
+  and never reached the site. `check_drift` now reads a missing player as a
+  WARNING when an alias says `merged from <that id>` on a player who still
+  exists (`_merged_players`) — merge_players writes exactly that and nothing
+  else does. Any other vanished player is still an ERROR.
+- **It had only cleared by accident**: `next_player_id` was max+1, so the
+  next player created was handed the freed id and the check saw it "come
+  back" — CAF_MW_001235 is now Moses Shaba. 0060 gives it a sequence started
+  past every live id and every merged-away one, never behind the table
+  either. Ids now have gaps; nothing reads meaning into the number.
+- `#/players` also creates a player now (type the name, pick league + team →
+  `create_player` then `save_squad_player`), and the match screen shows a
+  sheet row under the player's name rather than the one typed on the sheet
+  (`canonicalSheetNames`, `clubSquad`), so a rename reaches the editor.
+
 Backfilling team sheets fast, migration `0059` — the match screen's paste box,
 `#/squad`, and `#/ops?tab=lineups`:
 

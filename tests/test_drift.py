@@ -93,6 +93,41 @@ class DriftTest(unittest.TestCase):
         self.snapshot(matches=match_csv(SCHEDULED))
         self.assertEqual(len(self.drift(matches=match_csv())), 1)
 
+    # ── merge_players (0022) deletes the loser ───────────────────────────────
+
+    PLAYERS = "player_id,full_name\n"
+    ALIASES = "alias_text,entity_type,entity_id,context\n"
+
+    def test_a_merged_player_is_forgiven(self):
+        """24 Oct 2026: one merge stopped every build until an id was reused."""
+        self.snapshot(players=self.PLAYERS + "P1,Kumwembe\nP2,Gift Kumwembe\n")
+        self.assertEqual(self.drift(
+            players=self.PLAYERS + "P2,Gift Kumwembe\n",
+            aliases=self.ALIASES + "Kumwembe,player,P2,merged from P1\n"), [])
+
+    def test_a_player_deleted_without_a_merge_is_still_an_error(self):
+        self.snapshot(players=self.PLAYERS + "P1,Kumwembe\nP2,Gift Kumwembe\n")
+        errors = self.drift(players=self.PLAYERS + "P2,Gift Kumwembe\n",
+                            aliases=self.ALIASES)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("P1", errors[0])
+
+    def test_a_merge_into_nobody_is_not_evidence(self):
+        """The winner must exist, or the alias proves nothing."""
+        self.snapshot(players=self.PLAYERS + "P1,Kumwembe\n")
+        errors = self.drift(
+            players=self.PLAYERS,
+            aliases=self.ALIASES + "Kumwembe,player,P2,merged from P1\n")
+        self.assertEqual(len(errors), 1)
+
+    def test_an_ordinary_alias_forgives_nothing(self):
+        """A rename's old spelling is an alias too, with another context."""
+        self.snapshot(players=self.PLAYERS + "P1,Kumwembe\nP2,Gift Kumwembe\n")
+        errors = self.drift(
+            players=self.PLAYERS + "P2,Gift Kumwembe\n",
+            aliases=self.ALIASES + "Kumwembe,player,P2,renamed\n")
+        self.assertEqual(len(errors), 1)
+
     # ── everything the check always did ──────────────────────────────────────
 
     def test_a_deleted_club_is_an_error(self):

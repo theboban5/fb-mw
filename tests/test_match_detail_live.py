@@ -244,6 +244,25 @@ class MatchDetailTest(unittest.TestCase):
         found = {r["player_id"] for r in self.search_players("a", "Zzztest Phiri")[1]}
         self.assertLessEqual({first, second}, found)
 
+    def test_a_deleted_players_id_is_never_handed_out_again(self):
+        """0060. A merge deletes the loser, and max+1 then gave the next new
+        player the loser's id: CAF_MW_001235 was Kumwembe, then Moses Shaba.
+
+        The newest player is the one deleted here, which is the only case
+        max+1 ever reused — and exactly the quick merge of a duplicate typed
+        a minute ago."""
+        status, body = self.create_player("a", f"Zzztest Reuse {self.identities.suffix}")
+        self.assertEqual(status, 200, body)
+        gone = body[0]["player_id"]
+        self.drop_player(gone)
+
+        status, body = self.create_player("a", f"Zzztest Reuse Two {self.identities.suffix}")
+        self.assertEqual(status, 200, body)
+        fresh = body[0]["player_id"]
+        self.addCleanup(self.drop_player, fresh)
+        self.assertNotEqual(fresh, gone)
+        self.assertGreater(fresh, gone)    # zero-padded, so text order is number order
+
     def test_search_names_the_club_a_player_has_played_for(self):
         """The fact that tells two players of one name apart."""
         status, body = self.create_player("a", "Zzztest Mkandawire")

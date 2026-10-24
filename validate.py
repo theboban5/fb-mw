@@ -694,6 +694,27 @@ def _deletable_fixture(match_id, previous_rows, previous_texts):
     return True
 
 
+MERGED_FROM = "merged from "
+
+
+def _merged_players(texts):
+    """{loser_id: winner_id} for every merge the fetch records.
+
+    merge_players files the loser's name on the winner with the context
+    "merged from <loser_id>". The winner must still exist: an alias pointing
+    at nobody is not evidence that anything was merged into anyone."""
+    if "aliases" not in texts or "players" not in texts:
+        return {}
+    live = {row.get("player_id", "") for _i, row in _non_blank_rows(texts["players"])}
+    merged = {}
+    for _i, row in _non_blank_rows(texts["aliases"]):
+        context = row.get("context", "")
+        if (row.get("entity_type") == "player" and context.startswith(MERGED_FROM)
+                and row.get("entity_id", "") in live):
+            merged[context[len(MERGED_FROM):].strip()] = row["entity_id"]
+    return merged
+
+
 def check_drift(texts, canonical_dir):
     """Check 8: every ID present in the previous snapshot must still exist.
 
@@ -716,9 +737,24 @@ def check_drift(texts, canonical_dir):
     than being stopped. That is the smaller loss — the row held a date and two
     team ids and nothing a reporter typed, and `data/canonical/` keeps it in
     the audit log either way.
+
+    WHAT WAS WRONG, AGAIN. merge_players (0022) deletes the loser, so the same
+    trap was waiting one table over: on 24 Oct 2026 an admin merged a stray
+    "Kumwembe" into the player he was, and every build after it failed on
+    "players player_id 'CAF_MW_001235' ... is gone" — the matchday's results
+    published in the portal and never reached the site. It cleared only by
+    accident: next_player_id is max+1, so the next player created was handed
+    the freed id and the check saw it "come back".
+
+    So a missing player is a WARNING when the fetch says it was merged: an
+    alias reading "merged from <that id>" (merge_players writes exactly that,
+    and nothing else does) on a player who still exists. Everything the loser
+    was named on was repointed in the same transaction, so nothing dangles; a
+    player deleted any other way is still an ERROR.
     """
     errors = []
     warnings = []
+    merged = _merged_players(texts)
     previous_texts = {}
     for tab in ("goals", "lineups"):
         path = os.path.join(canonical_dir, f"{tab}.csv")
@@ -742,6 +778,12 @@ def check_drift(texts, canonical_dir):
                     f"drift: matches match_id {value!r} was deleted since the "
                     f"previous snapshot — a scheduled fixture with no goals and "
                     f"no team sheet, which is what delete_fixture removes"
+                )
+                continue
+            if tab == "players" and value in merged:
+                warnings.append(
+                    f"drift: players player_id {value!r} was merged into "
+                    f"{merged[value]!r} since the previous snapshot"
                 )
                 continue
             errors.append(
