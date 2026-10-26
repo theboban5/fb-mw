@@ -369,7 +369,7 @@ MW_MDU20_2627_030,MW_MDU20,MW_2026_27,md_4,4,2026-08-05,14:30,MW_CHIB_G,MW_KU2_M
 MW_WP_2526_032,MW_WP,MW_2025_26,md_7,7,2025-10-11,,,MW_ASA_W1,MW_MDF_W1,2,0,played,,fa,,,,confirmed,,,,,,,,,,,,,,,,,
 MW_MDU20_2627_031,MW_MDU20,MW_2026_27,md_5,5,2026-08-07,08:00,MW_KATOTO,MW_MCHY_M1,MW_CU2_M1,1,2,played,,reporter,https://www.facebook.com/share/p/1H3niGQwJS/,MW_REP_004,2026-10-26T20:28:41.989942+00:00,confirmed,MW_REP_004,2026-10-26T20:28:41.989942+00:00,,,,,,,,,,,,,,,
 MW_WP_2526_033,MW_WP,MW_2025_26,md_7,7,2025-10-12,,,MW_MW_W1,MW_BULL_W1,0,1,played,,fa,,,,confirmed,,,,,,,,,,,,,,,,,
-MW_MDU20_2627_032,MW_MDU20,MW_2026_27,md_5,5,2026-08-07,10:00,MW_KATOTO,MW_CRS2_M1,MW_VA_M1,,,scheduled,,reporter,https://www.facebook.com/share/p/1H3niGQwJS/,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_MDU20_2627_032,MW_MDU20,MW_2026_27,md_5,5,2026-08-07,10:00,MW_KATOTO,MW_CRS2_M1,MW_VA_M1,2,1,played,,reporter,https://www.facebook.com/share/p/1H3niGQwJS/,MW_REP_004,2026-10-26T20:30:13.258323+00:00,confirmed,MW_REP_004,2026-10-26T20:30:13.258323+00:00,,,,,,,,,,,,,,,
 MW_WP_2526_034,MW_WP,MW_2025_26,md_7,7,2025-10-12,,,MW_TA_W1,MW_MKA_W1,1,1,played,,fa,,,,confirmed,,,,,,,,,,,,,,,,,
 MW_MDU20_2627_033,MW_MDU20,MW_2026_27,md_5,5,2026-08-07,12:30,MW_CHIB_G,MW_CP_M1,MW_MT2_M1,,,scheduled,,reporter,https://www.facebook.com/share/p/1H3niGQwJS/,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_WP_2526_035,MW_WP,MW_2025_26,md_7,7,2025-10-12,,,MW_SS_W1,MW_CSUW_W1,2,1,played,,fa,,,,confirmed,,,,,,,,,,,,,,,,,
