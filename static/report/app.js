@@ -13684,27 +13684,35 @@ const STATS_FIELDS = [
   "g_open_play", "g_own_goal", "g_untyped", "referee_name", "referee_id",
 ].join(",");
 
+// One row per goal that ranks (0063): own goals are not in it.
+const STATS_GOAL_FIELDS = [
+  "goal_id", "match_id", "competition_id", "team_id", "team_name", "player_id",
+  "player_name", "goal_type", "assist_player_id", "assist_name",
+].join(",");
+
 // PostgREST caps a response at 1,000 rows, and a whole season across every
 // competition is already past that. Paged rather than raised, because the cap
 // is a server setting this file cannot see.
 const STATS_PAGE = 1000;
 
-/** The rows for one period query, or null when the view is not live yet (a
- *  migration is a separate deploy from git — loadOpsCompare's case). Cached
- *  per query until the next publish clears statsCache. */
-function loadStatsRows(key, narrow) {
+/** The rows of one stats view for one period query, or null when the view
+ *  is not live yet (a migration is a separate deploy from git —
+ *  loadOpsCompare's case). Cached per view and query until the next publish
+ *  clears statsCache. */
+function loadStatsRows(viewName, fields, key, narrow) {
+  key = `${viewName}|${key}`;
   if (!statsCache.has(key)) {
     const load = (async () => {
       const rows = [];
       for (let from = 0; ; from += STATS_PAGE) {
         const { data, error } = await narrow(
-          supabase.from("stats_match_facts").select(STATS_FIELDS))
+          supabase.from(viewName).select(fields))
           .order("date", { ascending: false })
-          .order("match_id")
+          .order(viewName === "stats_goal_facts" ? "goal_id" : "match_id")
           .range(from, from + STATS_PAGE - 1);
         if (error) {
           if (error.code === "42P01" || error.code === "PGRST205"
-              || /stats_match_facts/.test(error.message || "")) {
+              || error.message?.includes(viewName)) {
             console.warn("[everyleague] stats view unavailable:", error);
             return null;
           }
@@ -13754,6 +13762,7 @@ async function renderStats(params) {
     comp: params.get("comp") || "",
     round: params.get("round") || "",
     rows: null,          // the loaded period, before the competition filter
+    goals: null,         // its goal rows (0063), or null when unavailable
     loading: false,
     missing: false,
   };
@@ -13764,8 +13773,8 @@ async function renderStats(params) {
 
   h(`<a class="rp-btn is-quiet" href="#/" style="margin-top:0">&larr; My matches</a>
      <h1 class="rp-login-head">Stats</h1>
-     <p class="rp-login-sub">Goals, clean sheets and cards for any period and
-       any mix of competitions — played matches only.</p>
+     <p class="rp-login-sub">Goals, scorers, clean sheets and cards for any
+       period and any mix of competitions — played matches only.</p>
      <div data-stats></div>`);
   const host = view.querySelector("[data-stats]");
 
@@ -13813,11 +13822,22 @@ async function renderStats(params) {
     state.loading = true;
     draw();
     try {
-      const rows = await loadStatsRows(pq.key, pq.narrow);
+      // The scorers are a second view and an optional one: if they fail, or
+      // 0063 is not live yet, every other figure on the screen still stands.
+      const [rows, goals] = await Promise.all([
+        loadStatsRows("stats_match_facts", STATS_FIELDS, pq.key, pq.narrow),
+        loadStatsRows("stats_goal_facts", STATS_GOAL_FIELDS, pq.key, pq.narrow)
+          .catch((error) => {
+            console.warn("[everyleague] stats scorers unavailable:", error);
+            return null;
+          }),
+      ]);
       state.missing = rows === null;
       state.rows = rows || [];
+      state.goals = goals;
     } catch (error) {
       state.rows = [];
+      state.goals = null;
       flash(humanError(error), "error");
     }
     state.loading = false;
@@ -13934,7 +13954,17 @@ async function renderStats(params) {
     }
 
     const s = st.summarize(rows);
-    const lines = st.headlines(s, { names, allSelected, when });
+    // Goals belong to the matches in scope, whichever way the scope was
+    // chosen (period, competitions, round), so they are filtered by match
+    // rather than by repeating each filter.
+    const inScope = new Set(rows.map((r) => r.match_id));
+    const goals = state.goals ? state.goals.filter((g) => inScope.has(g.match_id)) : null;
+    const coverage = goals ? st.scorerCoverage(rows, goals) : null;
+    const scorers = goals ? st.topScorers(goals) : null;
+    const lines = st.headlines(s, {
+      names, allSelected, when,
+      scorers: scorers ? { ...scorers, complete: coverage.complete } : null,
+    });
 
     const tile = (num, label) => `<span class="ops-urgent-item is-plain">
       <span class="ops-urgent-n">${esc(String(num))}</span>
@@ -13969,6 +13999,42 @@ async function renderStats(params) {
           `${c.cleanSheets} clean sheet${c.cleanSheets === 1 ? "" : "s"}`,
           c.sheetSides ? `${c.yellow} yellow · ${c.sentOff} red (${c.sheetSides} of ${c.sides} sheets)` : "",
         ].filter(Boolean).join(" · "))}</span></div>`).join("")}` : "";
+
+    // ── Players. Always drawn when the view answered, empty or not: "no
+    //    scorer named for any goal" is the reason to go and name them.
+    const playerLink = (id, name) => (id
+      ? `<a href="/players/${esc(id)}.html" target="_blank" rel="noopener">${esc(name)}</a>`
+      : esc(name));
+    const moreText = (more, noun) => (more.length
+      ? `<p class="rp-hint">Also ${more.map(([v, count]) =>
+          `${count} more on ${v} ${v === 1 ? noun : `${noun}s`}`).join(", ")}.</p>` : "");
+    const assisters = goals ? st.topAssisters(goals) : null;
+    const playerBlock = !goals ? "" : `
+      <h3 class="rp-group-head">Top scorers</h3>
+      <p class="rp-hint">${coverage.goals
+        ? `Scorers named for ${coverage.named} of ${coverage.goals} goals${
+            coverage.complete ? " — every goal." : "."}${coverage.short.length && !coverage.complete
+            ? ` Short in ${coverage.short.slice(0, 4).map((c) =>
+                `${c.name} (${c.named} of ${c.goals})`).join(", ")}${
+                coverage.short.length > 4 ? ` and ${coverage.short.length - 4} more` : ""}.`
+            : ""} Own goals never count here.`
+        : "No goals in this selection."}</p>
+      ${scorers.rows.map((p) => `<div class="ops-row">
+        <span class="ops-row-teams"><span class="ops-rank">${p.rank}</span>
+          ${playerLink(p.id, p.name)}</span>
+        <span class="ops-row-score">${esc(String(p.goals))}</span>
+        <span class="ops-row-meta">${esc([p.team,
+          p.penalties ? `${p.penalties} pen${p.penalties === 1 ? "" : "s"}` : ""]
+          .filter(Boolean).join(" · "))}</span></div>`).join("")
+        || (coverage.goals ? '<p class="rp-empty">No scorer is named for any goal in this selection yet.</p>' : "")}
+      ${moreText(scorers.more, "goal")}
+      ${assisters.rows.length ? `<h3 class="rp-group-head">Assists</h3>
+        ${assisters.rows.map((p) => `<div class="ops-row">
+          <span class="ops-row-teams"><span class="ops-rank">${p.rank}</span>
+            ${playerLink(p.id, p.name)}</span>
+          <span class="ops-row-score">${esc(String(p.assists))}</span>
+          <span class="ops-row-meta">${esc(p.team)}</span></div>`).join("")}
+        ${moreText(assisters.more, "assist")}` : ""}`;
 
     // ── How the goals went in. The bars share the typed goals between them;
     //    the untyped ones are said, not drawn, because a giant "not recorded"
@@ -14038,6 +14104,7 @@ async function renderStats(params) {
       <div class="ops-urgent">${tiles}</div>
       <p class="rp-hint">${cardNote}</p>
       ${compRows}
+      ${playerBlock}
       ${goalTypes}
       ${matchBlocks}
       ${teamBlocks}

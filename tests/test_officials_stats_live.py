@@ -1,4 +1,4 @@
-"""0061 and 0062 over the network, with real identities.
+"""0061, 0062 and 0063 over the network, with real identities.
 
   * skip_match_officials records "published without match officials" only for
     a match the caller may report and only while its officials are blank —
@@ -144,6 +144,38 @@ class StatsViewTest(unittest.TestCase):
             sum(r["home_red"] + r["away_red"] + r["home_second_yellow"]
                 + r["away_second_yellow"] for r in rows),
             sum(1 for l in lineups if l["red_card"] or l["yellow_red_card"]))
+
+    def test_goal_view_follows_the_scorer_table_rules(self):
+        """0063: anon refused, inactive empty; own goals never in it, and an
+        unidentified scorer has a NULL id and the typed name."""
+        status, body = _call("stats_goal_facts?select=goal_id&limit=1", token=None)
+        self.assertGreaterEqual(status, 400, f"anon read scorers: {body!r}")
+        status, body = _call("stats_goal_facts?select=goal_id&limit=1",
+                             token=self.tokens["inactive"])
+        self.assertEqual((status, body), (200, []))
+
+        season = [s for s in sb.select("seasons", columns="season_id,status")
+                  if s["status"] == "active"][0]["season_id"]
+        comp = "MW_SL"
+        played = {m["match_id"] for m in sb.select(
+            "matches", columns="match_id,status,source_type,home_goals",
+            params={"competition_id": f"eq.{comp}", "season_id": f"eq.{season}"},
+            require_secret=True)
+            if m["status"] == "played" and m["source_type"] != "placeholder"
+            and m["home_goals"] is not None}
+        expected = [g for g in sb.select(
+            "goals", columns="goal_id,match_id,player_id,reported_player_name,goal_type",
+            require_secret=True)
+            if g["match_id"] in played and g["goal_type"] != "own_goal"
+            and not (g["player_id"] == "CAF_MW_UNKNOWN"
+                     and not g["reported_player_name"].strip())]
+        status, rows = _call(
+            f"stats_goal_facts?select=goal_id,player_id,goal_type"
+            f"&competition_id=eq.{comp}&season_id=eq.{season}", token=self.tokens["a"])
+        self.assertEqual(status, 200)
+        self.assertEqual({r["goal_id"] for r in rows}, {g["goal_id"] for g in expected})
+        self.assertFalse([r for r in rows if r["goal_type"] == "own_goal"])
+        self.assertFalse([r for r in rows if r["player_id"] == "CAF_MW_UNKNOWN"])
 
 
 if __name__ == "__main__":

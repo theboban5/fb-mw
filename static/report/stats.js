@@ -286,6 +286,126 @@ export function topMatches(rows, limit = 3) {
   };
 }
 
+// ── Players ──────────────────────────────────────────────────────────────────
+// Over rows of stats_goal_facts (0063): one row per goal that ranks, own goals
+// already left out by the view.
+
+/** Who a goal row is. An identified scorer by id; an unidentified one by the
+ *  typed name AND the team, which is src/scorers.py's key: two "J. Banda"s on
+ *  two clubs are two people until someone says otherwise, and the same
+ *  spelling twice on one club is one. */
+const personKey = (id, name, teamId) =>
+  id ? `id:${id}` : `name:${String(name || "").trim().toLowerCase()}|${teamId}`;
+
+/** Rank tallies the way the site's scorer tables do: most first, then name;
+ *  joint places share a rank (1, 2, 2, 4).
+ *
+ *  The list stops at `limit`, extended through anyone tied on the cutoff —
+ *  unless that tie would take it past `cap`, which on a weekend it easily
+ *  does (forty players on one goal each). Then the whole tied tier is left
+ *  out and summarised in `more` instead: [(goals, players)], e.g. [[1, 40]]
+ *  for "40 more on 1 goal". Cutting a tie in half would rank one of two
+ *  equal players and drop the other by alphabet. */
+function ranked(entries, value, { limit = 10, cap = 15 } = {}) {
+  const ordered = entries.filter((e) => value(e) > 0)
+    .sort((a, b) => value(b) - value(a) || a.name.localeCompare(b.name));
+  let kept = ordered;
+  if (ordered.length > limit) {
+    const cutoff = value(ordered[limit - 1]);
+    kept = ordered.filter((e) => value(e) >= cutoff);
+    if (kept.length > cap) kept = ordered.filter((e) => value(e) > cutoff);
+  }
+  const rows = [];
+  kept.forEach((e, i) => {
+    const rank = i > 0 && value(e) === value(kept[i - 1]) ? rows[i - 1].rank : i + 1;
+    rows.push({ ...e, rank });
+  });
+  const tiers = new Map();
+  ordered.slice(kept.length).forEach((e) => {
+    tiers.set(value(e), (tiers.get(value(e)) || 0) + 1);
+  });
+  return { rows, more: [...tiers.entries()].sort((a, b) => b[0] - a[0]) };
+}
+
+const teamsText = (teams) => [...teams.values()]
+  .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name))
+  .map((t) => t.name).join(", ");
+
+/** The scorer table for whatever goal rows are in scope. Each row carries
+ *  the team(s) the goals were for — a player who moved mid-period scored for
+ *  both, and naming only one would be wrong about the other. */
+export function topScorers(goals, opts) {
+  const people = new Map();
+  goals.forEach((g) => {
+    const key = personKey(g.player_id, g.player_name, g.team_id);
+    if (!people.has(key)) {
+      people.set(key, { key, id: g.player_id || "", name: g.player_name || "",
+                        goals: 0, penalties: 0, teams: new Map() });
+    }
+    const p = people.get(key);
+    p.goals += 1;
+    if (g.goal_type === "penalty") p.penalties += 1;
+    const t = p.teams.get(g.team_id) || { name: g.team_name || g.team_id, n: 0 };
+    t.n += 1;
+    p.teams.set(g.team_id, t);
+  });
+  const out = ranked([...people.values()], (p) => p.goals, opts);
+  out.rows = out.rows.map((p) => ({ ...p, team: teamsText(p.teams) }));
+  return out;
+}
+
+/** Assists, by id only: there is no typed assister to fall back on (0063). */
+export function topAssisters(goals, opts) {
+  const people = new Map();
+  goals.forEach((g) => {
+    if (!g.assist_player_id) return;
+    const key = `id:${g.assist_player_id}`;
+    if (!people.has(key)) {
+      people.set(key, { key, id: g.assist_player_id, name: g.assist_name || g.assist_player_id,
+                        assists: 0, teams: new Map() });
+    }
+    const p = people.get(key);
+    p.assists += 1;
+    // An assister is the scorer's teammate, so the goal's team is theirs.
+    const t = p.teams.get(g.team_id) || { name: g.team_name || g.team_id, n: 0 };
+    t.n += 1;
+    p.teams.set(g.team_id, t);
+  });
+  const out = ranked([...people.values()], (p) => p.assists, opts);
+  out.rows = out.rows.map((p) => ({ ...p, team: teamsText(p.teams) }));
+  return out;
+}
+
+/** How many of the goals in scope have a scorer anyone could rank: the goal
+ *  rows that reached the scorer view, plus own goals (which have a scorer,
+ *  they just never rank). Per competition too, because "scorers named for
+ *  140 of 300 goals" over two leagues usually means one league has all of
+ *  them and the other none, and that is the sentence worth printing. */
+export function scorerCoverage(matchRows, goals) {
+  const byComp = new Map();
+  const touch = (id, name) => {
+    if (!byComp.has(id)) byComp.set(id, { id, name: name || id, goals: 0, named: 0 });
+    return byComp.get(id);
+  };
+  matchRows.forEach((r) => {
+    const c = touch(r.competition_id, r.competition_name);
+    c.goals += n(r.home_goals) + n(r.away_goals);
+    c.named += n(r.g_own_goal);
+  });
+  goals.forEach((g) => {
+    const c = byComp.get(g.competition_id);
+    if (c) c.named += 1;    // a goal on a match outside scope is not this scope's
+  });
+  const comps = [...byComp.values()];
+  const total = comps.reduce((a, c) => a + c.goals, 0);
+  const named = comps.reduce((a, c) => a + Math.min(c.named, c.goals), 0);
+  return {
+    goals: total, named, complete: total > 0 && named >= total,
+    short: comps.filter((c) => c.named < c.goals)
+      .sort((a, b) => (a.named / a.goals) - (b.named / b.goals) || b.goals - a.goals),
+  };
+}
+
 // ── The sentences ────────────────────────────────────────────────────────────
 
 const plural = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
@@ -307,12 +427,25 @@ export function scopeText({ names = [], allSelected = false } = {}) {
  *  sheet. Otherwise it says how many matches it is counting, because "4 red
  *  cards this weekend" built from two team sheets is a false statement about
  *  every other match, and this is the text that gets posted publicly. */
-export function headlines(s, { names = [], allSelected = false, when = "" } = {}) {
+export function headlines(s, { names = [], allSelected = false, when = "",
+                                scorers = null } = {}) {
   if (!s.matches) return [];
   const tail = [scopeText({ names, allSelected }), when].filter(Boolean).join(" · ");
   const line = (text) => (tail ? `${text} · ${tail}` : text);
   const out = [line(`${plural(s.goals, "goal")} in ${plural(s.matches, "match", "matches")}`
                     + (s.matches > 1 ? ` (${perMatchText(s.goalsPerMatch)} a match)` : ""))];
+  // THE TOP SCORER IS NAMED ONLY WHEN EVERY GOAL HAS A SCORER — the card
+  // rule below, for the same reason. With one goal in three named, "top
+  // scorer" is a guess, and this text gets posted. Three joint leaders at
+  // most; a fourth makes it a list, not a headline.
+  const leaders = scorers?.complete ? scorers.rows.filter((r) => r.rank === 1) : [];
+  if (leaders.length && leaders.length <= 3) {
+    const who = leaders.map((r) => (r.team ? `${r.name} (${r.team})` : r.name));
+    const list = who.length === 1 ? who[0]
+      : `${who.slice(0, -1).join(", ")} and ${who[who.length - 1]}`;
+    out.push(line(`Top scorer${leaders.length > 1 ? "s" : ""}: ${list}, `
+                  + `${plural(leaders[0].goals, "goal")}${leaders.length > 1 ? " each" : ""}`));
+  }
   out.push(line(plural(s.cleanSheets, "clean sheet")));
   if (s.sheetSides) {
     const note = s.sheetSides === s.sides ? ""

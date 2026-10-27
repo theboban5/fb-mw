@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import {
   periodRange, defaultPeriod, formatRange, summarize, byCompetition, byTeam,
   topTeams, byReferee, topMatches, headlines, scopeText,
+  topScorers, topAssisters, scorerCoverage,
 } from "../../static/report/stats.js";
 
 // A row as stats_match_facts (0062) returns it.
@@ -222,4 +223,103 @@ test("no sheets at all means no card sentence", () => {
 
 test("nothing played, nothing to say", () => {
   assert.deepEqual(headlines(summarize([]), { names: ["A"] }), []);
+});
+
+
+// ── Players (0063) ───────────────────────────────────────────────────────────
+
+// A row as stats_goal_facts returns it.
+const goal = (name, over = {}) => ({
+  goal_id: `G-${name}-${Math.random()}`, match_id: "M1",
+  competition_id: "MW_SL", season_id: "MW_2026_27", date: "2026-10-24",
+  team_id: "MW_BE", team_name: "Blue Eagles",
+  player_id: `P_${name}`, player_name: name, goal_type: "",
+  assist_player_id: null, assist_name: null,
+  ...over,
+});
+
+test("scorers rank most first, joint places share a rank", () => {
+  const { rows } = topScorers([
+    goal("Banda"), goal("Banda"), goal("Phiri"), goal("Phiri"), goal("Mwale"),
+  ]);
+  assert.deepEqual(rows.map((r) => [r.rank, r.name, r.goals]),
+                   [[1, "Banda", 2], [1, "Phiri", 2], [3, "Mwale", 1]]);
+});
+
+test("an unidentified scorer ranks by name and team, and links nothing", () => {
+  const { rows } = topScorers([
+    goal("J. Banda", { player_id: null }),
+    goal("j. banda ", { player_id: null }),
+    goal("J. Banda", { player_id: null, team_id: "MW_SIL", team_name: "Silver" }),
+  ]);
+  assert.deepEqual(rows.map((r) => [r.name, r.goals, r.id, r.team]),
+                   [["J. Banda", 2, "", "Blue Eagles"], ["J. Banda", 1, "", "Silver"]]);
+});
+
+test("a player who scored for two teams names both, busiest first", () => {
+  const { rows } = topScorers([
+    goal("Banda"), goal("Banda", { team_id: "MW_SIL", team_name: "Silver" }),
+    goal("Banda", { team_id: "MW_SIL", team_name: "Silver" }),
+  ]);
+  assert.equal(rows[0].team, "Silver, Blue Eagles");
+});
+
+test("penalties are counted per scorer", () => {
+  const { rows } = topScorers([goal("Banda", { goal_type: "penalty" }), goal("Banda")]);
+  assert.equal(rows[0].penalties, 1);
+});
+
+test("a tie too big to show is summarised, never cut by alphabet", () => {
+  const goals = [goal("Top"), goal("Top"), goal("Top")];
+  for (let i = 0; i < 30; i += 1) goals.push(goal(`One${String(i).padStart(2, "0")}`));
+  const { rows, more } = topScorers(goals, { limit: 10, cap: 15 });
+  assert.deepEqual(rows.map((r) => r.name), ["Top"]);
+  assert.deepEqual(more, [[1, 30]]);
+});
+
+test("a tie that fits is kept whole", () => {
+  const goals = [];
+  for (let i = 0; i < 12; i += 1) goals.push(goal(`P${String(i).padStart(2, "0")}`));
+  const { rows, more } = topScorers(goals, { limit: 10, cap: 15 });
+  assert.equal(rows.length, 12);
+  assert.ok(rows.every((r) => r.rank === 1));
+  assert.deepEqual(more, []);
+});
+
+test("assists count ids only", () => {
+  const { rows } = topAssisters([
+    goal("Banda", { assist_player_id: "P_Mwale", assist_name: "Mwale" }),
+    goal("Phiri", { assist_player_id: "P_Mwale", assist_name: "Mwale" }),
+    goal("Phiri"),
+  ]);
+  assert.deepEqual(rows.map((r) => [r.name, r.assists, r.team]), [["Mwale", 2, "Blue Eagles"]]);
+});
+
+test("coverage: own goals have a scorer; the short competition is named", () => {
+  const matches = [
+    fact(2, 1, { g_own_goal: 1 }),
+    fact(3, 0, { competition_id: "MW_WOM", competition_name: "Women's" }),
+  ];
+  const goals = [goal("Banda"), goal("Phiri"),
+                 goal("Chirwa", { competition_id: "MW_WOM" })];
+  const c = scorerCoverage(matches, goals);
+  assert.deepEqual([c.named, c.goals, c.complete], [4, 6, false]);
+  assert.deepEqual(c.short.map((x) => [x.name, x.named, x.goals]), [["Women's", 1, 3]]);
+});
+
+test("the top scorer is named only when every goal has a scorer", () => {
+  const s = summarize([fact(2, 1)]);
+  const scorers = topScorers([goal("Banda"), goal("Banda"), goal("Phiri")]);
+  const named = headlines(s, { names: ["X"], scorers: { ...scorers, complete: true } });
+  assert.equal(named[1], "Top scorer: Banda (Blue Eagles), 2 goals · X");
+  const partial = headlines(s, { names: ["X"], scorers: { ...scorers, complete: false } });
+  assert.ok(partial.every((l) => !/Top scorer/.test(l)));
+});
+
+test("joint leaders read as one sentence", () => {
+  const s = summarize([fact(1, 1)]);
+  const scorers = topScorers([goal("Banda"),
+                              goal("Phiri", { team_id: "MW_SIL", team_name: "Silver" })]);
+  const [, line] = headlines(s, { names: ["X"], scorers: { ...scorers, complete: true } });
+  assert.equal(line, "Top scorers: Banda (Blue Eagles) and Phiri (Silver), 1 goal each · X");
 });
