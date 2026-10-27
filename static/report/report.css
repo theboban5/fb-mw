@@ -1697,3 +1697,28 @@ a { color: var(--accent); }
 .rp-add-player .rp-btn { margin-top: 8px; }
 .rp-add-player .rp-btn .rp-hint { display: block; margin: 2px 0 0; font-weight: 400; }
 .rp-add-done { margin-top: 16px; }
+
+/* ─── "Publish without match officials?" (0061) ───────────────────────────
+   Replaces the button and note in the sticky publish bar while it stands,
+   never joins them: two ways to publish showing at once is how the wrong one
+   gets tapped. The answer comes first because it is the commoner one — most
+   results arrive with no referee anyone can find. */
+.rp-officials-ask p {
+  margin: 0 0 10px; font-size: 0.88rem; font-weight: 600; text-align: center;
+}
+.rp-officials-ask .rp-btn + .rp-btn { margin-top: 8px; }
+.rp-officials-ask[hidden], .rp-publish [hidden] { display: none; }
+
+/* ─── Stats (#/stats) ─────────────────────────────────────────────────────
+   The sentences first, because they are what a reporter came for: the line
+   they will paste under a graphic. Plain text in a box, selectable by a long
+   press when the clipboard API is not there. */
+.rp-stats-lines {
+  margin: 16px 0; padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--row-alt);
+  user-select: text; -webkit-user-select: text;
+}
+.rp-stats-lines p { margin: 0 0 6px; font-weight: 600; overflow-wrap: anywhere; }
+.rp-stats-lines .rp-btn { margin-top: 8px; }
+.rp-chip-row + .rp-chip-row { margin-top: 10px; }

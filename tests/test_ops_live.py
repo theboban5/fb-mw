@@ -50,8 +50,14 @@ OPS_VIEWS = (
     # 0056. The Lineups tab: a side per played match, and its count per team.
     "ops_lineup_sides",
     "ops_team_lineups",
+    # 0061. The Officials tab: a played match each, and its count per
+    # competition.
+    "ops_match_officials",
+    "ops_competition_officials",
 )
-OPS_TABLES = ("ops_competition_settings",)
+# officials_skips (0061) has RLS on and no policy at all, so it answers a
+# reporter with nothing exactly as the views do; the RPC is its only writer.
+OPS_TABLES = ("ops_competition_settings", "officials_skips")
 
 
 def cat_today():
@@ -324,6 +330,25 @@ class OpsDashboardTest(unittest.TestCase):
         self.assertEqual(got, expected)
         for r in self.admin_rows("ops_team_lineups?select=*"):
             self.assertEqual(r["played"], r["with_lineup"] + r["missing"])
+
+    def test_officials_counts_match_an_independent_count(self):
+        """A played match names its officials when any of the four boxes is
+        filled — the coaches never count. Recomputed per competition."""
+        keys = ("referee", "assistant_referee_1", "assistant_referee_2",
+                "fourth_official")
+        expected = {}
+        for m in self.matches:
+            if m["status"] != "played":
+                continue
+            played, named = expected.get(m["competition_id"], (0, 0))
+            expected[m["competition_id"]] = (
+                played + 1,
+                named + any((m.get(k) or "").strip() for k in keys))
+        rows = self.admin_rows("ops_competition_officials?select=*")
+        got = {r["competition_id"]: (r["played"], r["named"]) for r in rows}
+        self.assertEqual(got, expected)
+        for r in rows:
+            self.assertEqual(r["played"], r["named"] + r["skipped"] + r["unasked"])
 
 
 if __name__ == "__main__":

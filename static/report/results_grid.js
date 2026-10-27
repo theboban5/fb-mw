@@ -87,6 +87,9 @@ export function gridRow(match) {
     date: match.date || "",
     kickoff: match.kickoff || "",
     stage: match.stage || "",
+    // true / false when the screen fetched the official columns, undefined
+    // when it did not — and undefined never asks (rowsWithoutOfficials).
+    officials: hasMatchOfficials(match),
     saved,
     // Entered values start AS the saved ones, so an untouched row is
     // unchanged by definition and cannot be republished by accident.
@@ -226,6 +229,38 @@ export function rowsNeedingSource(sending, resolvedSource) {
   if (String(resolvedSource || "").trim()) return [];
   return sending.filter((row) => !row.saved.sourceRef);
 }
+
+// The four match officials (0023). The coaches share the panel on the match
+// screen but are not officials: a coach typed and no referee is still a match
+// nobody refereed, on the record.
+export const OFFICIAL_NAME_KEYS = [
+  "referee", "assistant_referee_1", "assistant_referee_2", "fourth_official",
+];
+
+/** Does this match name any of its officials? undefined when the match was
+ *  loaded without the columns, because "we did not look" must never read as
+ *  "there are none" — that would ask a reporter about officials they entered. */
+export function hasMatchOfficials(match) {
+  if (!match || !OFFICIAL_NAME_KEYS.some((k) => k in match)) return undefined;
+  return OFFICIAL_NAME_KEYS.some((k) => String(match[k] || "").trim() !== "");
+}
+
+/** Rows about to publish as a played result with no officials named (0061).
+ *
+ *  This is a QUESTION, never a refusal: the screen asks once, and "Yes,
+ *  publish without match officials" publishes them all. Only 'played' — a
+ *  postponement had no referee to name, and a walkover's officials are not
+ *  what anyone is asking about. A row whose officials are unknown is never
+ *  counted, for hasMatchOfficials' reason. */
+export function rowsWithoutOfficials(sending) {
+  return sending.filter((row) => row.status === "played" && row.officials === false);
+}
+
+/** The ids the reporter just confirmed, as a stable key: the screen holds the
+ *  confirmation against this, so editing the batch after the question (a new
+ *  row, a cleared one) asks again rather than riding on an old yes. */
+export const officialsAckKey = (rows) =>
+  rows.map((r) => r.matchId).sort().join(",");
 
 /** What to send, and what is wrong before the network is involved.
  *

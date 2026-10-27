@@ -401,6 +401,29 @@ rather than two.
   Nothing validates the id columns: an id that resolves to nobody renders the
   reported name and links nowhere, which is graceful degradation working, not
   an error worth failing a build over.
+- **`officials_skips`** (0061) — one row per match whose reporter tapped
+  "Yes, publish without match officials": who, when, and which screen
+  (`single | grid | import`). Written only by `skip_match_officials`, which
+  files a row only while the four official names (referee, two assistants,
+  fourth official; never the coaches) are all blank, and only for a match the
+  caller may report. Read only through the admin view `ops_match_officials`.
+  Never rendered and not part of the Dataset, so nothing about it can stop a
+  build. It cascades from `matches`, so `delete_fixture` is never refused
+  over one.
+
+## Stats (0062)
+
+`stats_match_facts` is one row per **played** match (not `awarded`: a
+walkover's score is a ruling, not goals), non-placeholder, every season, for
+`/report#/stats`. Readable by any active reporter, because everything in it is
+public on the site already; anon is revoked. Raw counts only, and the browser
+regroups them: the score, each side's cards off its team sheet with whether a
+sheet exists, goal rows by `goal_type`, and the referee (the registry's name
+where `referee_id` resolves). Cards follow `src/lineups.cards_html`: a yellow
+is `yellow_card` without `yellow_red_card`, and second yellows and straight
+reds are counted apart. A side with no sheet has no cards on the record, which
+is not the same as none, so every card figure on the screen prints its
+coverage.
 
 ## Trending (0030)
 

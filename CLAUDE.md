@@ -95,6 +95,7 @@ static/report/fixture_import.js  the fixture importer's rules, same bargain
 static/report/error_report.js  what to report when a screen breaks (0052)
 static/report/match_report.js  a club's match report → the match screen's editors
 static/report/squad.js  a pasted squad/staff list → one person per line (0057)
+static/report/stats.js  #/stats: periods, sums, the copyable sentences (0062)
 src/nt.py, nt_page.py  national teams (the nt_* tabs, /scorchers/)
 src/search.py          the site search index
 static/report/app.js   the reporter portal (one file, no framework)
@@ -157,7 +158,8 @@ because Node reads a bare `.js` as CommonJS unless a package.json says
 otherwise, and the portal's modules are ESM because browsers load them that
 way. It covers `static/report/results_grid.js`,
 `static/report/fixture_import.js`, `static/report/error_report.js`,
-`static/report/match_report.js` and `static/report/squad.js`, which import
+`static/report/match_report.js`, `static/report/squad.js` and
+`static/report/stats.js`, which import
 nothing but each other; the
 moment one of them needs `document` or `supabase`, its tests stop meaning
 anything.
@@ -192,6 +194,55 @@ fixture and clean up, and they never mutate a real match.
 ---
 
 ## Recent work (Oct 2026)
+
+Stats for any period, and "publish without match officials?", migrations
+`0061`–`0062` — `#/stats`, `#/ops?tab=officials`:
+
+- **The reporters asked for the sentences they post**: "27 goals on matchday
+  15 in the FDH Bank Premiership", "4 red cards this weekend across all
+  leagues", and which referee shows the most cards. The Compare tab (0039)
+  could say none of them: admin-only, grouped by competition-season, so it
+  had no idea what a weekend is, and nothing about cards.
+- **`#/stats` is every reporter's**, because everything on it is public on
+  the site. `stats_match_facts` is one row per played match (never a
+  walkover), raw counts. The PERIOD is the query (a date range, the active
+  season, or one competition's season for a matchday) and the COMPETITIONS
+  filter locally, so any combination is a tap. A weekend is **Fri–Sun** and
+  the label always prints the dates. Paged past PostgREST's 1,000 rows,
+  because a season is already more than that.
+- **Cards are a team sheet's and nowhere else**: 34 matches have one. Every
+  card figure prints its coverage, and the copyable line only claims a total
+  when every side in scope has a sheet ("1 red card in the 1 match with a
+  team sheet" otherwise). That line gets posted publicly, and a red-card
+  total built from two sheets is a false statement about every other match.
+- **`goal_type` was already there** (penalty, free kick, header, open play,
+  own goal) and never shown. It is now, with "recorded for N of M goals".
+- **16 of 1,085 played matches named a referee, and requiring one was the
+  wrong fix**: a score that cannot publish until someone finds the referee
+  never reaches the site. So Publish ASKS. On the match screen the question
+  replaces the button in the sticky bar. On the grid and the import the same
+  button asks once, then becomes "Yes, publish without match officials",
+  held against exactly those rows (`officialsAckKey`), so changing the batch
+  asks again. "Match officials" means the four of them, never the coaches.
+- **The answer is recorded** (`officials_skips`, `skip_match_officials`) as a
+  separate fire-and-forget call AFTER the publish, because a result must
+  never wait on its own audit note. That is what separates "the reporter
+  looked" from "nothing asked" on the Officials tab: named / published
+  without / never asked, per competition (`ops_competition_officials`
+  counts `ops_match_officials`, 0056's arrangement).
+- **Unknown never asks.** `grid.hasMatchOfficials` is `undefined` when the
+  columns were not fetched, and the match screen does not ask while its
+  detail block is still loading. The grid's query carries the four names, and
+  `MATCH_FIELDS` deliberately does not (the home list, see drawDetail).
+  `#/import` looks them up once at publish time.
+- **A referee typed and not saved goes with Publish** ("+ officials" on the
+  button), after the score, like staged scorers.
+- **Fixed on the way**: `drawMatch` added its stepper listener to `view`,
+  which outlives every draw. After a publish redrew the screen, one tap on +
+  moved the score by two. It is on the buttons now.
+- Not built: cards without a team sheet (a table, an RPC and validate rules
+  of their own, deferred until the coverage numbers have been seen), top
+  scorers for a period, and officials on the grid itself.
 
 A merge stopped the site, migration `0060` + `validate.py`:
 

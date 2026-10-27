@@ -43,6 +43,8 @@ import * as mr from "./match_report.js";
 // What to report when a screen breaks, and how often. Out here because it must
 // work on a page that has already gone wrong — see 0052.
 import * as crash from "./error_report.js";
+// #/stats' period arithmetic and sums — tested in tests/js/test_stats.mjs.
+import * as st from "./stats.js";
 // A squad list read line by line, and who each name is (0057).
 import * as sq from "./squad.js";
 // A pasted team sheet in any of the shapes clubs post one, and who each
@@ -612,7 +614,15 @@ let queue = null;       // { from, items: [{ id, label, needsResult }] }
 // did not move. That read as the tap not having registered at all.
 let overdueCache = null;   // integer, or null when not yet loaded
 
-const invalidateHome = () => { homeCache = null; overdueCache = null; };
+// #/stats' rows, one entry per period query (see loadStatsRows). Cleared by
+// the same publishes that clear the home screen: a reporter who publishes a
+// result and opens Stats to post "27 goals this weekend" must not be handed
+// the count from before their own result.
+const statsCache = new Map();
+
+const invalidateHome = () => {
+  homeCache = null; overdueCache = null; statsCache.clear();
+};
 
 const RESULT_LIMIT = 60;
 
@@ -1132,6 +1142,7 @@ async function renderHome(params) {
       ${canAdd ? '<a class="rp-btn is-ghost" href="#/add">＋ Add fixtures</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/league/new">＋ New league</a>' : ""}
       <a class="rp-btn is-ghost" href="#/players">Players</a>
+      <a class="rp-btn is-ghost" href="#/stats">Stats</a>
       ${canAdd ? '<a class="rp-btn is-ghost" href="#/teams">Teams</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/ops">Operations</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/trending">Homepage</a>' : ""}
@@ -2549,13 +2560,91 @@ function wireGridScorers(form, rows, { onRedraw, playerHost }) {
   };
 }
 
+/** "Yes, publish without match officials" on a grid's publish bar (0061).
+ *
+ *  The match screen asks with a block of its own; this bar cannot afford one
+ *  (it is stuck to the bottom of a 390px screen, and a second line in it
+ *  covers a grid row — 0053). So the SAME button asks: the first tap names
+ *  how many rows have no officials and turns the button into the answer, and
+ *  the second tap publishes. The answer is held against exactly those rows
+ *  (grid.officialsAckKey), so changing the batch afterwards asks again.
+ *
+ *  Returns null when the tap should go ahead, or the rows it is asking about. */
+function gridOfficialsGate(state, sending) {
+  const missing = grid.rowsWithoutOfficials(sending);
+  if (!missing.length) return null;
+  const key = grid.officialsAckKey(missing);
+  if (state.officialsAsked === key) return null;
+  state.officialsAsked = key;
+  return missing;
+}
+
+/** What the bar should say while the question stands, or null. */
+function gridOfficialsAsking(state, sending) {
+  const missing = grid.rowsWithoutOfficials(sending);
+  if (!missing.length || state.officialsAsked !== grid.officialsAckKey(missing)) return null;
+  const n = missing.length;
+  return {
+    button: "Yes, publish without match officials",
+    note: n === sending.length
+      ? `${n === 1 ? "This match has" : `None of these ${n} have`} match officials named.`
+        + " They go on each match's own screen — publish anyway?"
+      : `${n} of these ${sending.length} have no match officials named — publish anyway?`,
+  };
+}
+
+/** Record the answer for the rows that actually published. A row that
+ *  failed keeps its error and was not published, so it is not "published
+ *  without officials". Fire-and-forget: the results are already on the site. */
+function recordOfficialsSkip(state, sending, channel) {
+  const missing = grid.rowsWithoutOfficials(sending);
+  if (!missing.length || state.officialsAsked !== grid.officialsAckKey(missing)) return;
+  state.officialsAsked = "";
+  const ids = missing.filter((row) => !row.error).map((row) => row.matchId);
+  if (!ids.length) return;
+  supabase.rpc("skip_match_officials", { p_match_ids: ids, p_channel: channel })
+    .then(({ error }) => {
+      if (error) console.warn("[everyleague] officials skip not recorded:", error);
+    });
+  // Published now, and the answer recorded: the rows stop asking.
+  missing.forEach((row) => { if (!row.error) row.officials = undefined; });
+}
+
+/** Fill in row.officials for rows that came from somewhere other than
+ *  loadGridMatches — #/import's rows are built from the resolver, which knows
+ *  nothing about officials. One query, at publish time, and only for rows
+ *  never looked up. A failure leaves them unknown, and unknown never asks:
+ *  the question is a nudge, and it is not worth a refused publish. */
+async function fillGridOfficials(rows) {
+  const unknown = rows.filter((r) => r.officials === undefined && !r.officialsLooked);
+  if (!unknown.length) return;
+  try {
+    const { data, error } = await supabase.from("matches")
+      .select(`match_id,${grid.OFFICIAL_NAME_KEYS.join(",")}`)
+      .in("match_id", unknown.map((r) => r.matchId));
+    if (error) throw error;
+    const byId = new Map((data || []).map((m) => [m.match_id, m]));
+    unknown.forEach((row) => {
+      row.officialsLooked = true;
+      const m = byId.get(row.matchId);
+      if (m) row.officials = grid.hasMatchOfficials(m);
+    });
+  } catch (error) {
+    console.warn("[everyleague] officials lookup failed:", error);
+  }
+}
+
 /** Rows the grid can offer at all: a fixture that exists, in the chosen
  *  competition and season. `scheduled` first is not a filter — every one of
  *  them is shown, because correcting last week's result is the other reason to
  *  open this screen. */
 async function loadGridMatches(competitionId, seasonId) {
   const { data, error } = await supabase.from("matches")
-    .select(MATCH_FIELDS)
+    // The four officials' names ride along here and NOT on MATCH_FIELDS (the
+    // home screen's list, which should not carry eighty referees it never
+    // shows — see drawDetail). They are what lets Publish ask "without match
+    // officials?" (0061) without a second round-trip; grid.gridRow reads them.
+    .select(`${MATCH_FIELDS},${grid.OFFICIAL_NAME_KEYS.join(",")}`)
     .eq("competition_id", competitionId)
     .eq("season_id", seasonId)
     .order("date", { ascending: true })
@@ -2854,11 +2943,14 @@ async function renderResults(params) {
     function refreshButton() {
       const { sending, conflicts } = grid.collectReports(state.rows);
       const n = sending.length;
+      const asking = gridOfficialsAsking(state, sending);
       button.disabled = state.busy || !n;
       button.textContent = state.busy
         ? `Publishing ${n}…`
+        : asking ? asking.button
         : n ? `Publish ${n} result${n === 1 ? "" : "s"}` : "Nothing changed yet";
-      note.textContent = conflicts.length
+      note.textContent = asking && !state.busy ? asking.note
+        : conflicts.length
         ? `${conflicts.length} match${conflicts.length === 1 ? "" : "es"} already `
           + `${conflicts.length === 1 ? "has" : "have"} a result — confirm `
           + `${conflicts.length === 1 ? "it" : "them"} above to include `
@@ -2973,6 +3065,12 @@ async function renderResults(params) {
         return;
       }
 
+      // The officials question (0061): asked by this tap, answered by the next.
+      if (gridOfficialsGate(state, sending)) {
+        refreshButton();
+        return;
+      }
+
       state.busy = true;
       refreshButton();
 
@@ -2994,6 +3092,7 @@ async function renderResults(params) {
       }
 
       const { saved, failed } = grid.applyBatchResult(sending, data, humanError);
+      recordOfficialsSkip(state, sending, "grid");
 
       if (saved) {
         // The home screen's buckets are now wrong for these matches, and so is
@@ -4256,12 +4355,15 @@ async function renderImport(params) {
       const n = sending.length;
       const waiting = rows.filter((r) => !r.applied && r.proposal
                                          && !grid.isChanged(r)).length;
+      const asking = gridOfficialsAsking(state, sending);
       button.disabled = state.busy || !n;
       button.textContent = state.busy
         ? `Publishing ${n}…`
+        : asking ? asking.button
         : n ? `Approve and publish ${n} result${n === 1 ? "" : "s"}`
             : "Nothing to publish yet";
-      note.textContent = conflicts.length
+      note.textContent = asking && !state.busy ? asking.note
+        : conflicts.length
         ? `${conflicts.length} already ${conflicts.length === 1 ? "has" : "have"}`
           + " a result — confirm above to include."
         : waiting
@@ -4378,6 +4480,21 @@ async function renderImport(params) {
       clearFlash();
       syncGridFromDom(form, byIdx);
 
+      // The officials question (0061), over every group at once — one
+      // question for one button, however many competitions the picture held.
+      const allSending = state.groups.flatMap((g) => grid.collectReports(g.rows).sending);
+      if (allSending.some((r) => r.status === "played" && r.officials === undefined
+                                 && !r.officialsLooked)) {
+        state.busy = true;
+        refresh();
+        await fillGridOfficials(allSending);
+        state.busy = false;
+      }
+      if (gridOfficialsGate(state, allSending)) {
+        refresh();
+        return;
+      }
+
       const source = sourceRef();
       let saved = 0;
       let failed = 0;
@@ -4430,6 +4547,7 @@ async function renderImport(params) {
       }
 
       state.busy = false;
+      recordOfficialsSkip(state, allSending, "import");
 
       if (saved) {
         invalidateHome();
@@ -5042,6 +5160,11 @@ function drawMatch(match, names, state) {
     <div class="rp-publish">
       <button class="rp-btn" type="button" data-publish></button>
       <p class="rp-publish-note" data-note></p>
+      <div class="rp-officials-ask" data-officials-ask hidden>
+        <p>No match officials are named. They are optional — publish anyway?</p>
+        <button class="rp-btn" type="button" data-officials-skip>Yes, publish without match officials</button>
+        <button class="rp-btn is-ghost" type="button" data-officials-add>Add officials first</button>
+      </div>
     </div>
 
     ${section("reschedule", "Change date, matchday or ground", 0, `
@@ -5108,6 +5231,39 @@ function drawMatch(match, names, state) {
   // be the most annoying thing in the app to type again.
   sourceEl.addEventListener("input", () => { state.source = sourceEl.value; });
 
+  const askEl = view.querySelector("[data-officials-ask]");
+
+  /** The officials as they stand right now, for the question below.
+   *
+   *  The boxes win over what was loaded, because they are what the reporter
+   *  has seen — including a referee typed and not yet saved, or one staged
+   *  from a match report. `known` is false while the detail block is still
+   *  loading: "we have not looked" must never ask "are you sure there are
+   *  none?" about a match that has them (grid.hasMatchOfficials' rule).
+   *  `dirty` means the boxes differ from what is saved, so publishing saves
+   *  them too — a referee typed and then Publish tapped must not be lost. */
+  function officialsNow() {
+    const form = view.querySelector("[data-officials-form]");
+    const saved = state.detail?.officials;
+    if (!form) {
+      return saved
+        ? { known: true, any: grid.hasMatchOfficials(saved) === true, dirty: false }
+        : { known: false };
+    }
+    const values = {};
+    OFFICIAL_KEYS.forEach((key) => {
+      values[key] = form[key].value.trim();
+      values[`${key}_id`] = form[`${key}_id`].value.trim();
+    });
+    return {
+      known: true,
+      any: grid.hasMatchOfficials(values) === true,
+      dirty: Object.keys(values).some(
+        (k) => values[k] !== String(saved?.[k] || "").trim()),
+      values,
+    };
+  }
+
   function refresh() {
     const info = statusMeta(state.status);
     valueEls.home.textContent = state.home;
@@ -5121,6 +5277,14 @@ function drawMatch(match, names, state) {
     });
     const waiting = state.pendingGoals.length;
     const scorers = `${waiting} scorer${waiting === 1 ? "" : "s"}`;
+    const off = officialsNow();
+    const withOfficials = off.dirty && off.any ? " + officials" : "";
+    // The question replaces the button rather than joining it: this bar is
+    // stuck to the bottom of a 390px screen, and two ways to publish showing
+    // at once is how the wrong one gets tapped.
+    askEl.hidden = !state.officialsAsk || state.busy;
+    publishBtn.hidden = !askEl.hidden;
+    note.hidden = !askEl.hidden;
     publishBtn.disabled = state.busy;
     publishBtn.textContent = state.busy
       ? "Publishing…"
@@ -5128,7 +5292,7 @@ function drawMatch(match, names, state) {
         // The button names everything it is about to do, scorers included —
         // they are staged on this phone and nowhere else until it is pressed.
         ? `Publish ${state.home}–${state.away} ${info.short}`
-          + (waiting ? ` + ${scorers}` : "")
+          + (waiting ? ` + ${scorers}` : "") + withOfficials
         : `Publish as ${info.label.toLowerCase()}`;
     // The button says exactly what will become public.
     note.textContent = info.scored
@@ -5144,27 +5308,81 @@ function drawMatch(match, names, state) {
   // one owner of the button's text.
   state.refreshPublish = refresh;
 
+  // Typing a referee changes what the button promises ("+ officials"), and
+  // answers the question if it was showing. On [data-detail], which this draw
+  // created, so the listener goes when the screen does.
+  view.querySelector("[data-detail]").addEventListener("input", (event) => {
+    if (!event.target.closest("[data-officials-form]")) return;
+    if (state.officialsAsk && officialsNow().any) state.officialsAsk = false;
+    refresh();
+  });
+
+  // Anything that changes what is being published takes back an answer given
+  // about the old version of it.
+  const changed = () => { state.officialsAsk = false; };
+
   view.querySelector("[data-status]").addEventListener("change", (event) => {
     state.status = event.target.value;
+    changed();
     refresh();
   });
 
-  view.addEventListener("click", (event) => {
-    const target = event.target.closest("[data-step]");
-    if (!target || target.disabled) return;
-    const [side, delta] = target.dataset.step.split(":");
-    // 0..99: a negative score is meaningless and a fat-fingered 3-digit score
-    // is a typo, not a scoreline.
-    state[side] = Math.max(0, Math.min(99, state[side] + Number(delta)));
-    refresh();
+  // On the buttons themselves, NOT on `view`. `view` outlives every draw, so a
+  // listener added to it here was added again on each redraw — after a
+  // publish redrew this screen, one tap on + moved the score by two.
+  view.querySelectorAll("[data-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      const [side, delta] = button.dataset.step.split(":");
+      // 0..99: a negative score is meaningless and a fat-fingered 3-digit
+      // score is a typo, not a scoreline.
+      state[side] = Math.max(0, Math.min(99, state[side] + Number(delta)));
+      changed();
+      refresh();
+    });
   });
 
-  publishBtn.addEventListener("click", async () => {
+  // "YES, PUBLISH WITHOUT MATCH OFFICIALS" (0061). A question, never a
+  // refusal: most results arrive with no referee anyone can find, and a
+  // score that cannot publish until one is found never reaches the site. The
+  // tap is recorded — that is what tells "the reporter looked" apart from
+  // "nothing asked" on the Officials tab.
+  publishBtn.addEventListener("click", () => {
+    if (state.busy) return;                    // rule 2
+    const off = officialsNow();
+    if (state.status === "played" && off.known && !off.any) {
+      state.officialsAsk = true;
+      refresh();
+      return;
+    }
+    publish(false);
+  });
+
+  askEl.querySelector("[data-officials-skip]").addEventListener("click", () => {
+    if (state.busy) return;
+    publish(true);
+  });
+
+  askEl.querySelector("[data-officials-add]").addEventListener("click", () => {
+    state.officialsAsk = false;
+    refresh();
+    const sec = view.querySelector('[data-sec="officials"]');
+    if (sec) {
+      sec.open = true;
+      sec.scrollIntoView({ block: "start", behavior: "smooth" });
+      view.querySelector("#off-referee")?.focus({ preventScroll: true });
+    }
+  });
+
+  async function publish(withoutOfficials) {
     if (state.busy) return;                    // rule 2
     clearFlash();
+    // Read BEFORE the publish redraws anything: these are the boxes the
+    // reporter was looking at when they tapped.
+    const off = officialsNow();
+    state.officialsAsk = false;
     state.busy = true;
     refresh();
-
     const info = statusMeta(state.status);
     const { data, error } = await supabase.rpc("submit_match_report", {
       p_match_id: match.match_id,
@@ -5222,10 +5440,40 @@ function drawMatch(match, names, state) {
       }
     }
 
+    // Officials typed below and never saved go with the result — after it,
+    // like the scorers, so a failure here can only cost the officials and
+    // never the score. The button said "+ officials", so this is not a
+    // surprise.
+    if (off.dirty && off.any && state.detail) {
+      const args = { p_match_id: match.match_id };
+      OFFICIAL_KEYS.forEach((key) => {
+        args[`p_${key}`] = off.values[key];
+        args[`p_${key}_id`] = off.values[`${key}_id`];
+      });
+      const { error: offError } = await supabase.rpc("set_match_officials", args);
+      if (offError) {
+        message += ` The officials were not saved: ${humanError(offError)}`;
+        kind = kind === "ok" ? "warn" : kind;
+      } else {
+        Object.assign(state.detail.officials, off.values);
+        if (state.report?.done) state.report.done.officials = true;
+      }
+    }
+
+    // The answer to the question, recorded. Fire-and-forget: the result is
+    // already on the site, and this is a line on an admin screen.
+    if (withoutOfficials) {
+      supabase.rpc("skip_match_officials", {
+        p_match_ids: [match.match_id], p_channel: "single",
+      }).then(({ error: skipError }) => {
+        if (skipError) console.warn("[everyleague] officials skip not recorded:", skipError);
+      });
+    }
+
     flash(message, kind, 6000);
     requestRebuild();
     drawMatch(match, names, state);
-  });
+  }
 
   refresh();
 }
@@ -6858,6 +7106,9 @@ function wireDetail(match, state, goals, sides) {
 
   wirePlayerPickers(host, match);
   wireOfficialPickers(host);
+  // The officials boxes now exist (and may hold a report's staged names), so
+  // what the publish button promises — and whether it asks — can be known.
+  state.refreshPublish?.();
   wireReport(host, match, state, sides || [], teamName);
   wireReportIn(host, match, state);
 
@@ -13407,6 +13658,452 @@ function wireNTCompetition(state) {
   });
 }
 
+// ── Stats: any period, any competitions ──────────────────────────────────────
+// Every reporter, not only admins. The reporters asked for the sentences they
+// post — "27 goals on matchday 15 in the FDH Bank Premiership", "4 red cards
+// this weekend across all leagues" — and all of it is already public on
+// everyleague.co, so there is nothing here to gate beyond being signed in.
+//
+// One row per played match from stats_match_facts (0062). The PERIOD is a
+// query (a date range, the active season, or one competition's season for a
+// matchday); the COMPETITIONS are a filter over the rows already on the phone,
+// so choosing any combination of them is a tap with no round-trip. Every sum
+// and every sentence is st.* — this function only draws and wires.
+//
+// Cards are the one figure that is not complete by construction: they live on
+// team sheets, and most matches have none. So every card figure carries its
+// coverage beside it, and the copyable sentence only claims a total when
+// every side in scope has a sheet (st.headlines).
+
+const STATS_FIELDS = [
+  "match_id", "public_id", "competition_id", "competition_name", "season_id",
+  "date", "matchday", "stage", "home_team_id", "away_team_id", "home_name",
+  "away_name", "home_goals", "away_goals", "home_sheet", "away_sheet",
+  "home_yellow", "away_yellow", "home_second_yellow", "away_second_yellow",
+  "home_red", "away_red", "goal_rows", "g_penalty", "g_free_kick", "g_header",
+  "g_open_play", "g_own_goal", "g_untyped", "referee_name", "referee_id",
+].join(",");
+
+// PostgREST caps a response at 1,000 rows, and a whole season across every
+// competition is already past that. Paged rather than raised, because the cap
+// is a server setting this file cannot see.
+const STATS_PAGE = 1000;
+
+/** The rows for one period query, or null when the view is not live yet (a
+ *  migration is a separate deploy from git — loadOpsCompare's case). Cached
+ *  per query until the next publish clears statsCache. */
+function loadStatsRows(key, narrow) {
+  if (!statsCache.has(key)) {
+    const load = (async () => {
+      const rows = [];
+      for (let from = 0; ; from += STATS_PAGE) {
+        const { data, error } = await narrow(
+          supabase.from("stats_match_facts").select(STATS_FIELDS))
+          .order("date", { ascending: false })
+          .order("match_id")
+          .range(from, from + STATS_PAGE - 1);
+        if (error) {
+          if (error.code === "42P01" || error.code === "PGRST205"
+              || /stats_match_facts/.test(error.message || "")) {
+            console.warn("[everyleague] stats view unavailable:", error);
+            return null;
+          }
+          throw error;
+        }
+        rows.push(...(data || []));
+        if (!data || data.length < STATS_PAGE) return rows;
+      }
+    })();
+    // A failure must not be cached — the next tap should ask again.
+    load.catch(() => statsCache.delete(key));
+    statsCache.set(key, load);
+  }
+  return statsCache.get(key);
+}
+
+/** A round as a reader says it: "matchday 15" in a league, the stage's own
+ *  name in a cup (CUP_ROUNDS). The key keeps the two apart so a cup's "final"
+ *  can never collide with a league's matchday. */
+function statsRound(r) {
+  if (r.matchday != null && r.matchday !== "") {
+    return { key: `md:${r.matchday}`, label: `matchday ${r.matchday}`,
+             sort: Number(r.matchday) };
+  }
+  if (r.stage) {
+    const cup = CUP_ROUNDS.find((c) => c.value === r.stage);
+    return { key: `st:${r.stage}`, label: cup ? cup.label : r.stage,
+             sort: 1000 + (cup ? CUP_ROUNDS.indexOf(cup) : 99) };
+  }
+  return null;
+}
+
+async function renderStats(params) {
+  h('<div class="rp-loading"><span class="rp-spinner"></span><p>Loading stats…</p></div>');
+  const today = todayIso();
+  const [season, comps] = await Promise.all([activeSeason(), allCompetitions()]);
+
+  const state = {
+    period: st.PERIODS.some((p) => p.key === params.get("p"))
+      ? params.get("p") : st.defaultPeriod(today),
+    from: params.get("from") || "",
+    to: params.get("to") || "",
+    // null means every competition. A Set means exactly those.
+    comps: params.get("comps")
+      ? new Set(params.get("comps").split(",").filter(Boolean)) : null,
+    // The matchday view's own competition and round.
+    comp: params.get("comp") || "",
+    round: params.get("round") || "",
+    rows: null,          // the loaded period, before the competition filter
+    loading: false,
+    missing: false,
+  };
+  if (!state.comp) {
+    state.comp = state.comps && state.comps.size === 1 ? [...state.comps][0]
+      : (comps.find((c) => /premiership|super/i.test(c.label)) || comps[0] || {}).id || "";
+  }
+
+  h(`<a class="rp-btn is-quiet" href="#/" style="margin-top:0">&larr; My matches</a>
+     <h1 class="rp-login-head">Stats</h1>
+     <p class="rp-login-sub">Goals, clean sheets and cards for any period and
+       any mix of competitions — played matches only.</p>
+     <div data-stats></div>`);
+  const host = view.querySelector("[data-stats]");
+
+  const syncUrl = () => {
+    const q = new URLSearchParams({ p: state.period });
+    if (state.period === "custom") {
+      if (state.from) q.set("from", state.from);
+      if (state.to) q.set("to", state.to);
+    }
+    if (state.period === "matchday") {
+      if (state.comp) q.set("comp", state.comp);
+      if (state.round) q.set("round", state.round);
+    } else if (state.comps) {
+      q.set("comps", [...state.comps].join(","));
+    }
+    history.replaceState(null, "", `#/stats?${q.toString()}`);
+  };
+
+  /** The query for the chosen period, or null when there is nothing to ask
+   *  yet (a custom range with one end missing, a matchday with no
+   *  competition). */
+  function periodQuery() {
+    const range = st.periodRange(state.period, today, {
+      from: state.from, to: state.to, seasonLabel: season?.label || "",
+    });
+    if (!range) return null;
+    if (range.kind === "dates") {
+      return { range, key: `d:${range.from}:${range.to}`,
+               narrow: (q) => q.gte("date", range.from).lte("date", range.to) };
+    }
+    if (!season) return null;
+    if (range.kind === "season") {
+      return { range, key: `s:${season.season_id}`,
+               narrow: (q) => q.eq("season_id", season.season_id) };
+    }
+    if (!state.comp) return null;
+    return { range, key: `c:${season.season_id}:${state.comp}`,
+             narrow: (q) => q.eq("season_id", season.season_id)
+               .eq("competition_id", state.comp) };
+  }
+
+  async function load() {
+    const pq = periodQuery();
+    if (!pq) { state.rows = []; draw(); return; }
+    state.loading = true;
+    draw();
+    try {
+      const rows = await loadStatsRows(pq.key, pq.narrow);
+      state.missing = rows === null;
+      state.rows = rows || [];
+    } catch (error) {
+      state.rows = [];
+      flash(humanError(error), "error");
+    }
+    state.loading = false;
+    draw();
+  }
+
+  function chip(attr, value, label, on, count) {
+    return `<button class="rp-chip${on ? " is-on" : ""}" type="button"
+      data-${attr}="${esc(value)}" aria-pressed="${on}">${esc(label)}${
+      count != null ? ` <em>${esc(String(count))}</em>` : ""}</button>`;
+  }
+
+  function draw() {
+    const pq = periodQuery();
+    const matchdayMode = state.period === "matchday";
+
+    const periodChips = `<div class="rp-chip-row">${st.PERIODS.map((p) =>
+      chip("stats-period", p.key, p.label, p.key === state.period)).join("")}</div>`;
+
+    const customBox = state.period === "custom" ? `
+      <div class="rp-filters">
+        <label class="rp-filter"><span class="rp-filter-label">From</span>
+          <input class="rp-input" type="date" data-stats-from value="${esc(state.from)}"></label>
+        <label class="rp-filter"><span class="rp-filter-label">To</span>
+          <input class="rp-input" type="date" data-stats-to value="${esc(state.to)}"></label>
+      </div>` : "";
+
+    if (state.missing) {
+      host.innerHTML = `${periodChips}
+        <p class="rp-empty">The stats view is not in the database yet. Apply
+          migration <code>0062_stats_match_facts.sql</code> and reload.</p>`;
+      return;
+    }
+
+    // ── Which rows are in scope. In matchday mode the competition is the
+    //    query, and the round narrows it here.
+    const all = state.rows || [];
+    let rows;
+    let compStrip = "";
+    let names;
+    let allSelected = false;
+    let when = pq?.range?.label || "";
+
+    if (matchdayMode) {
+      const rounds = [];
+      all.forEach((r) => {
+        const rd = statsRound(r);
+        if (rd && !rounds.some((x) => x.key === rd.key)) rounds.push(rd);
+      });
+      rounds.sort((a, b) => b.sort - a.sort);
+      // Default to the round most recently played, which is the one anybody
+      // opening this on a Monday is asking about.
+      if (!rounds.some((r) => r.key === state.round)) {
+        const latest = all[0] && statsRound(all[0]);
+        state.round = latest ? latest.key : "";
+      }
+      rows = all.filter((r) => statsRound(r)?.key === state.round);
+      const round = rounds.find((r) => r.key === state.round);
+      when = round ? round.label : "";
+      names = [(comps.find((c) => c.id === state.comp) || {}).label || state.comp];
+      compStrip = `<div class="rp-filters">
+        <label class="rp-filter"><span class="rp-filter-label">Competition</span>
+          <select class="rp-select" data-stats-comp>${comps.map((c) =>
+            `<option value="${esc(c.id)}"${c.id === state.comp ? " selected" : ""}>${
+              esc(c.label)}</option>`).join("")}</select></label>
+        ${rounds.length ? `<label class="rp-filter"><span class="rp-filter-label">Round</span>
+          <select class="rp-select" data-stats-round>${rounds.map((r) =>
+            `<option value="${esc(r.key)}"${r.key === state.round ? " selected" : ""}>${
+              esc(r.label[0].toUpperCase() + r.label.slice(1))}</option>`).join("")}</select></label>` : ""}
+      </div>`;
+    } else {
+      // Only competitions with a match in this period get a chip — seventeen
+      // chips of which twelve say "0" is a wall, not a choice. A selected one
+      // stays, so a filter never vanishes out from under the reporter.
+      const present = st.byCompetition(all);
+      const offered = present.map((c) => ({ id: c.id, name: c.name, n: c.matches }));
+      (state.comps ? [...state.comps] : []).forEach((id) => {
+        if (!offered.some((c) => c.id === id)) {
+          offered.push({ id, name: (comps.find((c) => c.id === id) || {}).label || id, n: 0 });
+        }
+      });
+      const isOn = (id) => !state.comps || state.comps.has(id);
+      rows = all.filter((r) => isOn(r.competition_id));
+      allSelected = !state.comps || offered.every((c) => state.comps.has(c.id));
+      names = offered.filter((c) => isOn(c.id)).map((c) => c.name);
+      compStrip = offered.length ? `
+        <h2 class="rp-field-head">Competitions</h2>
+        <p class="rp-hint" style="margin-top:0">Tap one to see it alone, then
+          tap more to add them.</p>
+        <div class="rp-chip-row">
+          ${chip("stats-all", "1", "All", !state.comps)}
+          ${offered.map((c) => chip("stats-comp", c.id, c.name,
+                                    !!state.comps && state.comps.has(c.id), c.n)).join("")}
+        </div>` : "";
+    }
+
+    const head = `${periodChips}${customBox}${compStrip}`;
+
+    if (state.loading) {
+      host.innerHTML = `${head}<div class="rp-loading"><span class="rp-spinner"></span></div>`;
+      return;
+    }
+    if (!pq) {
+      host.innerHTML = `${head}<p class="rp-empty">${state.period === "custom"
+        ? "Pick both dates to see that period."
+        : "Pick a competition to see its rounds."}</p>`;
+      return;
+    }
+    if (!rows.length) {
+      host.innerHTML = `${head}<p class="rp-empty">No played matches ${
+        when ? `· ${esc(when)}` : "in this period"}${
+        state.comps ? " in the competitions chosen" : ""}.</p>`;
+      return;
+    }
+
+    const s = st.summarize(rows);
+    const lines = st.headlines(s, { names, allSelected, when });
+
+    const tile = (num, label) => `<span class="ops-urgent-item is-plain">
+      <span class="ops-urgent-n">${esc(String(num))}</span>
+      <span class="ops-urgent-l">${esc(label)}</span></span>`;
+    const tiles = [
+      tile(s.matches, s.matches === 1 ? "match" : "matches"),
+      tile(s.goals, s.goals === 1 ? "goal" : "goals"),
+      tile(st.perMatchText(s.goalsPerMatch), "goals a match"),
+      tile(s.cleanSheets, s.cleanSheets === 1 ? "clean sheet" : "clean sheets"),
+      s.sheetSides ? tile(s.yellow, s.yellow === 1 ? "yellow card" : "yellow cards") : "",
+      s.sheetSides ? tile(s.sentOff, s.sentOff === 1 ? "red card" : "red cards") : "",
+      s.types.g_penalty ? tile(s.types.g_penalty,
+        s.types.g_penalty === 1 ? "penalty" : "penalties") : "",
+    ].join("");
+    const cardNote = s.sheetSides
+      ? `Cards come from team sheets: ${s.sheetSides} of ${s.sides} sides in
+         this selection have one${s.secondYellow
+           ? `. Red cards include ${s.secondYellow} second yellow${s.secondYellow === 1 ? "" : "s"}`
+           : ""}.`
+      : "No team sheets in this selection, so no cards are on the record.";
+
+    // ── By competition. One row is the tiles again, so it needs two.
+    const byComp = st.byCompetition(rows);
+    const compRows = byComp.length > 1 ? `
+      <h3 class="rp-group-head">By competition <span class="rp-count">${byComp.length}</span></h3>
+      ${byComp.map((c) => `<div class="ops-row">
+        <span class="ops-row-teams">${esc(c.name)}</span>
+        <span class="ops-row-score">${esc(String(c.goals))}</span>
+        <span class="ops-row-meta">${esc([
+          `${c.matches} ${c.matches === 1 ? "match" : "matches"}`,
+          `${st.perMatchText(c.goalsPerMatch)} a match`,
+          `${c.cleanSheets} clean sheet${c.cleanSheets === 1 ? "" : "s"}`,
+          c.sheetSides ? `${c.yellow} yellow · ${c.sentOff} red (${c.sheetSides} of ${c.sides} sheets)` : "",
+        ].filter(Boolean).join(" · "))}</span></div>`).join("")}` : "";
+
+    // ── How the goals went in. The bars share the typed goals between them;
+    //    the untyped ones are said, not drawn, because a giant "not recorded"
+    //    bar would be the only thing anyone saw.
+    const typeBars = s.typed ? compareBars(st.GOAL_TYPES
+      .filter((t) => s.types[t.key])
+      .map((t) => ({ label: t.label, text: String(s.types[t.key]),
+                     share: s.types[t.key] / s.typed }))) : "";
+    const goalTypes = `
+      <h3 class="rp-group-head">How the goals were scored</h3>
+      <p class="rp-hint">${s.typed
+        ? `Recorded for ${s.typed} of ${s.goals} goals.`
+        : "Not recorded for any goal in this selection yet — penalty, free kick, header and so on are set on each scorer."}</p>
+      ${typeBars}`;
+
+    // ── Matches worth naming.
+    const matchRow = (r) => `<a class="ops-row" href="#/m/${esc(r.public_id)}">
+      <span class="ops-row-teams">${esc(r.home_name)} <span class="ops-row-v">v</span> ${esc(r.away_name)}</span>
+      <span class="ops-row-score">${esc(`${r.home_goals}–${r.away_goals}`)}</span>
+      <span class="ops-row-meta">${esc([byComp.length > 1 ? r.competition_name : "",
+                                         r.date ? formatDate(r.date) : ""].filter(Boolean).join(" · "))}</span></a>`;
+    const top = st.topMatches(rows);
+    const matchBlocks = [
+      top.biggestWins.length ? `<h3 class="rp-group-head">Biggest wins</h3>${top.biggestWins.map(matchRow).join("")}` : "",
+      top.mostGoals.length ? `<h3 class="rp-group-head">Most goals</h3>${top.mostGoals.map(matchRow).join("")}` : "",
+    ].join("");
+
+    // ── Teams over the period.
+    const teams = st.byTeam(rows);
+    const teamList = (list, value, detail) => list.map((t, i) => `<div class="ops-row">
+      <span class="ops-row-teams"><span class="ops-rank">${i + 1}</span> ${esc(t.name)}</span>
+      <span class="ops-row-score">${esc(String(value(t)))}</span>
+      <span class="ops-row-meta">${esc(detail(t))}</span></div>`).join("");
+    const scoring = st.topTeams(teams, "gf", 5);
+    const sheets = st.topTeams(teams, "cleanSheets", 5);
+    const played = (t) => `${t.played} ${t.played === 1 ? "match" : "matches"}`;
+    const teamBlocks = [
+      scoring.length ? `<h3 class="rp-group-head">Most goals scored</h3>${
+        teamList(scoring, (t) => t.gf, (t) => `${played(t)} · ${t.ga} conceded`)}` : "",
+      sheets.length ? `<h3 class="rp-group-head">Clean sheets</h3>${
+        teamList(sheets, (t) => t.cleanSheets, played)}` : "",
+    ].join("");
+
+    // ── Referees. Always drawn, empty or not: the empty state is the reason
+    //    the officials question (0061) exists, and saying so is how it fills.
+    const refs = st.byReferee(rows);
+    const refBlock = `
+      <h3 class="rp-group-head">Referees${refs.length ? ` <span class="rp-count">${refs.length}</span>` : ""}</h3>
+      <p class="rp-hint">${s.withReferee} of ${s.matches} ${s.matches === 1 ? "match names" : "matches name"}
+        a referee. Cards count only where there is a team sheet.</p>
+      ${refs.slice(0, 15).map((x) => `<div class="ops-row">
+        <span class="ops-row-teams">${x.id
+          ? `<a href="/officials/${esc(x.id)}.html" target="_blank" rel="noopener">${esc(x.name)}</a>`
+          : esc(x.name)}</span>
+        <span class="ops-row-score">${esc(String(x.cards))}</span>
+        <span class="ops-row-meta">${esc([
+          `${x.matches} ${x.matches === 1 ? "match" : "matches"}`,
+          x.sheetMatches ? `${x.yellow} yellow · ${x.secondYellow + x.red} red` : "no team sheets",
+          x.perMatch != null ? `${x.perMatch.toFixed(1)} cards a match` : "",
+        ].filter(Boolean).join(" · "))}</span></div>`).join("")}`;
+
+    host.innerHTML = `${head}
+      <div class="rp-stats-lines">
+        ${lines.map((l) => `<p>${esc(l)}</p>`).join("")}
+        <button class="rp-btn is-ghost" type="button" data-stats-copy>Copy these lines</button>
+      </div>
+      <div class="ops-urgent">${tiles}</div>
+      <p class="rp-hint">${cardNote}</p>
+      ${compRows}
+      ${goalTypes}
+      ${matchBlocks}
+      ${teamBlocks}
+      ${refBlock}`;
+    host._lines = lines;
+  }
+
+  host.addEventListener("click", async (event) => {
+    const period = event.target.closest("[data-stats-period]");
+    if (period) {
+      state.period = period.dataset.statsPeriod;
+      syncUrl();
+      load();
+      return;
+    }
+    if (event.target.closest("[data-stats-all]")) {
+      state.comps = null;
+      syncUrl();
+      draw();
+      return;
+    }
+    const comp = event.target.closest("[data-stats-comp]");
+    if (comp) {
+      const id = comp.dataset.statsComp;
+      // From "All", a tap means "just this one" — the commonest question by
+      // far is one league. After that, taps add and remove; taking the last
+      // one off is All again rather than an empty screen.
+      if (!state.comps) state.comps = new Set([id]);
+      else if (state.comps.has(id)) state.comps.delete(id);
+      else state.comps.add(id);
+      if (!state.comps.size) state.comps = null;
+      syncUrl();
+      draw();
+      return;
+    }
+    const copy = event.target.closest("[data-stats-copy]");
+    if (copy) {
+      const text = (host._lines || []).join("\n");
+      try {
+        await navigator.clipboard.writeText(text);
+        flash("Copied.", "ok", 2500);
+      } catch {
+        flash("Could not copy — press and hold the lines above to copy them.", "warn");
+      }
+    }
+  });
+
+  // A <select> or a date picker may redraw: its change lands when the picker
+  // closes, and the next tap is a fresh one (the team-sheet lesson).
+  host.addEventListener("change", (event) => {
+    const t = event.target;
+    if (t.matches("[data-stats-from]")) { state.from = t.value; syncUrl(); load(); return; }
+    if (t.matches("[data-stats-to]")) { state.to = t.value; syncUrl(); load(); return; }
+    if (t.matches("[data-stats-comp]")) {
+      state.comp = t.value;
+      state.round = "";
+      syncUrl();
+      load();
+      return;
+    }
+    if (t.matches("[data-stats-round]")) { state.round = t.value; syncUrl(); draw(); }
+  });
+
+  await load();
+}
+
 // ── Operations: coverage and data backlog ────────────────────────────────────
 // Administrators only. Ten questions, one screen: which competitions have
 // incomplete past rounds, what is due next, what is overdue, and what is
@@ -13436,6 +14133,10 @@ const OPS_TABS = [
   // Per team rather than per match (0056): a team sheet is one side's, and
   // the job it sets is finding that club's match reports.
   { key: "lineups",      label: "Lineups",      flag: null },
+  // Beside Lineups because it is the same kind of job — a match report names
+  // the referee — and because "published without" is the reporter saying
+  // they looked, which is what separates a finished gap from a backlog (0061).
+  { key: "officials",    label: "Officials",    flag: null },
   { key: "venues",      label: "Venues",       flag: "missing_venue",
     head: "Missing venues", blank: "Every fixture has a ground." },
   { key: "sources",      label: "Sources",      flag: "missing_source",
@@ -13620,7 +14321,7 @@ function opsGlance(comps) {
 
 // ── Backlog rows ─────────────────────────────────────────────────────────────
 
-function opsMatchRow(m, names, extra = "") {
+function opsMatchRow(m, names, extra = "", after = "") {
   const bits = [formatDate(m.date), formatKickoff(m.kickoff)].filter(Boolean);
   if (m.round_key) bits.push(m.competition_type === "cup" ? m.round_key : `md${m.round_key}`);
   const score = (m.home_goals != null && m.away_goals != null)
@@ -13631,6 +14332,7 @@ function opsMatchRow(m, names, extra = "") {
       <span class="ops-row-score">${esc(score)}</span>
       <span class="ops-row-meta">${esc(names[m.competition_id] || m.competition_id)}
         · ${esc(bits.join(" · "))}${m.is_pre_tracker ? ' · <span class="ops-tag">imported</span>' : ""}</span>
+      ${after}
     </a>`;
 }
 
@@ -13781,6 +14483,90 @@ function opsLineupsPanel(teams, comp) {
           <p class="rp-hint">One sheet per side of every played match this
             season. Tap a red count to see which matches are missing one.</p>
           ${sections || '<p class="rp-empty">No played matches this season.</p>'}`;
+}
+
+// ── The Officials tab: who refereed, and who said nobody knew (0061) ─────────
+// Three buckets per competition, decided once in ops_match_officials: named,
+// published without (a reporter tapped "Yes, publish without match
+// officials"), and never asked — every match from before the question
+// existed. The second is a finished answer; the third is the backlog.
+
+async function loadOpsCompetitionOfficials() {
+  const { data, error } = await supabase.from("ops_competition_officials")
+    .select("competition_id,competition_name,competition_tier,played,named," +
+            "with_referee,skipped,unasked");
+  if (error) {
+    // Not live yet: a migration is a separate deploy from git.
+    if (error.code === "42P01" || error.code === "PGRST205"
+        || /ops_competition_officials/.test(error.message || "")) return null;
+    throw error;
+  }
+  return data || [];
+}
+
+const OPS_OFFICIALS_FIELDS =
+  "match_id,public_id,competition_id,competition_type,round_key,date,kickoff," +
+  "home_name,away_name,home_goals,away_goals,is_pre_tracker,officials_state," +
+  "skipped_at,skip_channel,skipped_by";
+
+/** Matches with no officials: one competition's (newest first, skipped and
+ *  never-asked together), or — with no competition — the latest skips
+ *  everywhere, which is "what did reporters say no to this week". */
+async function loadOpsOfficialsMatches(comp) {
+  let q = supabase.from("ops_match_officials").select(OPS_OFFICIALS_FIELDS);
+  q = comp
+    ? q.eq("competition_id", comp).neq("officials_state", "named")
+        .order("date", { ascending: false, nullsFirst: false }).limit(400)
+    : q.eq("officials_state", "skipped")
+        .order("skipped_at", { ascending: false }).limit(30);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+const OPS_SKIP_CHANNEL = { single: "match screen", grid: "matchday grid", import: "import" };
+
+function opsOfficialsRow(m, names) {
+  const said = m.officials_state === "skipped"
+    ? `<span class="ops-row-meta">Published without officials by
+         ${esc(m.skipped_by || "a reporter")} · ${esc(formatDate(String(m.skipped_at || "").slice(0, 10)))}
+         · ${esc(OPS_SKIP_CHANNEL[m.skip_channel] || m.skip_channel || "")}</span>`
+    : "";
+  // The row itself is opsMatchRow's, so it links to the match screen where
+  // the officials panel is; the extra line is who answered the question.
+  return opsMatchRow(m, names, "", said);
+}
+
+function opsOfficialsPanel(comps, latest, names) {
+  const sum = (key) => comps.reduce((n, c) => n + c[key], 0);
+  const sorted = comps.slice().sort((a, b) =>
+    (b.named + b.skipped) / (b.played || 1) - (a.named + a.skipped) / (a.played || 1)
+    || (a.competition_tier ?? 99) - (b.competition_tier ?? 99)
+    || a.competition_name.localeCompare(b.competition_name));
+  const chip = (cls, text) => `<span class="ops-glance-chip ${cls}">${esc(text)}</span>`;
+  const rows = sorted.map((c) => `
+    <a class="ops-glance-row${c.unasked ? " is-attn" : " is-good"}"
+       href="#/ops?tab=officials&comp=${encodeURIComponent(c.competition_id)}"
+       style="text-decoration:none;color:inherit">
+      <div class="ops-glance-comp">
+        <span class="ops-comp">${esc(c.competition_name)}</span>
+        <span class="ops-sub">${c.played} played · ${c.with_referee} name a referee</span>
+      </div>
+      <div class="ops-glance-status">
+        ${c.named ? chip("is-ok", `✓ ${c.named} named`) : ""}
+        ${c.skipped ? chip("is-warn", `${c.skipped} published without`) : ""}
+        ${c.unasked ? chip("is-bad", `${c.unasked} never asked`) : ""}
+      </div>
+    </a>`).join("");
+  return `<h2 class="rp-group-head">Match officials
+            <span class="rp-count">${sum("named")} of ${sum("played")}</span></h2>
+          <p class="rp-hint">Played matches this season. “Published without”
+            means a reporter was asked and said the officials could not be
+            found; “never asked” is everything from before that question
+            existed. Tap a competition to fill them in.</p>
+          <div class="ops-glance">${rows || '<p class="rp-empty">No played matches this season.</p>'}</div>
+          ${latest.length ? `<h3 class="rp-group-head">Latest published without officials</h3>
+            ${latest.map((m) => opsOfficialsRow(m, names)).join("")}` : ""}`;
 }
 
 async function opsRoundFixtures(comp, roundKey) {
@@ -14875,6 +15661,32 @@ async function renderOps(params) {
       return;
     }
 
+    if (tab === "officials") {
+      const comps = await loadOpsCompetitionOfficials();
+      if (!comps) {
+        header(`<h2 class="rp-group-head">Match officials</h2>
+          <p class="rp-empty">The officials views are not in the database yet.
+            Apply migration <code>0061_officials_skipped.sql</code> and reload.</p>`);
+        return;
+      }
+      if (comp) {
+        const rows = await loadOpsOfficialsMatches(comp);
+        const c = comps.find((x) => x.competition_id === comp);
+        header(`<a class="rp-btn is-ghost" href="#/ops?tab=officials">&larr; All competitions</a>
+                <h2 class="rp-group-head">${esc(names[comp] || comp)} · no officials
+                  <span class="rp-count">${rows.length}</span></h2>
+                <p class="rp-hint">${c ? `${c.named} of ${c.played} played matches
+                  name their officials. ` : ""}Newest first. Open a match and fill
+                  in “Officials and coaches” — it leaves this list on the next
+                  reload.</p>
+                ${rows.map((m) => opsOfficialsRow(m, names)).join("")
+                  || '<p class="rp-empty">Every played match names its officials.</p>'}`);
+        return;
+      }
+      header(opsOfficialsPanel(comps, await loadOpsOfficialsMatches(""), names));
+      return;
+    }
+
     if (tab === "fixtures") {
       const [{ comps }, rounds] = await Promise.all([
         loadOpsSummary(), opsRounds(comp)]);
@@ -15051,6 +15863,7 @@ async function route() {
   if (path === "/league/new") return renderNewLeague();
   if (path === "/account") return renderAccount();
   if (path === "/players") return renderPlayers(params);
+  if (path === "/stats") return renderStats(params);
   if (path === "/teams") return renderTeams(params);
   if (path === "/squad") return renderSquad(params);
   if (path === "/trending") return renderTrending(params);

@@ -22,6 +22,7 @@ import {
   acceptsScorers, addScorer, removeScorer, scorerRoom, collectGoals,
   applyGoalsResult, summarizeGoals, possessive, scorersFromImport,
   offerScorers, setScorerSide, sidelessScorers,
+  hasMatchOfficials, rowsWithoutOfficials, officialsAckKey,
 } from "../../static/report/results_grid.js";
 
 // A match as the portal's MATCH_FIELDS select returns it.
@@ -708,4 +709,44 @@ test("a graphic naming more scorers than the score allows stages what fits", () 
   ], { homeTeamId: "MW_BE_M1", awayTeamId: "MW_SIL_M1" }));
   assert.equal(staged, 1);
   assert.equal(row.scorers.length, 1);
+});
+
+
+// ── Officials (0061) ─────────────────────────────────────────────────────────
+// A question, never a refusal — and never asked about a match the screen did
+// not look at.
+
+const noOfficials = { referee: "", assistant_referee_1: "",
+                      assistant_referee_2: "", fourth_official: "" };
+
+test("a match loaded without the official columns is unknown, not empty", () => {
+  assert.equal(hasMatchOfficials(match()), undefined);
+  assert.equal(gridRow(match()).officials, undefined);
+});
+
+test("any one of the four officials counts; a coach does not", () => {
+  assert.equal(hasMatchOfficials(match(noOfficials)), false);
+  assert.equal(hasMatchOfficials(match({ ...noOfficials, fourth_official: "B. Gondwe" })), true);
+  assert.equal(hasMatchOfficials(match({ ...noOfficials, home_coach: "M. Mwase" })), false);
+  assert.equal(hasMatchOfficials(match({ ...noOfficials, referee: "   " })), false);
+});
+
+test("only played rows with no officials are asked about", () => {
+  const bare = gridRow(match({ ...noOfficials, match_id: "A" }));
+  setScore(bare, "home", "2"); setScore(bare, "away", "1");
+  const named = gridRow(match({ ...noOfficials, match_id: "B", referee: "Mphatso Gondwe" }));
+  setScore(named, "home", "0"); setScore(named, "away", "0");
+  const postponed = gridRow(match({ ...noOfficials, match_id: "C" }));
+  setStatus(postponed, "postponed");
+  const unknown = gridRow(match({ match_id: "D" }));
+  setScore(unknown, "home", "1"); setScore(unknown, "away", "1");
+  const { sending } = collectReports([bare, named, postponed, unknown]);
+  assert.deepEqual(rowsWithoutOfficials(sending).map((r) => r.matchId), ["A"]);
+});
+
+test("the confirmation key changes when the batch does", () => {
+  const a = gridRow(match({ match_id: "A" }));
+  const b = gridRow(match({ match_id: "B" }));
+  assert.equal(officialsAckKey([b, a]), officialsAckKey([a, b]));
+  assert.notEqual(officialsAckKey([a]), officialsAckKey([a, b]));
 });
