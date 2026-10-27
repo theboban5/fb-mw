@@ -1473,3 +1473,7 @@ MW_MDU16_2627_012,MW_MDU16,MW_2026_27,md_3,3,2026-10-10,08:00,MW_MZUZU_CCAP,MW_M
 MW_MDU16_2627_013,MW_MDU16,MW_2026_27,md_3,3,2026-10-10,10:00,MW_MZUZU_CCAP,MW_KU2_MU16,MW_TA_MU16,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_MDU16_2627_014,MW_MDU16,MW_2026_27,md_3,3,2026-10-11,08:00,MW_MZUZU_CCAP,MW_MA2_MU16,MW_VSA2_MU16,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_MDU16_2627_015,MW_MDU16,MW_2026_27,md_3,3,2026-10-11,08:00,MW_KATOTO,MW_MT2_MU16,MW_CRS2_MU16,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_MDU16_2627_016,MW_MDU16,MW_2026_27,md_3,3,2026-10-15,08:00,MW_MCHENGAUTUBA,MW_MW2_MU16,MW_KU2_MU16,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_MDU16_2627_017,MW_MDU16,MW_2026_27,md_3,3,2026-10-15,10:00,MW_MCHENGAUTUBA,MW_TA_MU16,MW_CRS2_MU16,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_MDU16_2627_018,MW_MDU16,MW_2026_27,md_3,3,2026-10-15,08:00,MW_BOTA_G,MW_CA_MU16,MW_A1A_MU16,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_MDU16_2627_019,MW_MDU16,MW_2026_27,md_3,3,2026-10-15,10:00,MW_BOTA_G,MW_MMM_MU16,MW_MA2_MU16,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
