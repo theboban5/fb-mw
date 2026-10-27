@@ -1349,3 +1349,8 @@ MW_NDU16_2627_028,MW_NDU16,MW_2026_27,md_5,5,2026-10-04,09:30,MW_BANGULA,MW_JYU_
 MW_NDU16_2627_029,MW_NDU16,MW_2026_27,md_5,5,2026-10-04,10:30,MW_BANGULA,MW_GAU_M1,MW_MYU_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_NDU16_2627_030,MW_NDU16,MW_2026_27,md_5,5,2026-10-04,11:30,MW_BANGULA,MW_MAU2_M1,MW_WYU_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_NDU16_2627_031,MW_NDU16,MW_2026_27,md_5,5,2026-10-04,12:30,MW_BANGULA,MW_MYU4_M1,MW_SBU2_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_NDU16_2627_032,MW_NDU16,MW_2026_27,md_6,6,2026-10-11,07:00,MW_BANGULA,MW_BSU_M1,MW_MYU4_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_NDU16_2627_033,MW_NDU16,MW_2026_27,md_6,6,2026-10-11,08:30,MW_BANGULA,MW_JYU_M1,MW_MYU3_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_NDU16_2627_034,MW_NDU16,MW_2026_27,md_6,6,2026-10-11,09:30,MW_BANGULA,MW_GAU_M1,MW_MYU2_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_NDU16_2627_035,MW_NDU16,MW_2026_27,md_6,6,2026-10-11,10:30,MW_BANGULA,MW_MAU2_M1,MW_MYU_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_NDU16_2627_036,MW_NDU16,MW_2026_27,md_6,6,2026-10-11,11:30,MW_BANGULA,MW_SBU2_M1,MW_WYU_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
