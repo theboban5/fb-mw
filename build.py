@@ -350,8 +350,9 @@ def _landing_categories(ds, leagues, scorchers_meta=None):
         _soon("Cup", "Castel Challenge Cup"),
         _soon("Cup", "FDH Bank Cup"),
     ]
+    # The Southern Region row left this roadmap when MW_SRWFL went live from
+    # the data, as the Top 8 did above.
     women_leagues = buckets[("women", "league")] + [
-        _soon("Premier Division", "Southern Region Women&#x2019;s Premier Division", region="Southern"),
         _soon("Premier Division", "Central Region Women&#x2019;s Premier Division", region="Central"),
         _soon("Premier Division", "Northern Region Women&#x2019;s Premier Division", region="Northern"),
     ]
