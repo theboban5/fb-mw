@@ -1572,3 +1572,7 @@ MW_NDL_2627_093,MW_NDL,MW_2026_27,md_16,16,2026-11-01,02:30,MW_NTAJA_VISION,MW_N
 MW_NDL_2627_094,MW_NDL,MW_2026_27,md_16,16,2026-11-07,02:30,MW_Z_001,MW_CB_M1,MW_CBWE_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_NDL_2627_095,MW_NDL,MW_2026_27,md_16,16,2026-11-07,02:30,MW_RU_001,MW_MCH_M1,MW_EXFC_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_NDL_2627_096,MW_NDL,MW_2026_27,md_16,16,2026-11-08,02:30,MW_MCJ_001,MW_NZ_M1,MW_MT_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_SRWFL_2627_001,MW_SRWFL,MW_2026_27,md_1,1,2026-10-31,10:00,MW_B_001,MW_EW_W1,MW_BAS_W1,,,scheduled,,reporter,WhatsApp,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_SRWFL_2627_002,MW_SRWFL,MW_2026_27,md_1,1,2026-10-31,14:00,MW_NSUWADZI,MW_NQ_W1,MW_FFC_W1,,,scheduled,,reporter,WhatsApp,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_SRWFL_2627_003,MW_SRWFL,MW_2026_27,md_1,1,2026-10-31,14:00,MW_WORKS,MW_AL_W1,MW_EB_W1,,,scheduled,,reporter,WhatsApp,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_SRWFL_2627_004,MW_SRWFL,MW_2026_27,md_1,1,2026-11-01,14:00,MW_NYAMBADWE,MW_NSG_W1,MW_SYS_W1,,,scheduled,,reporter,WhatsApp,,,unconfirmed,,,,,,,,,,,,,,,,,
