@@ -301,17 +301,29 @@ MW_MYU3_M1,MW_MYU3,m,u16,1,Midima Youth U16,,
 MW_MYU4_M1,MW_MYU4,m,u16,1,Mizimu Youth U16,,
 MW_SBU2_M1,MW_SBU2,m,u16,1,Sulumba Boys U16,,
 MW_WYU_M1,MW_WYU,m,u16,1,Waya Youth U16,,
+MW_MZUZ_M1,MW_MZUZ,m,senior,1,Mzuzu Warriors,,active
 MW_AAU3_M1,MW_AAU3,m,u14,1,Ambassador Academy U14,,
+MW_EPAC_M1,MW_EPAC,m,senior,1,EPAC United,,active
 MW_CYU_M1,MW_CYU,m,u14,1,Chasuma Youth U14,,
+MW_WIZA_M1,MW_WIZA,m,senior,1,Wizards FC,,active
 MW_FYSU_M1,MW_FYSU,m,u14,1,Favor Young Stars U14,,
+MW_CIVO_M1,MW_CIVO,m,senior,1,CIVO United,,active
 MW_WNAU_M1,MW_WNAU,m,u14,1,Walter Nyamilandu Academy U14,,
+MW_MAXB_M1,MW_MAXB,m,senior,1,Max Bullets,,active
 MW_FAU_M1,MW_FAU,m,u14,1,Future Academy U14,,
+MW_MAST_M1,MW_MAST,m,senior,1,Master Security Rangers,,active
 MW_SAU2_M1,MW_SAU2,m,u14,1,Stars Academy U14,,
+MW_BLAN_M1,MW_BLAN,m,senior,1,Blantyre United,,active
 MW_SAU3_M1,MW_SAU3,m,u14,1,Sagonja Academy U14,,
+MW_NCHA_M1,MW_NCHA,m,senior,1,Nchalo United,,active
 MW_NFU_M1,MW_NFU,m,u14,1,Nelson Foundation U14,,
+MW_MLAT_M1,MW_MLAT,m,senior,1,Mlatho Mponela,,active
 MW_MYU5_M1,MW_MYU5,m,u14,1,Mbeta Youth U14,,
+MW_SABL_M1,MW_SABL,m,senior,1,Sable Farming,,active
 MW_YBMU_M1,MW_YBMU,m,u14,1,Young Boys Magulugulu U14,,
+MW_RUMP_M1,MW_RUMP,m,senior,1,Rumphi United,,active
 MW_CU4_M1,MW_CU4,m,senior,1,Chipohlambo United,,
+MW_BAKA_M1,MW_BAKA,m,senior,1,Baka City,,active
 MW_FL_W1,MW_FL,w,senior,1,FACT Ladies,,
 MW_CH_W1,MW_CH,w,senior,1,Chitoliro Heroines,,
 MW_RS_W1,MW_RS,w,senior,1,Rumphi Sisters,,

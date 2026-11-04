@@ -11,6 +11,15 @@ MW_U16,MW_2026_27,U16 Development League,round_robin_2x,12,0,0,3,1,active
 MW_CRFA2,MW_2026_27,GoJet Investments CRFA Division Two League,round_robin_2x,14,1,0,3,1,active
 MW_TOP8,MW_2026_27,Airtel Top 8,knockout,8,0,0,3,1,active
 MW_BDU16,MW_2026_27,Blantyre District U16 League,round_robin_2x,16,0,0,3,1,active
+MW_SL,MW_2016,TNM Super League,round_robin_2x,16,0,3,3,1,complete
+MW_SL,MW_2017,TNM Super League,round_robin_2x,16,0,3,3,1,complete
+MW_SL,MW_2018,,round_robin_2x,16,0,3,3,1,complete
+MW_SL,MW_2019,,round_robin_2x,16,0,3,3,1,complete
+MW_SL,MW_2020_21,,round_robin_2x,16,0,3,3,1,complete
+MW_SL,MW_2022,,round_robin_2x,16,0,3,3,1,complete
+MW_SL,MW_2023,,round_robin_2x,16,0,3,3,1,complete
+MW_SL,MW_2024,,round_robin_2x,16,0,3,3,1,complete
+MW_SL,MW_2025,,round_robin_2x,16,0,3,3,1,complete
 MW_BDU14,MW_2026_27,,,16,,,3,1,active
 MW_MDU20,MW_2026_27,,,16,,,3,1,active
 MW_MDU14,MW_2026_27,,,16,,,3,1,active
