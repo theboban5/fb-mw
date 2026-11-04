@@ -174,6 +174,19 @@ test("an image is sent as an image block before the text", () => {
   assert.equal(content.at(-1).type, "text");
 });
 
+test("a PDF is sent as a document block, never as an image", () => {
+  const content = buildContent({ imageBase64: "JVBERi0", mediaType: "application/pdf" });
+  assert.equal(content[0].type, "document");
+  assert.deepEqual(content[0].source,
+                   { type: "base64", media_type: "application/pdf", data: "JVBERi0" });
+});
+
+test("the report prompt says what a pre-match report is and where reg_no comes from", () => {
+  assert.match(REPORT_PROMPT, /PRE-MATCH REPORT/);
+  assert.match(REPORT_PROMPT, /reg_no/);
+  assert.match(REPORT_PROMPT, /LEGEND/);
+});
+
 test("a source URL is given as context and never as something to fetch", () => {
   const content = buildContent({ text: "x", sourceUrl: "https://example.com/p" });
   const text = content.map((c) => c.text ?? "").join(" ");
@@ -313,7 +326,40 @@ test("a club's match report is one result, then its sheet on top", () => {
     method: "header" }]);
   assert.equal(item.motm_raw, "Ernest Petro");
   assert.equal(item.officials.fourth_official, "Mercy Kayira");
-  assert.deepEqual(item.coaches, [{ team_side: "away", name_raw: "Patricio Kulemeka" }]);
+  // A club's report prints no registration numbers, so there is none to keep.
+  assert.deepEqual(item.coaches, [{ team_side: "away", name_raw: "Patricio Kulemeka",
+                                    reg_no: "" }]);
+  assert.ok(sheet.starting.every((p) => p.reg_no === ""));
+});
+
+test("a pre-match report keeps each person's registration number, checked", () => {
+  // Mitundu Baptist's column of the FAM pre-match report for match no 149
+  // (1 Nov 2026), the two badges read, plus two numbers a misread could give.
+  const item = reportOnlyRow({
+    home_team_raw: "BLUE EAGLES FC", away_team_raw: "MITUNDU BAPTIST FC",
+    home_score: "", away_score: "",
+    players: [
+      { team_side: "away", role: "starting", name_raw: "Emmanuel Kanthiti",
+        shirt_number: "01", position: "GK", captain: false, reg_no: "005201M00" },
+      { team_side: "away", role: "starting", name_raw: "Leo Kachikho",
+        shirt_number: "14", position: "", captain: true, reg_no: "(009149M99)" },
+      { team_side: "away", role: "starting", name_raw: "Redson Nkhoma",
+        shirt_number: "", position: "", captain: false, reg_no: "000595M9" },
+      { team_side: "away", role: "bench", name_raw: "Fletchar Bandawe",
+        shirt_number: "", position: "", captain: false, reg_no: "MW_PLAYER_12" },
+    ],
+    substitutions: [], goals: [], cards: [], motm_raw: "",
+    referee: "Dickson Macloud", assistant_1: "", assistant_2: "", fourth_official: "",
+    coaches: [{ team_side: "away", name_raw: "Oscar Kaunda", reg_no: "000355M72" }],
+  });
+  assert.equal(item.status, "unknown", "a sheet before kick-off is not a result");
+  const [sheet] = item.team_sheets;
+  assert.equal(sheet.team_side, "away");
+  assert.deepEqual(sheet.starting.map((p) => p.reg_no), ["005201M00", "009149M99", ""]);
+  assert.equal(sheet.bench[0].reg_no, "", "anything not shaped like one is dropped");
+  assert.equal(sheet.starting[0].shirt_number, "01");
+  assert.deepEqual(item.coaches, [{ team_side: "away", name_raw: "Oscar Kaunda",
+                                    reg_no: "000355M72" }]);
 });
 
 test("a report printing the fixture the other way round is turned to match", () => {

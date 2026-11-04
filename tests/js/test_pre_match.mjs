@@ -12,7 +12,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { boardName, boardSide, famRegNo, sheetText } from "../../static/report/pre_match.js";
+import { boardName, boardSide, boxesFromReport, famRegNo, sheetText } from "../../static/report/pre_match.js";
 
 const MITUNDU = `01 Emmanuel Kanthiti (GK)
 14 Leo Kachikho (C)
@@ -109,4 +109,45 @@ test("a FAM registration number is checked, not trusted", () => {
   assert.equal(famRegNo("000584X95"), "");
   assert.equal(famRegNo("Micium Mhone (000584M95)"), "");
   assert.equal(famRegNo(null), "");
+});
+
+test("a read pre-match report fills both boxes and both coaches", () => {
+  // The shape import-extract stores (normalizeMatchReport), from report 147.
+  const item = {
+    team_sheets: [
+      { team_side: "home", starting: [
+          { name_raw: "Hastings Katoma Banda", shirt_number: "23", position: "GK",
+            captain: false, reg_no: "000317M01" },
+          { name_raw: "Gregory Nachipo", shirt_number: "8", position: "",
+            captain: true, reg_no: "000413M98" }],
+        bench: [{ name_raw: "Michael Mtonyo", shirt_number: "12", position: "",
+                  captain: false, reg_no: "000534M95" }] },
+      { team_side: "away", starting: [
+          { name_raw: "EMMANUEL MWANJALA", shirt_number: "15", position: "",
+            captain: false, reg_no: "023902M01" }], bench: [] },
+    ],
+    coaches: [{ team_side: "home", name_raw: "Jimmy Mzunga", reg_no: "" },
+              { team_side: "away", name_raw: "Kondwa Mwamlima Ikwanga", reg_no: "" }],
+  };
+  const boxes = boxesFromReport(item);
+  assert.equal(boxes.home, "23 Hastings Katoma Banda (GK)\n8 Gregory Nachipo (C)\n"
+    + "Substitutes:\n12 Michael Mtonyo");
+  assert.equal(boxes.away, "15 EMMANUEL MWANJALA");
+  assert.equal(boxes.homeCoach, "Jimmy Mzunga");
+  assert.equal(boxes.awayCoach, "Kondwa Mwamlima Ikwanga");
+  assert.equal(boxes.unplaced, 0);
+  assert.equal(boardSide(boxes.home).starting[1].captain, true);
+
+  // Printed the other way round: Kamuzu Barracks' XI is the away box.
+  const turned = boxesFromReport(item, true);
+  assert.equal(turned.away, boxes.home);
+  assert.equal(turned.homeCoach, "Kondwa Mwamlima Ikwanga");
+});
+
+test("a sheet with no side is counted, never guessed onto one", () => {
+  const boxes = boxesFromReport({ team_sheets: [{ team_side: "unknown",
+    starting: [{ name_raw: "A. Phiri", shirt_number: "", position: "", captain: false }],
+    bench: [] }] });
+  assert.deepEqual(boxes, { home: "", away: "", homeCoach: "", awayCoach: "", unplaced: 1 });
+  assert.deepEqual(boxesFromReport(null).unplaced, 0);
 });

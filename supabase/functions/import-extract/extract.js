@@ -93,6 +93,10 @@ export const REPORT_SCHEMA = strict({
     shirt_number: plain,
     position: { type: "string", enum: POSITIONS },
     captain: { type: "boolean" },
+    // The registration number a FAM pre-match report prints beside every
+    // name — "000584M95". Printed evidence, like the name, not an id of ours;
+    // checked against its shape in sheetPlayer() and blank everywhere else.
+    reg_no: plain,
   }) },
   substitutions: { type: "array", items: strict({
     team_side: sideField, on_raw: plain, off_raw: plain, minute: plain,
@@ -114,7 +118,8 @@ export const REPORT_SCHEMA = strict({
   assistant_1: plain,
   assistant_2: plain,
   fourth_official: plain,
-  coaches: { type: "array", items: strict({ team_side: sideField, name_raw: plain }) },
+  coaches: { type: "array", items: strict({ team_side: sideField, name_raw: plain,
+                                            reg_no: plain }) },
 });
 
 /** The JSON Schema the API is asked to constrain the response to.
@@ -280,7 +285,10 @@ home_team_raw and away_team_raw are the two teams in the order the report prints
 - cards: every booking or sending-off, for anyone on either side. card is "yellow", "second_yellow" for a red that followed a second booking, or "red" for a straight red. is_player is false for a coach, team manager or anyone else not playing. A card with no minute is normal.
 - motm_raw: the man of the match's name alone — not the club or position printed beside it ("Ernest Petro-Silver Strikers" is "Ernest Petro") — or "".
 - referee, assistant_1, assistant_2, fourth_official: the officials exactly as printed, or "".
-- coaches: each team's head coach (or interim head coach) as printed, with that team's side. A team manager, assistant coach or chairman is not a coach.`;
+- coaches: each team's head coach (or interim head coach) as printed, with that team's side. A team manager, assistant coach or chairman is not a coach.
+
+A PRE-MATCH REPORT is the league's own form, filled in before kick-off: "Pre-match Report" at the top, HOME TEAM and AWAY TEAM columns, a STARTING table and a SUBSTITUTES table under each, staff and OFFICIALS below. It has no score and no goals or cards, so those are "" and empty. The column under HOME TEAM is "home". The captain and the goalkeeper are marked by small badges beside the name, "C" and "GK", explained in a LEGEND — those are captain true and position "GK". A name may be split over two lines; it is one name. A shirt printed "01" is "01".
+- reg_no: such a form prints a registration number in brackets after every person's name, "Micium Mhone (000584M95)". That number is part of what is printed: copy it exactly into reg_no, without the brackets, and keep it out of name_raw. It is the one code you return, and only when it is printed beside that person; anywhere else reg_no is "".`;
 
 // ── Building the request ─────────────────────────────────────────────────────
 
@@ -294,7 +302,16 @@ home_team_raw and away_team_raw are the two teams in the order the report prints
 export function buildContent({ imageBase64, mediaType, text, sourceUrl,
                                subject = "the football results" } = {}) {
   const content = [];
-  if (imageBase64) {
+  // `imageBase64` is the uploaded FILE, whatever it is. A PDF goes as a
+  // document block — the API reads its text layer and sees each page, which
+  // is what a pre-match report needs: the names are text, the captain and
+  // keeper badges are only pictures.
+  if (imageBase64 && mediaType === "application/pdf") {
+    content.push({
+      type: "document",
+      source: { type: "base64", media_type: "application/pdf", data: imageBase64 },
+    });
+  } else if (imageBase64) {
     content.push({
       type: "image",
       source: { type: "base64", media_type: mediaType || "image/jpeg",
@@ -415,6 +432,14 @@ const normalizeScorer = (s) => ({
   method: ["header", "free_kick"].includes(s?.method) ? s.method : "",
 });
 
+// A FAM registration number: six digits, M or F, two digits. Anything else
+// the model put in reg_no is dropped — an id read off a page is evidence to
+// check, and a malformed one is evidence of a misread.
+const regNo = (value) => {
+  const m = /^\(?\s*(\d{6}[MF]\d{2})\s*\)?$/i.exec(String(value ?? "").trim());
+  return m ? m[1].toUpperCase() : "";
+};
+
 const sheetPlayer = (p) => ({
   name_raw: str(p?.name_raw) || "",
   // A shirt is a number on a back. "GK" in this field is a position that
@@ -423,6 +448,7 @@ const sheetPlayer = (p) => ({
     ? String(p.shirt_number).trim() : "",
   position: POSITIONS.includes(p?.position) ? p.position : "",
   captain: p?.captain === true,
+  reg_no: regNo(p?.reg_no),
 });
 
 /** The match-report fields, by name and capped, exactly as normalizeItem.
@@ -470,6 +496,7 @@ export function normalizeMatchReport(raw) {
     coaches: list(item.coaches, 4).map((c) => ({
       team_side: side(c?.team_side),
       name_raw: str(c?.name_raw) || "",
+      reg_no: regNo(c?.reg_no),
     })).filter((c) => c.name_raw),
   };
 }

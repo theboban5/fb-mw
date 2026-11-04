@@ -115,3 +115,32 @@ export function famRegNo(raw) {
   const m = /^\(?\s*(\d{6}[MF]\d{2})\s*\)?$/i.exec(String(raw || "").trim());
   return m ? m[1].toUpperCase() : "";
 }
+
+/** A read report (one import result: team_sheets, coaches) as the two boxes
+ *  and two coaches the line-up screen shows. `flipped` is true when the
+ *  report printed the fixture the other way round from the match it is
+ *  being drawn for (match_report.js orientationByName) — a pre-match report
+ *  never does, a club's own graphic sometimes does.
+ *
+ *  A sheet whose side could not be told is left out and counted, never
+ *  guessed onto one: the screen says so, and a wrong guess would put one
+ *  club's XI under the other's crest on a graphic that gets shared. */
+export function boxesFromReport(item, flipped = false) {
+  const out = { home: "", away: "", homeCoach: "", awayCoach: "", unplaced: 0 };
+  const sideOf = (s) => (s === "home" || s === "away"
+    ? (flipped ? (s === "home" ? "away" : "home") : s) : "");
+  const row = (role) => (p) => ({ role, shirt_number: p.shirt_number,
+    player_name: p.name_raw, position: p.position, captain: p.captain });
+  (item?.team_sheets || []).forEach((t) => {
+    const key = sideOf(t.team_side);
+    if (!key || out[key]) { out.unplaced += 1; return; }
+    out[key] = sheetText([...(t.starting || []).map(row("starting")),
+                          ...(t.bench || []).map(row("unused_sub"))]);
+  });
+  (item?.coaches || []).forEach((c) => {
+    const key = sideOf(c.team_side);
+    const field = key === "home" ? "homeCoach" : key === "away" ? "awayCoach" : "";
+    if (field && !out[field]) out[field] = displayName(c.name_raw);
+  });
+  return out;
+}

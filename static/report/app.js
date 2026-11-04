@@ -3273,14 +3273,25 @@ function applyProposal(row) {
  *
  *  Shared by #/import and the match screen's "Fill in from a match report":
  *  one place that knows the storage path rule and the channel vocabulary. */
+// The report-imports bucket's cap (0042), said before the upload rather than
+// after it.
+const PDF_MAX_BYTES = 10 * 1024 * 1024;
+
+const isPdf = (file) => file?.type === "application/pdf"
+  || /\.pdf$/i.test(file?.name || "");
+
 async function createImport({ file, url = "", text = "" }) {
   let storagePath = "";
   if (file) {
     // '<reporter_id>/<uuid>.jpg' — the path IS the authorization, which is
-    // what the storage policy in 0042 reads. The bucket is private.
-    storagePath = `${context.reporter.reporter_id}/${crypto.randomUUID()}.jpg`;
+    // what the storage policy in 0042 reads. The bucket is private. A photo
+    // has been shrunk to a JPEG by now; a PDF (0064, a pre-match report) is
+    // sent as it is, and its extension is how import-extract knows to read
+    // it as a document.
+    const pdf = isPdf(file);
+    storagePath = `${context.reporter.reporter_id}/${crypto.randomUUID()}.${pdf ? "pdf" : "jpg"}`;
     const { error } = await supabase.storage.from(IMPORT_BUCKET)
-      .upload(storagePath, file, { contentType: "image/jpeg" });
+      .upload(storagePath, file, { contentType: pdf ? "application/pdf" : "image/jpeg" });
     if (error) throw error;
   }
   const channel = file && url ? "image_url"
@@ -6347,9 +6358,10 @@ function reportInHtml(state) {
   const ri = state.reportIn || {};
   return `
     <p class="rp-hint" style="margin-top:0">The club's match report, a
-      team-sheet graphic, or the text of either. The line-ups, substitutions,
-      cards, assists and officials are filled in below for you to check —
-      nothing is saved until you say so.</p>
+      team-sheet graphic, the league's pre-match report (the PDF), or the text
+      of any of them. The line-ups, substitutions, cards, assists and
+      officials are filled in below for you to check — nothing is saved until
+      you say so.</p>
     <label class="rp-label" for="ri-url">Link</label>
     <input class="rp-input" id="ri-url" type="url" inputmode="url" data-ri-url
            value="${esc(ri.url || "")}" placeholder="https://…"
@@ -6360,10 +6372,12 @@ function reportInHtml(state) {
     <label class="rp-label" for="ri-text">…or paste the text</label>
     <textarea class="rp-input rp-textarea" id="ri-text" data-ri-text rows="4"
               placeholder="Starting XI: …">${esc(ri.text || "")}</textarea>
-    <label class="rp-label" for="ri-file">…or a screenshot</label>
+    <label class="rp-label" for="ri-file">…or a screenshot or PDF</label>
     <input class="rp-input" id="ri-file" type="file" data-ri-file
-           accept="image/jpeg,image/png,image/webp">
+           accept="image/jpeg,image/png,image/webp,application/pdf">
     ${ri.preview ? `<img class="rp-imp-preview" src="${esc(ri.preview)}" alt="">` : ""}
+    ${ri.file && isPdf(ri.file) ? `<p class="rp-hint">${esc(ri.file.name || "PDF")} ·
+      ${Math.max(1, Math.round(ri.file.size / 1024))} KB</p>` : ""}
     ${ri.note ? `<p class="rp-hint is-warn">${esc(ri.note)}</p>` : ""}
     <button class="rp-btn" type="button" data-ri-read>Read the report</button>`;
 }
@@ -6381,12 +6395,21 @@ function wireReportIn(host, match, state) {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      ri.file = await shrinkImage(file);
-      ri.preview = URL.createObjectURL(ri.file);
+      // A PDF goes as it is: there is nothing to shrink, and its text is the
+      // whole point of sending it rather than a screenshot.
+      if (isPdf(file)) {
+        if (file.size > PDF_MAX_BYTES) throw new Error("too big");
+        ri.file = file;
+        ri.preview = "";
+      } else {
+        ri.file = await shrinkImage(file);
+        ri.preview = URL.createObjectURL(ri.file);
+      }
       ri.note = "";
     } catch {
       ri.file = null; ri.preview = "";
-      ri.note = "That file is not a photo I can read. Try a JPG or PNG.";
+      ri.note = isPdf(file) ? "That PDF is over 10 MB — send a screenshot instead."
+        : "That file is not a photo I can read. Try a JPG or PNG.";
     }
     state.open["report-in"] = true;
     drawDetail(match, state, { local: true });
@@ -10621,6 +10644,14 @@ Substitutes:
     </select>
     <p class="rp-hint" data-sheet-source></p>
 
+    <label class="rp-label" for="gx-report">Pre-match report (optional)</label>
+    <input class="rp-input" id="gx-report" name="report" type="file"
+           accept="application/pdf,image/jpeg,image/png,image/webp">
+    <button class="rp-btn is-ghost" type="button" data-read-report disabled
+      >Read the team sheets</button>
+    <p class="rp-hint" data-report-note>The league's PDF, or a screenshot of
+      a club's line-up graphic. Both teams' boxes below are filled in from it.</p>
+
     <div class="rp-chip-row" data-lineup-boards>
       ${LINEUP_BOARDS.map(([key, label], i) =>
         `<button class="rp-chip${i === 0 ? " is-on" : ""}" type="button"
@@ -10668,6 +10699,8 @@ function wireLineupGraphics(competitions, accents, format, params) {
   const editNote = view.querySelector("[data-sheet-edit]");
   const photoField = view.querySelector("[data-photo-field]");
   const photoClear = view.querySelector("[data-photo-clear]");
+  const readBtn = view.querySelector("[data-read-report]");
+  const reportNote = view.querySelector("[data-report-note]");
 
   let bgColor = null;
   let board = "home";
@@ -10800,8 +10833,13 @@ function wireLineupGraphics(competitions, accents, format, params) {
     }
   }
 
+  function syncReadButton() {
+    readBtn.disabled = !current() || !form.report.files?.length;
+  }
+
   async function pickMatch() {
     syncUrl();
+    syncReadButton();
     const m = current();
     editNote.innerHTML = m
       ? `<a href="#/m/${esc(m.public_id)}">Edit the team sheet on the match &rarr;</a>`
@@ -10831,8 +10869,85 @@ function wireLineupGraphics(competitions, accents, format, params) {
     await redraw();
   }
 
-  form.comp.addEventListener("change", () => loadMatches());
+  form.comp.addEventListener("change", () => { loadMatches(); syncReadButton(); });
   form.match.addEventListener("change", pickMatch);
+  form.report.addEventListener("change", syncReadButton);
+
+  // The pre-match report, read by import-extract's report pass — the match
+  // screen's "Fill in from a match report", exactly, so the import it leaves
+  // behind is one the match screen can stage and save (?import=). The boxes
+  // get the sheets for the board; the database gets nothing until the
+  // reporter follows the link and saves there, where names meet the squad.
+  readBtn.onclick = async () => {
+    const m = current();
+    const picked = form.report.files?.[0];
+    if (!m || !picked || readBtn.disabled) return;
+    readBtn.disabled = true;
+    readBtn.textContent = "Reading… (up to a minute)";
+    const done = (note, kind = "") => {
+      readBtn.textContent = "Read the team sheets";
+      syncReadButton();
+      reportNote.innerHTML = note;
+      reportNote.classList.toggle("is-warn", kind === "warn");
+    };
+    try {
+      if (isPdf(picked) && picked.size > PDF_MAX_BYTES) {
+        done("That PDF is over 10 MB — send a screenshot instead.", "warn");
+        return;
+      }
+      const file = isPdf(picked) ? picked : await shrinkImage(picked);
+      const importId = await createImport({ file });
+      const { payload, reason, error } = await extractImport(importId, "match_report");
+      if (error) throw error;
+      if (reason || payload?.error) {
+        done(esc(reason === "import_disabled" ? "Reading reports is not switched on yet."
+          : payload?.message || "I could not read that one — type the sheets below."), "warn");
+        return;
+      }
+      // Which way round it was printed: the resolver first, then the names —
+      // stageReport's order, so the board and the match screen agree.
+      await supabase.rpc("resolve_and_save_import", { p_import_id: importId })
+        .then(({ error: e }) => { if (e) console.warn("[everyleague] report not resolved:", e); });
+      const { data } = await supabase.from("report_imports")
+        .select("extracted,resolved").eq("import_id", importId).limit(1);
+      const row = (data || [])[0] || { extracted: payload.extracted, resolved: null };
+      let found = mr.reportFor(row.extracted, row.resolved, m.match_id);
+      const only = (row.extracted?.results || []).length === 1 ? row.extracted.results[0] : null;
+      if (!found && only) {
+        const turn = mr.orientationByName(only, m.home.display_name, m.away.display_name);
+        if (turn) found = { source: only, flipped: turn.flipped };
+      }
+      if (!found) {
+        done(esc(`That sheet does not look like ${m.home.display_name} v ${m.away.display_name}`
+          + (only ? ` — it reads ${only.home_team_raw} v ${only.away_team_raw}.` : ".")
+          + " Nothing was filled in."), "warn");
+        return;
+      }
+      const boxes = prematch.boxesFromReport(found.source, found.flipped);
+      [["home_sheet", boxes.home], ["away_sheet", boxes.away],
+       ["home_coach", boxes.homeCoach], ["away_coach", boxes.awayCoach]].forEach(([name, value]) => {
+        // An upload is the reporter asking for this sheet, so it replaces the
+        // box — but only with something: a side the report did not list
+        // keeps whatever was there.
+        if (!value) return;
+        form[name].value = value;
+        loaded[name] = value;
+      });
+      const count = (text) => {
+        const side = prematch.boardSide(text);
+        return `${side.starting.length} + ${side.bench.length}`;
+      };
+      const read = [boxes.home && `${m.home.display_name} ${count(boxes.home)}`,
+                    boxes.away && `${m.away.display_name} ${count(boxes.away)}`].filter(Boolean);
+      done(`Read ${esc(read.join(", ") || "no team sheet")}${boxes.unplaced
+        ? ` — ${boxes.unplaced} sheet could not be told apart by team, and was left out` : ""}.
+        Check the names below. <a href="#/m/${esc(m.public_id)}?import=${esc(importId)}"
+        >Save these to the match &rarr;</a>`, read.length ? "" : "warn");
+      await redraw();
+    } catch (error) {
+      done(esc(humanError(error)), "warn");
+    }
+  };
   form.name_style.addEventListener("change", redraw);
   const debounce = (fn, ms = 200) => {
     let timer;

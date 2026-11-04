@@ -64,8 +64,11 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
+// The uploaded file's type, by the extension the client gave its path. A PDF
+// (0064) is a pre-match report; buildContent sends it as a document.
 const MEDIA_BY_EXT: Record<string, string> = {
   jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
+  pdf: "application/pdf",
 };
 
 /** Base64 without blowing the stack. btoa(String.fromCharCode(...bytes))
