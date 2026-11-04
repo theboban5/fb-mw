@@ -96,6 +96,7 @@ static/report/error_report.js  what to report when a screen breaks (0052)
 static/report/match_report.js  a club's match report → the match screen's editors
 static/report/squad.js  a pasted squad/staff list → one person per line (0057)
 static/report/stats.js  #/stats: periods, sums, the copyable sentences (0062)
+static/report/pre_match.js  a team sheet as a line-up board: box text, name styles
 src/nt.py, nt_page.py  national teams (the nt_* tabs, /scorchers/)
 src/search.py          the site search index
 static/report/app.js   the reporter portal (one file, no framework)
@@ -158,8 +159,8 @@ because Node reads a bare `.js` as CommonJS unless a package.json says
 otherwise, and the portal's modules are ESM because browsers load them that
 way. It covers `static/report/results_grid.js`,
 `static/report/fixture_import.js`, `static/report/error_report.js`,
-`static/report/match_report.js`, `static/report/squad.js` and
-`static/report/stats.js`, which import
+`static/report/match_report.js`, `static/report/squad.js`,
+`static/report/stats.js` and `static/report/pre_match.js`, which import
 nothing but each other; the
 moment one of them needs `document` or `supabase`, its tests stop meaning
 anything.

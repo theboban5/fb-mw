@@ -81,6 +81,8 @@ export const TEMPLATE_LABELS = {
   fixtures: "Fixture board",
   results: "Results board",
   scorers: "Top scorers",
+  lineup_team: "Team line-up",
+  lineup_match: "Match line-ups",
   editorial: "Announcement",
 };
 
@@ -711,6 +713,385 @@ function drawMatchBoard(ctx, { eyebrow, kind, standfirstLeft, standfirstRight,
   });
 }
 
+// ── The line-up system ───────────────────────────────────────────────────
+// A team sheet as a board: the club "XI" graphic every Premiership side
+// posts before kick-off, in house style. The rows arrive already shaped by
+// pre_match.js's boardSide() — {shirt, name, captain, gk}, the name in the
+// board's chosen style — so nothing here decides how a name is printed.
+//
+// Sizes are worked out from the room, not fixed: a square board holds a
+// full XI and a nine-man bench, and a Story board spends its extra height on
+// bigger names rather than on a gap before the watermark.
+
+function hexToRgba(hex, alpha) {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex || "");
+  const n = m ? parseInt(m[1], 16) : 0;
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+/** Set the largest font, `size` down to `size * floor`, at which `text` fits
+ *  `maxW`. Returns the size used. A name too long even at the floor is
+ *  clipped by the caller, never allowed into the next column. */
+function fitFont(ctx, text, maxW, size, weight, floor = 0.62) {
+  let s = size;
+  ctx.font = `${weight} ${s}px ${FONT_STACK}`;
+  while (s > size * floor && ctx.measureText(text).width > maxW) {
+    s -= 1;
+    ctx.font = `${weight} ${s}px ${FONT_STACK}`;
+  }
+  return s;
+}
+
+/** A small pill — "C" filled in the accent, "GK" outlined — drawn at x
+ *  (its left edge, or its right edge when align is "right"). Returns its
+ *  width, so a caller can lay out the next one beside it. */
+function drawTag(ctx, label, x, cy, size, filled, accent, ink, align = "left") {
+  ctx.font = `800 ${Math.round(size * 0.62)}px ${FONT_STACK}`;
+  const w = Math.max(size, ctx.measureText(label).width + size * 0.6);
+  const left = align === "right" ? x - w : x;
+  const top = cy - size / 2;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(left, top, w, size, size / 2);
+  else ctx.rect(left, top, w, size);
+  if (filled) {
+    ctx.fillStyle = accent;
+    ctx.fill();
+  } else {
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  ctx.fillStyle = filled ? "#ffffff" : ink;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, left + w / 2, cy + 1);
+  return w;
+}
+
+/** One player: shirt in the accent, name, then a C and a GK tag. `align`
+ *  "right" mirrors it (name, then shirt hard against the right edge) for the
+ *  away column of a match board. */
+function drawPlayerLine(ctx, p, { x, cy, width, size, align = "left", accent, ink }) {
+  // Wide enough for "88" at this size, so every name starts on one line.
+  const numW = size * 1.55;
+  const tagSize = Math.round(size * 0.78);
+  const tagGap = size * 0.3;
+  const tags = [p.captain ? ["C", true] : null, p.gk ? ["GK", false] : null]
+    .filter(Boolean);
+  ctx.font = `800 ${Math.round(tagSize * 0.62)}px ${FONT_STACK}`;
+  const tagsW = tags.reduce((sum, [label]) =>
+    sum + tagGap + Math.max(tagSize, ctx.measureText(label).width + tagSize * 0.6), 0);
+  const nameMax = width - numW - tagsW;
+
+  ctx.textBaseline = "middle";
+  ctx.font = `900 ${size}px ${FONT_STACK}`;
+  ctx.fillStyle = accent;
+  ctx.textAlign = align === "right" ? "left" : "right";
+  if (p.shirt) {
+    ctx.fillText(p.shirt, align === "right" ? x + width - numW + size * 0.3
+      : x + numW - size * 0.3, cy);
+  }
+
+  fitFont(ctx, p.name, nameMax, size, 700);
+  ctx.fillStyle = ink;
+  const nameW = Math.min(ctx.measureText(p.name).width, nameMax);
+  if (align === "right") {
+    const right = x + width - numW;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(right - nameMax, cy - size, nameMax, size * 2);
+    ctx.clip();
+    ctx.textAlign = "right";
+    ctx.fillText(p.name, right, cy);
+    ctx.restore();
+    let tx = right - nameW - tagGap;
+    tags.forEach(([label, filled]) => {
+      tx -= drawTag(ctx, label, tx, cy, tagSize, filled, accent, ink, "right") + tagGap;
+    });
+    return;
+  }
+  ctx.textAlign = "left";
+  fillTextClipped(ctx, p.name, x + numW, cy, nameMax, size);
+  let tx = x + numW + nameW + tagGap;
+  tags.forEach(([label, filled]) => {
+    tx += drawTag(ctx, label, tx, cy, tagSize, filled, accent, ink) + tagGap;
+  });
+}
+
+/** The bench as running text — "25 Chisale · 28 Singano · …" — wrapped on
+ *  whole entries, never inside one, the way the club graphics set it. */
+function benchLines(ctx, bench, maxW, maxLines) {
+  const items = bench.map((p) => [p.shirt, p.name].filter(Boolean).join(" ")
+    + (p.gk ? " (GK)" : ""));
+  const lines = [];
+  let cur = "";
+  items.forEach((item) => {
+    const test = cur ? `${cur}  ·  ${item}` : item;
+    if (!cur || ctx.measureText(test).width <= maxW) cur = test;
+    else { lines.push(cur); cur = item; }
+  });
+  if (cur) lines.push(cur);
+  if (lines.length > maxLines) {
+    const kept = lines.slice(0, maxLines);
+    kept[maxLines - 1] = `${kept[maxLines - 1]}  …`;
+    return kept;
+  }
+  return lines;
+}
+
+/** A photo cover-fitted into `rect`, faded into the board's ground along its
+ *  left and bottom edges so the names beside it stay readable. A cut-out
+ *  player on a transparent PNG needs no fade; a photo with its own
+ *  background gets one, and either way nothing is cut out here. */
+function drawPhoto(ctx, img, rect, ground) {
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  if (!iw || !ih) return;
+  const scale = Math.max(rect.w / iw, rect.h / ih);
+  const w = iw * scale;
+  const h = ih * scale;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(rect.x, rect.y, rect.w, rect.h);
+  ctx.clip();
+  // Anchored to the top: a player photo's face is near the top, and cover-fit
+  // centring would crop it on a tall Story board.
+  ctx.drawImage(img, rect.x + (rect.w - w) / 2, rect.y, w, h);
+  const left = ctx.createLinearGradient(rect.x, 0, rect.x + rect.w * 0.45, 0);
+  left.addColorStop(0, hexToRgba(ground, 1));
+  left.addColorStop(1, hexToRgba(ground, 0));
+  ctx.fillStyle = left;
+  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  const foot = ctx.createLinearGradient(0, rect.y + rect.h * 0.8, 0, rect.y + rect.h);
+  foot.addColorStop(0, hexToRgba(ground, 0));
+  foot.addColorStop(1, hexToRgba(ground, 1));
+  ctx.fillStyle = foot;
+  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  ctx.restore();
+}
+
+/** One side's board: crest and name, the XI, the bench, the coach. */
+function drawLineupTeam(ctx, state) {
+  const { dims, accent, ink, muted } = state;
+  const ground = state.background || TOKENS.ground;
+  const isPortrait = dims.h > dims.w;
+  const side = state.side || { starting: [], bench: [] };
+
+  let top = drawEyebrow(ctx, state.competitionName, state.kind || "LINE-UP",
+    dims, accent, state.accentDeep);
+  const bottom = drawWatermark(ctx, state.seasonLabel, dims, accent);
+
+  const photo = state.photo || null;
+  const photoRect = { x: dims.w * 0.5, y: top, w: dims.w * 0.5, h: bottom - top };
+  if (photo) {
+    drawPhoto(ctx, photo, photoRect, ground);
+  } else if (state.team?.img) {
+    // No photo: the crest, large and faint, holds the empty half instead.
+    const size = Math.min(dims.w * 0.62, bottom - top);
+    ctx.save();
+    ctx.globalAlpha = 0.07;
+    const img = state.team.img;
+    const s = Math.min(size / img.naturalWidth, size / img.naturalHeight);
+    ctx.drawImage(img, dims.w - PAD - img.naturalWidth * s + 40,
+      bottom - img.naturalHeight * s - 30, img.naturalWidth * s, img.naturalHeight * s);
+    ctx.restore();
+  }
+  const listW = (photo ? dims.w * 0.62 : dims.w) - PAD * 2;
+
+  // Header: crest, name, and the fixture under it on two muted lines.
+  const crest = isPortrait ? 132 : 96;
+  top += isPortrait ? 56 : 30;
+  drawCrestTile(ctx, PAD, top, crest, state.team?.img || null, state.team?.name || "");
+  const hx = PAD + crest + 26;
+  const hw = (photo ? dims.w * 0.62 : dims.w - PAD) - hx;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  const nameSize = fitFont(ctx, (state.team?.name || "").toUpperCase(), hw,
+    isPortrait ? 54 : 44, 900, 0.6);
+  ctx.fillStyle = ink;
+  fillTextClipped(ctx, (state.team?.name || "").toUpperCase(), hx,
+    top + nameSize * 0.95, hw, nameSize);
+  const sub = [state.opponent?.name ? `v ${state.opponent.name}` : "", state.when]
+    .filter(Boolean).join("  ·  ");
+  const subSize = isPortrait ? 28 : 23;
+  ctx.font = `600 ${subSize}px ${FONT_STACK}`;
+  ctx.fillStyle = muted;
+  wrapLines(ctx, sub, hw, 2).forEach((line, i) => {
+    fillTextClipped(ctx, line, hx, top + nameSize + 14 + subSize * (i + 0.9) * 1.15,
+      hw, subSize);
+  });
+  top += crest + (isPortrait ? 48 : 26);
+
+  // What the XI must leave room for underneath it.
+  const benchSize = isPortrait ? 28 : 22;
+  ctx.font = `600 ${benchSize}px ${FONT_STACK}`;
+  const bench = side.bench.length ? benchLines(ctx, side.bench, listW, isPortrait ? 4 : 3) : [];
+  const labelSize = isPortrait ? 26 : 21;
+  const benchH = bench.length ? labelSize + 16 + bench.length * benchSize * 1.4 + 12 : 0;
+  const coachH = state.coach ? benchSize * 1.4 + 18 : 0;
+  const footer = benchH + coachH + (isPortrait ? 48 : 20);
+
+  // The rows share what is left. A row has a ceiling, so a Story board can
+  // have room over: half goes above the XI and half below it, rather than
+  // all of it pooling above the watermark.
+  const n = Math.max(side.starting.length, 11);
+  const room = bottom - footer - top - labelSize - 14;
+  const rowH = Math.min(isPortrait ? 100 : 60, room / n);
+  const size = Math.round(Math.min(isPortrait ? 56 : 38, rowH * 0.64));
+  const spare = Math.max(0, room - rowH * n) / 2;
+  top += spare;
+
+  ctx.font = `900 ${labelSize}px ${FONT_STACK}`;
+  ctx.fillStyle = accent;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(state.xiLabel || "STARTING XI", PAD, top + labelSize);
+  top += labelSize + 14;
+
+  side.starting.forEach((p, i) => {
+    drawPlayerLine(ctx, p, { x: PAD, cy: top + rowH * (i + 0.5), width: listW,
+      size, accent, ink });
+  });
+  top += rowH * n + spare + (isPortrait ? 36 : 14);
+
+  if (bench.length) {
+    ctx.font = `900 ${labelSize}px ${FONT_STACK}`;
+    ctx.fillStyle = accent;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(state.benchLabel || "SUBSTITUTES", PAD, top + labelSize);
+    top += labelSize + 16;
+    ctx.font = `600 ${benchSize}px ${FONT_STACK}`;
+    ctx.fillStyle = ink;
+    bench.forEach((line) => {
+      top += benchSize * 1.4;
+      fillTextClipped(ctx, line, PAD, top - benchSize * 0.3, listW, benchSize);
+    });
+    top += 12;
+  }
+  if (state.coach) {
+    top += benchSize * 1.4 + 6;
+    ctx.textAlign = "left";
+    ctx.font = `700 ${benchSize}px ${FONT_STACK}`;
+    ctx.fillStyle = muted;
+    const label = "COACH  ";
+    ctx.fillText(label, PAD, top);
+    const lw = ctx.measureText(label).width;
+    ctx.font = `600 ${benchSize}px ${FONT_STACK}`;
+    ctx.fillStyle = ink;
+    fillTextClipped(ctx, state.coach, PAD + lw, top, listW - lw, benchSize);
+  }
+}
+
+/** Both sides on one board: crests over two mirrored columns. */
+function drawLineupMatch(ctx, state) {
+  const { dims, accent, ink, muted } = state;
+  const isPortrait = dims.h > dims.w;
+  const home = state.homeSide || { starting: [], bench: [] };
+  const away = state.awaySide || { starting: [], bench: [] };
+
+  let top = drawEyebrow(ctx, state.competitionName, state.kind || "LINE-UPS",
+    dims, accent, state.accentDeep);
+  const bottom = drawWatermark(ctx, state.seasonLabel, dims, accent);
+
+  const gutter = 36;
+  const colW = (dims.w - PAD * 2 - gutter) / 2;
+  const leftX = PAD;
+  const rightX = PAD + colW + gutter;
+
+  // Header: a crest over each column, names under them, "v" between.
+  const crest = isPortrait ? 150 : 92;
+  top += isPortrait ? 56 : 26;
+  drawCrestTile(ctx, leftX + colW / 2 - crest / 2, top, crest,
+    state.home?.img || null, state.home?.name || "");
+  drawCrestTile(ctx, rightX + colW / 2 - crest / 2, top, crest,
+    state.away?.img || null, state.away?.name || "");
+  ctx.font = `900 ${isPortrait ? 46 : 34}px ${FONT_STACK}`;
+  ctx.fillStyle = muted;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("v", dims.w / 2, top + crest / 2);
+  top += crest + 14;
+  const teamSize = isPortrait ? 34 : 27;
+  [[state.home, leftX], [state.away, rightX]].forEach(([team, x]) => {
+    const name = (team?.name || "").toUpperCase();
+    fitFont(ctx, name, colW, teamSize, 900, 0.6);
+    ctx.fillStyle = ink;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(name, x + colW / 2, top + teamSize, colW);
+  });
+  top += teamSize + 12;
+  if (state.when) {
+    const whenSize = isPortrait ? 26 : 21;
+    ctx.font = `600 ${whenSize}px ${FONT_STACK}`;
+    ctx.fillStyle = muted;
+    ctx.textAlign = "center";
+    ctx.fillText(state.when, dims.w / 2, top + whenSize, dims.w - PAD * 2);
+    top += whenSize + 8;
+  }
+  top += isPortrait ? 40 : 18;
+  drawHairline(ctx, top - (isPortrait ? 20 : 9), dims);
+
+  const benchSize = isPortrait ? 24 : 18;
+  ctx.font = `600 ${benchSize}px ${FONT_STACK}`;
+  const benches = [home, away].map((s) => (s.bench.length
+    ? benchLines(ctx, s.bench, colW, isPortrait ? 5 : 3) : []));
+  const benchRows = Math.max(...benches.map((b) => b.length));
+  const labelSize = isPortrait ? 22 : 17;
+  const benchH = benchRows ? labelSize + 12 + benchRows * benchSize * 1.4 + 10 : 0;
+  const coachH = (state.homeCoach || state.awayCoach) ? benchSize * 1.4 + 14 : 0;
+  const footer = benchH + coachH + (isPortrait ? 40 : 14);
+
+  const n = Math.max(home.starting.length, away.starting.length, 11);
+  const room = bottom - footer - top;
+  const rowH = Math.min(isPortrait ? 92 : 54, room / n);
+  const size = Math.round(Math.min(isPortrait ? 42 : 28, rowH * 0.6));
+  const spare = Math.max(0, room - rowH * n) / 2;   // drawLineupTeam's rule
+  top += spare;
+  home.starting.forEach((p, i) => drawPlayerLine(ctx, p, {
+    x: leftX, cy: top + rowH * (i + 0.5), width: colW, size, accent, ink,
+  }));
+  away.starting.forEach((p, i) => drawPlayerLine(ctx, p, {
+    x: rightX, cy: top + rowH * (i + 0.5), width: colW, size, align: "right",
+    accent, ink,
+  }));
+  top += rowH * n + spare + (isPortrait ? 30 : 12);
+
+  if (benchRows) {
+    ctx.font = `900 ${labelSize}px ${FONT_STACK}`;
+    ctx.fillStyle = accent;
+    ctx.textBaseline = "alphabetic";
+    ctx.textAlign = "left";
+    ctx.fillText("SUBSTITUTES", leftX, top + labelSize);
+    ctx.textAlign = "right";
+    ctx.fillText("SUBSTITUTES", rightX + colW, top + labelSize);
+    top += labelSize + 12;
+    ctx.font = `600 ${benchSize}px ${FONT_STACK}`;
+    ctx.fillStyle = ink;
+    for (let i = 0; i < benchRows; i++) {
+      const y = top + benchSize * (i + 1) * 1.4 - benchSize * 0.3;
+      if (benches[0][i]) { ctx.textAlign = "left"; ctx.fillText(benches[0][i], leftX, y, colW); }
+      if (benches[1][i]) { ctx.textAlign = "right"; ctx.fillText(benches[1][i], rightX + colW, y, colW); }
+    }
+    top += benchRows * benchSize * 1.4 + 10;
+  }
+  if (coachH) {
+    const y = top + benchSize * 1.4;
+    ctx.font = `600 ${benchSize}px ${FONT_STACK}`;
+    ctx.fillStyle = muted;
+    ctx.textBaseline = "alphabetic";
+    if (state.homeCoach) {
+      ctx.textAlign = "left";
+      ctx.fillText(`Coach: ${state.homeCoach}`, leftX, y, colW);
+    }
+    if (state.awayCoach) {
+      ctx.textAlign = "right";
+      ctx.fillText(`Coach: ${state.awayCoach}`, rightX + colW, y, colW);
+    }
+  }
+}
+
 // ── Templates ────────────────────────────────────────────────────────────
 // Every template reads state.dims / state.accent / state.accentDeep, set by
 // drawBoard() below before draw() is called — a template never needs to
@@ -772,6 +1153,14 @@ export const TEMPLATES = {
       drawScorerRows(ctx, top, bottom, state.rows, state.dims, state.accent,
         state.ink, state.muted);
     },
+  },
+  lineup_team: {
+    label: TEMPLATE_LABELS.lineup_team,
+    draw: drawLineupTeam,
+  },
+  lineup_match: {
+    label: TEMPLATE_LABELS.lineup_match,
+    draw: drawLineupMatch,
   },
   editorial: {
     label: TEMPLATE_LABELS.editorial,

@@ -32,6 +32,9 @@
 import { createClient } from "./vendor/supabase.min.js";
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "./config.js";
 import * as graphics from "./graphics.js";
+// A team sheet as a line-up board — the text the boxes hold, and how a name
+// prints on one. DOM-free for the same reason as the modules below.
+import * as prematch from "./pre_match.js";
 // The matchday grid's rules, kept out of this file so they can be tested
 // without a browser — see the section header on renderResults.
 import * as grid from "./results_grid.js";
@@ -6856,6 +6859,9 @@ async function drawDetail(match, state, { local = false } = {}) {
     ${sides.map((side) => section(
       `sheet-${side.key}`, `${side.teamName} team sheet`, side.sheet.rows.length,
       sheetHtml(side), open[`sheet-${side.key}`])).join("")}
+    ${context.isAdmin && lineup.length ? `<p class="rp-hint"><a
+      href="#/graphics?type=lineups&match=${esc(match.match_id)}"
+      >Line-up graphics from these sheets &rarr;</a></p>` : ""}
 
     ${section("officials", "Officials and coaches",
       OFFICIAL_ROLES.filter(([key]) => officials[key]).length,
@@ -9774,6 +9780,7 @@ const GRAPHICS_TABS = [
   ["fixtures", "Fixtures"],
   ["results", "Results"],
   ["scorers", "Top scorers"],
+  ["lineups", "Line-ups"],
   ["editorial", "Announcement"],
 ];
 
@@ -10060,6 +10067,7 @@ async function renderGraphics(params) {
 
   const fields = type === "editorial" ? graphicsEditorialFields(teams)
     : type === "scorers" ? graphicsScorerFields(competitions)
+    : type === "lineups" ? graphicsLineupFields(competitions)
     : graphicsMatchFields(type, competitions);
 
   const format = params.get("format") === "story" ? "story" : "square";
@@ -10098,15 +10106,18 @@ async function renderGraphics(params) {
         >Download PNG</button>
       <button class="rp-btn is-ghost" type="button" data-copy-image disabled
         hidden>Copy</button>
+      <button class="rp-btn is-ghost" type="button" data-share-image disabled
+        hidden>Share</button>
       <button class="rp-btn" type="button" data-save-draft disabled
-        >Save as homepage draft</button>
+        ${type === "lineups" ? "hidden" : ""}>Save as homepage draft</button>
     </div>
     <p class="rp-hint" data-graphics-status>Loading fonts…</p>
 
-    <div data-drafts-host>${graphicsDraftsGalleryHtml()}</div>
+    <div data-drafts-host>${type === "lineups" ? "" : graphicsDraftsGalleryHtml()}</div>
   `);
 
-  wireGraphics(type, competitions, teams, accents, format);
+  if (type === "lineups") wireLineupGraphics(competitions, accents, format, params);
+  else wireGraphics(type, competitions, teams, accents, format);
 }
 
 function wireGraphics(type, competitions, teams, accents, format) {
@@ -10282,6 +10293,7 @@ function wireGraphics(type, competitions, teams, accents, format) {
       : state.matches.length > 0;
     downloadBtn.disabled = !hasContent;
     copyBtn.disabled = !hasContent;
+    view.querySelector("[data-share-image]").disabled = !hasContent;
     // Story-format PNGs don't fit the homepage carousel's fixed 16:9 image
     // box — see syncSaveAvailability() above.
     saveBtn.disabled = !hasContent || format !== "square";
@@ -10449,6 +10461,9 @@ function wireGraphics(type, competitions, teams, accents, format) {
     recordDraft();
   };
 
+  wireBoardShare(view.querySelector("[data-share-image]"), canvas,
+    () => format, () => `everyleague-${type}-${todayIso()}.png`, recordDraft);
+
   copyBtn.onclick = async () => {
     try {
       const blob = await graphics.exportPng(canvas, graphics.BOARD_FORMATS[format]);
@@ -10499,6 +10514,402 @@ function wireGraphics(type, competitions, teams, accents, format) {
 
   renderDraftsGallery();  // wires the gallery's own click/delete handlers
   redraw();
+}
+
+/** The phone's own share sheet, with the board as a file — which on a phone
+ *  is WhatsApp, Facebook and Status in one tap, where Download leaves the
+ *  reporter hunting for it in a gallery. Shown only where the browser says it
+ *  can share a file (Web Share level 2); everywhere else Download is the way
+ *  out, so a button that cannot work is never drawn. */
+function wireBoardShare(button, canvas, formatOf, nameOf, after = () => {}) {
+  if (!button) return;
+  let probe = null;
+  try {
+    probe = new File([""], "probe.png", { type: "image/png" });
+  } catch (_error) { /* no File constructor: no sharing either */ }
+  button.hidden = !(probe && typeof navigator.canShare === "function"
+    && navigator.canShare({ files: [probe] }));
+  if (button.hidden) return;
+  button.onclick = async () => {
+    try {
+      const blob = await graphics.exportPng(canvas, graphics.BOARD_FORMATS[formatOf()]);
+      const file = new File([blob], nameOf(), { type: "image/png" });
+      await navigator.share({ files: [file] });
+      after();
+    } catch (error) {
+      // Closing the share sheet is an AbortError, and not a failure.
+      if (error?.name !== "AbortError") {
+        flash("Could not share the image — try Download instead.", "error");
+      }
+    }
+  };
+}
+
+// ── Line-up boards ──────────────────────────────────────────────────────────
+// The club "XI" graphic, from a team sheet. A sheet arrives three ways — saved
+// on the match already, typed or pasted here, or (once import-extract reads a
+// pre-match PDF) extracted — and all three end up as the same text in one box
+// per side, the paste box's format (pre_match.js). The text IS the editor: a
+// wrong name on the board is fixed by retyping it, and the board redraws.
+//
+// Nothing on this screen saves. A sheet worth keeping belongs on the match,
+// where the squad links each name to a player; "Edit the team sheet" goes
+// there, and the next visit here reads it back.
+
+const LINEUP_BOARDS = [["home", "Home XI"], ["away", "Away XI"], ["both", "Both teams"]];
+
+const LINEUP_MATCH_FIELDS = `${GRAPHICS_MATCH_FIELDS},public_id,home_team_id,away_team_id`;
+
+/** Every match a line-up board could be about: last week's (a sheet is
+ *  still worth posting the day after) through the next fortnight's, in date
+ *  order, whatever its status. */
+async function loadLineupMatches(compId) {
+  const { data, error } = await supabase.from("matches").select(LINEUP_MATCH_FIELDS)
+    .eq("competition_id", compId)
+    .gte("date", addDaysIso(todayIso(), -7)).lte("date", addDaysIso(todayIso(), 14))
+    .order("date", { ascending: true }).order("kickoff", { ascending: true })
+    .limit(GRAPHICS_MATCH_CAP);
+  if (error) throw error;
+  return data || [];
+}
+
+/** The saved sheets and coaches of one match, as {home, away} box text. The
+ *  name on a linked row is the player's (canonicalSheetNames), so a rename
+ *  on #/players reaches the board as it reaches the site. */
+async function loadMatchSheets(match) {
+  const [lineupRes, coachRes] = await Promise.all([
+    supabase.from("lineups").select("*,players(full_name,known_as)")
+      .eq("match_id", match.match_id).order("ord"),
+    supabase.from("matches").select("home_coach,away_coach")
+      .eq("match_id", match.match_id).limit(1),
+  ]);
+  if (lineupRes.error) throw lineupRes.error;
+  const rows = canonicalSheetNames(lineupRes.data || []);
+  const coaches = (coachRes.data || [])[0] || {};
+  return {
+    home: prematch.sheetText(rows.filter((r) => r.team_id === match.home_team_id)),
+    away: prematch.sheetText(rows.filter((r) => r.team_id === match.away_team_id)),
+    homeCoach: coaches.home_coach || "",
+    awayCoach: coaches.away_coach || "",
+  };
+}
+
+function graphicsLineupFields(competitions) {
+  const sheetBox = (side, label) => `
+    <label class="rp-label" for="gx-${side}-sheet">${label}</label>
+    <textarea class="rp-input" id="gx-${side}-sheet"
+              name="${side}_sheet" rows="8" spellcheck="false"
+              autocapitalize="words" placeholder="1 Precious Masamba (GK)
+7 Micium Mhone (C)
+3 Davie Phiri
+…
+Substitutes:
+25 Charles Chisale"></textarea>
+    <label class="rp-label" for="gx-${side}-coach">Coach (optional)</label>
+    <input class="rp-input" id="gx-${side}-coach" name="${side}_coach"
+           maxlength="80" autocapitalize="words">`;
+  return `
+    <label class="rp-label" for="gx-comp">Competition</label>
+    <select class="rp-input" id="gx-comp" name="comp">
+      <option value="">Choose a competition…</option>
+      ${competitions.map((c) =>
+        `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join("")}
+    </select>
+    <label class="rp-label" for="gx-match">Match</label>
+    <select class="rp-input" id="gx-match" name="match" disabled>
+      <option value="">Choose a competition first</option>
+    </select>
+    <p class="rp-hint" data-sheet-source></p>
+
+    <div class="rp-chip-row" data-lineup-boards>
+      ${LINEUP_BOARDS.map(([key, label], i) =>
+        `<button class="rp-chip${i === 0 ? " is-on" : ""}" type="button"
+           data-lineup-board="${key}">${label}</button>`).join("")}
+    </div>
+
+    <label class="rp-label" for="gx-style">Names</label>
+    <select class="rp-input" id="gx-style" name="name_style">
+      ${prematch.NAME_STYLES.map(([key, label]) =>
+        `<option value="${key}">${esc(label)}</option>`).join("")}
+    </select>
+
+    <div data-photo-field>
+      <label class="rp-label" for="gx-photo">Player photo (optional)</label>
+      <input class="rp-input" id="gx-photo" name="photo" type="file"
+             accept="image/jpeg,image/png,image/webp">
+      <p class="rp-hint">Fills the right half of a one-team board. A cut-out
+        PNG on a transparent background looks best.
+        <button class="rp-btn is-quiet" type="button" data-photo-clear hidden
+          >Remove photo</button></p>
+    </div>
+
+    <p class="rp-hint">One player a line: shirt, name, then (GK) or (C).
+      Everything under "Substitutes:" is the bench. Fix a name here and the
+      board follows; the team sheet on the match is not changed.</p>
+    ${sheetBox("home", "Home team sheet")}
+    ${sheetBox("away", "Away team sheet")}
+    <p class="rp-hint" data-sheet-edit></p>
+
+    <label class="rp-label" for="gx-eyebrow">Label</label>
+    <input class="rp-input" id="gx-eyebrow" name="eyebrow" maxlength="40"
+           autocapitalize="sentences"
+           placeholder="Leave blank to use the competition name">
+  `;
+}
+
+function wireLineupGraphics(competitions, accents, format, params) {
+  const canvas = view.querySelector("[data-board]");
+  const status = view.querySelector("[data-graphics-status]");
+  const downloadBtn = view.querySelector("[data-download]");
+  const copyBtn = view.querySelector("[data-copy-image]");
+  const shareBtn = view.querySelector("[data-share-image]");
+  const form = view.querySelector("[data-graphics-form]");
+  const sourceNote = view.querySelector("[data-sheet-source]");
+  const editNote = view.querySelector("[data-sheet-edit]");
+  const photoField = view.querySelector("[data-photo-field]");
+  const photoClear = view.querySelector("[data-photo-clear]");
+
+  let bgColor = null;
+  let board = "home";
+  let matches = [];
+  let photo = null;
+  // What was last put in each box from the database. A box still holding
+  // exactly that is the database's and may be replaced by another match's
+  // sheet; a box the reporter has typed into is theirs, and is not.
+  const loaded = { home_sheet: "", away_sheet: "", home_coach: "", away_coach: "" };
+
+  const current = () => matches.find((m) => m.match_id === form.match.value) || null;
+
+  view.querySelectorAll("[data-format-chips] [data-format]").forEach((chip) => {
+    chip.onclick = () => {
+      if (chip.dataset.format === format) return;
+      format = chip.dataset.format;
+      view.querySelectorAll("[data-format-chips] [data-format]")
+        .forEach((c) => c.classList.toggle("is-on", c === chip));
+      syncUrl();
+      redraw();
+    };
+  });
+  view.querySelectorAll("[data-bg-swatches] [data-swatch]").forEach((btn, i) => {
+    btn.onclick = () => {
+      bgColor = graphics.BACKGROUND_SWATCHES[i].value;
+      view.querySelectorAll("[data-bg-swatches] [data-swatch]").forEach((b, j) => {
+        b.classList.toggle("is-on", j === i);
+        b.setAttribute("aria-pressed", String(j === i));
+      });
+      redraw();
+    };
+  });
+  view.querySelectorAll("[data-lineup-board]").forEach((chip) => {
+    chip.onclick = () => {
+      board = chip.dataset.lineupBoard;
+      view.querySelectorAll("[data-lineup-board]")
+        .forEach((c) => c.classList.toggle("is-on", c === chip));
+      photoField.hidden = board === "both";
+      redraw();
+    };
+  });
+
+  function syncUrl() {
+    const match = form.match.value ? `&match=${encodeURIComponent(form.match.value)}` : "";
+    history.replaceState(null, "", `#/graphics?type=lineups&format=${format}${match}`);
+  }
+
+  const crests = new Map();
+  async function teamRef(team) {
+    const key = `${team.legacy_code}|${team.club_id}`;
+    if (!crests.has(key)) crests.set(key, await graphics.loadCrest(team.legacy_code, team.club_id));
+    return { name: team.display_name || "", img: crests.get(key) };
+  }
+
+  async function buildState() {
+    const m = current();
+    // Not form.style: that is the form element's own CSSStyleDeclaration.
+    const style = form.name_style.value;
+    const compLabel = competitions.find((c) => c.id === form.comp.value)?.label || "";
+    const season = await activeSeason().catch(() => null);
+    const [home, away] = m
+      ? await Promise.all([teamRef(m.home), teamRef(m.away)])
+      : [{ name: "Home", img: null }, { name: "Away", img: null }];
+    const kickoff = m ? boardKickoff(m.kickoff) : "";
+    const when = m ? [formatShortDate(m.date), kickoff ? `KO ${kickoff}` : "",
+      m.venue?.name || ""].filter(Boolean).join("  ·  ") : "";
+    const base = {
+      competitionName: form.eyebrow.value.trim() || compLabel,
+      seasonLabel: season?.label || "", when, background: bgColor,
+      accent: accents[form.comp.value] || null,
+    };
+    const homeSide = prematch.boardSide(form.home_sheet.value, style);
+    const awaySide = prematch.boardSide(form.away_sheet.value, style);
+    if (board === "both") {
+      return { template: "lineup_match", filled: homeSide.starting.length > 0
+          || awaySide.starting.length > 0,
+        state: { ...base, home, away, homeSide, awaySide,
+          homeCoach: form.home_coach.value.trim(), awayCoach: form.away_coach.value.trim() } };
+    }
+    const isHome = board === "home";
+    const side = isHome ? homeSide : awaySide;
+    return { template: "lineup_team", filled: side.starting.length > 0,
+      state: { ...base, team: isHome ? home : away, opponent: isHome ? away : home,
+        side, coach: (isHome ? form.home_coach : form.away_coach).value.trim(), photo } };
+  }
+
+  let drawToken = 0;
+  async function redraw() {
+    const token = ++drawToken;
+    await graphics.ensureFonts();
+    const { template, state, filled } = await buildState();
+    if (token !== drawToken) return;   // a newer keystroke already drew
+    graphics.drawBoard(canvas, template, state, format);
+    downloadBtn.disabled = !filled;
+    copyBtn.disabled = !filled;
+    shareBtn.disabled = !filled;
+    status.textContent = filled ? ""
+      : !current() ? "Choose a match, or type a team sheet below."
+      : "No starting XI for this side yet — type or paste one below.";
+  }
+
+  async function loadMatches(selectId = "") {
+    const compId = form.comp.value;
+    form.match.disabled = true;
+    matches = [];
+    if (!compId) {
+      form.match.innerHTML = `<option value="">Choose a competition first</option>`;
+      await redraw();
+      return;
+    }
+    form.match.innerHTML = `<option value="">Loading matches…</option>`;
+    try {
+      matches = await loadLineupMatches(compId);
+    } catch (error) {
+      form.match.innerHTML = `<option value="">Could not load matches</option>`;
+      flash(humanError(error), "error");
+      return;
+    }
+    form.match.innerHTML = matches.length
+      ? `<option value="">Choose a match…</option>${matches.map((m) =>
+        `<option value="${esc(m.match_id)}">${esc(formatShortDate(m.date))} · ${
+          esc(m.home.display_name)} v ${esc(m.away.display_name)}</option>`).join("")}`
+      : `<option value="">No matches from last week to the next fortnight</option>`;
+    form.match.disabled = !matches.length;
+    if (selectId && matches.some((m) => m.match_id === selectId)) {
+      form.match.value = selectId;
+      await pickMatch();
+    } else {
+      await redraw();
+    }
+  }
+
+  async function pickMatch() {
+    syncUrl();
+    const m = current();
+    editNote.innerHTML = m
+      ? `<a href="#/m/${esc(m.public_id)}">Edit the team sheet on the match &rarr;</a>`
+      : "";
+    if (!m) { sourceNote.textContent = ""; await redraw(); return; }
+    sourceNote.textContent = "Loading the saved team sheets…";
+    try {
+      const sheets = await loadMatchSheets(m);
+      const kept = [];
+      [["home_sheet", sheets.home], ["away_sheet", sheets.away],
+       ["home_coach", sheets.homeCoach], ["away_coach", sheets.awayCoach]].forEach(([name, value]) => {
+        const box = form[name];
+        if (box.value.trim() && box.value !== loaded[name]) { kept.push(name); return; }
+        box.value = value;
+        loaded[name] = value;
+      });
+      const saved = [sheets.home && m.home.display_name, sheets.away && m.away.display_name]
+        .filter(Boolean);
+      sourceNote.textContent = (saved.length
+        ? `Saved team sheet: ${saved.join(" and ")}.`
+        : "No team sheet saved for this match yet — type or paste one below.")
+        + (kept.length ? " What you typed is kept." : "");
+    } catch (error) {
+      sourceNote.textContent = "Could not load the saved team sheets — type one below.";
+      flash(humanError(error), "error");
+    }
+    await redraw();
+  }
+
+  form.comp.addEventListener("change", () => loadMatches());
+  form.match.addEventListener("change", pickMatch);
+  form.name_style.addEventListener("change", redraw);
+  const debounce = (fn, ms = 200) => {
+    let timer;
+    return () => { clearTimeout(timer); timer = setTimeout(fn, ms); };
+  };
+  const redrawSoon = debounce(redraw);
+  ["home_sheet", "away_sheet", "home_coach", "away_coach", "eyebrow"].forEach((name) => {
+    form[name].addEventListener("input", redrawSoon);
+  });
+
+  form.photo.addEventListener("change", () => {
+    const file = form.photo.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { photo = img; photoClear.hidden = false; redraw(); };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      flash("That photo could not be opened — try a JPEG or PNG.", "error");
+    };
+    img.src = url;
+  });
+  photoClear.onclick = () => {
+    if (photo?.src) URL.revokeObjectURL(photo.src);
+    photo = null;
+    form.photo.value = "";
+    photoClear.hidden = true;
+    redraw();
+  };
+
+  const fileName = () => {
+    const m = current();
+    const who = board === "both" || !m ? "lineups"
+      : (board === "home" ? m.home : m.away).display_name;
+    return `everyleague-${String(who).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${
+      m?.date || todayIso()}.png`;
+  };
+
+  downloadBtn.onclick = async () => {
+    const blob = await graphics.exportPng(canvas, graphics.BOARD_FORMATS[format]);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName();
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  copyBtn.hidden = !(window.isSecureContext
+    && typeof navigator.clipboard?.write === "function"
+    && typeof window.ClipboardItem === "function");
+  copyBtn.onclick = async () => {
+    try {
+      const blob = await graphics.exportPng(canvas, graphics.BOARD_FORMATS[format]);
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      const original = copyBtn.textContent;
+      copyBtn.textContent = "Copied";
+      setTimeout(() => { copyBtn.textContent = original; }, 2000);
+    } catch (_error) {
+      flash("Could not copy the image — try Download instead.", "error");
+    }
+  };
+  wireBoardShare(shareBtn, canvas, () => format, fileName);
+
+  // #/graphics?type=lineups&match=<id>, from a match screen: find its
+  // competition, then land on it.
+  const wanted = params.get("match");
+  if (wanted) {
+    supabase.from("matches").select("competition_id").eq("match_id", wanted).limit(1)
+      .then(({ data }) => {
+        const compId = (data || [])[0]?.competition_id;
+        if (!compId || !competitions.some((c) => c.id === compId)) { redraw(); return; }
+        form.comp.value = compId;
+        loadMatches(wanted);
+      }, () => redraw());
+  } else {
+    redraw();
+  }
 }
 
 // ── Reporters ────────────────────────────────────────────────────────────────
