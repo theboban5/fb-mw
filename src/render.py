@@ -618,29 +618,44 @@ def _group_chips(labels):
 
 
 def season_nav(links, filename="index.html"):
-    """The season picker: one link per season this competition has a table
-    for, newest first, the one on screen marked and not a link.
+    """The season picker: one button under the league name that opens a grid
+    of every season this competition has a table for.
 
     `links` is [(label, directory href, is_current)] relative to the page's
-    own directory; `filename` is the page being written, so switching season
-    from the Matches tab lands on that season's Matches tab. Nothing at all
-    for a competition with one season — a picker with one choice is a label
-    pretending to be a control. Plain links, no script: it scrolls inside
-    itself at 390px and never pushes the page sideways.
+    own directory, newest first, the competition's live season first;
+    `filename` is the page being written, so switching season from the
+    Matches tab lands on that season's Matches tab. Nothing at all for a
+    competition with one season — a picker with one choice is a label
+    pretending to be a control.
+
+    It was a row of every season as a pill, which read as ten buttons of
+    equal weight and gets worse with every season backfilled (2006 would
+    make it twenty). The hero already says which season is on screen, so
+    the button only has to say there are others: "Past seasons" on the live
+    table, "Change season" on an old one, whose grid tags the live season
+    "Now" so the way back is obvious. A <details>, so it opens with no
+    script and is a link list to a screen reader; the open grid sits over
+    the stats rather than pushing the page down.
     """
     if not links or len(links) < 2:
         return ""
     page = "" if filename == "index.html" else filename
+    on_live = links[0][2]
     items = []
-    for label, base, current in links:
+    for n, (label, base, current) in enumerate(links):
+        text = escape(label) + (' <span class="v2-season-now">Now</span>' if n == 0 else "")
         if current:
-            items.append(f'<span class="v2-season-chip is-current" '
-                         f'aria-current="page">{escape(label)}</span>')
+            items.append(f'<span class="v2-season-opt is-current" '
+                         f'aria-current="page">{text}</span>')
         else:
-            items.append(f'<a class="v2-season-chip" '
-                         f'href="{escape(base + page, quote=True)}">{escape(label)}</a>')
-    return ('<nav class="v2-seasons" aria-label="Seasons">'
-            + "".join(items) + "</nav>")
+            items.append(f'<a class="v2-season-opt" '
+                         f'href="{escape(base + page, quote=True)}">{text}</a>')
+    button = "Past seasons" if on_live else "Change season"
+    return ('<details class="v2-seasons">'
+            f'<summary class="v2-seasons-btn">{button}'
+            '<span class="v2-seasons-caret" aria-hidden="true"></span></summary>'
+            '<nav class="v2-seasons-menu" aria-label="Seasons">'
+            + "".join(items) + "</nav></details>")
 
 
 def _standings_table(rows, form, changes, crest, club_hrefs, withdrawn,

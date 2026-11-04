@@ -105,6 +105,7 @@ class ArchiveTest(unittest.TestCase):
                 page = fh.read()
             self.assertIn('class="v2-seasons"', page)
             self.assertIn('aria-current="page">2023<', page)
+            self.assertIn(">Change season<", page)
             self.assertIn("rsssf.org/tablesm/malaw2023.html", page)
             self.assertNotIn("v2-arrow", page)       # no "since last matchday"
             with open(os.path.join(out, "results.html"), encoding="utf-8") as fh:
@@ -139,6 +140,10 @@ class SeasonNavTest(unittest.TestCase):
                                  "results.html")
         self.assertIn('href="../results.html"', html)
         self.assertIn('aria-current="page">2025<', html)
+        self.assertIn(">Change season<", html)
+        live = render.season_nav([("26/27", "./", True), ("2025", "2025/", False)])
+        self.assertIn(">Past seasons<", live)
+        self.assertIn('aria-current="page">26/27 <span class="v2-season-now">Now', live)
 
 
 class PastSeasonsOnHubTest(unittest.TestCase):

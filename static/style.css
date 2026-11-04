@@ -530,39 +530,88 @@ table.v2-standings {
 .v2-form-empty { color: #bbb; }
 
 /* V2 results - mini banner */
-/* The season picker (render.season_nav): a past season is one tap from the
-   current table and from every other past one. It sits on the hero's own
-   dark green in both themes, so its colours are the hero's, not tokens.
-   One row that scrolls inside itself; the page never scrolls sideways. */
+/* The season picker (render.season_nav): one quiet button under the league
+   name; the grid of seasons opens over the stats below it. It sits on the
+   hero's own dark green in both themes, so its colours are the hero's, not
+   tokens. The grid is three columns at 390px and scrolls inside itself past
+   five rows, so twenty seasons cost the page nothing. */
 .v2-seasons {
-  display: flex;
-  gap: 6px;
-  margin: -10px -20px 22px;
-  padding: 2px 20px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-  justify-content: safe center;
+  position: relative;
+  display: inline-block;
+  margin: -10px 0 22px;
+  text-align: left;
 }
-.v2-seasons::-webkit-scrollbar { display: none; }
-.v2-mini-banner .v2-seasons { margin: 10px -20px 0; }
-.v2-season-chip {
-  flex: 0 0 auto;
-  padding: 5px 11px;
+.v2-mini-banner .v2-seasons { margin: 10px 0 0; }
+.v2-seasons-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
   border: 1px solid rgba(255,255,255,0.28);
   border-radius: 999px;
-  color: rgba(255,255,255,0.82);
-  font-size: 0.76rem;
+  color: rgba(255,255,255,0.85);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.v2-seasons-btn::-webkit-details-marker { display: none; }
+.v2-seasons-btn:hover,
+.v2-seasons[open] .v2-seasons-btn { border-color: #6dbf67; color: #ffffff; }
+.v2-seasons-caret {
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.15s;
+}
+.v2-seasons[open] .v2-seasons-caret { transform: rotate(-135deg); margin-top: 3px; }
+.v2-seasons-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  max-height: 232px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(3, 92px);
+  gap: 6px;
+  padding: 10px;
+  background: #0d1c12;
+  border: 1px solid #2f5c42;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+.v2-season-opt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 4px;
+  border-radius: 8px;
+  color: rgba(255,255,255,0.85);
+  font-size: 0.82rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   text-decoration: none;
+  white-space: nowrap;
 }
-.v2-season-chip:hover { border-color: #6dbf67; color: #ffffff; }
-.v2-season-chip.is-current {
-  background: #6dbf67;
-  border-color: #6dbf67;
-  color: #0d1c12;
+a.v2-season-opt:hover { background: rgba(255,255,255,0.08); color: #ffffff; }
+.v2-season-opt.is-current { background: #6dbf67; color: #0d1c12; }
+.v2-season-now {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6dbf67;
 }
+.v2-season-opt.is-current .v2-season-now { color: #0d1c12; }
 /* Where a past season's results came from (build._source_credit). */
 .v2-credit {
   margin: 18px 0 0;

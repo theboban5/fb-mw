@@ -138,6 +138,19 @@
   pager.hidden=false;
   select(chips[0]);
 })();
+/* The season picker (render.season_nav) is a <details>: it opens and closes
+   with no script. This only adds what a reader expects of a dropdown —
+   a tap anywhere else, or Escape, closes it. */
+(function(){
+  var picker=document.querySelector('details.v2-seasons');
+  if(!picker) return;
+  document.addEventListener('click',function(e){
+    if(picker.open && !picker.contains(e.target)) picker.open=false;
+  });
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape' && picker.open){ picker.open=false; picker.querySelector('summary').focus(); }
+  });
+})();
 </script>
 </body>
 </html>
