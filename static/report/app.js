@@ -35,6 +35,8 @@ import * as graphics from "./graphics.js";
 // A team sheet as a line-up board — the text the boxes hold, and how a name
 // prints on one. DOM-free for the same reason as the modules below.
 import * as prematch from "./pre_match.js";
+// Comparison and form boards' rules, DOM-free and tested (tests/js/test_compare.mjs).
+import * as cmp from "./compare.js";
 // The matchday grid's rules, kept out of this file so they can be tested
 // without a browser — see the section header on renderResults.
 import * as grid from "./results_grid.js";
@@ -6899,6 +6901,9 @@ async function drawDetail(match, state, { local = false } = {}) {
     ${context.isAdmin && lineup.length ? `<p class="rp-hint"><a
       href="#/graphics?type=lineups&match=${esc(match.match_id)}"
       >Line-up graphics from these sheets &rarr;</a></p>` : ""}
+    ${context.isAdmin ? `<p class="rp-hint"><a
+      href="#/graphics?type=compare&match=${esc(match.match_id)}"
+      >Comparison and form graphics &rarr;</a></p>` : ""}
 
     ${section("officials", "Officials and coaches",
       OFFICIAL_ROLES.filter(([key]) => officials[key]).length,
@@ -9818,6 +9823,7 @@ const GRAPHICS_TABS = [
   ["results", "Results"],
   ["scorers", "Top scorers"],
   ["lineups", "Line-ups"],
+  ["compare", "Compare"],
   ["editorial", "Announcement"],
 ];
 
@@ -10105,7 +10111,10 @@ async function renderGraphics(params) {
   const fields = type === "editorial" ? graphicsEditorialFields(teams)
     : type === "scorers" ? graphicsScorerFields(competitions)
     : type === "lineups" ? graphicsLineupFields(competitions)
+    : type === "compare" ? graphicsCompareFields(competitions)
     : graphicsMatchFields(type, competitions);
+  // Boards about one match are posted, not featured: no homepage draft.
+  const matchBoard = type === "lineups" || type === "compare";
 
   const format = params.get("format") === "story" ? "story" : "square";
   const formatChips = ["square", "story"].map((f) =>
@@ -10146,14 +10155,15 @@ async function renderGraphics(params) {
       <button class="rp-btn is-ghost" type="button" data-share-image disabled
         hidden>Share</button>
       <button class="rp-btn" type="button" data-save-draft disabled
-        ${type === "lineups" ? "hidden" : ""}>Save as homepage draft</button>
+        ${matchBoard ? "hidden" : ""}>Save as homepage draft</button>
     </div>
     <p class="rp-hint" data-graphics-status>Loading fonts…</p>
 
-    <div data-drafts-host>${type === "lineups" ? "" : graphicsDraftsGalleryHtml()}</div>
+    <div data-drafts-host>${matchBoard ? "" : graphicsDraftsGalleryHtml()}</div>
   `);
 
   if (type === "lineups") wireLineupGraphics(competitions, accents, format, params);
+  else if (type === "compare") wireCompareGraphics(competitions, accents, format, params);
   else wireGraphics(type, competitions, teams, accents, format);
 }
 
@@ -11032,6 +11042,373 @@ function wireLineupGraphics(competitions, accents, format, params) {
     supabase.from("matches").select("competition_id").eq("match_id", wanted).limit(1)
       .then(({ data }) => {
         const compId = (data || [])[0]?.competition_id;
+        if (!compId || !competitions.some((c) => c.id === compId)) { redraw(); return; }
+        form.comp.value = compId;
+        loadMatches(wanted);
+      }, () => redraw());
+  } else {
+    redraw();
+  }
+}
+
+// ── Comparison + form boards ────────────────────────────────────────────────
+// Two teams side by side before a match, or a team's last five. Every figure
+// is computed from what the database already holds (compare.js) — nothing is
+// typed, so nothing on the board can be a typo. The reporter chooses which
+// rows appear, and that is the whole of the editing: a number that is wrong
+// on the board is wrong on the site too, and is fixed where the score is.
+
+const COMPARE_BOARDS = [["compare", "Comparison"], ["form_home", "Home form"],
+  ["form_away", "Away form"], ["form_both", "Both teams' form"]];
+
+const COMPARE_MATCH_FIELDS = `${LINEUP_MATCH_FIELDS},season_id`;
+const COMPARE_ROW_FIELDS = "match_id,competition_id,season_id,date,kickoff,status," +
+  "home_team_id,away_team_id,home_goals,away_goals,source_type";
+
+/** Everything both boards need for one match, in five reads: the season's
+ *  matches, every meeting of the two teams, the table's entries and rules,
+ *  and the two sides' goals. A failed goals read costs the top scorer, never
+ *  the board. */
+async function loadCompareData(match) {
+  const comp = match.competition_id;
+  const season = match.season_id;
+  const h = match.home_team_id;
+  const a = match.away_team_id;
+  const [matchesRes, h2hRes, entriesRes, rulesRes, typeRes, goalsRes] = await Promise.all([
+    supabase.from("matches").select(COMPARE_ROW_FIELDS)
+      .eq("competition_id", comp).eq("season_id", season).limit(2000),
+    supabase.from("matches").select(COMPARE_ROW_FIELDS)
+      .or(`and(home_team_id.eq.${h},away_team_id.eq.${a}),and(home_team_id.eq.${a},away_team_id.eq.${h})`)
+      .limit(500),
+    supabase.from("entries").select("team_id,group,points_adjustment,status,team:teams(display_name)")
+      .eq("competition_id", comp).eq("season_id", season),
+    supabase.from("competition_seasons").select("points_win,points_draw")
+      .eq("competition_id", comp).eq("season_id", season).limit(1),
+    supabase.from("competitions").select("type").eq("competition_id", comp).limit(1),
+    supabase.from("goals").select("match_id,team_id,player_id,player_name,goal_type," +
+        "player:players!goals_player_id_fkey(known_as,full_name)," +
+        "match:matches!inner(competition_id,season_id)")
+      .eq("match.competition_id", comp).eq("match.season_id", season).in("team_id", [h, a]),
+  ]);
+  for (const res of [matchesRes, h2hRes, entriesRes]) if (res.error) throw res.error;
+  if (goalsRes.error) console.warn("[everyleague] goals for the comparison:", goalsRes.error);
+  const names = {};
+  (entriesRes.data || []).forEach((e) => { names[e.team_id] = e.team?.display_name || e.team_id; });
+  names[h] = match.home.display_name;
+  names[a] = match.away.display_name;
+  return {
+    matches: matchesRes.data || [],
+    h2hMatches: h2hRes.data || [],
+    entries: (entriesRes.data || []).map((e) => ({ ...e, name: names[e.team_id] })),
+    rules: (rulesRes.data || [])[0] || {},
+    league: ((typeRes.data || [])[0]?.type || "league") !== "cup",
+    goals: (goalsRes.data || []).map((g) => ({ match_id: g.match_id, team_id: g.team_id,
+      player_id: g.player_id || "", goal_type: g.goal_type || "",
+      name: g.player?.known_as || g.player?.full_name || g.player_name || "" })),
+    names,
+  };
+}
+
+function graphicsCompareFields(competitions) {
+  const ticks = cmp.COMPARE_ROWS.map(([key, label, on]) => `
+    <label class="rp-inline"><input type="checkbox" name="row_${key}"
+      data-compare-row="${key}" ${on ? "checked" : ""}><span>${esc(label)}</span></label>`).join("");
+  return `
+    <label class="rp-label" for="gx-comp">Competition</label>
+    <select class="rp-input" id="gx-comp" name="comp">
+      <option value="">Choose a competition…</option>
+      ${competitions.map((c) =>
+        `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join("")}
+    </select>
+    <label class="rp-label" for="gx-match">Match</label>
+    <select class="rp-input" id="gx-match" name="match" disabled>
+      <option value="">Choose a competition first</option>
+    </select>
+
+    <div class="rp-chip-row" data-compare-boards>
+      ${COMPARE_BOARDS.map(([key, label], i) =>
+        `<button class="rp-chip${i === 0 ? " is-on" : ""}" type="button"
+           data-compare-board="${key}">${esc(label)}</button>`).join("")}
+    </div>
+
+    <fieldset class="rp-fieldset" data-compare-rows>
+      <legend class="rp-label">Show on the board</legend>
+      ${ticks}
+    </fieldset>
+    <p class="rp-hint" data-compare-note>This competition, this season, up to the
+      day before the match. Head to head counts every earlier meeting.</p>
+
+    <label class="rp-label" for="gx-eyebrow">Label</label>
+    <input class="rp-input" id="gx-eyebrow" name="eyebrow" maxlength="40"
+           autocapitalize="sentences"
+           placeholder="Leave blank to use the competition name">
+  `;
+}
+
+function wireCompareGraphics(competitions, accents, format, params) {
+  const canvas = view.querySelector("[data-board]");
+  const status = view.querySelector("[data-graphics-status]");
+  const downloadBtn = view.querySelector("[data-download]");
+  const copyBtn = view.querySelector("[data-copy-image]");
+  const shareBtn = view.querySelector("[data-share-image]");
+  const form = view.querySelector("[data-graphics-form]");
+  const rowsField = view.querySelector("[data-compare-rows]");
+  const note = view.querySelector("[data-compare-note]");
+  const defaultNote = note.innerHTML;
+
+  let bgColor = null;
+  let board = "compare";
+  let matches = [];
+  let data = null;          // loadCompareData for the picked match
+  let loadedFor = "";
+
+  const current = () => matches.find((m) => m.match_id === form.match.value) || null;
+
+  view.querySelectorAll("[data-format-chips] [data-format]").forEach((chip) => {
+    chip.onclick = () => {
+      if (chip.dataset.format === format) return;
+      format = chip.dataset.format;
+      view.querySelectorAll("[data-format-chips] [data-format]")
+        .forEach((c) => c.classList.toggle("is-on", c === chip));
+      syncUrl();
+      redraw();
+    };
+  });
+  view.querySelectorAll("[data-bg-swatches] [data-swatch]").forEach((btn, i) => {
+    btn.onclick = () => {
+      bgColor = graphics.BACKGROUND_SWATCHES[i].value;
+      view.querySelectorAll("[data-bg-swatches] [data-swatch]").forEach((b, j) => {
+        b.classList.toggle("is-on", j === i);
+        b.setAttribute("aria-pressed", String(j === i));
+      });
+      redraw();
+    };
+  });
+  view.querySelectorAll("[data-compare-board]").forEach((chip) => {
+    chip.onclick = () => {
+      board = chip.dataset.compareBoard;
+      view.querySelectorAll("[data-compare-board]")
+        .forEach((c) => c.classList.toggle("is-on", c === chip));
+      rowsField.hidden = board !== "compare";
+      redraw();
+    };
+  });
+  rowsField.addEventListener("change", redraw);
+
+  function syncUrl() {
+    const match = form.match.value ? `&match=${encodeURIComponent(form.match.value)}` : "";
+    history.replaceState(null, "", `#/graphics?type=compare&format=${format}${match}`);
+  }
+
+  const crests = new Map();
+  async function teamRef(team) {
+    const key = `${team.legacy_code}|${team.club_id}`;
+    if (!crests.has(key)) crests.set(key, await graphics.loadCrest(team.legacy_code, team.club_id));
+    return { name: team.display_name || "", img: crests.get(key) };
+  }
+
+  const ticked = () => cmp.COMPARE_ROWS.map(([key]) => key)
+    .filter((key) => form[`row_${key}`]?.checked);
+
+  /** What the screen says under the ticks: the period, and every ticked row
+   *  the data could not fill, so a missing line on the board is explained
+   *  rather than looking like a bug. */
+  function explain(m, out) {
+    const gaps = [];
+    const keys = new Set(ticked());
+    if (!data.league && (keys.has("position") || keys.has("points"))) {
+      gaps.push("A cup has no table, so there is no position or points.");
+    }
+    if (keys.has("top_scorer")) {
+      [[m.home_team_id, "home"], [m.away_team_id, "away"]].forEach(([id, side]) => {
+        if (out.topScorer?.[side]) return;
+        const ids = new Set(cmp.playedBefore(data.matches, m).map((x) => x.match_id));
+        const scored = data.goals.filter((g) => g.team_id === id && ids.has(g.match_id)).length;
+        const gf = cmp.teamRecord(cmp.playedBefore(data.matches, m), id).gf;
+        if (gf) gaps.push(`No top scorer for ${data.names[id]}: ${scored} of their ${gf} `
+          + "goals have a scorer, and the board only names one when every goal does.");
+      });
+    }
+    if (keys.has("h2h") && !out.h2h) gaps.push("These two have not met before.");
+    if (!out.played.home && !out.played.away) {
+      gaps.push("Neither side has played in this competition this season yet.");
+    }
+    note.innerHTML = [defaultNote, ...gaps.map(esc)].join(" ");
+  }
+
+  async function buildState() {
+    const m = current();
+    const compLabel = competitions.find((c) => c.id === form.comp.value)?.label || "";
+    const season = await activeSeason().catch(() => null);
+    const base = {
+      competitionName: form.eyebrow.value.trim() || compLabel,
+      seasonLabel: season?.label || "", background: bgColor,
+      accent: accents[form.comp.value] || null,
+    };
+    if (!m || !data) return { template: null, state: base, filled: false };
+    const [home, away] = await Promise.all([teamRef(m.home), teamRef(m.away)]);
+    const kickoff = boardKickoff(m.kickoff);
+    const when = [formatShortDate(m.date), kickoff ? `KO ${kickoff}` : "",
+      m.venue?.name || ""].filter(Boolean).join("  ·  ");
+    const out = cmp.buildCompare({ match: m, matches: data.matches,
+      h2hMatches: data.h2hMatches, entries: data.entries, rules: data.rules,
+      goals: data.goals, league: data.league, keys: ticked(),
+      teamName: (id) => data.names[id] || id });
+    explain(m, out);
+    const n = Math.max(out.forms.home.length, out.forms.away.length);
+    const last = `LAST ${n || cmp.FORM_LENGTH}`;
+    const shared = { ...base, home, away, when };
+    if (board === "compare") {
+      return { template: "compare_match", filled: out.rows.length > 0 || Boolean(out.form),
+        state: { ...shared, ...out, kind: "MATCH PREVIEW", formLabel: `FORM · ${last}` } };
+    }
+    if (board === "form_both") {
+      return { template: "form_match", filled: n > 0,
+        state: { ...shared, form: out.forms, formLabel: last,
+          summaryHome: out.summaries.home, summaryAway: out.summaries.away } };
+    }
+    const isHome = board === "form_home";
+    const list = isHome ? out.forms.home : out.forms.away;
+    const opponent = isHome ? away : home;
+    // "Next" only while the match is still to come: after it, this board is
+    // the run going into it, and the result is the results board's to say.
+    const upcoming = !["played", "awarded"].includes(m.status);
+    const next = upcoming ? `Next: ${isHome ? "v" : "at"} ${opponent.name}  ·  ${
+      formatShortDate(m.date)}` : "";
+    return { template: "form_team", filled: list.length > 0,
+      state: { ...base, team: isHome ? home : away, form: list,
+        formLabel: `${last}  ·  ${(compLabel || "").toUpperCase()}`,
+        summary: isHome ? out.summaries.home : out.summaries.away, next } };
+  }
+
+  let drawToken = 0;
+  async function redraw() {
+    const token = ++drawToken;
+    await graphics.ensureFonts();
+    const { template, state, filled } = await buildState();
+    if (token !== drawToken) return;
+    if (template) graphics.drawBoard(canvas, template, state, format);
+    else graphics.drawBoard(canvas, "compare_match", { ...state, rows: [] }, format);
+    downloadBtn.disabled = !filled;
+    copyBtn.disabled = !filled;
+    shareBtn.disabled = !filled;
+    status.textContent = filled ? ""
+      : !current() ? "Choose a competition and a match."
+      : !data ? "Loading the season…"
+      : "Nothing to show yet — neither side has a played match this season.";
+  }
+
+  async function loadMatches(selectId = "") {
+    const compId = form.comp.value;
+    form.match.disabled = true;
+    matches = [];
+    data = null;
+    if (!compId) {
+      form.match.innerHTML = `<option value="">Choose a competition first</option>`;
+      await redraw();
+      return;
+    }
+    form.match.innerHTML = `<option value="">Loading matches…</option>`;
+    try {
+      const { data: rows, error } = await supabase.from("matches").select(COMPARE_MATCH_FIELDS)
+        .eq("competition_id", compId)
+        .gte("date", addDaysIso(todayIso(), -7)).lte("date", addDaysIso(todayIso(), 14))
+        .order("date", { ascending: true }).order("kickoff", { ascending: true })
+        .limit(GRAPHICS_MATCH_CAP);
+      if (error) throw error;
+      matches = rows || [];
+    } catch (error) {
+      form.match.innerHTML = `<option value="">Could not load matches</option>`;
+      flash(humanError(error), "error");
+      return;
+    }
+    // A match picked from a match screen may be older than last week; it is
+    // fetched on its own so the deep link still lands.
+    if (selectId && !matches.some((m) => m.match_id === selectId)) {
+      const { data: one } = await supabase.from("matches").select(COMPARE_MATCH_FIELDS)
+        .eq("match_id", selectId).limit(1);
+      if (one?.[0]) matches.unshift(one[0]);
+    }
+    form.match.innerHTML = matches.length
+      ? `<option value="">Choose a match…</option>${matches.map((m) =>
+        `<option value="${esc(m.match_id)}">${esc(formatShortDate(m.date))} · ${
+          esc(m.home.display_name)} v ${esc(m.away.display_name)}</option>`).join("")}`
+      : `<option value="">No matches from last week to the next fortnight</option>`;
+    form.match.disabled = !matches.length;
+    if (selectId && matches.some((m) => m.match_id === selectId)) {
+      form.match.value = selectId;
+      await pickMatch();
+    } else {
+      await redraw();
+    }
+  }
+
+  async function pickMatch() {
+    syncUrl();
+    const m = current();
+    data = null;
+    note.innerHTML = defaultNote;
+    if (!m) { await redraw(); return; }
+    loadedFor = m.match_id;
+    await redraw();
+    try {
+      const loaded = await loadCompareData(m);
+      if (loadedFor !== m.match_id) return;   // another match was picked meanwhile
+      data = loaded;
+    } catch (error) {
+      flash(humanError(error), "error");
+    }
+    await redraw();
+  }
+
+  form.comp.addEventListener("change", () => loadMatches());
+  form.match.addEventListener("change", pickMatch);
+  let eyebrowTimer;
+  form.eyebrow.addEventListener("input", () => {
+    clearTimeout(eyebrowTimer);
+    eyebrowTimer = setTimeout(redraw, 200);
+  });
+
+  const fileName = () => {
+    const m = current();
+    const who = !m ? "comparison"
+      : board === "form_home" ? `${m.home.display_name}-form`
+      : board === "form_away" ? `${m.away.display_name}-form`
+      : `${m.home.display_name}-v-${m.away.display_name}${board === "compare" ? "" : "-form"}`;
+    return `everyleague-${String(who).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${
+      m?.date || todayIso()}.png`;
+  };
+  downloadBtn.onclick = async () => {
+    const blob = await graphics.exportPng(canvas, graphics.BOARD_FORMATS[format]);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName();
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  copyBtn.hidden = !(window.isSecureContext
+    && typeof navigator.clipboard?.write === "function"
+    && typeof window.ClipboardItem === "function");
+  copyBtn.onclick = async () => {
+    try {
+      const blob = await graphics.exportPng(canvas, graphics.BOARD_FORMATS[format]);
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      const original = copyBtn.textContent;
+      copyBtn.textContent = "Copied";
+      setTimeout(() => { copyBtn.textContent = original; }, 2000);
+    } catch (_error) {
+      flash("Could not copy the image — try Download instead.", "error");
+    }
+  };
+  wireBoardShare(shareBtn, canvas, () => format, fileName);
+
+  // #/graphics?type=compare&match=<id>, from a match screen.
+  const wanted = params.get("match");
+  if (wanted) {
+    supabase.from("matches").select("competition_id").eq("match_id", wanted).limit(1)
+      .then(({ data: rows }) => {
+        const compId = (rows || [])[0]?.competition_id;
         if (!compId || !competitions.some((c) => c.id === compId)) { redraw(); return; }
         form.comp.value = compId;
         loadMatches(wanted);

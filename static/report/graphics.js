@@ -83,6 +83,9 @@ export const TEMPLATE_LABELS = {
   scorers: "Top scorers",
   lineup_team: "Team line-up",
   lineup_match: "Match line-ups",
+  compare_match: "Match comparison",
+  form_team: "Team form",
+  form_match: "Both teams' form",
   editorial: "Announcement",
 };
 
@@ -984,22 +987,12 @@ function drawLineupTeam(ctx, state) {
 }
 
 /** Both sides on one board: crests over two mirrored columns. */
-function drawLineupMatch(ctx, state) {
-  const { dims, accent, ink, muted } = state;
+/** Two crests with "v" between, a name under each, the when line, a
+ *  hairline — the head of every two-team board (line-ups, comparison, both
+ *  forms), so the three read as one family. Returns the y below it. */
+function drawTwoTeamHeader(ctx, state, top, { leftX, rightX, colW }) {
+  const { dims, ink, muted } = state;
   const isPortrait = dims.h > dims.w;
-  const home = state.homeSide || { starting: [], bench: [] };
-  const away = state.awaySide || { starting: [], bench: [] };
-
-  let top = drawEyebrow(ctx, state.competitionName, state.kind || "LINE-UPS",
-    dims, accent, state.accentDeep);
-  const bottom = drawWatermark(ctx, state.seasonLabel, dims, accent);
-
-  const gutter = 36;
-  const colW = (dims.w - PAD * 2 - gutter) / 2;
-  const leftX = PAD;
-  const rightX = PAD + colW + gutter;
-
-  // Header: a crest over each column, names under them, "v" between.
   const crest = isPortrait ? 150 : 92;
   top += isPortrait ? 56 : 26;
   drawCrestTile(ctx, leftX + colW / 2 - crest / 2, top, crest,
@@ -1032,6 +1025,26 @@ function drawLineupMatch(ctx, state) {
   }
   top += isPortrait ? 40 : 18;
   drawHairline(ctx, top - (isPortrait ? 20 : 9), dims);
+
+  return top;
+}
+
+function drawLineupMatch(ctx, state) {
+  const { dims, accent, ink, muted } = state;
+  const isPortrait = dims.h > dims.w;
+  const home = state.homeSide || { starting: [], bench: [] };
+  const away = state.awaySide || { starting: [], bench: [] };
+
+  let top = drawEyebrow(ctx, state.competitionName, state.kind || "LINE-UPS",
+    dims, accent, state.accentDeep);
+  const bottom = drawWatermark(ctx, state.seasonLabel, dims, accent);
+
+  const gutter = 36;
+  const colW = (dims.w - PAD * 2 - gutter) / 2;
+  const leftX = PAD;
+  const rightX = PAD + colW + gutter;
+
+  top = drawTwoTeamHeader(ctx, state, top, { leftX, rightX, colW });
 
   const benchSize = isPortrait ? 24 : 18;
   ctx.font = `600 ${benchSize}px ${FONT_STACK}`;
@@ -1089,6 +1102,349 @@ function drawLineupMatch(ctx, state) {
       ctx.textAlign = "right";
       ctx.fillText(`Coach: ${state.awayCoach}`, rightX + colW, y, colW);
     }
+  }
+}
+
+// ── Comparison + form boards ─────────────────────────────────────────────
+// Every figure arrives computed (compare.js): these only draw. A row the
+// data could not fill never reaches them, so there is no "—" to draw.
+
+// A result's colour means the result, whatever the competition's accent:
+// a red league must not draw its wins red. Kept out of TOKENS (see the
+// comment above it) — the CLI pipeline has no form chips.
+export const FORM_COLORS = { W: "#2f9e62", D: "#7d848e", L: "#c9473d" };
+
+/** One result chip, a rounded square with W/D/L in it, at (x, cy). */
+function drawFormChip(ctx, result, x, cy, size) {
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, cy - size / 2, size, size, size * 0.18);
+  else ctx.rect(x, cy - size / 2, size, size);
+  ctx.fillStyle = FORM_COLORS[result] || FORM_COLORS.D;
+  ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `900 ${Math.round(size * 0.52)}px ${FONT_STACK}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(result, x + size / 2, cy + 1);
+}
+
+/** A row of chips, oldest to newest left to right, from x (or ending at x
+ *  when align is "right"). */
+function drawFormStrip(ctx, list, x, cy, size, align = "left") {
+  const gap = size * 0.22;
+  const width = list.length * size + Math.max(0, list.length - 1) * gap;
+  let left = align === "right" ? x - width : x;
+  list.forEach((f) => { drawFormChip(ctx, f.result, left, cy, size); left += size + gap; });
+  return width;
+}
+
+/** A centred caps label in the accent. */
+function drawCentreLabel(ctx, text, cy, size, color, dims) {
+  ctx.font = `800 ${size}px ${FONT_STACK}`;
+  ctx.fillStyle = color;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, dims.w / 2, cy, dims.w * 0.42);
+}
+
+function drawCompareMatch(ctx, state) {
+  const { dims, accent, ink, muted } = state;
+  const isPortrait = dims.h > dims.w;
+  let top = drawEyebrow(ctx, state.competitionName, state.kind || "MATCH PREVIEW",
+    dims, accent, state.accentDeep);
+  const bottom = drawWatermark(ctx, state.seasonLabel, dims, accent);
+  const gutter = 36;
+  const colW = (dims.w - PAD * 2 - gutter) / 2;
+  top = drawTwoTeamHeader(ctx, state, top, { leftX: PAD, rightX: PAD + colW + gutter, colW });
+
+  const rows = state.rows || [];
+  const formRow = state.form && (state.form.home.length || state.form.away.length);
+  const scorer = state.topScorer && (state.topScorer.home || state.topScorer.away);
+  const h2h = state.h2h;
+  // Units of height: a stat row is 1, the form strip 1.2, the scorer row 1,
+  // head-to-head 1.9 (label, tally, last meeting).
+  const units = rows.length + (formRow ? 1.2 : 0) + (scorer ? 1 : 0) + (h2h ? 1.9 : 0);
+  if (!units) return;
+  const room = bottom - top - (isPortrait ? 30 : 10);
+  const unit = Math.min(isPortrait ? 150 : 92, room / units);
+  const spare = Math.max(0, room - unit * units) / 2;
+  top += spare;
+
+  const valueSize = Math.round(Math.min(isPortrait ? 60 : 44, unit * 0.5));
+  // A floor, because every row ticked on a square board is ~47px a row and
+  // a label at a quarter of that is not readable on a phone.
+  const labelSize = Math.round(Math.max(15, Math.min(isPortrait ? 24 : 19, unit * 0.26)));
+  const valueW = dims.w * 0.2;
+  const barHalf = (dims.w - PAD * 2 - valueW * 2) / 2 - 6;
+  const barH = Math.max(6, Math.round(unit * 0.11));
+  const cx = dims.w / 2;
+  const dim = hexToRgba(muted, 0.35);
+
+  rows.forEach((r) => {
+    const cy = top + unit / 2;
+    const hasBar = r.homeValue != null && r.awayValue != null;
+    const labelY = hasBar ? cy - unit * 0.14 : cy;
+    drawCentreLabel(ctx, r.label, labelY, labelSize, muted, dims);
+    if (hasBar) {
+      const max = Math.max(Math.abs(r.homeValue), Math.abs(r.awayValue), 1);
+      const barY = cy + unit * 0.12;
+      const hw = barHalf * Math.abs(r.homeValue) / max;
+      const aw = barHalf * Math.abs(r.awayValue) / max;
+      ctx.fillStyle = dim;
+      ctx.fillRect(cx - 3 - barHalf, barY - barH / 2, barHalf, barH);
+      ctx.fillRect(cx + 3, barY - barH / 2, barHalf, barH);
+      ctx.fillStyle = r.better === "home" ? accent : ink;
+      ctx.fillRect(cx - 3 - hw, barY - barH / 2, hw, barH);
+      ctx.fillStyle = r.better === "away" ? accent : ink;
+      ctx.fillRect(cx + 3, barY - barH / 2, aw, barH);
+    }
+    [["home", PAD, "left"], ["away", dims.w - PAD, "right"]].forEach(([side, x, align]) => {
+      ctx.font = `900 ${valueSize}px ${FONT_STACK}`;
+      ctx.fillStyle = r.better === side ? accent : ink;
+      ctx.textAlign = align;
+      ctx.textBaseline = "middle";
+      ctx.fillText(r[side], x, cy + 2, valueW);
+    });
+    top += unit;
+  });
+
+  if (formRow) {
+    const h = unit * 1.2;
+    const cy = top + h / 2;
+    drawCentreLabel(ctx, state.formLabel || "FORM", cy, labelSize, muted, dims);
+    // Each strip stays inside its outer 30% of the board, clear of the
+    // label: n chips and n-1 gaps of 0.22 chip (drawFormStrip's spacing).
+    const n = Math.max(state.form.home.length, state.form.away.length, 1);
+    const chip = Math.min(unit * 0.52, (dims.w * 0.3) / (n + (n - 1) * 0.22));
+    drawFormStrip(ctx, state.form.home, PAD, cy, chip, "left");
+    drawFormStrip(ctx, state.form.away, dims.w - PAD, cy, chip, "right");
+    top += h;
+  }
+
+  if (scorer) {
+    const cy = top + unit / 2;
+    drawCentreLabel(ctx, "TOP SCORER", cy, labelSize, muted, dims);
+    const nameW = dims.w * 0.32;
+    // One size for both names, the smaller of the two fits: a long pair
+    // of joint scorers must not make its side read as the lesser one.
+    const base = Math.round(Math.min(isPortrait ? 34 : 26, unit * 0.32));
+    const size = Math.min(...["home", "away"].map((side) => (state.topScorer[side]
+      ? fitFont(ctx, state.topScorer[side], nameW, base, 800, 0.6) : base)));
+    [["home", PAD, "left"], ["away", dims.w - PAD, "right"]].forEach(([side, x, align]) => {
+      const text = state.topScorer[side] || "";
+      if (!text) return;
+      ctx.font = `800 ${size}px ${FONT_STACK}`;
+      ctx.fillStyle = ink;
+      ctx.textAlign = align;
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, x, cy, nameW);
+    });
+    top += unit;
+  }
+
+  if (h2h) {
+    const h = unit * 1.9;
+    drawHairline(ctx, top + unit * 0.15, dims);
+    const labelY = top + unit * 0.5;
+    ctx.font = `900 ${labelSize}px ${FONT_STACK}`;
+    ctx.fillStyle = accent;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("HEAD TO HEAD", cx, labelY);
+    const tallySize = Math.round(Math.min(isPortrait ? 38 : 30, unit * 0.36));
+    fitFont(ctx, h2h.tally, dims.w - PAD * 2, tallySize, 800, 0.6);
+    ctx.fillStyle = ink;
+    ctx.fillText(h2h.tally, cx, labelY + unit * 0.55, dims.w - PAD * 2);
+    if (h2h.last) {
+      ctx.font = `600 ${labelSize}px ${FONT_STACK}`;
+      ctx.fillStyle = muted;
+      ctx.fillText(h2h.last, cx, labelY + unit * 1.05, dims.w - PAD * 2);
+    }
+    top += h;
+  }
+}
+
+/** One result line: chip, score, "v Opponent" / "at Opponent", the date at
+ *  the far edge. `align` "right" mirrors it for the away column of a
+ *  two-team board (chip at the right edge, no date). */
+function drawFormLine(ctx, f, { x, cy, width, size, align = "left", ink, muted, date = true }) {
+  const chip = size * 1.35;
+  const gap = size * 0.45;
+  const right = align === "right";
+  drawFormChip(ctx, f.result, right ? x + width - chip : x, cy, chip);
+  ctx.textBaseline = "middle";
+  const scoreText = `${f.gf}–${f.ga}`;
+  ctx.font = `900 ${size}px ${FONT_STACK}`;
+  const scoreW = ctx.measureText("00–00").width;
+  ctx.fillStyle = ink;
+  ctx.textAlign = right ? "right" : "left";
+  const scoreX = right ? x + width - chip - gap : x + chip + gap;
+  ctx.fillText(scoreText, scoreX, cy + 1);
+  const dateW = date && f.dateLabel ? size * 3.4 : 0;
+  const nameX = right ? scoreX - scoreW - gap : scoreX + scoreW + gap;
+  const nameW = width - chip - gap * 2 - scoreW - dateW - (dateW ? gap : 0);
+  const name = `${f.home ? "v" : "at"} ${f.opponent || ""}`;
+  fitFont(ctx, name, nameW, Math.round(size * 0.86), 700, 0.62);
+  ctx.fillStyle = ink;
+  ctx.fillText(name, nameX, cy + 1, nameW);
+  if (dateW) {
+    ctx.font = `600 ${Math.round(size * 0.7)}px ${FONT_STACK}`;
+    ctx.fillStyle = muted;
+    ctx.textAlign = "right";
+    ctx.fillText(f.dateLabel, x + width, cy + 1, dateW);
+  }
+}
+
+function drawFormTeam(ctx, state) {
+  const { dims, accent, ink, muted } = state;
+  const isPortrait = dims.h > dims.w;
+  let top = drawEyebrow(ctx, state.competitionName, state.kind || "FORM GUIDE",
+    dims, accent, state.accentDeep);
+  const bottom = drawWatermark(ctx, state.seasonLabel, dims, accent);
+
+  const crest = isPortrait ? 190 : 120;
+  top += isPortrait ? 70 : 34;
+  drawCrestTile(ctx, dims.w / 2 - crest / 2, top, crest, state.team?.img || null,
+    state.team?.name || "");
+  top += crest + 18;
+  const nameSize = isPortrait ? 54 : 40;
+  const name = (state.team?.name || "").toUpperCase();
+  fitFont(ctx, name, dims.w - PAD * 2, nameSize, 900, 0.6);
+  ctx.fillStyle = ink;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(name, dims.w / 2, top + nameSize, dims.w - PAD * 2);
+  top += nameSize + 14;
+  const subSize = isPortrait ? 26 : 21;
+  ctx.font = `800 ${subSize}px ${FONT_STACK}`;
+  ctx.fillStyle = accent;
+  ctx.fillText(state.formLabel || "LAST 5", dims.w / 2, top + subSize);
+  top += subSize + (isPortrait ? 44 : 22);
+
+  const list = state.form || [];
+  const footSize = isPortrait ? 34 : 26;
+  const footH = (state.summary ? footSize * 1.6 : 0) + (state.next ? footSize * 1.4 : 0)
+    + (isPortrait ? 40 : 12);
+  const room = bottom - footH - top;
+  const rowH = Math.min(isPortrait ? 200 : 96, room / Math.max(list.length, 1));
+  const size = Math.round(Math.min(isPortrait ? 54 : 34, rowH * 0.36));
+  const spare = Math.max(0, room - rowH * list.length) / 2;
+  top += spare;
+  const width = Math.min(dims.w - PAD * 2, isPortrait ? dims.w - PAD * 2 : 860);
+  const x = (dims.w - width) / 2;
+  list.forEach((f, i) => {
+    const cy = top + rowH * (i + 0.5);
+    if (i % 2 === 1) {
+      ctx.fillStyle = hexToRgba(muted, 0.08);
+      ctx.fillRect(x - 16, cy - rowH / 2, width + 32, rowH);
+    }
+    drawFormLine(ctx, f, { x, cy, width, size, ink, muted });
+  });
+  top += rowH * list.length + spare + (isPortrait ? 30 : 10);
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  if (state.summary) {
+    ctx.font = `900 ${footSize}px ${FONT_STACK}`;
+    ctx.fillStyle = ink;
+    ctx.fillText(state.summary, dims.w / 2, top + footSize, dims.w - PAD * 2);
+    top += footSize * 1.6;
+  }
+  if (state.next) {
+    ctx.font = `600 ${Math.round(footSize * 0.72)}px ${FONT_STACK}`;
+    ctx.fillStyle = muted;
+    ctx.fillText(state.next, dims.w / 2, top + footSize * 0.8, dims.w - PAD * 2);
+  }
+}
+
+function drawFormMatch(ctx, state) {
+  const { dims, accent, ink, muted } = state;
+  const isPortrait = dims.h > dims.w;
+  let top = drawEyebrow(ctx, state.competitionName, state.kind || "FORM GUIDE",
+    dims, accent, state.accentDeep);
+  const bottom = drawWatermark(ctx, state.seasonLabel, dims, accent);
+  // A wider gutter than the line-up board's: these columns end in a name on
+  // the home side and start with one on the away side.
+  const gutter = 64;
+  const colW = (dims.w - PAD * 2 - gutter) / 2;
+  const leftX = PAD;
+  const rightX = PAD + colW + gutter;
+  top = drawTwoTeamHeader(ctx, state, top, { leftX, rightX, colW });
+  const home = state.form?.home || [];
+  const away = state.form?.away || [];
+  const label = state.formLabel || "LAST 5";
+
+  if (isPortrait) {
+    // A story board is tall enough to give each side the whole width, with
+    // its dates — side by side it is two cramped columns and a hole.
+    const blocks = [[state.home, home, state.summaryHome], [state.away, away, state.summaryAway]];
+    const lines = home.length + away.length;
+    const room = bottom - top - 30;
+    const unit = Math.min(130, room / (lines + 2 * 1.9 + 0.6));
+    const size = Math.round(Math.min(40, unit * 0.36));
+    const spare = Math.max(0, room - unit * (lines + 2 * 1.9 + 0.6)) / 2;
+    top += spare;
+    blocks.forEach(([team, list, summary], b) => {
+      if (b === 1) top += unit * 0.6;
+      const head = `${(team?.name || "").toUpperCase()}  ·  ${label}`;
+      fitFont(ctx, head, dims.w - PAD * 2, Math.round(size * 0.72), 900, 0.6);
+      ctx.fillStyle = accent;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(head, PAD, top + unit * 0.5, dims.w - PAD * 2);
+      top += unit;
+      list.forEach((f, i) => {
+        if (i % 2 === 1) {
+          ctx.fillStyle = hexToRgba(muted, 0.08);
+          ctx.fillRect(PAD - 16, top, dims.w - PAD * 2 + 32, unit);
+        }
+        drawFormLine(ctx, f, { x: PAD, cy: top + unit / 2, width: dims.w - PAD * 2,
+          size, ink, muted });
+        top += unit;
+      });
+      if (summary) {
+        ctx.font = `800 ${Math.round(size * 0.8)}px ${FONT_STACK}`;
+        ctx.fillStyle = ink;
+        ctx.textAlign = "right";
+        ctx.fillText(summary, dims.w - PAD, top + unit * 0.45, dims.w - PAD * 2);
+      }
+      top += unit * 0.9;
+    });
+    return;
+  }
+
+  const labelSize = 19;
+  ctx.font = `900 ${labelSize}px ${FONT_STACK}`;
+  ctx.fillStyle = accent;
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "center";
+  ctx.fillText(label, dims.w / 2, top + labelSize);
+  top += labelSize + 14;
+
+  const n = Math.max(home.length, away.length, 1);
+  const footSize = 23;
+  const footH = footSize * 1.8 + 8;
+  const room = bottom - footH - top;
+  const rowH = Math.min(100, room / n);
+  const size = Math.round(Math.min(27, rowH * 0.36));
+  const spare = Math.max(0, room - rowH * n) / 2;
+  top += spare;
+  home.forEach((f, i) => drawFormLine(ctx, f, { x: leftX, cy: top + rowH * (i + 0.5),
+    width: colW, size, ink, muted, date: false }));
+  away.forEach((f, i) => drawFormLine(ctx, f, { x: rightX, cy: top + rowH * (i + 0.5),
+    width: colW, size, align: "right", ink, muted, date: false }));
+  top += rowH * n + spare + 6;
+
+  ctx.font = `900 ${footSize}px ${FONT_STACK}`;
+  ctx.fillStyle = ink;
+  ctx.textBaseline = "alphabetic";
+  if (state.summaryHome) {
+    ctx.textAlign = "left";
+    ctx.fillText(state.summaryHome, leftX, top + footSize, colW);
+  }
+  if (state.summaryAway) {
+    ctx.textAlign = "right";
+    ctx.fillText(state.summaryAway, rightX + colW, top + footSize, colW);
   }
 }
 
@@ -1161,6 +1517,18 @@ export const TEMPLATES = {
   lineup_match: {
     label: TEMPLATE_LABELS.lineup_match,
     draw: drawLineupMatch,
+  },
+  compare_match: {
+    label: TEMPLATE_LABELS.compare_match,
+    draw: drawCompareMatch,
+  },
+  form_team: {
+    label: TEMPLATE_LABELS.form_team,
+    draw: drawFormTeam,
+  },
+  form_match: {
+    label: TEMPLATE_LABELS.form_match,
+    draw: drawFormMatch,
   },
   editorial: {
     label: TEMPLATE_LABELS.editorial,

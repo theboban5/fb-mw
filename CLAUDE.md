@@ -97,6 +97,7 @@ static/report/match_report.js  a club's match report → the match screen's edit
 static/report/squad.js  a pasted squad/staff list → one person per line (0057)
 static/report/stats.js  #/stats: periods, sums, the copyable sentences (0062)
 static/report/pre_match.js  a team sheet as a line-up board: box text, name styles
+static/report/compare.js  two teams side by side, last five: table, form, H2H
 src/nt.py, nt_page.py  national teams (the nt_* tabs, /scorchers/)
 src/search.py          the site search index
 static/report/app.js   the reporter portal (one file, no framework)
@@ -160,8 +161,8 @@ otherwise, and the portal's modules are ESM because browsers load them that
 way. It covers `static/report/results_grid.js`,
 `static/report/fixture_import.js`, `static/report/error_report.js`,
 `static/report/match_report.js`, `static/report/squad.js`,
-`static/report/stats.js` and `static/report/pre_match.js`, which import
-nothing but each other; the
+`static/report/stats.js`, `static/report/pre_match.js` and
+`static/report/compare.js`, which import nothing but each other; the
 moment one of them needs `document` or `supabase`, its tests stop meaning
 anything.
 
@@ -195,6 +196,27 @@ fixture and clean up, and they never mutate a real match.
 ---
 
 ## Recent work (Nov 2026)
+
+Comparison and form boards, no migration — `#/graphics?type=compare`:
+
+- **Match comparison** (both sides' position, points, W-D-L, goals, clean
+  sheets and more, mirrored bars, form chips, top scorer, head to head) and
+  **form guides** (one side's last five, or both). Picked by match; a match
+  screen links to it for admins. Every figure is computed, never typed: the
+  reporter chooses rows with tick boxes and that is all the editing there is.
+- **The period is this competition, this season, strictly before the
+  match's date**, so the position matches the site's table
+  (`compare.leagueTable` is src/standings.py's sort, clusters included) and
+  a board drawn after the match still describes it going in. Head to head
+  is every earlier meeting, any competition or season. A cup has no table,
+  so no position or points row.
+- **A top scorer only when every goal has a scorer row**; otherwise the row
+  is left off and the screen says how many of how many — the board is
+  posted publicly (stats.js's rule for cards).
+- **Fixed on the way**: `.rp-btn` set `display`, which beat the `hidden`
+  attribute, so every button shipped hidden was showing — Copy and Share on
+  phones that cannot do either, Save as homepage draft on Line-ups, Remove
+  photo with no photo.
 
 Pre-match reports, migrations `0064`–`0065` — `#/graphics?type=lineups` and
 the match screen's "Fill in from a match report":
