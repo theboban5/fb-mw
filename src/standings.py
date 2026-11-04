@@ -100,11 +100,51 @@ def compute_standings(matches, teams, points_win=3, points_draw=1,
         table.values(),
         key=lambda s: (group_key(s.group), -s.points, -s.gd, -s.gf, s.name.lower()),
     )
+    rows = _head_to_head(rows, matches)
     seen: "dict[str, int]" = {}
     for s in rows:
         seen[s.group] = seen.get(s.group, 0) + 1
         s.position = seen[s.group]
     return rows
+
+
+def _head_to_head(rows, matches):
+    """Reorder each run of teams level on points, GD and goals scored by the
+    matches between them: points, then GD, then goals, then name.
+
+    The tiebreak used to stop at the name, which is the alphabet deciding a
+    league position. That was invisible while the site only ever showed a
+    table in progress, and wrong the first time it showed a finished one: in
+    the 2023 Super League, Blue Eagles and Moyale Barracks ended level on 34
+    points, -9 and 26 goals, Moyale took four points off Blue Eagles, and
+    Blue Eagles went down. A-Z would have put them 13th and safe. Teams in a
+    run who never met stay in name order, exactly as before.
+    """
+    out, i = [], 0
+    while i < len(rows):
+        j = i + 1
+        level = (rows[i].group, rows[i].points, rows[i].gd, rows[i].gf)
+        while j < len(rows) and (rows[j].group, rows[j].points,
+                                 rows[j].gd, rows[j].gf) == level:
+            j += 1
+        run = rows[i:j]
+        if len(run) > 1:
+            codes = {s.code for s in run}
+            mini = {c: [0, 0, 0] for c in codes}       # pts, gd, gf
+            for m in matches:
+                if not m.played or m.home_code not in codes or m.away_code not in codes:
+                    continue
+                for us, them, gf, ga in ((m.home_code, m.away_code, m.home_goals, m.away_goals),
+                                         (m.away_code, m.home_code, m.away_goals, m.home_goals)):
+                    rec = mini[us]
+                    rec[0] += run[0].points_win if gf > ga else run[0].points_draw if gf == ga else 0
+                    rec[1] += gf - ga
+                    rec[2] += gf
+            run = sorted(run, key=lambda s: (-mini[s.code][0], -mini[s.code][1],
+                                             -mini[s.code][2], s.name.lower()))
+        out += run
+        i = j
+    return out
 
 
 def by_group(rows) -> "list[tuple[str, list]]":

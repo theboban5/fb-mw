@@ -197,6 +197,55 @@ fixture and clean up, and they never mutate a real match.
 
 ## Recent work (Nov 2026)
 
+Past Super League seasons, no migration — `scripts/rsssf.py`, `/sl/2025/`:
+
+- **The site only knew the season being played.** RSSSF's Malawi pages carry
+  every Super League result since 2006 under date headers, and the final
+  table. 2016–2025 are in (nine seasons, 2,160 matches; there is no separate
+  2021). The pages are **fetched once and committed** under
+  `data/backfill/rsssf/` — RSSSF has no API, changes rarely, and nothing at
+  build time talks to it. Latin-1, some with bare-CR line endings.
+- **The table is the test.** `parse` recomputes RSSSF's final table from the
+  parsed results with `src/standings.py` and refuses to write unless every
+  team's P W D L GF GA Pts and position agrees. All nine agree. It is what
+  caught "Civil" (RSSSF's own typo, 2018) and the tiebreak below.
+- **Names are a human decision**, in `names.json`: every spelling ("Bullets",
+  "Be Forward Wanderers", "Kawinga FC") to today's team_id, or to a new club
+  (Wizards, CIVO United, Max Bullets, Nchalo United, Baka City…). Old names
+  file under the club as it is now, following RSSSF's rename notes; the site
+  shows today's name in every season (one `display_name` per team). **A
+  licence handed on is not a rename**: EPAC United ceded its place to Civil
+  Service United in 2017 and was dissolved, so it is its own club, against
+  RSSSF's "renamed" note. The 2017 Blantyre United is not the club whose U16
+  side plays now (`"new_club": true` in season.py stops the name match).
+- **League names**: 2016–2017 are "TNM Super League"; 2018 on carry no
+  sponsor and render as "Super League of Malawi".
+- **Loading is `season.py apply`**, which grew a `season` block (creates a
+  past season, always `complete`), scored fixtures (`status`, goals,
+  `source_type=backfill`, `source_ref`, `confirmed` — `unconfirmed` would
+  asterisk 2,000 matches) and `points_adjustment` on a team.
+- **No matchday is stored.** 2022 has 33 "weeks" for 30 rounds, 2023 prints
+  rounds for the first half only. A wrong matchday is worse than none, so the
+  archive's Matches tab groups by month (`build._by_month`, through the cup's
+  md_labels) and there is no Season Overview.
+- **Head to head now breaks a full tie** (`standings._head_to_head`) before
+  the name: Blue Eagles and Moyale Barracks finished 2023 level on points, GD
+  and goals; Moyale took four points off Blue Eagles, who went down. This
+  reorders a CURRENT table too, but only between teams level on all three
+  who have met.
+- **Archives** (`adapt.archive_competition_seasons`, the single source): the
+  same `_build_league` one directory down, no arrows, no score links, a team
+  linked to its hub only where one exists, an RSSSF credit on every page
+  (RSSSF's condition for copying). A season picker on every table. Club hubs
+  get a Past Seasons table. Women's Premiership 25/26 gets `/wp/2025-26/` by
+  the same rule, and leaves `/matches/` with every other archived season.
+- **Deploy order matters**: the code must be live before the rows are
+  applied, or the old `matches_page.collect` writes a day page for every
+  Saturday since 2016.
+- Not built: 2006–2015 (same pipeline, more defunct clubs), era names, cups
+  and the National Division from the same pages, scorers (RSSSF league
+  pages have none).
+
 Comparison and form boards, no migration — `#/graphics?type=compare`:
 
 - **Match comparison** (both sides' position, points, W-D-L, goals, clean

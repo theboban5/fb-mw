@@ -530,6 +530,48 @@ table.v2-standings {
 .v2-form-empty { color: #bbb; }
 
 /* V2 results - mini banner */
+/* The season picker (render.season_nav): a past season is one tap from the
+   current table and from every other past one. It sits on the hero's own
+   dark green in both themes, so its colours are the hero's, not tokens.
+   One row that scrolls inside itself; the page never scrolls sideways. */
+.v2-seasons {
+  display: flex;
+  gap: 6px;
+  margin: -10px -20px 22px;
+  padding: 2px 20px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  justify-content: safe center;
+}
+.v2-seasons::-webkit-scrollbar { display: none; }
+.v2-mini-banner .v2-seasons { margin: 10px -20px 0; }
+.v2-season-chip {
+  flex: 0 0 auto;
+  padding: 5px 11px;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 999px;
+  color: rgba(255,255,255,0.82);
+  font-size: 0.76rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+}
+.v2-season-chip:hover { border-color: #6dbf67; color: #ffffff; }
+.v2-season-chip.is-current {
+  background: #6dbf67;
+  border-color: #6dbf67;
+  color: #0d1c12;
+}
+/* Where a past season's results came from (build._source_credit). */
+.v2-credit {
+  margin: 18px 0 0;
+  font-size: 0.74rem;
+  color: var(--muted);
+  text-align: center;
+}
+.v2-credit a { color: inherit; }
+
 .v2-mini-banner {
   margin: -16px -16px 0;
   padding: 16px 20px 14px;
@@ -772,6 +814,16 @@ table.v2-results-table {
 .v2-res-venue {
   text-align: left;
   padding-left: 14px !important;
+  color: #666;
+  font-size: 0.82rem;
+}
+/* A club hub's Past Seasons (hubs._past_seasons). The finish is the point
+   of the row, so unlike the venue column it never hides on a phone. */
+.v2-res-th-finish { text-align: right; padding-right: 14px; }
+.v2-res-finish {
+  text-align: right;
+  white-space: nowrap;
+  padding-right: 14px !important;
   color: #666;
   font-size: 0.82rem;
 }

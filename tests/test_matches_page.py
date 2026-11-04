@@ -83,14 +83,30 @@ class CollectTest(unittest.TestCase):
         cls.days = matches_page.collect(cls.ds, cls.nt_data)
 
     def test_every_dated_match_lands_on_its_date(self):
+        # ...except a past season's, which is read on its archive page
+        # (adapt.archive_competition_seasons) rather than one Saturday at a
+        # time; the next test pins that half.
+        archived = {(cs.competition_id, cs.season_id)
+                    for cs in adapt.archive_competition_seasons(self.ds)}
         expected = {}
         for m in self.ds.matches.values():
             if m.is_placeholder or not m.date:
+                continue
+            if (m.competition_id, m.season_id) in archived:
                 continue
             expected[m.date] = expected.get(m.date, 0) + 1
         for iso, n in expected.items():
             got = sum(len(g.matches) for g in self.days[iso].groups)
             self.assertEqual(got, n, f"{iso}: {got} rendered, {n} in the data")
+
+    def test_archived_seasons_are_absent(self):
+        archived = {(cs.competition_id, cs.season_id)
+                    for cs in adapt.archive_competition_seasons(self.ds)}
+        rendered = {m.match_id for day in self.days.values()
+                    for g in day.groups for m in g.matches}
+        for m in self.ds.matches.values():
+            if (m.competition_id, m.season_id) in archived:
+                self.assertNotIn(m.match_id, rendered)
 
     def test_placeholder_and_undated_matches_are_absent(self):
         rendered = {m.match_id for day in self.days.values()

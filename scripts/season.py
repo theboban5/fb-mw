@@ -98,10 +98,19 @@ TEMPLATE_NOTES = """\
 //                 "squad_level": 1, "club_id": ..., "team_id": ...,
 //                 "legacy_code": ...}
 //   club_id / team_id / legacy_code are minted for you unless you set them.
+//   "new_club": true creates a club even when one of that name exists.
 //   legacy_code is the badge filename and the public club-page URL.
 //
 // Fixture options: {"matchday": 1, "date": "YYYY-MM-DD", "kickoff": "HH:MM",
 //                   "home": ..., "away": ..., "venue": ..., "stage": "md_1"}
+//   A result: "status": "played"|"awarded", "home_goals", "away_goals",
+//   "awarded_note", "source_type", "source_ref", "confidence".
+//
+//   season      {"label", "start_date", "end_date"} creates a PAST season if
+//               season_id does not exist yet (always status complete) — this
+//               is how scripts/rsssf.py's files bring their season with them.
+//   Team option for a points deduction: "points_adjustment": -3,
+//               "adjustment_reason": "...".
 //   date and kickoff may be left out — an unscheduled fixture is legal.
 //   For a cup, set "stage" to r64|r32|r16|qf|sf|final|3p and omit matchday.
 """
@@ -170,6 +179,7 @@ def _norm(name):
 
 class Plan:
     def __init__(self):
+        self.seasons = []
         self.clubs, self.teams, self.venues = [], [], []
         self.competitions, self.competition_seasons = [], []
         self.entries, self.matches = [], []
@@ -180,7 +190,8 @@ class Plan:
         self.resolved_teams = {}
 
     def empty(self):
-        return not any([self.clubs, self.teams, self.venues, self.competitions,
+        return not any([self.seasons, self.clubs, self.teams, self.venues,
+                        self.competitions,
                         self.competition_seasons, self.entries, self.matches])
 
 
@@ -191,6 +202,27 @@ def build_plan(spec, existing):
     if not season_id:
         raise PlanError('"season_id" is required (e.g. "MW_2026_27")')
     season = next((s for s in existing["seasons"] if s["season_id"] == season_id), None)
+    season_spec = spec.get("season") or {}
+    if season is None and season_spec:
+        # A past season (scripts/rsssf.py) is created here rather than by
+        # hand. Never as `active`: exactly one season is, and it is the one
+        # being played (dataset.active_season), which a backfill never is.
+        if season_spec.get("season_id", season_id) != season_id:
+            raise PlanError('"season.season_id" must match "season_id"')
+        for required in ("label", "start_date", "end_date"):
+            if not season_spec.get(required):
+                raise PlanError(f'season is missing "{required}"')
+        if season_spec.get("status", "complete") != "complete":
+            raise PlanError('a season created from a file is always "complete"')
+        season = {
+            "season_id": season_id,
+            "country": season_spec.get("country", "MW"),
+            "label": season_spec["label"],
+            "start_date": season_spec["start_date"],
+            "end_date": season_spec["end_date"],
+            "status": "complete",
+        }
+        plan.seasons.append(season)
     if season is None:
         raise PlanError(
             f"season {season_id!r} does not exist. Known: "
@@ -281,11 +313,15 @@ def build_plan(spec, existing):
         team_by_name.setdefault(_norm(t["display_name"]), t["team_id"])
 
     resolved_team = {}          # name as written -> team_id
+    adjustment = {}             # team_id -> (points_adjustment, reason)
     for item in spec.get("teams", []):
         name = item.get("name")
         if not name:
             raise PlanError("every team needs a name")
         key = _norm(name)
+        if item.get("points_adjustment"):
+            adjustment[item.get("team_id") or key] = (
+                int(item["points_adjustment"]), item.get("adjustment_reason", ""))
 
         if item.get("team_id") and item["team_id"] in team_ids:
             resolved_team[key] = item["team_id"]
@@ -298,7 +334,11 @@ def build_plan(spec, existing):
             plan.notes.append(f"team already exists, reusing: {name}")
             continue
 
-        club_id = item.get("club_id") or club_by_name.get(key)
+        # "new_club": a club of this name exists and this is NOT it — the
+        # 2017 Super League's Blantyre United is not the club whose U16 side
+        # plays today, and matching by name would quietly make it so.
+        club_id = item.get("club_id") or (
+            None if item.get("new_club") else club_by_name.get(key))
         if not club_id:
             candidate = _slug(name)
             if f"MW_{candidate}" in club_ids:
@@ -347,10 +387,12 @@ def build_plan(spec, existing):
         entry_id = _unique(f"{competition_id}_{label_slash}_{suffix}", entry_ids)
         entry_ids.add(entry_id)
         entered.add((competition_id, season_id, team_id))
+        points, reason = adjustment.get(team_id) or adjustment.get(name) or (0, "")
         plan.entries.append({
             "entry_id": entry_id, "competition_id": competition_id,
             "season_id": season_id, "team_id": team_id,
-            "points_adjustment": 0, "status": "active",
+            "points_adjustment": points, "adjustment_reason": reason,
+            "status": "active",
             "ord": len(existing["entries"]) + len(plan.entries) + 1,
         })
 
@@ -413,6 +455,18 @@ def build_plan(spec, existing):
                     f"fixture names a venue that is neither in this file nor "
                     f"in the data: {item['venue']!r}")
 
+        status = item.get("status", "scheduled")
+        hg, ag = item.get("home_goals"), item.get("away_goals")
+        if status not in ("scheduled", "played", "awarded"):
+            raise PlanError(f"fixture status {status!r}: this script writes "
+                            f"scheduled, played or awarded")
+        # validate.py check 4, here so a bad file stops before the database
+        # does: a score exactly when the match has a result.
+        if (status == "scheduled") != (hg is None and ag is None) or \
+                (status != "scheduled" and (hg is None or ag is None)):
+            raise PlanError(f"fixture {item.get('home')} v {item.get('away')}: "
+                            f"status {status!r} with score {hg!r}-{ag!r}")
+
         match_id = _unique(f"{competition_id}_{label_compact}_"
                            f"{next_number:03d}", match_ids)
         match_ids.add(match_id)
@@ -422,8 +476,11 @@ def build_plan(spec, existing):
             "season_id": season_id, "stage": stage, "matchday": matchday,
             "date": date or None, "kickoff": item.get("kickoff", ""),
             "venue_id": venue_id, "home_team_id": home, "away_team_id": away,
-            "status": "scheduled", "source_type": "fa",
-            "confidence": "confirmed",
+            "home_goals": hg, "away_goals": ag, "status": status,
+            "awarded_note": item.get("awarded_note", ""),
+            "source_type": item.get("source_type", "fa"),
+            "source_ref": item.get("source_ref", ""),
+            "confidence": item.get("confidence", "confirmed"),
             "ord": len(existing["matches"]) + len(plan.matches) + 1,
         })
 
@@ -433,6 +490,7 @@ def build_plan(spec, existing):
 # ── Output ───────────────────────────────────────────────────────────────────
 
 SECTIONS = [
+    ("seasons", "season", "seasons", "season_id"),
     ("competitions", "competition", "competitions", "competition_id"),
     ("competition_seasons", "competition season", "competition seasons",
      "competition_id"),
@@ -454,10 +512,15 @@ def describe(plan):
             if attr == "matches":
                 when = row["date"] or "date TBC"
                 extra = f' {row["kickoff"]}' if row["kickoff"] else ""
-                print(f"    {row[key]:28} {row['home_team_id']} v "
+                score = (f' {row["home_goals"]}-{row["away_goals"]}'
+                         if row.get("home_goals") is not None else " v")
+                print(f"    {row[key]:28} {row['home_team_id']}{score} "
                       f"{row['away_team_id']}  {when}{extra}")
             elif attr == "teams":
                 print(f"    {row[key]:28} {row['display_name']}")
+            elif attr == "seasons":
+                print(f"    {row[key]:28} {row['label']}  {row['start_date']}"
+                      f"..{row['end_date']}  {row['status']}")
             elif attr in ("clubs", "venues"):
                 print(f"    {row[key]:28} {row['name']}")
             else:
@@ -475,6 +538,7 @@ def describe(plan):
 # Written in foreign-key order: a match cannot exist before the entries that
 # prove both its teams belong to the competition (0001's composite FK).
 WRITE_ORDER = [
+    ("seasons", "season_id"),
     ("competitions", "competition_id"),
     ("competition_seasons", "competition_id,season_id"),
     ("venues", "venue_id"),

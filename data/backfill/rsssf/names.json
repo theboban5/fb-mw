@@ -1,0 +1,126 @@
+{
+ "_about": "RSSSF spelling -> the site's team. A value that is a team_id is that existing team; any other value is a key of new_teams, created by season.py on apply. Old and sponsor names go to the club as it is today (Be Forward Wanderers -> MW_MW_M1), following RSSSF's own rename notes. A club that handed its licence on is NOT its successor: EPAC United ceded its Super League place to Civil Service United in 2017 and was dissolved, so it is a club of its own. 'new_club' forces a club even where one of that name exists (the 2017 Blantyre United is not the youth side of 2026). 'seasons' overrides a spelling for one season only. Written by hand: scripts/rsssf.py never guesses an identity.",
+ "spellings": {
+  "Bullets": "MW_BULL_M1",
+  "Nyasa Big Bullets FC (Blantyre)": "MW_BULL_M1",
+
+  "Wanderers": "MW_MW_M1",
+  "Mighty Wanderers": "MW_MW_M1",
+  "Be Forward Wanderers": "MW_MW_M1",
+  "Be Forward Wanderers (Blantyre)": "MW_MW_M1",
+  "Mighty Wanderers (Blantyre)": "MW_MW_M1",
+  "Mighty Mukuru Wanderers (Blantyre)": "MW_MW_M1",
+
+  "Silver Strikers": "MW_SS_M1",
+  "Silver Strikers (Lilongwe)": "MW_SS_M1",
+
+  "Blue Eagles": "MW_BLUE_M1",
+  "Blue Eagles (Lilongwe)": "MW_BLUE_M1",
+
+  "Kamuzu Barracks": "MW_KB_M1",
+  "Kamuzu Barracks (Lilongwe)": "MW_KB_M1",
+
+  "Moyale Barracks": "MW_MB_M1",
+  "Moyale Barracks (Mzuzu)": "MW_MB_M1",
+
+  "MAFCO": "MW_MAFC_M1",
+  "MAFCO (Salima)": "MW_MAFC_M1",
+
+  "Tigers": "MW_MT_M1",
+  "Mighty Tigers": "MW_MT_M1",
+  "Azam Tigers FC (Blantyre)": "MW_MT_M1",
+  "Mighty Tigers FC (Blantyre)": "MW_MT_M1",
+
+  "Red Lions": "MW_REDL_M1",
+  "Red Lions (Zomba)": "MW_REDL_M1",
+
+  "Civil Service": "MW_CSU_M1",
+  "Civil Service United (Lilongwe)": "MW_CSU_M1",
+  "EPAC United": "EPAC United",
+  "EPAC United (Lilongwe)": "EPAC United",
+
+  "Karonga United": "MW_KU_M1",
+
+  "Chitipa United": "MW_CU_M1",
+
+  "Dwangwa United": "MW_DWANGWA_M1",
+  "Dwangwa United (Nkhotakota)": "MW_DWANGWA_M1",
+
+  "TN Stars": "MW_TNS_M1",
+  "Thomas Nyirenda Stars FC": "MW_TNS_M1",
+  "Thomas Nyirenda Stars FC (Kasungu)": "MW_TNS_M1",
+
+  "Ntopwa": "MW_NFC_M1",
+  "Ntopwa FC (Bangwe)": "MW_NFC_M1",
+
+  "Ekwendeni Hammers": "MW_MCH_M1",
+  "Mzuzu City Hammers": "MW_MCH_M1",
+
+  "Dedza Dynamos": "MW_DD_M1",
+  "Dedza Dynamos Salima Sugar": "MW_DD_M1",
+
+  "Bangwe All Stars": "MW_BAS_M1",
+
+  "Extreme": "MW_EXFC_M1",
+  "Extreme FC (Mchinja)": "MW_EXFC_M1",
+
+  "Creck Sporting": "MW_CS_M1",
+  "Kawinga FC": "MW_CS_M1",
+
+  "FOMO": "MW_FFC_M1",
+  "FOMO FC (Mulanje)": "MW_FFC_M1",
+
+  "Ekhaya": "MW_EFC_M1",
+  "Ekhaya FC": "MW_EFC_M1",
+
+  "Songwe Border United": "MW_SBU_M1",
+  "Songwe Border United FC (Karonga)": "MW_SBU_M1",
+
+  "Mzuni": "Mzuzu Warriors",
+  "Mzuni (Mzuzu)": "Mzuzu Warriors",
+  "Mzuzu Warriors": "Mzuzu Warriors",
+
+  "Wizards": "Wizards",
+  "Wizards (Chilomoni)": "Wizards",
+
+  "CIVO United": "CIVO United",
+  "CIVO United (Lilongwe)": "CIVO United",
+
+  "Max Bullets": "Max Bullets",
+
+  "Master Security": "Master Security Rangers",
+  "Master Security Rangers": "Master Security Rangers",
+  "Master Security Rangers (L'ngwe)": "Master Security Rangers",
+
+  "Blantyre United": "Blantyre United",
+  "Blantyre United (Lilongwe)": "Blantyre United",
+
+  "Nchalo United": "Nchalo United",
+
+  "Mlatho Mponela": "Mlatho Mponela",
+  "Mlatho Mponela (Dowa)": "Mlatho Mponela",
+
+  "Sable Farming": "Sable Farming",
+
+  "Rumphi United": "Rumphi United",
+
+  "Baka City": "Baka City"
+ },
+ "seasons": {
+  "2018": {"Civil": "MW_CSU_M1"}
+ },
+ "new_teams": {
+  "Mzuzu Warriors": {"name": "Mzuzu Warriors", "city": "Mzuzu"},
+  "Wizards": {"name": "Wizards FC", "city": "Chilomoni"},
+  "CIVO United": {"name": "CIVO United", "city": "Lilongwe"},
+  "Max Bullets": {"name": "Max Bullets"},
+  "Master Security Rangers": {"name": "Master Security Rangers", "city": "Lilongwe"},
+  "Blantyre United": {"name": "Blantyre United", "new_club": true},
+  "EPAC United": {"name": "EPAC United", "city": "Lilongwe"},
+  "Nchalo United": {"name": "Nchalo United", "city": "Nchalo"},
+  "Mlatho Mponela": {"name": "Mlatho Mponela", "city": "Mponela"},
+  "Sable Farming": {"name": "Sable Farming"},
+  "Rumphi United": {"name": "Rumphi United", "city": "Rumphi"},
+  "Baka City": {"name": "Baka City", "city": "Karonga"}
+ }
+}

@@ -617,6 +617,32 @@ def _group_chips(labels):
     return {label: label for label in labels}
 
 
+def season_nav(links, filename="index.html"):
+    """The season picker: one link per season this competition has a table
+    for, newest first, the one on screen marked and not a link.
+
+    `links` is [(label, directory href, is_current)] relative to the page's
+    own directory; `filename` is the page being written, so switching season
+    from the Matches tab lands on that season's Matches tab. Nothing at all
+    for a competition with one season — a picker with one choice is a label
+    pretending to be a control. Plain links, no script: it scrolls inside
+    itself at 390px and never pushes the page sideways.
+    """
+    if not links or len(links) < 2:
+        return ""
+    page = "" if filename == "index.html" else filename
+    items = []
+    for label, base, current in links:
+        if current:
+            items.append(f'<span class="v2-season-chip is-current" '
+                         f'aria-current="page">{escape(label)}</span>')
+        else:
+            items.append(f'<a class="v2-season-chip" '
+                         f'href="{escape(base + page, quote=True)}">{escape(label)}</a>')
+    return ('<nav class="v2-seasons" aria-label="Seasons">'
+            + "".join(items) + "</nav>")
+
+
 def _standings_table(rows, form, changes, crest, club_hrefs, withdrawn,
                      adjustment_reasons, promotion_spots, relegation_spots,
                      footnotes):
@@ -660,7 +686,14 @@ def _standings_table(rows, form, changes, crest, club_hrefs, withdrawn,
             zone_cls = " v2-pos-relegation"
         else:
             zone_cls = ""
-        arrow_cls, arrow_glyph = _ARROW[changes.get(s.code, "same")]
+        # No entry means no arrow at all: an archive's final table has no
+        # "since last matchday" to point at (see build._build_league).
+        change = changes.get(s.code)
+        arrow = ""
+        if change:
+            arrow_cls, arrow_glyph = _ARROW[change]
+            arrow = f'<span class="v2-arrow {arrow_cls}">{arrow_glyph}</span> '
+
         c = _crest_img(crest(s.code), "crest-pre")
         # Withdrawn/expelled entries stay in the table, struck through, with
         # a footnote; a non-zero points adjustment gets a marker + footnote.
@@ -680,7 +713,7 @@ def _standings_table(rows, form, changes, crest, club_hrefs, withdrawn,
             footnotes.append("* " + note)
         out.append(
             f'<tr class="pos-{i}">'
-            f'<td class="v2-pos{zone_cls}"><span class="v2-arrow {arrow_cls}">{arrow_glyph}</span> {i}.</td>'
+            f'<td class="v2-pos{zone_cls}">{arrow}{i}.</td>'
             f'<td class="v2-team-name">'
             f'<a class="{name_cls}" href="{escape(href)}">{c}{escape(s.name)}</a></td>'
             f"<td>{s.played}</td>"
@@ -703,7 +736,8 @@ def _standings_table(rows, form, changes, crest, club_hrefs, withdrawn,
 def render_standings(rows, season="", league_name="", total_goals=0, goals_per_game=0.0,
                      updated="", form=None, changes=None, crest=None, league_logo="",
                      league_slug="", promotion_spots=None, relegation_spots=None,
-                     withdrawn=None, adjustment_reasons=None, club_hrefs=None):
+                     withdrawn=None, adjustment_reasons=None, club_hrefs=None,
+                     seasons_html=""):
     # promotion/relegation spots come from competition_seasons in the new
     # schema; None falls back to the per-slug constants for old callers.
     # `withdrawn` maps code -> withdrawn|expelled; `adjustment_reasons` maps
@@ -729,6 +763,7 @@ def render_standings(rows, season="", league_name="", total_goals=0, goals_per_g
         f'<img class="v2-hero-logo" src="{escape(league_logo)}" alt="">' if league_logo else "",
         f'<p class="v2-season">SEASON {escape(season)}</p>',
         f'<h2 class="v2-league-name">{escape(league_name.upper())}</h2>',
+        seasons_html,
         '<div class="v2-stats">',
         f'<div class="v2-stat">'
         f'<span class="v2-stat-num">{total_goals}</span>'
@@ -851,7 +886,7 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
                    goals_by_match=None, compact=False, club_hrefs=None,
                    md_labels=None, md_chips=None, lineups_by_match=None,
                    player_pages=None, official_pages=None, groups=None,
-                   match_pages=None):
+                   match_pages=None, seasons_html=""):
     # `md_labels`/`md_chips` (cup pages) override the round header and the
     # pager chip text per matchday — "SEMI-FINALS"/"SF" instead of
     # "MATCHDAY 1"/"1". Leagues never pass them.
@@ -910,6 +945,7 @@ def render_results(matches, teams, season="", league_name="", crest=None, league
         f'<img class="v2-mini-logo" src="{escape(league_logo)}" alt="">' if league_logo else "",
         f'<p class="v2-season">SEASON {escape(season)}</p>',
         f'<h2 class="v2-mini-league">{escape(league_name.upper())}</h2>',
+        seasons_html,
         "</div>",  # /v2-mini-banner
     ]
     if not by_day:
@@ -1603,7 +1639,15 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
                competition_id="", club_hrefs=None, club_names=None,
                kind="league", md_labels=None, md_chips=None,
                bracket_rounds=None, stage_labels=None, lineups_by_match=None,
-               player_pages=None, official_pages=None, match_pages=None):
+               player_pages=None, official_pages=None, match_pages=None,
+               season_links=None, overview=True, credit="", hub_ids=None):
+    # `season_links` feeds the season picker (season_nav). `overview=False`
+    # drops the Season Overview tab, whose chart is a position per MATCHDAY —
+    # an archive season has none, and a chart of invented rounds is worse
+    # than no chart. `credit` is a line under every page's content (an
+    # archive names its source there). `hub_ids`, when given, is the set of
+    # clubs with a hub page; a per-season club page links up to its hub only
+    # for those, because a club that has not played since 2016 has none.
     os.makedirs(dist, exist_ok=True)
     base = _read(os.path.join(templates_dir, "base.html"))
 
@@ -1635,6 +1679,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
         lineups_by_match=lineups_by_match, player_pages=player_pages,
         official_pages=official_pages, groups=groups,
         match_pages=match_pages,
+        seasons_html=season_nav(season_links, "results.html"),
     ))
 
     if kind == "cup":
@@ -1656,14 +1701,18 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
                 league_slug=slug, promotion_spots=promotion_spots,
                 relegation_spots=relegation_spots, withdrawn=withdrawn,
                 adjustment_reasons=adjustment_reasons, club_hrefs=club_hrefs,
+                seasons_html=season_nav(season_links, "index.html"),
             )),
             "results.html": results_page,
-            "overview.html": ("Season Overview", render_overview(
-                matches, teams, days or [], history or {}, rows,
-                season=season, league_name=league_name, league_logo=league_logo,
-            )),
         }
         nav_items = list(NAV_ITEMS)
+        if overview:
+            pages["overview.html"] = ("Season Overview", render_overview(
+                matches, teams, days or [], history or {}, rows,
+                season=season, league_name=league_name, league_logo=league_logo,
+            ))
+        else:
+            nav_items = [item for item in nav_items if item[0] != "overview.html"]
 
     # The Goal Scorers tab/page exists only when there is goal data (the Super
     # League). Other leagues keep the original three-tab nav untouched.
@@ -1683,7 +1732,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             .replace("{{LAST_UPDATED}}", escape(updated))
             .replace("{{NAV}}", _nav(filename, nav_items))
             .replace("{{SEARCH}}", search_widget(css_prefix))
-            .replace("{{CONTENT}}", content)
+            .replace("{{CONTENT}}", content + credit)
             .replace("{{CSS_PREFIX}}", css_prefix)
             .replace("{{CSS_VER}}", css_ver)
             .replace("{{BACK_LINK}}", back_link)
@@ -1721,7 +1770,8 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
     for code, team in teams.items():
         hub_href = (
             f"{club_css_prefix}clubs/{team.club_id}.html#club-team-{code}"
-            if team.club_id else None
+            if team.club_id and (hub_ids is None or team.club_id in hub_ids)
+            else None
         )
         content = render_club(
             code, matches, teams, rows, season=season, league_name=league_name,
@@ -1738,7 +1788,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             .replace("{{LAST_UPDATED}}", escape(updated))
             .replace("{{NAV}}", _nav("", club_nav_items))
             .replace("{{SEARCH}}", search_widget(club_css_prefix))
-            .replace("{{CONTENT}}", content)
+            .replace("{{CONTENT}}", content + credit)
             .replace("{{CSS_PREFIX}}", club_css_prefix)
             .replace("{{CSS_VER}}", css_ver)
             .replace("{{BACK_LINK}}", club_back)

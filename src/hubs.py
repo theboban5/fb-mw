@@ -115,8 +115,38 @@ def _club_result_row(m, league, goals_by_match=None, official_pages=None,
     )
 
 
+def _past_seasons(past):
+    """The club's finished seasons, newest first: season, competition, where
+    it finished. `past` is [(league, season_slug, standing, code)] from the
+    archive pages build.py wrote, so every row links to a page that exists —
+    the season's table, and the team's own page inside it."""
+    if not past:
+        return []
+    rows = []
+    for league, season_slug, standing, code in past:
+        base = f"../{league.slug}/{season_slug}/"
+        cluster = f"{escape(standing.group)} &middot; " if standing.group else ""
+        rows.append(
+            '<tr class="v2-res-row">'
+            f'<td class="v2-res-home"><a class="club-link" href="{escape(base)}clubs/'
+            f'{escape(code)}.html">{escape(league.season)}</a></td>'
+            f'<td class="v2-res-away"><a class="club-link" href="{escape(base)}">'
+            f'{escape(league.league_name)}</a></td>'
+            f'<td class="v2-res-finish">{cluster}{render._ordinal(standing.position)}'
+            f' &middot; {standing.points} pts</td></tr>')
+    return [
+        '<h3 class="v2-sec-title">Past Seasons</h3>',
+        '<div class="v2-results-outer">',
+        '<table class="v2-results-table">',
+        '<thead><tr><th class="v2-res-th-home">SEASON</th>'
+        '<th class="v2-res-th-away">COMPETITION</th>'
+        '<th class="v2-res-th-finish">FINISHED</th></tr></thead>',
+        "<tbody>", *rows, "</tbody></table></div>",
+    ]
+
+
 def render_club_hub(club, club_teams, crest_url, goals_by_slug=None,
-                    official_pages=None, match_pages=None):
+                    official_pages=None, match_pages=None, past=None):
     """The hub page body for one club.
 
     `club_teams` is a list of (team, league, standing, position, played,
@@ -219,17 +249,31 @@ def render_club_hub(club, club_teams, crest_url, goals_by_slug=None,
     else:
         v2.append('<p class="v2-empty">No results yet.</p>')
 
+    # Below the current season, never above it: a hub answers "how are they
+    # doing" first and "how did they do" second.
+    v2 += _past_seasons(past)
+
     v2.append("</div>")  # /v2-content
     return "\n".join(v2)
 
 
 def build_club_hubs(dist, templates_dir, static_dir, ds, leagues, standings_by_slug,
-                    updated, official_pages=None, match_pages=None):
+                    updated, official_pages=None, match_pages=None, archived=None):
     """Write /clubs/{club_id}.html for every club with a team in a built league.
 
     `leagues` is the list of LeagueData that were built; `standings_by_slug`
-    maps slug -> the computed standings rows for that league.
+    maps slug -> the computed standings rows for that league. `archived` is
+    [(league, season_slug, rows)] for every past season build.py wrote a page
+    for: it adds a Past Seasons table, and never by itself earns a club a hub
+    (a club gone since 2017 has its seasons' pages and no hub to link from).
     """
+    past_of_club = {}
+    for league, season_slug, rows in archived or []:
+        by_code = {r.code: r for r in rows}
+        for code, tv in league.teams.items():
+            if tv.club_id and code in by_code:
+                past_of_club.setdefault(tv.club_id, []).append(
+                    (league, season_slug, by_code[code], code))
     base = render._read(os.path.join(templates_dir, "base.html"))
     css_ver = render.css_version(static_dir)
     out_dir = os.path.join(dist, "clubs")
@@ -278,7 +322,8 @@ def build_club_hubs(dist, templates_dir, static_dir, ds, leagues, standings_by_s
             (crest(t.legacy_code) for t, *_ in club_teams if t.legacy_code and crest(t.legacy_code)),
             None)
         content = render_club_hub(club, club_teams, crest_url or "",
-                                  goals_by_slug, official_pages, match_pages)
+                                  goals_by_slug, official_pages, match_pages,
+                                  past=past_of_club.get(club.club_id))
         html = _page(base, club.name, content, updated, css_ver)
         render._write(os.path.join(out_dir, f"{club.club_id}.html"), html)
         count += 1

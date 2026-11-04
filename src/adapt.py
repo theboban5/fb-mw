@@ -20,6 +20,7 @@ Conventions preserved deliberately:
     LeagueData.own_goal_total).
 """
 
+import re
 from dataclasses import dataclass, field
 
 from . import dataset, lineups, standings
@@ -696,3 +697,46 @@ def current_competition_seasons(ds: "dataset.Dataset") -> "list[dataset.Competit
         else:
             out.append(max(rows, key=lambda cs: ds.seasons[cs.season_id].start_date))
     return out
+
+
+def archive_competition_seasons(ds: "dataset.Dataset") -> "list[dataset.CompetitionSeason]":
+    """Every past season of a league that gets an archive page, newest first.
+
+    THE SINGLE SOURCE, by match_page_ids' rule: the archive pages, the season
+    picker on every table, and the /matches/ day view (which leaves these
+    seasons out) all ask this function, so a season cannot have a picker link
+    and no page, or a page and also a day line.
+
+    A past season is any competition_seasons row the build does not render as
+    current (current_competition_seasons' choice, not a second copy of it), of
+    a league — a cup has a bracket, not a table, and none is backfilled yet —
+    with at least one played match. A row with nothing played would be an
+    empty table, which the house style renders as nothing.
+
+    That includes a season nobody backfilled: the Women's Premiership's 25/26
+    had no page from the day 26/27 became its current season, and gets one
+    here. Its dates leave /matches/ for the same reason the Super League's
+    2016 do — a finished season is read as a season, on its own page.
+    """
+    current = {(cs.competition_id, cs.season_id)
+               for cs in current_competition_seasons(ds)}
+    played = {(m.competition_id, m.season_id) for m in ds.matches.values()
+              if not m.is_placeholder and m.counts_for_table and m.has_score}
+    out = []
+    for cs in ds.competition_seasons.values():
+        key = (cs.competition_id, cs.season_id)
+        comp = ds.competitions.get(cs.competition_id)
+        if (key in current or key not in played or comp is None
+                or comp.type != "league" or cs.season_id not in ds.seasons):
+            continue
+        out.append(cs)
+    out.sort(key=lambda cs: ds.seasons[cs.season_id].start_date, reverse=True)
+    return out
+
+
+def season_slug(label: str) -> str:
+    """A season label as a URL segment: '2025' -> '2025', '2020/21' -> '2020-21'.
+
+    The label, not the season_id: an id is never parsed for meaning, and the
+    label is what a reader sees and would type."""
+    return re.sub(r"[^0-9A-Za-z]+", "-", label).strip("-").lower()

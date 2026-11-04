@@ -149,6 +149,9 @@ matches (home/away team_id, venue_id, competition_id, season_id)
   It records *how the row got here*, not where the fact came from — anything
   entered through `/report` is `reporter` even when the reporter saw it on
   Facebook, because `confidence` and the unconfirmed asterisk key off it.
+  `backfill` is a past season loaded from another archive by
+  `scripts/rsssf.py` + `scripts/season.py` (2016–2025 Super League from
+  RSSSF); its `source_ref` is the RSSSF page, and the archive pages credit it.
 - `matches.source_ref` is free text: **where** the result came from — usually a
   Facebook post URL, sometimes a sentence. Never rendered publicly; it exists
   so a result can be checked later. Written by `submit_match_report`, which
@@ -186,8 +189,23 @@ matches (home/away team_id, venue_id, competition_id, season_id)
 
 - **The current season comes from `seasons.status == 'active'`** (exactly one
   row), never from the system clock. A competition without a row for the
-  active season builds its most recent season instead (that's how the
-  Women's Premiership 25/26 stays up while 26/27 runs).
+  active season builds its most recent season instead.
+- **Every other season of a league with a played match is an archive page**,
+  `/<slug>/<season-label>/` (`/sl/2025/`, `/sl/2020-21/`):
+  `adapt.archive_competition_seasons` is the single source, read by the
+  archive build, the season picker on every table, and `/matches/` — which
+  leaves archived seasons out, so a past season never becomes a thousand
+  dated day pages. Archive matches get no `/match/` page and no OG card, but
+  they DO count in every match page's form and head to head, which read
+  `ds.matches` across all seasons. Seasons are global and may overlap
+  (`MW_2025` runs Jan–Dec beside the women's `MW_2025_26`); only `active` is
+  unique. A backfilled season has no matchdays (RSSSF's "Week"/"Round"
+  headers are not rounds), so its Matches tab groups by month and it has no
+  Season Overview.
+- **The table's tiebreak is points, GD, goals scored, then head to head**
+  (points, GD, goals between the level teams), and only then the name. It
+  stopped at the name until the 2023 Super League's 13th and 14th were level
+  on all three and the alphabet would have relegated the wrong club.
 - **`source_type=placeholder` matches render nowhere** — not in standings,
   results, scorer charts, or stats. They parse without error. (Known-fake
   seed rows pending deletion.)

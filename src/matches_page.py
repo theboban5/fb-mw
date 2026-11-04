@@ -171,9 +171,18 @@ def collect(ds, nt_data=None) -> "dict[str, Day]":
     """
     days: "dict[str, Day]" = {}
 
+    # A past season's matches live on its archive page (/sl/2016/), not here.
+    # Without this, backfilling ten Super League seasons would write a dated
+    # page for every Saturday since 2016 — about a thousand pages of day view
+    # for days nobody opens a day view to see.
+    archived = {(cs.competition_id, cs.season_id)
+                for cs in adapt.archive_competition_seasons(ds)}
+
     by_date_comp: "dict[tuple[str, str, str], list]" = {}
     for m in ds.matches.values():
         if m.is_placeholder or not m.date:
+            continue
+        if (m.competition_id, m.season_id) in archived:
             continue
         by_date_comp.setdefault((m.date, m.competition_id, m.season_id), []).append(m)
 

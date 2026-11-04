@@ -17,6 +17,7 @@ Usage:
 
 from datetime import datetime, timezone, timedelta
 from html import escape
+import dataclasses
 import hashlib
 import io
 import json
@@ -87,10 +88,69 @@ def _tier_label(comp: "dataset.Competition") -> str:
     return "League"
 
 
+def _by_month(matches):
+    """An archive season's matches with each one's month as its "matchday",
+    plus the labels the Matches tab heads and chips them with.
+
+    A backfilled season has dates and no matchdays (scripts/rsssf.py says
+    why none is read), and render_results pages by matchday. A month is the
+    honest unit that is left: "April 2025", in the pager the current season
+    uses for rounds, through the md_labels/md_chips a cup already passes for
+    "SEMI-FINALS". Only the copies handed to the renderer change; nothing is
+    stored. Ordered by date, so recent_form's (matchday, date) sort is a
+    plain date sort — the last five of the season, which is what it means.
+    """
+    months = sorted({m.date[:7] for m in matches if m.date})
+    index = {ym: i for i, ym in enumerate(months, start=1)}
+    out = [dataclasses.replace(m, matchday=index.get(m.date[:7], 0)) for m in matches]
+    labels, chips = {}, {}
+    for ym, i in index.items():
+        when = datetime.strptime(ym + "-01", "%Y-%m-%d")
+        labels[i] = when.strftime("%B %Y")
+        chips[i] = when.strftime("%b")
+    return out, labels, chips
+
+
+def _source_credit(ds, matches):
+    """The line an archive page credits its source with, or "".
+
+    RSSSF's condition for copying is "proper acknowledgement is given to the
+    authors", so a season read off its pages says so on every page of it,
+    linked to the page it came from. Read off the rows' own source_ref, never
+    assumed from the season: a season corrected later from another source
+    keeps the credit only while a row still cites RSSSF.
+    """
+    rows = [ds.matches[m.match_id] for m in matches if m.match_id in ds.matches]
+    refs = sorted({r.source_ref.split(",")[0].strip() for r in rows
+                   if "rsssf.org" in (r.source_ref or "")})
+    if not refs:
+        return ""
+    link = f'<a href="{escape(refs[0], quote=True)}" rel="noopener">RSSSF</a>'
+    return (f'<p class="v2-credit">Results and table from {link} — Hans '
+            f'Sch&ouml;ggl and Karel Stokkermans, Rec.Sport.Soccer Statistics '
+            f'Foundation.</p>')
+
+
 def _build_league(ds, cs, dist_root, updated, player_pages=frozenset(),
-                  official_pages=frozenset(), match_pages=frozenset()):
-    """Render one competition+season into dist_root/<slug>/."""
+                  official_pages=frozenset(), match_pages=frozenset(),
+                  season_links=None, archive_hub_ids=None):
+    """Render one competition+season into dist_root/<slug>/.
+
+    With `archive_hub_ids` (the clubs that have a hub page) it is a PAST
+    season instead, into dist_root/<slug>/<season>/ — the same pages from the
+    same code, one directory down, minus what a finished season read off
+    another site's archive cannot honestly carry: no position arrows (there
+    is no "last matchday"), no Season Overview (its x-axis is matchdays), no
+    link on a score (old matches have no match page), and a team links to its
+    club hub only where one exists.
+    """
     league = adapt.league_data(ds, cs.competition_id, cs.season_id)
+    archive = archive_hub_ids is not None
+    matches = league.matches
+    md_kwargs = {}
+    if archive and any(not m.matchday for m in matches):
+        matches, md_labels, md_chips = _by_month(matches)
+        md_kwargs = {"md_labels": md_labels, "md_chips": md_chips}
 
     # A knockout has no table: skip every standings-shaped computation and
     # render a bracket front page instead. Penalties never reach standings.py.
@@ -117,13 +177,16 @@ def _build_league(ds, cs, dist_root, updated, player_pages=frozenset(),
             # cluster rather than inside a list of four tables end to end.
             "groups": league.groups,
         }
-        rows = standings.compute_standings(league.matches, league.teams, **table_kwargs)
-        form = standings.recent_form(league.matches, league.teams)
-        changes = standings.position_changes(league.matches, league.teams, **table_kwargs)
-        days, history = standings.position_history(league.matches, league.teams, **table_kwargs)
-        cup_kwargs = {}
-    played_count = sum(1 for m in league.matches if m.played)
-    total_goals = sum(m.home_goals + m.away_goals for m in league.matches if m.played)
+        rows = standings.compute_standings(matches, league.teams, **table_kwargs)
+        form = standings.recent_form(matches, league.teams)
+        if archive:
+            changes, days, history = {}, [], {}
+        else:
+            changes = standings.position_changes(matches, league.teams, **table_kwargs)
+            days, history = standings.position_history(matches, league.teams, **table_kwargs)
+        cup_kwargs = dict(md_kwargs)
+    played_count = sum(1 for m in matches if m.played)
+    total_goals = sum(m.home_goals + m.away_goals for m in matches if m.played)
     goals_per_game = total_goals / played_count if played_count > 0 else 0.0
 
     if league.goals:
@@ -133,12 +196,24 @@ def _build_league(ds, cs, dist_root, updated, player_pages=frozenset(),
     else:
         goals_by_match, top_scorers, more_scorers, team_scorers = {}, [], [], []
 
+    if archive:
+        out_dir = os.path.join(dist_root, league.slug,
+                               adapt.season_slug(ds.seasons[cs.season_id].label))
+        prefix = "../../"
+        back_link = (f'<a href="../" class="back-link">&#x2190; '
+                     f'{escape(ds.competitions[cs.competition_id].name)}</a>')
+        hub_ok = archive_hub_ids
+    else:
+        out_dir, prefix, back_link = os.path.join(dist_root, league.slug), "../", BACK_LINK
+        hub_ok = None
     render.build_site(
-        os.path.join(dist_root, league.slug), TEMPLATES, STATIC,
-        league.league_name, updated, rows, league.matches, league.teams,
+        out_dir, TEMPLATES, STATIC,
+        league.league_name, updated, rows, matches, league.teams,
         season=league.season, total_goals=total_goals, goals_per_game=goals_per_game,
         form=form, changes=changes, days=days, history=history,
-        css_prefix="../", back_link=BACK_LINK, copy_static=False,
+        css_prefix=prefix, back_link=back_link, copy_static=False,
+        season_links=season_links, overview=not archive, hub_ids=hub_ok,
+        credit=_source_credit(ds, matches) if archive else "",
         goals_by_match=goals_by_match, top_scorers=top_scorers,
         lineups_by_match=league.lineups, player_pages=player_pages,
         official_pages=official_pages, match_pages=match_pages,
@@ -158,9 +233,12 @@ def _build_league(ds, cs, dist_root, updated, player_pages=frozenset(),
         # as "currently viewing" (see hubs.render_club_hub). Cup pages link
         # without it: the id belongs to the league row (a team can hold the
         # same code in a league and a cup, and ids must stay unique).
-        club_hrefs={code: f"../clubs/{t.club_id}.html"
+        # An archive team with no hub keeps the per-season club page
+        # (render's default, clubs/<code>.html beside the table).
+        club_hrefs={code: f"{prefix}clubs/{t.club_id}.html"
                           + ("" if is_cup else f"#club-team-{code}")
-                    for code, t in league.teams.items()},
+                    for code, t in league.teams.items()
+                    if hub_ok is None or t.club_id in hub_ok},
         # Club overview pages link back up to the cross-competition hub, so
         # a visitor can hop to another of the club's squads without going
         # back through a league page (see render.render_club).
@@ -807,13 +885,39 @@ def main(argv):
     # and all of them are rendered before match_page writes a single one.
     match_pages = match_page.match_page_ids(ds)
 
+    # Past seasons (adapt.archive_competition_seasons is the single source)
+    # and the picker that reaches them, from the current table and from each
+    # other. Hrefs are relative to the page's own directory: the current
+    # season is /<slug>/, a past one /<slug>/<season>/.
+    archives = {}
+    for acs in adapt.archive_competition_seasons(ds):
+        archives.setdefault(acs.competition_id, []).append(acs)
+
+    def label_of(c):
+        return adapt.short_season_label(ds.seasons[c.season_id].label)
+
+    def season_links(cs, current):
+        past = archives.get(cs.competition_id, [])
+        if not past:
+            return None
+        here = cs.season_id
+        up = "" if here == current.season_id else "../"
+        links = [(label_of(current), up or "./", here == current.season_id)]
+        links += [(label_of(a),
+                   f"{up}{adapt.season_slug(ds.seasons[a.season_id].label)}/",
+                   a.season_id == here) for a in past]
+        return links
+
     leagues = []
     standings_by_slug = {}
     parts = []
+    current_by_comp = {}
     for cs in adapt.current_competition_seasons(ds):
+        current_by_comp[cs.competition_id] = cs
         league, rows, n_played = _build_league(ds, cs, dist, updated,
                                               player_pages, official_pages,
-                                              match_pages)
+                                              match_pages,
+                                              season_links=season_links(cs, cs))
         leagues.append(league)
         standings_by_slug[league.slug] = rows
         parts.append(f"{league.slug}: {len(league.teams)} teams, {n_played} results")
@@ -828,6 +932,23 @@ def main(argv):
     # of those.
     club_hub_ids = {tv.club_id for league in leagues
                     for tv in league.teams.values() if tv.club_id}
+
+    # Past seasons, after the current ones: which clubs have a hub is only
+    # known once those are built, and an archive links a team to its hub only
+    # where there is one (Wizards FC last played the Super League in 2017).
+    archived = []       # [(league, season_slug, rows)], for the club hubs
+    n_archive = 0
+    for comp_id, past in archives.items():
+        current = current_by_comp.get(comp_id)
+        if current is None:
+            continue
+        for acs in past:
+            league, rows, _n = _build_league(
+                ds, acs, dist, updated, season_links=season_links(acs, current),
+                archive_hub_ids=club_hub_ids)
+            archived.append(
+                (league, adapt.season_slug(ds.seasons[acs.season_id].label), rows))
+            n_archive += 1
     nt_page.build_page(dist, TEMPLATES, STATIC, scorchers, ds, updated,
                        club_hub_ids=club_hub_ids, player_page_ids=player_pages)
 
@@ -856,7 +977,8 @@ def main(argv):
     # Cross-competition pages: club hubs and player pages.
     n_clubs = hubs.build_club_hubs(
         dist, TEMPLATES, STATIC, ds, leagues, standings_by_slug, updated,
-        official_pages=official_pages, match_pages=match_pages)
+        official_pages=official_pages, match_pages=match_pages,
+        archived=archived)
     n_players = hubs.build_player_pages(dist, TEMPLATES, STATIC, ds, updated,
                                         club_hub_ids=club_hub_ids, ntd=nt_data)
     n_officials = officials.build_official_pages(
@@ -889,6 +1011,7 @@ def main(argv):
     _write_build_info(dist, ds, club_hub_ids, data_read_at, tz)
 
     print(f"Built {dist}/  " + " | ".join(parts)
+          + (f" | {n_archive} past seasons" if n_archive else "")
           + (f" | {len(live_cards)} trending" if live_cards else "")
           + f" | {n_clubs} club hubs | {n_players} player pages"
           + f" | {n_matches} match pages ({len(match_cards)} with a card)"

@@ -70,6 +70,25 @@ class StandingsTest(unittest.TestCase):
         order = [s.name for s in standings.compute_standings(ms, teams())][:2]
         self.assertEqual(order, ["Alpha", "Bravo"])
 
+    def test_head_to_head_breaks_a_full_tie_before_the_name(self):
+        # The 2023 Super League's 13th and 14th: level on points, GD and
+        # goals, and the one alphabetically second won the meeting. The
+        # alphabet must not decide who goes down.
+        ts = dict(teams(), DDD=TeamView("DDD", "Delta"))
+        ms = [
+            match(1, 1, "BBB", "AAA", 1, 0),   # Bravo beat Alpha
+            match(2, 2, "AAA", "CCC", 1, 0),
+            match(3, 2, "CCC", "BBB", 1, 0),
+            match(4, 3, "AAA", "DDD", 1, 0),
+            match(5, 3, "BBB", "DDD", 1, 0),   # both 6 pts, 2-1
+        ]
+        rows = standings.compute_standings(ms, ts)
+        tied = [s for s in rows if s.code in ("AAA", "BBB")]
+        self.assertEqual((tied[0].points, tied[0].gd, tied[0].gf),
+                         (tied[1].points, tied[1].gd, tied[1].gf))
+        self.assertEqual([s.name for s in tied], ["Bravo", "Alpha"])
+        self.assertEqual([s.position for s in tied], [1, 2])
+
     def test_configurable_points_and_adjustment(self):
         # competition_seasons points + entries.points_adjustment (negative).
         ms = [
