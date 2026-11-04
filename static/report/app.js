@@ -6279,6 +6279,16 @@ async function stageReport(match, state, sides, teamName) {
     // save_lineup replaces a whole side, so a saved sheet staying put until
     // the reporter taps "Replace" is this screen's conflict guard.
     const { sheets, unplaced } = mr.sheetsFromReport(source, ctx);
+    // A pre-match report's FAM numbers link first, and exactly (0065); the
+    // names below fill in whoever the site has no number for yet. A failed
+    // lookup only means the names do all of it, as before.
+    const numbers = Object.values(sheets).flat().map((r) => r.reg_no).filter(Boolean);
+    if (numbers.length) {
+      const { data: holders, error: famError } = await supabase.rpc("fam_players",
+        { p_reg_nos: numbers });
+      if (famError) console.warn("[everyleague] FAM lookup:", famError);
+      else Object.values(sheets).forEach((rows) => prematch.linkByFam(rows, holders));
+    }
     const staged = [];
     const replace = {};
     sides.forEach((side) => {
@@ -6579,6 +6589,7 @@ function wireReport(host, match, state, sides, teamName) {
     button.disabled = true;
     button.textContent = "Saving…";
     const failures = [];
+    const notes = [];
     let wrote = false;
 
     // 1. Sheets first: the assists below are looked up on them.
@@ -6591,6 +6602,8 @@ function wireReport(host, match, state, sides, teamName) {
         failures.push(`${teamName(key)}: ${problems[0]}`);
         continue;
       }
+      const famNote = await registerFamNumbers(side.sheet);
+      if (famNote) notes.push(`${teamName(key)}: ${famNote}`);
       const { error } = await supabase.rpc("save_lineup", {
         p_match_id: match.match_id, p_team_id: key,
         p_rows: sheetPayload(side.sheet.rows),
@@ -6700,10 +6713,11 @@ function wireReport(host, match, state, sides, teamName) {
     });
     state.detail = null;
     await drawDetail(match, state);
+    const told = notes.length ? ` ${notes.join(" ")}` : "";
     flash(failures.length
-      ? `Saved what could be. ${failures.join(" ")}`
-      : "Saved everything from the report. The site updates in a few minutes.",
-      failures.length ? "warn" : "ok", 8000);
+      ? `Saved what could be. ${failures.join(" ")}${told}`
+      : `Saved everything from the report.${told} The site updates in a few minutes.`,
+      failures.length ? "warn" : "ok", notes.length ? 12000 : 8000);
   });
 }
 
@@ -12124,6 +12138,24 @@ function sheetPayload(rows) {
   }));
 }
 
+/** A sheet's FAM numbers, registered just before it saves (0065): whoever
+ *  holds a number is linked, a linked player with none takes theirs, and an
+ *  unlinked line is created as a player — unless the reporter unticked that.
+ *  The ids land on sheet.rows, so the save_lineup call after this one carries
+ *  them. It never stops that save: a failure is said, and the sheet goes up
+ *  with the links it already had. Returns the sentence to show, or "". */
+async function registerFamNumbers(sheet) {
+  const payload = prematch.famPayload(sheet.rows, !sheet.famSkip);
+  if (!payload.length) return "";
+  const { data, error } = await supabase.rpc("register_fam_players", { p_rows: payload });
+  if (error) {
+    console.warn("[everyleague] FAM numbers not registered:", error);
+    return `The FAM numbers were not recorded (${humanError(error)}), so anyone `
+      + "new went on as a name.";
+  }
+  return prematch.famNote(prematch.applyFamResults(sheet.rows, data));
+}
+
 function blankSheetRow(player = {}) {
   return {
     player_name: player.name || "", player_id: player.player_id || "",
@@ -12861,6 +12893,10 @@ function sheetHtml({ key, teamName, sheet, squad }) {
   const starters = sheet.rows.filter((r) => r.role === "starting").length;
   const subs = sheet.rows.filter((r) => r.role !== "starting").length;
   const unlinked = sheet.rows.filter((r) => !r.player_id).length;
+  // Lines from a pre-match report that carry a FAM number nobody holds yet:
+  // saving creates them as players (registerFamNumbers), so the screen says
+  // so before the tap, and lets the reporter save names alone instead.
+  const famNew = sheet.rows.filter((r) => r.reg_no && !r.player_id && !r.fam_done).length;
   const adding = sheet.adding === "unused_sub" ? "unused_sub" : "starting";
 
   const segment = (role, label, count) => `
@@ -12923,6 +12959,10 @@ function sheetHtml({ key, teamName, sheet, squad }) {
           ${starters} in the starting XI — that is too many.</p>` : ""}
         ${unlinked ? `<p class="rp-hint" style="margin-top:14px">${unlinked} not
           linked to a player — tap “Link to a player” on their row.</p>` : ""}
+        ${famNew ? `<label class="rp-inline" style="margin-top:8px">
+          <input type="checkbox" data-sheet-fam ${sheet.famSkip ? "" : "checked"}>
+          <span>On save, add the ${famNew} with a FAM number as new players
+            (link any you know first)</span></label>` : ""}
         ${sheetGroupsHtml(sheet, key)}
         <button class="rp-btn" type="button" data-sheet-save data-sheet-key="${esc(key)}">
           Save ${esc(teamName)}’s sheet</button>`
@@ -13487,12 +13527,14 @@ function wireSheet(root, ctx, redraw) {
       save.disabled = true;
       const label = save.textContent;
       save.textContent = "Saving…";
+      const famNote = await registerFamNumbers(sheet);
       const error = await ctx.save(sheetPayload(sheet.rows));
       save.disabled = false;
       save.textContent = label;
       // Rule 1: the sheet stays in state on failure, so nothing typed is lost.
       if (error) { flash(humanError(error), "error"); return; }
-      flash("Team sheet saved.", "ok");
+      flash(famNote ? `Team sheet saved. ${famNote}` : "Team sheet saved.", "ok",
+            famNote ? 10000 : 4000);
       requestRebuild();
       ctx.saved?.();
     }
@@ -13530,6 +13572,10 @@ function wireSheet(root, ctx, redraw) {
   // A <select> is safe to redraw from, because its change lands when the
   // native picker closes and the next tap is a fresh one.
   root.addEventListener("change", (e) => {
+    if (e.target.matches?.("[data-sheet-fam]")) {
+      sheet.famSkip = !e.target.checked;
+      return;
+    }
     const field = e.target.dataset?.sheetField;
     if (!field) return;
     const i = Number(e.target.dataset.sheetI);

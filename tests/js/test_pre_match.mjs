@@ -12,7 +12,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { boardName, boardSide, boxesFromReport, famRegNo, sheetText } from "../../static/report/pre_match.js";
+import {
+  applyFamResults, boardName, boardSide, boxesFromReport, famNote, famPayload, famRegNo,
+  linkByFam, sheetText,
+} from "../../static/report/pre_match.js";
+import { sheetsFromReport } from "../../static/report/match_report.js";
 
 const MITUNDU = `01 Emmanuel Kanthiti (GK)
 14 Leo Kachikho (C)
@@ -150,4 +154,63 @@ test("a sheet with no side is counted, never guessed onto one", () => {
     bench: [] }] });
   assert.deepEqual(boxes, { home: "", away: "", homeCoach: "", awayCoach: "", unplaced: 1 });
   assert.deepEqual(boxesFromReport(null).unplaced, 0);
+});
+
+// ── FAM numbers on a sheet (0065) ──
+
+const row = (name, reg, id = "") => ({ player_name: name, reg_no: reg, player_id: id });
+
+test("a staged report row carries its FAM number, checked", () => {
+  const { sheets } = sheetsFromReport({ team_sheets: [{ team_side: "home",
+    starting: [{ name_raw: "Gregory Nachipo", shirt_number: "8", position: "",
+                 captain: true, reg_no: "000413M98" },
+               { name_raw: "Bright Songa", shirt_number: "77", position: "",
+                 captain: false, reg_no: "not one" }],
+    bench: [] }] }, { homeTeamId: "MW_KB_M1", awayTeamId: "MW_CU_M1", flipped: false });
+  assert.deepEqual(sheets.MW_KB_M1.map((r) => r.reg_no), ["000413M98", ""]);
+});
+
+test("a FAM number links before any name, and never twice", () => {
+  const rows = [row("J. Issac Simfukwe", "023900M02"), row("Gift Magola", "023901M03"),
+                row("Kenson Mlenga", "000686M99", "CAF_MW_000686"),
+                row("Repeat", "023900M02")];
+  const linked = linkByFam(rows, [
+    { fam_reg_no: "023900M02", player_id: "CAF_MW_000700" },
+    // Held by someone the reporter did not choose: their link stands.
+    { fam_reg_no: "000686M99", player_id: "CAF_MW_000999" }]);
+  assert.equal(linked, 1);
+  assert.deepEqual(rows.map((r) => r.player_id),
+    ["CAF_MW_000700", "", "CAF_MW_000686", ""]);
+});
+
+test("the save sends each number once, unlinked rows only when creating", () => {
+  const rows = [row("EMMANUEL MWANJALA", "023902M01"), row("Kenson Mlenga", "000686M99", "CAF_MW_000686"),
+                row("No number", ""), row("Again", "023902M01")];
+  assert.deepEqual(famPayload(rows), [
+    { reg_no: "023902M01", player_id: "", name: "Emmanuel Mwanjala" },
+    { reg_no: "000686M99", player_id: "CAF_MW_000686", name: "Kenson Mlenga" }]);
+  assert.deepEqual(famPayload(rows, false).map((r) => r.reg_no), ["000686M99"]);
+});
+
+test("the reply links the new players, says what clashed, and is not sent twice", () => {
+  const rows = [row("Emmanuel Mwanjala", "023902M01"), row("Raphael Phiri", "000534M95"),
+                row("Kenson Mlenga", "000686M99", "CAF_MW_000686"), row("Gift Magola", "023901M03")];
+  const summary = applyFamResults(rows, [
+    { reg_no: "023902M01", player_id: "CAF_MW_001300", full_name: "Emmanuel Mwanjala",
+      outcome: "created", namesakes: 0, message: "" },
+    { reg_no: "000534M95", player_id: "CAF_MW_001301", full_name: "Raphael Phiri",
+      outcome: "created", namesakes: 1, message: "" },
+    { reg_no: "000686M99", player_id: "CAF_MW_000999", full_name: "Kenson Mlenga",
+      outcome: "conflict", namesakes: 0, message: "000686M99 is someone else's." },
+    { reg_no: "023901M03", player_id: "CAF_MW_000500", full_name: "Gift Magola",
+      outcome: "known", namesakes: 0, message: "" }]);
+  assert.deepEqual(rows.map((r) => r.player_id),
+    ["CAF_MW_001300", "CAF_MW_001301", "CAF_MW_000686", "CAF_MW_000500"]);
+  assert.deepEqual(summary, { created: 2, linked: 1, namesakes: ["Raphael Phiri"],
+                              problems: ["000686M99 is someone else's."] });
+  assert.deepEqual(famPayload(rows), []);
+  assert.equal(famNote(summary), "Added 2 new players with their FAM numbers. Raphael "
+    + "Phiri shares a name with someone already on the site — if that is the same "
+    + "person, merge them in Players. 000686M99 is someone else's.");
+  assert.equal(famNote({ created: 0, linked: 3, namesakes: [], problems: [] }), "");
 });

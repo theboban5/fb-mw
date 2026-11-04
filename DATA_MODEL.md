@@ -364,6 +364,14 @@ A squad list is written a person at a time, because it arrives that way.
   row per team per season, for the whole squad, written whole by
   `set_squad_sources`. Never rendered, readable only by a signed-in
   reporter, not part of the Dataset.
+- **`player_fam_regs`** (0065) — FAM registration numbers (`000584M95`:
+  six digits, M/F, two digits) read off pre-match reports, each naming one
+  `player_id`; a player may hold several. Not a column on `players`, because
+  `players` is published in `data/canonical/` and the number carries a sex
+  and a birth year. No table grants at all: read through `fam_players`,
+  written by `register_fam_players` on a sheet's save, repointed by
+  `merge_players`. Never rendered, not part of the Dataset, and nothing reads
+  a birth year out of it.
 
 ## Officials (0024)
 

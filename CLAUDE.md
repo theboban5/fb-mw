@@ -194,6 +194,42 @@ fixture and clean up, and they never mutate a real match.
 
 ---
 
+## Recent work (Nov 2026)
+
+Pre-match reports, migrations `0064`–`0065` — `#/graphics?type=lineups` and
+the match screen's "Fill in from a match report":
+
+- **FAM's competition system issues a PDF per match**: both XIs and benches,
+  shirts, captain and keeper (icon badges, no text behind them), staff,
+  officials, and a registration number beside every name. 0064 lets the
+  report-imports bucket take a PDF, and import-extract sends it as a
+  `document` block, so the model reads the text layer AND sees the badges.
+  It is the existing report pass (`REPORT_PROMPT` explains the layout), so
+  it stages through the match screen's review exactly like a club report.
+- **Line-up boards** (`pre_match.js`, `graphics.js` `lineup_team` /
+  `lineup_match`): one team's XI or both, square or story, optional photo,
+  surname / initial / full names, with a shared surname taking its initial
+  back. The text box IS the editor, in the paste box's format, so a saved
+  sheet, a read PDF and a typed list are one shape. The board saves nothing;
+  "Save these to the match →" opens the match screen holding the same
+  import, so the model is paid once.
+- **The first sheet saved linked 11 of 37 names** — the rest were new to
+  the site, and the reader never invents a player. 0065 makes the number the
+  identity: a staged row carries `reg_no`, `fam_players` links by it BEFORE
+  names are tried, and on save `register_fam_players` links the holder,
+  attaches a new number to a linked player with none (never a second one —
+  a wrong name-link must not poison every later sheet), and CREATES anyone
+  unlinked, always as a new id. A tick box on the sheet says so before the
+  tap and can be unticked. Created players that share a name with someone
+  are named in the flash, for #/players to merge; `merge_players` carries
+  the numbers.
+- **The numbers live in `player_fam_regs`, not on `players`**, because
+  `players` is published in `data/canonical/` and the number carries a sex
+  and a birth year. No table grants; two functions.
+- Not built: FAM numbers for coaches and referees (read, kept in
+  `report_imports.extracted`, not stored), matching a match by FAM "Match
+  No", and the PDFs as eval cases (personal data).
+
 ## Recent work (Oct 2026)
 
 Stats for any period, and "publish without match officials?", migrations

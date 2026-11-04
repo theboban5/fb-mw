@@ -194,9 +194,23 @@ export function teamFor(teamSide, { homeTeamId, awayTeamId, flipped = false }) {
 
 // ── Team sheets ──────────────────────────────────────────────────────────────
 
+/** A FAM registration number as printed beside every name on a pre-match
+ *  report — "000584M95" — or "" for anything that is not one. Six digits, a
+ *  sex, two digits; checked here because an id read off a document is
+ *  evidence, never something to store on the strength of having been read.
+ *  register_fam_players (0065) checks it again. */
+export function famRegNo(raw) {
+  const m = /^\(?\s*(\d{6}[MF]\d{2})\s*\)?$/i.exec(String(raw || "").trim());
+  return m ? m[1].toUpperCase() : "";
+}
+
 function sheetRow(p, role) {
   return {
     player_name: p.name_raw, player_id: "",
+    // Rides along on the row, never into save_lineup (sheetPayload lists
+    // what it sends): the save registers it first (0065), and a club report
+    // has none, so this is "" there.
+    reg_no: famRegNo(p.reg_no),
     shirt_number: p.shirt_number || "", position: p.position || "",
     role, captain: Boolean(p.captain), motm: false,
     minute_on: "", minute_off: "", replaced_player: "",

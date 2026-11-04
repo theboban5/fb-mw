@@ -19,11 +19,14 @@
  * name. Two Phiris in one XI is the case a surname board gets wrong, so a
  * shared surname takes its initial back.
  *
- * It imports only lineup_paste.js (which imports only match_report.js), so
- * `node --test` can ask it without a browser or a database.
+ * It imports only lineup_paste.js and match_report.js, so `node --test` can
+ * ask it without a browser or a database.
  */
 
 import { displayName, parseLineup } from "./lineup_paste.js";
+import { famRegNo } from "./match_report.js";
+
+export { famRegNo };
 
 export const NAME_STYLES = [
   ["surname", "Surname (MKUNGULA)"],
@@ -107,15 +110,6 @@ export function boardSide(text, style = "surname") {
   };
 }
 
-/** A FAM registration number as printed beside every name on a pre-match
- *  report — "000584M95" — or "" for anything that is not one. Six digits, a
- *  sex, two digits; checked here because an id read off a document is
- *  evidence, never something to store on the strength of having been read. */
-export function famRegNo(raw) {
-  const m = /^\(?\s*(\d{6}[MF]\d{2})\s*\)?$/i.exec(String(raw || "").trim());
-  return m ? m[1].toUpperCase() : "";
-}
-
 /** A read report (one import result: team_sheets, coaches) as the two boxes
  *  and two coaches the line-up screen shows. `flipped` is true when the
  *  report printed the fixture the other way round from the match it is
@@ -143,4 +137,91 @@ export function boxesFromReport(item, flipped = false) {
     if (field && !out[field]) out[field] = displayName(c.name_raw);
   });
   return out;
+}
+
+// ── FAM numbers on a sheet (0065) ────────────────────────────────────────────
+// A pre-match report prints the FA's registration number beside every name,
+// and a number names one person where a name names a crowd. So a staged sheet
+// is linked by number before any name is tried, and saving it registers the
+// numbers: the holder is linked, a linked player with none takes theirs, and
+// anyone the site has never seen is created — the one place the portal makes
+// players without a tap each, because here the FA has already said who they
+// are. The rules are below; the round trips are app.js's.
+
+/** Link rows by FAM number. `holders` is fam_players' reply
+ *  ({fam_reg_no, player_id}). A row already linked keeps its link — the
+ *  reporter chose it — and nobody is linked twice on one sheet. Returns how
+ *  many rows it linked. */
+export function linkByFam(rows, holders) {
+  const who = new Map((holders || []).map((h) => [h.fam_reg_no, h.player_id]));
+  const taken = new Set(rows.map((r) => r.player_id).filter(Boolean));
+  let linked = 0;
+  rows.forEach((r) => {
+    const id = r.reg_no && !r.player_id ? who.get(r.reg_no) : "";
+    if (!id || taken.has(id)) return;
+    r.player_id = id;
+    taken.add(id);
+    linked += 1;
+  });
+  return linked;
+}
+
+/** What register_fam_players is sent when a sheet saves: each number once,
+ *  with the row's link and its name as it should be stored ("EMMANUEL
+ *  MWANJALA" is the PDF's typography). An unlinked row goes only when
+ *  `create` — the reporter can save a sheet as names alone. */
+export function famPayload(rows, create = true) {
+  const seen = new Set();
+  return (rows || []).filter((r) => {
+    if (!r.reg_no || r.fam_done || seen.has(r.reg_no)) return false;
+    seen.add(r.reg_no);
+    return Boolean(r.player_id) || create;
+  }).map((r) => ({
+    reg_no: r.reg_no, player_id: r.player_id || "",
+    name: displayName(r.player_name).replace(/\s+/g, " ").trim(),
+  }));
+}
+
+/** register_fam_players' reply folded back onto the rows, BEFORE they go to
+ *  save_lineup: a created or known player's id goes on the line that was
+ *  unlinked. A conflict leaves the line as it was and is said. */
+export function applyFamResults(rows, results) {
+  const byReg = new Map((results || []).map((r) => [r.reg_no, r]));
+  const taken = new Set(rows.map((r) => r.player_id).filter(Boolean));
+  const out = { created: 0, linked: 0, namesakes: [], problems: [] };
+  rows.forEach((row) => {
+    const res = row.reg_no ? byReg.get(row.reg_no) : null;
+    if (!res) return;
+    row.fam_done = true;
+    if (res.outcome === "conflict" || res.outcome === "invalid") {
+      if (res.message && !out.problems.includes(res.message)) out.problems.push(res.message);
+      return;
+    }
+    if (row.player_id || !res.player_id || taken.has(res.player_id)) return;
+    row.player_id = res.player_id;
+    taken.add(res.player_id);
+    if (res.outcome === "created") {
+      out.created += 1;
+      if (res.namesakes > 0) out.namesakes.push(res.full_name);
+    } else {
+      out.linked += 1;
+    }
+  });
+  return out;
+}
+
+/** The sentence the save says about it, or "" when there is nothing to say. */
+export function famNote(summary) {
+  if (!summary) return "";
+  const parts = [];
+  const n = summary.created;
+  if (n) parts.push(`Added ${n} new player${n === 1 ? "" : "s"} with their FAM numbers.`);
+  const same = summary.namesakes || [];
+  if (same.length) {
+    const names = same.length > 3 ? `${same.slice(0, 3).join(", ")} and ${same.length - 3} more`
+      : same.join(same.length === 2 ? " and " : ", ");
+    parts.push(`${names} share${same.length === 1 ? "s" : ""} a name with someone `
+      + "already on the site — if that is the same person, merge them in Players.");
+  }
+  return [...parts, ...(summary.problems || [])].join(" ");
 }
