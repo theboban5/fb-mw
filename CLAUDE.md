@@ -98,6 +98,7 @@ static/report/squad.js  a pasted squad/staff list → one person per line (0057)
 static/report/stats.js  #/stats: periods, sums, the copyable sentences (0062)
 static/report/pre_match.js  a team sheet as a line-up board: box text, name styles
 static/report/compare.js  two teams side by side, last five: table, form, H2H
+static/report/league_stats.js  leagues against each other: metrics, ranks (Compare tab + boards)
 src/nt.py, nt_page.py  national teams (the nt_* tabs, /scorchers/)
 src/search.py          the site search index
 static/report/app.js   the reporter portal (one file, no framework)
@@ -161,8 +162,9 @@ otherwise, and the portal's modules are ESM because browsers load them that
 way. It covers `static/report/results_grid.js`,
 `static/report/fixture_import.js`, `static/report/error_report.js`,
 `static/report/match_report.js`, `static/report/squad.js`,
-`static/report/stats.js`, `static/report/pre_match.js` and
-`static/report/compare.js`, which import nothing but each other; the
+`static/report/stats.js`, `static/report/pre_match.js`,
+`static/report/compare.js` and `static/report/league_stats.js`, which
+import nothing but each other; the
 moment one of them needs `document` or `supabase`, its tests stop meaning
 anything.
 
@@ -196,6 +198,29 @@ fixture and clean up, and they never mutate a real match.
 ---
 
 ## Recent work (Nov 2026)
+
+League stat boards, no migration — `#/graphics?type=leagues`:
+
+- **The Compare tab's figures, as posts.** Admins could see which league
+  scores most and where clean sheets are kept only on `#/ops?tab=compare`,
+  and the only way to post it was a screenshot. Three boards from the same
+  two views (`ops_competition_stats`, `ops_team_stats`): **League ranking**
+  (one figure, a bar per league — or per level or category, summed),
+  **Season in numbers** (up to four figures, the top three in each) and
+  **Top teams** (a team metric across the leagues ticked). Square or story,
+  download / copy / share; no homepage draft.
+- **One definition of every figure.** The metrics, levels and categories
+  moved out of app.js into `league_stats.js`; the Compare tab imports them,
+  so a board cannot print a number the admin screen disagrees with. Scorer
+  coverage is `board: false` — a fact about our data entry, not football.
+- **A league under the minimum is left off and named** (default 20 played).
+  Mangochi's U14 league has played three at 4.67 a game and would top every
+  scoring board. Every bar prints its denominator.
+- **Joint means level AS PRINTED**: regional and district football both read
+  2.93 (2.932 v 2.930), so they are "=1", not 1 and 2. A cut never splits a
+  tie unless keeping it would flood the board (`cutAt`).
+- Not built: one league across seasons as a trend (the Super League's ten
+  seasons are there now), and a minimum for a level or category's sum.
 
 Past Super League seasons, no migration — `scripts/rsssf.py`, `/sl/2025/`:
 

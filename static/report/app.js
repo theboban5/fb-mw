@@ -37,6 +37,8 @@ import * as graphics from "./graphics.js";
 import * as prematch from "./pre_match.js";
 // Comparison and form boards' rules, DOM-free and tested (tests/js/test_compare.mjs).
 import * as cmp from "./compare.js";
+// Leagues against each other — shared by the Compare tab and its board.
+import * as ls from "./league_stats.js";
 // The matchday grid's rules, kept out of this file so they can be tested
 // without a browser — see the section header on renderResults.
 import * as grid from "./results_grid.js";
@@ -9824,6 +9826,7 @@ const GRAPHICS_TABS = [
   ["scorers", "Top scorers"],
   ["lineups", "Line-ups"],
   ["compare", "Compare"],
+  ["leagues", "League stats"],
   ["editorial", "Announcement"],
 ];
 
@@ -10112,9 +10115,11 @@ async function renderGraphics(params) {
     : type === "scorers" ? graphicsScorerFields(competitions)
     : type === "lineups" ? graphicsLineupFields(competitions)
     : type === "compare" ? graphicsCompareFields(competitions)
+    : type === "leagues" ? graphicsLeagueFields()
     : graphicsMatchFields(type, competitions);
-  // Boards about one match are posted, not featured: no homepage draft.
-  const matchBoard = type === "lineups" || type === "compare";
+  // Boards about one match, and stat boards, are posted, not featured: no
+  // homepage draft.
+  const matchBoard = type === "lineups" || type === "compare" || type === "leagues";
 
   const format = params.get("format") === "story" ? "story" : "square";
   const formatChips = ["square", "story"].map((f) =>
@@ -10164,6 +10169,7 @@ async function renderGraphics(params) {
 
   if (type === "lineups") wireLineupGraphics(competitions, accents, format, params);
   else if (type === "compare") wireCompareGraphics(competitions, accents, format, params);
+  else if (type === "leagues") wireLeagueGraphics(accents, format, params);
   else wireGraphics(type, competitions, teams, accents, format);
 }
 
@@ -11416,6 +11422,391 @@ function wireCompareGraphics(competitions, accents, format, params) {
   } else {
     redraw();
   }
+}
+
+// ── League boards ───────────────────────────────────────────────────────────
+// The Compare tab (#/ops?tab=compare) as something that can be posted: which
+// league scores most, where clean sheets are kept, the best defence across
+// every league this season. The figures are the Compare tab's own — same
+// views, same definitions (league_stats.js) — so a board can never say a
+// number the admin screen disagrees with. Like the comparison board, nothing
+// here is typed: the reporter picks what to show, and that is all.
+//
+// Competitions under a minimum played are LEFT OFF the board and named on
+// the screen. Mangochi's U14 league has played three and averages 4.67; it
+// would top every scoring board and mean nothing.
+
+const LEAGUE_BOARDS = [["ranking", "League ranking"], ["dashboard", "Season in numbers"],
+  ["teams", "Top teams"]];
+const LEAGUE_GROUPS = [["competition", "Leagues"], ["level", "Levels"],
+  ["category", "Categories"]];
+const LEAGUE_DASHBOARD_DEFAULT = ["gpg", "clean", "home", "rout"];
+const LEAGUE_DASHBOARD_MAX = 4;
+
+function graphicsLeagueFields() {
+  const chips = (attr, list, on) => `<div class="rp-chip-row">${list.map(([key, label]) =>
+    `<button class="rp-chip${key === on ? " is-on" : ""}" type="button"
+       data-${attr}="${esc(key)}">${esc(label)}</button>`).join("")}</div>`;
+  const options = (list, on) => list.map((o) => `<option value="${esc(o.key)}"${
+    o.key === on ? " selected" : ""}>${esc(o.label)}</option>`).join("");
+  return `
+    ${chips("league-board", LEAGUE_BOARDS, "ranking")}
+
+    <label class="rp-label" for="gx-season">Season</label>
+    <select class="rp-input" id="gx-season" name="season" disabled>
+      <option value="">Loading…</option>
+    </select>
+
+    <div data-league-only="ranking dashboard">
+      <span class="rp-label">Compare</span>
+      ${chips("league-group", LEAGUE_GROUPS, "competition")}
+    </div>
+    <div class="rp-row">
+      <div><label class="rp-label" for="gx-level">Level</label>
+        <select class="rp-input" id="gx-level" name="level">${options(ls.LEVELS, "")}</select></div>
+      <div><label class="rp-label" for="gx-cat">Football</label>
+        <select class="rp-input" id="gx-cat" name="cat">${options(ls.CATEGORIES, "")}</select></div>
+    </div>
+
+    <div data-league-only="ranking">
+      <label class="rp-label" for="gx-metric">Figure</label>
+      <select class="rp-input" id="gx-metric" name="metric">${options(ls.BOARD_METRICS, "gpg")}</select>
+    </div>
+    <fieldset class="rp-fieldset" data-league-only="dashboard">
+      <legend class="rp-label">Figures (up to ${LEAGUE_DASHBOARD_MAX})</legend>
+      ${ls.BOARD_METRICS.map((m) => `<label class="rp-inline"><input type="checkbox"
+        name="dash_${m.key}" data-dash-metric="${m.key}"
+        ${LEAGUE_DASHBOARD_DEFAULT.includes(m.key) ? "checked" : ""}><span>${
+        esc(m.label)}</span></label>`).join("")}
+    </fieldset>
+    <div data-league-only="teams">
+      <label class="rp-label" for="gx-tmetric">Ranked by</label>
+      <select class="rp-input" id="gx-tmetric" name="tmetric">${options(ls.TEAM_METRICS, "attack")}</select>
+    </div>
+
+    <div class="rp-row">
+      <div data-league-only="ranking teams"><label class="rp-label" for="gx-topn">Show</label>
+        <select class="rp-input" id="gx-topn" name="topn">
+          <option value="5">Top 5</option>
+          <option value="8" selected>Top 8</option>
+          <option value="10">Top 10</option>
+        </select></div>
+      <div data-league-only="ranking dashboard" data-league-min><label class="rp-label" for="gx-min">League minimum</label>
+        <select class="rp-input" id="gx-min" name="min">${ls.COMP_MIN_PLAYED.map((n) =>
+          `<option value="${n}"${n === 20 ? " selected" : ""}>${n}+ matches</option>`).join("")}
+        </select></div>
+      <div data-league-only="teams"><label class="rp-label" for="gx-tmin">Team minimum</label>
+        <select class="rp-input" id="gx-tmin" name="tmin">${ls.TEAM_MIN_PLAYED.map((n) =>
+          `<option value="${n}"${n === 6 ? " selected" : ""}>${n}+ played</option>`).join("")}
+        </select></div>
+    </div>
+
+    <fieldset class="rp-fieldset" data-league-comps>
+      <legend class="rp-label">Leagues on the board</legend>
+    </fieldset>
+    <p class="rp-hint" data-league-note></p>
+
+    <label class="rp-label" for="gx-eyebrow">Label</label>
+    <input class="rp-input" id="gx-eyebrow" name="eyebrow" maxlength="40"
+           autocapitalize="sentences" placeholder="League comparison">
+    <label class="rp-label" for="gx-headline">Headline</label>
+    <input class="rp-input" id="gx-headline" name="headline" maxlength="${TRENDING_HEADLINE_MAX}"
+           autocapitalize="sentences">
+    <label class="rp-label" for="gx-subtext">Subtext</label>
+    <textarea class="rp-input" id="gx-subtext" name="subtext" rows="2"
+              maxlength="${TRENDING_BODY_MAX}" autocapitalize="sentences"></textarea>
+    <p class="rp-hint">Leave these blank for the figure's own title and a line
+      saying what it counts.</p>
+  `;
+}
+
+function wireLeagueGraphics(accents, format, params) {
+  const canvas = view.querySelector("[data-board]");
+  const status = view.querySelector("[data-graphics-status]");
+  const downloadBtn = view.querySelector("[data-download]");
+  const copyBtn = view.querySelector("[data-copy-image]");
+  const shareBtn = view.querySelector("[data-share-image]");
+  const form = view.querySelector("[data-graphics-form]");
+  const compsField = view.querySelector("[data-league-comps]");
+  const note = view.querySelector("[data-league-note]");
+
+  let bgColor = null;
+  let board = LEAGUE_BOARDS.some(([k]) => k === params.get("board")) ? params.get("board") : "ranking";
+  let group = "competition";
+  let data = null;            // loadOpsCompare(): { comps, teams }
+  let seasons = [];
+  let crestCodes = new Map(); // team_id -> legacy_code, for crests; optional
+  const excluded = new Set(); // competition|season keys the reporter unticked
+
+  const syncUrl = () => history.replaceState(null, "",
+    `#/graphics?type=leagues&format=${format}&board=${board}`);
+
+  function syncVisibility() {
+    // The minimum is a competition's: a level sums dozens of them, so it is
+    // only offered when the bars ARE competitions.
+    view.querySelectorAll("[data-league-only]").forEach((el) => {
+      el.hidden = !el.dataset.leagueOnly.split(" ").includes(board)
+        || (el.hasAttribute("data-league-min") && group !== "competition");
+    });
+    view.querySelectorAll("[data-league-board]").forEach((c) =>
+      c.classList.toggle("is-on", c.dataset.leagueBoard === board));
+    view.querySelectorAll("[data-league-group]").forEach((c) =>
+      c.classList.toggle("is-on", c.dataset.leagueGroup === group));
+    const placeholder = { ranking: "League comparison", dashboard: "Season in numbers",
+      teams: "Top teams" }[board];
+    form.eyebrow.placeholder = placeholder;
+  }
+
+  view.querySelectorAll("[data-format-chips] [data-format]").forEach((chip) => {
+    chip.onclick = () => {
+      if (chip.dataset.format === format) return;
+      format = chip.dataset.format;
+      view.querySelectorAll("[data-format-chips] [data-format]")
+        .forEach((c) => c.classList.toggle("is-on", c === chip));
+      syncUrl();
+      redraw();
+    };
+  });
+  view.querySelectorAll("[data-bg-swatches] [data-swatch]").forEach((btn, i) => {
+    btn.onclick = () => {
+      bgColor = graphics.BACKGROUND_SWATCHES[i].value;
+      view.querySelectorAll("[data-bg-swatches] [data-swatch]").forEach((b, j) => {
+        b.classList.toggle("is-on", j === i);
+        b.setAttribute("aria-pressed", String(j === i));
+      });
+      redraw();
+    };
+  });
+  view.querySelectorAll("[data-league-board]").forEach((chip) => {
+    chip.onclick = () => { board = chip.dataset.leagueBoard; syncVisibility(); syncUrl(); redraw(); };
+  });
+  view.querySelectorAll("[data-league-group]").forEach((chip) => {
+    chip.onclick = () => { group = chip.dataset.leagueGroup; syncVisibility(); redraw(); };
+  });
+
+  /** This season's competitions under the Level and Football filters, before
+   *  the reporter's own ticks. */
+  const scoped = () => (data ? ls.inScope(data.comps, {
+    season: form.season.value, level: form.level.value, cat: form.cat.value,
+  }) : []);
+  const keyOf = (r) => `${r.competition_id}|${r.season_id}`;
+  const onBoard = () => scoped().filter((r) => !excluded.has(keyOf(r)));
+  const minPlayed = () => Number(form.min.value) || 0;
+
+  /** One tick per competition in scope, the matches played beside it. Drawn
+   *  again when the season or a filter changes; never on a tick, so the box
+   *  being tapped is not thrown away under the finger. */
+  function drawCompTicks() {
+    const rows = scoped().slice().sort((a, b) => b.played - a.played
+      || a.competition_name.localeCompare(b.competition_name));
+    compsField.innerHTML = `<legend class="rp-label">Leagues on the board</legend>${
+      rows.length ? rows.map((r) => `<label class="rp-inline"><input type="checkbox"
+        data-league-comp="${esc(keyOf(r))}" ${excluded.has(keyOf(r)) ? "" : "checked"}><span>${
+        esc(r.competition_name)} <em class="rp-hint">${r.played} played</em></span></label>`).join("")
+      : '<p class="rp-hint">No competition matches those filters this season.</p>'}`;
+  }
+  compsField.addEventListener("change", (event) => {
+    const box = event.target.closest("[data-league-comp]");
+    if (!box) return;
+    if (box.checked) excluded.delete(box.dataset.leagueComp);
+    else excluded.add(box.dataset.leagueComp);
+    redraw();
+  });
+
+  form.addEventListener("change", (event) => {
+    const name = event.target.name || "";
+    if (event.target.closest("[data-league-comps]")) return;
+    if (name.startsWith("dash_")) {
+      const on = ls.BOARD_METRICS.filter((m) => form[`dash_${m.key}`].checked);
+      if (on.length > LEAGUE_DASHBOARD_MAX) {
+        event.target.checked = false;
+        flash(`A board has room for ${LEAGUE_DASHBOARD_MAX} figures.`, "error");
+        return;
+      }
+    }
+    if (["season", "level", "cat"].includes(name)) drawCompTicks();
+    redraw();
+  });
+  let typingTimer;
+  form.addEventListener("input", (event) => {
+    if (!["eyebrow", "headline", "subtext"].includes(event.target.name)) return;
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(redraw, 200);
+  });
+
+  const crests = new Map();
+  async function crestFor(t) {
+    const code = crestCodes.get(t.team_id) || "";
+    const key = `${code}|${t.club_id || ""}`;
+    if (!crests.has(key)) crests.set(key, await graphics.loadCrest(code, t.club_id));
+    return { name: t.team_name, img: crests.get(key) };
+  }
+
+  /** The words under the headline when none is typed: what the figure
+   *  counts, and over what — the board travels without its caption. */
+  function scopeWords() {
+    const parts = [];
+    const cat = ls.CATEGORIES.find((c) => c.key === form.cat.value && c.key);
+    const level = ls.LEVELS.find((l) => l.key === form.level.value && l.key);
+    if (cat) parts.push(`${cat.label} football`);
+    if (level) parts.push(level.key === "none" ? "unclassified" : level.label.toLowerCase());
+    return parts.join(", ");
+  }
+
+  async function buildState() {
+    const season = seasons.find((x) => x.season_id === form.season.value);
+    const typed = { headline: form.headline.value.trim(), subtext: form.subtext.value.trim() };
+    const base = {
+      competitionName: form.eyebrow.value.trim() || form.eyebrow.placeholder,
+      kind: "STATS", seasonLabel: season?.label || "", background: bgColor, accent: null,
+    };
+    const rows = onBoard();
+    const min = minPlayed();
+    const scope = scopeWords();
+    const notes = [];
+
+    if (board === "teams") {
+      const metric = ls.TEAM_METRICS.find((m) => m.key === form.tmetric.value) || ls.TEAM_METRICS[0];
+      const tmin = Number(form.tmin.value) || 0;
+      const leaders = ls.teamLeaders(data.teams, metric, { compKeys: new Set(rows.map(keyOf)),
+        min: tmin, limit: Number(form.topn.value) || 8 });
+      const single = rows.length === 1;
+      const list = await Promise.all(leaders.map(async (r) => ({
+        position: r.position, joint: r.joint, name: r.team.team_name, value: r.value,
+        sub: single ? r.detail : `${r.team.competition_name} · ${r.detail}`,
+        crest: await crestFor(r.team),
+      })));
+      if (!list.length && rows.length) notes.push(`No team has played ${tmin} matches here yet.`);
+      const where = single ? rows[0].competition_name : scope || "every league";
+      return { template: "team_leaders", notes, filled: list.length > 0, state: { ...base,
+        accent: single ? accents[rows[0].competition_id] || null : null, rows: list,
+        headline: typed.headline || metric.title,
+        subtext: typed.subtext || `${metric.explain} · ${where} · ${tmin}+ played` } };
+    }
+
+    const groups = ls.groupRows(rows, group);
+    const by = group === "competition" ? "" : `, by ${group}`;
+    const leftOff = (off) => {
+      const short = off.filter((g) => g.played > 0);
+      if (group !== "competition" || !short.length) return;
+      notes.push(`Left off for fewer than ${min} played: ${short.map((g) =>
+        `${g.label} (${g.played})`).join(", ")}.`);
+    };
+
+    if (board === "dashboard") {
+      const keys = ls.BOARD_METRICS.map((m) => m.key).filter((k) => form[`dash_${k}`].checked);
+      const panels = ls.dashboard(groups, keys, { min: group === "competition" ? min : 0,
+        per: 3 });
+      if (panels.length) leftOff(ls.ranking(groups, ls.METRICS[0], { min }).leftOff);
+      if (!keys.length) notes.push("Tick at least one figure.");
+      return { template: "league_dashboard", notes, filled: panels.length > 0, state: { ...base,
+        panels, headline: typed.headline,
+        subtext: typed.subtext || [scope, group === "competition"
+          ? `leagues with ${min}+ matches played` : `by ${group}`].filter(Boolean).join(" · ")
+          .replace(/^./, (c) => c.toUpperCase()) } };
+    }
+
+    const metric = ls.BOARD_METRICS.find((m) => m.key === form.metric.value) || ls.BOARD_METRICS[0];
+    const out = ls.ranking(groups, metric, { min: group === "competition" ? min : 0,
+      limit: Number(form.topn.value) || 8 });
+    leftOff(out.leftOff);
+    if (out.total > out.bars.length) {
+      notes.push(`Showing ${out.bars.length} of ${out.total}.`);
+    }
+    return { template: "league_ranking", notes, filled: out.bars.length > 0, state: { ...base,
+      bars: out.bars, headline: typed.headline || metric.title,
+      subtext: typed.subtext || [metric.explain + by, scope,
+        group === "competition" ? `${min}+ matches played` : ""].filter(Boolean).join(" · ") } };
+  }
+
+  let drawToken = 0;
+  async function redraw() {
+    const token = ++drawToken;
+    await graphics.ensureFonts();
+    const built = data ? await buildState() : null;
+    if (token !== drawToken) return;
+    if (built) {
+      graphics.drawBoard(canvas, built.template, built.state, format);
+      note.textContent = built.notes.join(" ");
+    } else {
+      graphics.drawBoard(canvas, "league_ranking", { competitionName: "League comparison",
+        kind: "STATS", background: bgColor, bars: [] }, format);
+    }
+    const filled = Boolean(built?.filled);
+    downloadBtn.disabled = !filled;
+    copyBtn.disabled = !filled;
+    shareBtn.disabled = !filled;
+    status.textContent = filled ? ""
+      : !data ? "Loading the figures…"
+      : !onBoard().length ? "No league is ticked for this season."
+      : "Nothing to show — no league has played enough matches yet.";
+  }
+
+  const fileName = () => {
+    const season = seasons.find((x) => x.season_id === form.season.value)?.label || todayIso();
+    const what = board === "teams" ? form.tmetric.value
+      : board === "dashboard" ? "season" : form.metric.value;
+    return `everyleague-${board}-${what}-${season}`.toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-") + ".png";
+  };
+  downloadBtn.onclick = async () => {
+    const blob = await graphics.exportPng(canvas, graphics.BOARD_FORMATS[format]);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName();
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  copyBtn.hidden = !(window.isSecureContext
+    && typeof navigator.clipboard?.write === "function"
+    && typeof window.ClipboardItem === "function");
+  copyBtn.onclick = async () => {
+    try {
+      const blob = await graphics.exportPng(canvas, graphics.BOARD_FORMATS[format]);
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      const original = copyBtn.textContent;
+      copyBtn.textContent = "Copied";
+      setTimeout(() => { copyBtn.textContent = original; }, 2000);
+    } catch (_error) {
+      flash("Could not copy the image — try Download instead.", "error");
+    }
+  };
+  wireBoardShare(shareBtn, canvas, () => format, fileName);
+
+  syncVisibility();
+  redraw();
+
+  // The Compare tab's two views, cached for the session, plus season labels.
+  // Crests are a nicety: a failed teams read draws monograms.
+  Promise.all([
+    loadOpsCompare(),
+    supabase.from("seasons").select("season_id,label,status,start_date")
+      .order("start_date", { ascending: false }),
+    graphicsTeams().catch(() => []),
+  ]).then(([loaded, seasonsRes, teams]) => {
+    if (!loaded) {
+      status.textContent = "The comparison views are not in the database yet "
+        + "(migration 0039).";
+      return;
+    }
+    if (seasonsRes.error) throw seasonsRes.error;
+    data = loaded;
+    crestCodes = new Map(teams.map((t) => [t.team_id, t.legacy_code]));
+    // Only seasons something was played in: a board of nothing is not a choice.
+    const withPlay = new Set(data.comps.filter((r) => r.played > 0).map((r) => r.season_id));
+    seasons = (seasonsRes.data || []).filter((x) => withPlay.has(x.season_id));
+    const active = seasons.find((x) => x.status === "active") || seasons[0];
+    form.season.innerHTML = seasons.map((x) => `<option value="${esc(x.season_id)}"${
+      x === active ? " selected" : ""}>${esc(x.label)}${x.status === "active" ? " (this season)" : ""
+      }</option>`).join("") || '<option value="">No season has a played match</option>';
+    form.season.disabled = !seasons.length;
+    drawCompTicks();
+    redraw();
+  }).catch((error) => {
+    status.textContent = "Could not load the figures.";
+    flash(humanError(error), "error");
+  });
 }
 
 // ── Reporters ────────────────────────────────────────────────────────────────
@@ -16031,93 +16422,18 @@ function opsSitePanel(fresh) {
 // competitions here have played fewer than fifty. The number under each bar is
 // what stops the screen from being confidently wrong.
 
-const COMPARE_LEVELS = [
-  { key: "", label: "All levels" },
-  { key: "national", label: "National" },
-  { key: "regional", label: "Regional" },
-  { key: "district", label: "District" },
-  { key: "none", label: "Unclassified" },
-];
-
-const COMPARE_CATEGORIES = [
-  { key: "", label: "All football" },
-  { key: "men", label: "Men's" },
-  { key: "women", label: "Women's" },
-  { key: "youth", label: "Youth" },
-];
-
-// A metric is a numerator, a denominator and a sentence saying what they were.
-// Nothing here is a rate already computed in SQL, which is what lets the same
-// definition serve a single competition, a level, and the whole dataset.
-const COMPARE_METRICS = [
-  { key: "gpg", label: "Goals per match", pct: false,
-    num: (r) => r.goals_total, den: (r) => r.played,
-    detail: (n, d) => `${n} goals in ${d} matches` },
-  { key: "clean", label: "Clean sheet %", pct: true,
-    num: (r) => r.clean_sheet_sides, den: (r) => r.sides,
-    // A clean sheet belongs to a side, so a 0-0 is two of them and the
-    // denominator is every side that took the field, not every match.
-    detail: (n, d) => `${n} of ${d} sides kept one` },
-  { key: "home", label: "Home win %", pct: true,
-    num: (r) => r.home_wins, den: (r) => r.played,
-    detail: (n, d) => `${n} of ${d} matches` },
-  { key: "draw", label: "Draw %", pct: true,
-    num: (r) => r.draws, den: (r) => r.played,
-    detail: (n, d) => `${n} of ${d} matches` },
-  { key: "rout", label: "Won by 3+ %", pct: true,
-    num: (r) => r.big_wins, den: (r) => r.played,
-    detail: (n, d) => `${n} of ${d} matches` },
-  { key: "margin", label: "Average margin", pct: false,
-    num: (r) => r.margin_total, den: (r) => r.played,
-    detail: (n, d) => `${n} goals of margin over ${d} matches` },
-  { key: "scorers", label: "Scorer coverage %", pct: true,
-    num: (r) => r.goal_rows, den: (r) => r.goals_total,
-    detail: (n, d) => `${n} of ${d} goals have a scorer` },
-];
-
-// The leaderboard's metrics are per-team and deliberately separate: two of
-// them (fewest conceded, best record) are not magnitudes a bar can encode
-// honestly, which is why this block renders compact rows and not bars.
-const COMPARE_TEAM_METRICS = [
-  { key: "attack", label: "Best attack", asc: false,
-    value: (t) => t.gf / t.played,
-    text: (t) => (t.gf / t.played).toFixed(2),
-    detail: (t) => `${t.gf} scored in ${t.played}` },
-  { key: "defence", label: "Best defence", asc: true,
-    value: (t) => t.ga / t.played,
-    text: (t) => (t.ga / t.played).toFixed(2),
-    detail: (t) => `${t.ga} conceded in ${t.played}` },
-  { key: "clean", label: "Most clean sheets", asc: false,
-    value: (t) => t.clean_sheets / t.played,
-    text: (t) => `${Math.round(100 * t.clean_sheets / t.played)}%`,
-    detail: (t) => `${t.clean_sheets} of ${t.played} matches` },
-  { key: "record", label: "Best record", asc: false,
-    value: (t) => (3 * t.won + t.drawn) / t.played,
-    text: (t) => ((3 * t.won + t.drawn) / t.played).toFixed(2),
-    detail: (t) => `${t.won}W ${t.drawn}D ${t.lost}L · ${t.played} played` },
-];
-
-// A two-game team topping "best attack" is noise, not a finding. Six is the
-// default because it is roughly a third of a Malawian league season — enough
-// that one 5-0 cannot carry the average, few enough that the district leagues,
-// which have played the least, still have teams that qualify.
-const COMPARE_MIN_PLAYED = [4, 6, 10];
-
-const compareSum = (rows, fn) => rows.reduce((n, r) => n + (fn(r) || 0), 0);
-
-/** A metric over a set of competition rows, or null when nothing was played.
- *  Null rather than zero on purpose: "0.00 goals per match" is a claim about
- *  football, and "no matches played yet" is the truth. */
-function compareRate(rows, metric) {
-  const den = compareSum(rows, metric.den);
-  if (!den) return null;
-  const num = compareSum(rows, metric.num);
-  return {
-    num, den,
-    value: metric.pct ? (100 * num) / den : num / den,
-    text: metric.pct ? `${Math.round((100 * num) / den)}%` : (num / den).toFixed(2),
-  };
-}
+// The levels, categories and metrics live in league_stats.js, because
+// #/graphics?type=leagues draws the same figures as a public board and the two
+// must never disagree about what "clean sheet %" means. A metric is a
+// numerator, a denominator and a sentence saying what they were; nothing here
+// is a rate already computed in SQL.
+const COMPARE_LEVELS = ls.LEVELS;
+const COMPARE_CATEGORIES = ls.CATEGORIES;
+const COMPARE_METRICS = ls.METRICS;
+const COMPARE_TEAM_METRICS = ls.TEAM_METRICS;
+const COMPARE_MIN_PLAYED = ls.TEAM_MIN_PLAYED;
+const compareSum = ls.sum;
+const compareRate = ls.rate;
 
 const compareTone = (pct) => (pct >= 90 ? "is-ok" : pct >= 50 ? "is-warn" : "is-bad");
 
@@ -16264,6 +16580,8 @@ async function renderOpsCompare(params, header) {
       it holds for every played match. Anything that depends on a reporter
       having named the scorers is in Coverage at the bottom, with what it is
       missing.</p>
+    <p class="rp-hint"><a href="#/graphics?type=leagues">Post these as a graphic
+      &rarr;</a></p>
     <div data-compare></div>`);
 
   const host = view.querySelector("[data-compare]");

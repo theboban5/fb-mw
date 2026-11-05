@@ -86,6 +86,9 @@ export const TEMPLATE_LABELS = {
   compare_match: "Match comparison",
   form_team: "Team form",
   form_match: "Both teams' form",
+  league_ranking: "League ranking",
+  league_dashboard: "Season in numbers",
+  team_leaders: "Top teams",
   editorial: "Announcement",
 };
 
@@ -1448,6 +1451,237 @@ function drawFormMatch(ctx, state) {
   }
 }
 
+// ── League boards ────────────────────────────────────────────────────────
+// Competitions against each other, from league_stats.js. Every bar arrives
+// ranked, scaled and with its denominator written out: these only draw. The
+// denominator is not optional decoration — a bar over four matches looks
+// exactly like one over four hundred, and this board is posted publicly.
+
+/** `text` cut to `maxW` with an ellipsis, at whatever font is set. A
+ *  competition name is the longest thing on any board ("Nsanje District
+ *  M'mera Mpoyamba U16 League Bangula Zone"), and clipping it mid-letter
+ *  reads as a rendering bug where "…" reads as a choice. */
+function ellipsize(ctx, text, maxW) {
+  const t = text || "";
+  if (ctx.measureText(t).width <= maxW) return t;
+  let n = t.length;
+  while (n > 1 && ctx.measureText(`${t.slice(0, n).trimEnd()}…`).width > maxW) n -= 1;
+  return `${t.slice(0, n).trimEnd()}…`;
+}
+
+const rankText = (r) => `${r.joint ? "=" : ""}${r.position}`;
+
+/** A ranked list of bars in a box: rank | name over bar | figure. Three
+ *  lines a row (name, bar, denominator) when there is the height; two when
+ *  there is not, with the denominator moved onto the name line. The leader's
+ *  bar and figure take the accent — every joint leader, not just the first
+ *  listed. */
+function drawBarList(ctx, bars, { x, top, width, height, maxSize, accent, ink, muted,
+  hairlines = false, dims }) {
+  if (!bars.length) return;
+  const rowH = height / bars.length;
+  let size = Math.min(maxSize, rowH / 3.3);
+  const roomy = size >= 17;
+  if (!roomy) size = Math.max(13, Math.min(maxSize, rowH / 2.3));
+  const valueSize = Math.round(size * (roomy ? 1.4 : 1.55));
+  ctx.font = `900 ${valueSize}px ${FONT_STACK}`;
+  const valueW = Math.max(...bars.map((b) => ctx.measureText(b.value).width), valueSize * 2);
+  ctx.font = `900 ${Math.round(size * 1.1)}px ${FONT_STACK}`;
+  const rankW = Math.max(...bars.map((b) => ctx.measureText(rankText(b)).width)) + size * 0.8;
+  const gap = size * 0.9;
+  const left = x + rankW;
+  const barW = width - rankW - valueW - gap;
+  const barH = Math.max(6, Math.round(size * 0.42));
+  const track = hexToRgba(muted, 0.22);
+
+  bars.forEach((b, i) => {
+    const rowTop = top + i * rowH;
+    const cy = rowTop + rowH / 2;
+    const lead = b.position === 1;
+    const nameY = roomy ? rowTop + rowH * 0.26 : rowTop + rowH * 0.36;
+    const barY = roomy ? rowTop + rowH * 0.56 : rowTop + rowH * 0.7;
+
+    ctx.textBaseline = "middle";
+    ctx.font = `900 ${Math.round(size * 1.1)}px ${FONT_STACK}`;
+    ctx.fillStyle = accent;
+    ctx.textAlign = "right";
+    ctx.fillText(rankText(b), left - size * 0.8, cy);
+
+    // Roomy: the name runs the full row and the figure sits beside the bar,
+    // because a competition name is the longest thing on the board. Tight:
+    // the figure is centred on the row and the denominator moves up beside
+    // the name.
+    let nameW = roomy ? width - rankW : barW;
+    ctx.font = `500 ${Math.round(size * 0.72)}px ${FONT_STACK}`;
+    const detail = b.detail || "";
+    if (!roomy && detail) {
+      const dw = ctx.measureText(detail).width;
+      ctx.fillStyle = muted;
+      ctx.textAlign = "right";
+      ctx.fillText(detail, left + barW, nameY);
+      nameW = barW - dw - size;
+    }
+    fitFont(ctx, b.label, nameW, Math.round(size), 700, 0.8);
+    ctx.fillStyle = ink;
+    ctx.textAlign = "left";
+    ctx.fillText(ellipsize(ctx, b.label, nameW), left, nameY);
+
+    ctx.fillStyle = track;
+    ctx.fillRect(left, barY - barH / 2, barW, barH);
+    ctx.fillStyle = lead ? accent : hexToRgba(ink, 0.78);
+    ctx.fillRect(left, barY - barH / 2, Math.max(barH / 2, barW * Math.min(1, b.share)), barH);
+
+    if (roomy && detail) {
+      ctx.font = `500 ${Math.round(size * 0.78)}px ${FONT_STACK}`;
+      ctx.fillStyle = muted;
+      ctx.textAlign = "left";
+      ctx.fillText(ellipsize(ctx, detail, barW), left, rowTop + rowH * 0.81);
+    }
+
+    ctx.font = `900 ${valueSize}px ${FONT_STACK}`;
+    ctx.fillStyle = lead ? accent : ink;
+    ctx.textAlign = "right";
+    ctx.fillText(b.value, x + width, roomy ? rowTop + rowH * 0.67 : cy + 2);
+
+    if (hairlines && i < bars.length - 1) drawHairline(ctx, rowTop + rowH, dims);
+  });
+}
+
+function drawLeagueRanking(ctx, state) {
+  const { dims, accent, ink, muted } = state;
+  const isPortrait = dims.h > dims.w;
+  const bars = state.bars || [];
+  let top = drawEyebrow(ctx, state.competitionName, state.kind || "STATS",
+    dims, accent, state.accentDeep);
+  const bottom = drawWatermark(ctx, state.seasonLabel, dims, accent);
+  top = drawHeadlineBlock(ctx, top, state.headline, state.subtext,
+    !isPortrait && bars.length > 6, dims, ink, muted);
+  if (!bars.length) return;
+  const room = bottom - top - (isPortrait ? 50 : 20);
+  const rowH = Math.min(isPortrait ? 200 : 140, room / bars.length);
+  const spare = Math.max(0, room - rowH * bars.length) / 2;
+  drawBarList(ctx, bars, { x: PAD, top: top + spare, width: dims.w - PAD * 2,
+    height: rowH * bars.length, maxSize: isPortrait ? 40 : 32, accent, ink, muted,
+    hairlines: true, dims });
+}
+
+/** Several metrics, the leaders in each: a panel per metric, two by two on a
+ *  square board when there are four, otherwise stacked full width — a name
+ *  is the longest thing on the board and half a square is not much room. */
+function drawLeagueDashboard(ctx, state) {
+  const { dims, accent, ink, muted } = state;
+  const isPortrait = dims.h > dims.w;
+  const panels = state.panels || [];
+  let top = drawEyebrow(ctx, state.competitionName, state.kind || "STATS",
+    dims, accent, state.accentDeep);
+  const bottom = drawWatermark(ctx, state.seasonLabel, dims, accent);
+  top = drawHeadlineBlock(ctx, top, state.headline, state.subtext, true, dims, ink, muted);
+  if (!panels.length) return;
+  const cols = !isPortrait && panels.length === 4 ? 2 : 1;
+  const rows = Math.ceil(panels.length / cols);
+  const gap = 20;
+  const room = bottom - top - (isPortrait ? 40 : 24);
+  const panelW = (dims.w - PAD * 2 - gap * (cols - 1)) / cols;
+  const panelH = Math.min(isPortrait ? 480 : 440, (room - gap * (rows - 1)) / rows);
+  const spare = Math.max(0, room - panelH * rows - gap * (rows - 1)) / 2;
+  const inner = cols === 2 ? 22 : 28;
+  const titleSize = Math.round(Math.min(isPortrait ? 32 : 26, panelH * 0.085));
+  const explainSize = Math.round(titleSize * 0.7);
+
+  panels.forEach((p, i) => {
+    const px = PAD + (i % cols) * (panelW + gap);
+    const py = top + spare + Math.floor(i / cols) * (panelH + gap);
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(px, py, panelW, panelH, 18);
+    else ctx.rect(px, py, panelW, panelH);
+    ctx.fillStyle = hexToRgba(muted, 0.1);
+    ctx.fill();
+
+    let y = py + inner;
+    ctx.textBaseline = "alphabetic";
+    ctx.textAlign = "left";
+    ctx.font = `900 ${titleSize}px ${FONT_STACK}`;
+    ctx.fillStyle = accent;
+    ctx.fillText(ellipsize(ctx, (p.title || "").toUpperCase(), panelW - inner * 2),
+      px + inner, y + titleSize * 0.8);
+    y += titleSize * 1.1;
+    if (p.explain) {
+      ctx.font = `500 ${explainSize}px ${FONT_STACK}`;
+      ctx.fillStyle = muted;
+      ctx.fillText(ellipsize(ctx, p.explain, panelW - inner * 2), px + inner,
+        y + explainSize * 1.05);
+      y += explainSize * 1.5;
+    }
+    y += inner * 0.4;
+    const listH = Math.min(py + panelH - inner * 0.6 - y,
+      (isPortrait ? 130 : 120) * Math.max(p.bars.length, 3));
+    drawBarList(ctx, p.bars, { x: px + inner, top: y, width: panelW - inner * 2,
+      height: listH, maxSize: cols === 2 ? 22 : (isPortrait ? 30 : 26),
+      accent, ink, muted });
+  });
+}
+
+/** The best teams by one figure: rank | crest | team over its competition |
+ *  figure. drawScorerRows' grid, sized from the room rather than fixed,
+ *  because a tie at the cut can add a row or three. */
+function drawTeamLeaders(ctx, state) {
+  const { dims, accent, ink, muted } = state;
+  const isPortrait = dims.h > dims.w;
+  const rows = state.rows || [];
+  let top = drawEyebrow(ctx, state.competitionName, state.kind || "STATS",
+    dims, accent, state.accentDeep);
+  const bottom = drawWatermark(ctx, state.seasonLabel, dims, accent);
+  top = drawHeadlineBlock(ctx, top, state.headline, state.subtext,
+    !isPortrait && rows.length > 6, dims, ink, muted);
+  if (!rows.length) return;
+  const room = bottom - top - (isPortrait ? 50 : 20);
+  const rowH = Math.min(isPortrait ? 190 : 130, room / rows.length);
+  const spare = Math.max(0, room - rowH * rows.length) / 2;
+  const crest = Math.round(rowH * 0.62);
+  const nameSize = Math.round(Math.min(isPortrait ? 42 : 36, rowH * 0.3));
+  const subSize = Math.round(nameSize * 0.62);
+  const valueSize = Math.round(Math.min(isPortrait ? 64 : 54, rowH * 0.46));
+  ctx.font = `900 ${valueSize}px ${FONT_STACK}`;
+  const valueW = Math.max(...rows.map((r) => ctx.measureText(r.value).width));
+  ctx.font = `900 ${nameSize}px ${FONT_STACK}`;
+  const rankW = Math.max(...rows.map((r) => ctx.measureText(rankText(r)).width));
+  const gap = Math.round(nameSize * 0.6);
+  const crestX = PAD + rankW + gap;
+  const whoLeft = crestX + crest + gap;
+  const whoW = dims.w - PAD - valueW - gap - whoLeft;
+
+  rows.forEach((r, i) => {
+    const rowTop = top + spare + i * rowH;
+    const cy = rowTop + rowH / 2;
+    const lead = r.position === 1;
+    ctx.textBaseline = "middle";
+    ctx.font = `900 ${nameSize}px ${FONT_STACK}`;
+    ctx.fillStyle = accent;
+    ctx.textAlign = "right";
+    ctx.fillText(rankText(r), PAD + rankW, cy);
+
+    drawCrestTile(ctx, crestX, cy - crest / 2, crest, r.crest?.img || null, r.name);
+
+    const nameY = r.sub ? cy - subSize * 0.6 : cy;
+    ctx.font = `700 ${nameSize}px ${FONT_STACK}`;
+    ctx.fillStyle = ink;
+    ctx.textAlign = "left";
+    ctx.fillText(ellipsize(ctx, r.name, whoW), whoLeft, nameY);
+    if (r.sub) {
+      ctx.font = `500 ${subSize}px ${FONT_STACK}`;
+      ctx.fillStyle = muted;
+      ctx.fillText(ellipsize(ctx, r.sub, whoW), whoLeft, nameY + nameSize * 0.55 + subSize * 0.6);
+    }
+
+    ctx.font = `900 ${valueSize}px ${FONT_STACK}`;
+    ctx.fillStyle = lead ? accent : ink;
+    ctx.textAlign = "right";
+    ctx.fillText(r.value, dims.w - PAD, cy + 2);
+
+    if (i < rows.length - 1) drawHairline(ctx, rowTop + rowH, dims);
+  });
+}
+
 // ── Templates ────────────────────────────────────────────────────────────
 // Every template reads state.dims / state.accent / state.accentDeep, set by
 // drawBoard() below before draw() is called — a template never needs to
@@ -1529,6 +1763,18 @@ export const TEMPLATES = {
   form_match: {
     label: TEMPLATE_LABELS.form_match,
     draw: drawFormMatch,
+  },
+  league_ranking: {
+    label: TEMPLATE_LABELS.league_ranking,
+    draw: drawLeagueRanking,
+  },
+  league_dashboard: {
+    label: TEMPLATE_LABELS.league_dashboard,
+    draw: drawLeagueDashboard,
+  },
+  team_leaders: {
+    label: TEMPLATE_LABELS.team_leaders,
+    draw: drawTeamLeaders,
   },
   editorial: {
     label: TEMPLATE_LABELS.editorial,
