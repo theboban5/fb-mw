@@ -99,7 +99,7 @@ static/report/stats.js  #/stats: periods, sums, the copyable sentences (0062)
 static/report/pre_match.js  a team sheet as a line-up board: box text, name styles
 static/report/compare.js  two teams side by side, last five: table, form, H2H
 static/report/league_stats.js  leagues against each other: metrics, ranks (Compare tab + boards)
-src/nt.py, nt_page.py  national teams (the nt_* tabs, /scorchers/)
+src/nt.py, nt_page.py  national teams (the nt_* tabs, /flames/ + /scorchers/)
 src/search.py          the site search index
 static/report/app.js   the reporter portal (one file, no framework)
 supabase/migrations/   version-controlled schema; numbered, applied in order
@@ -198,6 +198,25 @@ fixture and clean up, and they never mutate a real match.
 ---
 
 ## Recent work (Nov 2026)
+
+The men's national team page, no migration — `/flames/`:
+
+- **19 `MW_M` rows sat in `nt_matches` with nowhere to render.** `nt_page`
+  was the Scorchers' page, with their name and URL as module constants, so
+  the men's results, line-ups and squad were in the data and on no page —
+  and on `/matches/` the Flames' friendlies in Ethiopia rendered under a
+  "Malawi Scorchers" card linking to the women's page.
+- **`nt_page.PAGES` is the single source of which national teams get a
+  page** (`TeamPage`: code, slug, display name, nickname). build.py builds
+  one per entry, and the homepage row, the search row and the day view's
+  card all ask `page_for(team_code)`. The day view is one card per team now;
+  a team with no page (the youth sides) gets a card under its `team_name`
+  that links nowhere.
+- The fallback feature card is still the Scorchers' hand-written WAFCON one.
+- Next: the RSSSF archive (`/tablesm/malaw-intres.html`, ~676 matches since
+  1957). Decided: opponents as printed ("Swaziland", "Zaire"); unofficial
+  (`*`) and pre-independence matches shown, marked unofficial, and left out
+  of the record totals; a History tab with head-to-head and the record.
 
 League stat boards, no migration — `#/graphics?type=leagues`:
 

@@ -391,13 +391,13 @@ def _panel(cat, active=False, prefix=""):
     )
 
 
-def _landing_categories(ds, leagues, scorchers_meta=None):
+def _landing_categories(ds, leagues, nt_metas=None):
     """Group the live leagues by competitions.gender / age_group / type.
 
     Men's / Women's / Youth tabs; leagues vs cups within each. Roadmap
     ("Coming Soon") rows stay editorial until those competitions have data.
-    `scorchers_meta` (when the national-team page was built) turns the Women's
-    National Team row from a roadmap card into a live link. Anything in
+    `nt_metas` ({team_code: card meta}, one per national-team page built)
+    turns that team's National Team row from a roadmap card into a live link. Anything in
     HIDDEN_ON_LANDING gets no row at all — its pages exist but nothing links
     to them.
     """
@@ -439,30 +439,30 @@ def _landing_categories(ds, leagues, scorchers_meta=None):
     girls_items = buckets[("youth-girls", "league")] + [
         _soon("Youth", "Girls&#x2019; Youth Competitions"),
     ]
-    # The Scorchers page is built from the nt_* tabs; the men's, youth and cup
+    # The Flames and Scorchers pages are built from the nt_* tabs; the youth
     # National Team rows stay on the roadmap until those tabs are filled in.
-    scorchers = (
-        _live_page("Malawi Scorchers", "National Team",
-                   f"{nt_page.SLUG}/", scorchers_meta,
-                   logo=nt_page.FLAG_FILE)
-        if scorchers_meta else _soon("National Team", "Malawi Scorchers")
-    )
+    nt_metas = nt_metas or {}
+
+    def national(page):
+        meta = nt_metas.get(page.team_code)
+        if meta is None:
+            return _soon("National Team", page.display_name)
+        return _live_page(page.display_name, "National Team", f"{page.slug}/",
+                          meta, logo=nt_page.FLAG_FILE)
 
     return [
         {"key": "men", "label": "Men&#x2019;s", "groups": [
             {"label": "Leagues", "extra": _MEN_TIER_PYRAMID,
              "items": buckets[("men", "league")]},
             {"label": "Cups", "items": men_cups},
-            {"label": "National Team", "items": [
-                _soon("National Team", "Malawi Flames"),
-            ]},
+            {"label": "National Team", "items": [national(nt_page.FLAMES)]},
         ]},
         {"key": "women", "label": "Women&#x2019;s", "groups": [
             {"label": "Leagues", "items": women_leagues},
             {"label": "Cups", "items": buckets[("women", "cup")] + [
                 _soon("Cup", "Women&#x2019;s Cups"),
             ]},
-            {"label": "National Team", "items": [scorchers]},
+            {"label": "National Team", "items": [national(nt_page.SCORCHERS)]},
         ]},
         {"key": "youth", "label": "Youth", "groups": [
             {"label": "Boys", "items": boys_items},
@@ -532,7 +532,7 @@ def _scorchers_feature(fl, team_data):
     flag = fl.img_for("Malawi", cls="el-flag")
     nxt = nt_page.landing_next_match(team_data, fl)
     split = " has-next" if nxt else ""
-    return f"""<a class="el-feature{split}" href="{nt_page.SLUG}/">
+    return f"""<a class="el-feature{split}" href="{nt_page.SCORCHERS.slug}/">
     <div class="el-feature-body">
       <span class="el-feature-eyebrow">{flag}Scorchers at WAFCON</span>
       <span class="el-feature-title">The journey to the final</span>
@@ -649,7 +649,7 @@ def _trending_images(cards, dist):
 
 
 def _write_landing(dist, ds, updated, days, today, categories, club_hub_ids,
-                   scorchers_meta=None, scorchers=None, trending_html="",
+                   scorchers=None, trending_html="",
                    match_pages=None):
     """The homepage: today's football, the feature, every competition.
 
@@ -668,7 +668,7 @@ def _write_landing(dist, ds, updated, days, today, categories, club_hub_ids,
     # And no national-team page built means even the fallback would link at a
     # 404, so the slot is then simply absent.
     feature = trending_html or (
-        _scorchers_feature(fl, scorchers) if scorchers_meta else "")
+        _scorchers_feature(fl, scorchers) if scorchers is not None else "")
 
     day_html, empty = matches_page.home_day(ds, days, today, STATIC,
                                             club_hub_ids, fl, match_pages)
@@ -922,11 +922,15 @@ def main(argv):
         standings_by_slug[league.slug] = rows
         parts.append(f"{league.slug}: {len(league.teams)} teams, {n_played} results")
 
-    # The national team (nt_* tabs): its own schema, its own page. Built before
-    # the landing page, which needs its current competition for the card meta.
-    # Parsed once here because the daily match pages need every nt team's
-    # matches, not just the one team nt_page renders.
-    scorchers = nt.team_data(nt_data, registry_name=ds.registry_name)
+    # The national teams (nt_* tabs): their own schema, a page each. Built
+    # before the landing page, which needs each one's current competition for
+    # its card meta. Parsed once here because the daily match pages need every
+    # nt team's matches, not just the ones nt_page renders. A page in PAGES
+    # whose team has no nt_teams row is simply not built.
+    national = {p.team_code: nt.team_data(nt_data, p.team_code,
+                                          registry_name=ds.registry_name)
+                for p in nt_page.PAGES if p.team_code in nt_data.nt_teams}
+    scorchers = national.get(nt_page.SCORCHERS.team_code)
     # Club hubs exist for every club with a team in a built league — the same
     # set hubs.build_club_hubs writes — so squad club links only point at one
     # of those.
@@ -949,15 +953,17 @@ def main(argv):
             archived.append(
                 (league, adapt.season_slug(ds.seasons[acs.season_id].label), rows))
             n_archive += 1
-    nt_page.build_page(dist, TEMPLATES, STATIC, scorchers, ds, updated,
-                       club_hub_ids=club_hub_ids, player_page_ids=player_pages)
+    for team_data in national.values():
+        nt_page.build_page(dist, TEMPLATES, STATIC, team_data, ds, updated,
+                           club_hub_ids=club_hub_ids,
+                           player_page_ids=player_pages)
 
     # The by-date view. Collected before the homepage, which IS today's page
     # of it, and reused when the dated pages themselves are written below.
     days = matches_page.collect(ds, nt_data)
     matches_page.set_versions(STATIC)
-    scorchers_meta = nt_page.landing_meta(scorchers)
-    categories = _landing_categories(ds, leagues, scorchers_meta)
+    nt_metas = {code: nt_page.landing_meta(td) for code, td in national.items()}
+    categories = _landing_categories(ds, leagues, nt_metas)
 
     # The homepage carousel (0030). Its photos are fetched before the page is
     # written because the markup names their local filenames; a card whose
@@ -971,7 +977,7 @@ def main(argv):
                                       _trending_images(live_cards, dist))
 
     _write_landing(dist, ds, updated, days, today, categories, club_hub_ids,
-                   scorchers_meta=scorchers_meta, scorchers=scorchers,
+                   scorchers=scorchers,
                    trending_html=trending_html, match_pages=match_pages)
 
     # Cross-competition pages: club hubs and player pages.
@@ -1002,7 +1008,8 @@ def main(argv):
     # Site search: the index every page's bar fetches, plus the /search/ page
     # the bar's form submits to. Built last because the index covers the club
     # hubs and player pages written just above.
-    n_search = search.write_index(dist, ds, leagues, scorchers=scorchers, ntd=nt_data,
+    n_search = search.write_index(dist, ds, leagues,
+                                  national=list(national.values()), ntd=nt_data,
                                   hidden=HIDDEN_ON_LANDING)
     search.build_page(dist, TEMPLATES, STATIC, updated)
 
@@ -1016,8 +1023,9 @@ def main(argv):
           + f" | {n_clubs} club hubs | {n_players} player pages"
           + f" | {n_matches} match pages ({len(match_cards)} with a card)"
           + (f" | {n_officials} official pages" if n_officials else "")
-          + f" | {nt_page.SLUG}: {len(scorchers.results)} results,"
-          + f" {len(scorchers.fixtures)} fixtures"
+          + "".join(f" | {nt_page.page_for(code).slug}: {len(td.results)}"
+                    f" results, {len(td.fixtures)} fixtures"
+                    for code, td in national.items())
           + f" | {matches_page.SLUG}: {n_day_pages} pages,"
           + f" {n_match_dates} match dates"
           + f" | search: {n_search} records")

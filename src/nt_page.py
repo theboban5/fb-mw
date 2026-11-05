@@ -1,6 +1,7 @@
-"""The national-team pages: /scorchers/.
+"""The national-team pages: /flames/ and /scorchers/.
 
-Four pages sharing one banner and one tab strip, the same flat-file shape the
+One set of pages per entry in `PAGES`, each built from that team's slice of
+the nt_* tabs (`nt.team_data`). Four pages sharing one banner and one tab strip, the same flat-file shape the
 league pages use (index.html + siblings, never subdirectories):
 
   * **index.html** — the tournament the team is in right now: next match, the
@@ -32,18 +33,50 @@ No JavaScript: the line-up is a `<details>` element, the tabs are links, and a
 single team needs no matchday pager.
 """
 
+from dataclasses import dataclass
 from html import escape
 import os
 
 from . import adapt, flags, lineups, render
 
-# Editorial name, matching the landing-page card this page replaces. The data's
-# own `nt_teams.team_name` ("Malawi (Women's)") shows above it as the eyebrow.
-DISPLAY_NAME = "Malawi Scorchers"
+
+@dataclass(frozen=True)
+class TeamPage:
+    """One national team that gets its own section of the site.
+
+    The page was written for the Scorchers alone, with their name and URL as
+    module constants, so the men's rows sat in nt_matches for a year with no
+    page to render them on — and on /matches/ they rendered under a "Malawi
+    Scorchers" heading. Everything that differs between two Malawi sides is
+    here; everything else (the side label, the flag) is the same country.
+
+    `display_name` is editorial, matching the landing-page card: the data's own
+    `nt_teams.team_name` ("Malawi (Men's)") shows above it as the eyebrow.
+    """
+    team_code: str
+    slug: str
+    display_name: str
+    nickname: str
+
+
+FLAMES = TeamPage("MW_M", "flames", "Malawi Flames", "Flames")
+SCORCHERS = TeamPage("MW_W", "scorchers", "Malawi Scorchers", "Scorchers")
+
+# Every national team with a page, in the order they are listed wherever more
+# than one shows (a day with both sides playing). The four youth sides have
+# nt_teams rows and no entry here; they join when their tabs carry matches.
+PAGES = (FLAMES, SCORCHERS)
+_BY_CODE = {p.team_code: p for p in PAGES}
+
+
+def page_for(team_code: str) -> "TeamPage | None":
+    """The page a team_code is built into, or None when it has none."""
+    return _BY_CODE.get(team_code)
+
+
 # The short side label used in the results/fixtures tables, where the column is
 # 42% of a phone screen.
 SIDE_NAME = "Malawi"
-SLUG = "scorchers"
 
 # The country whose flag stands beside SIDE_NAME. Split from it because the
 # table label is editorial and the flag lookup is a country name.
@@ -158,6 +191,11 @@ def _player_href_for(page_ids):
 
 # ── 1. Header ────────────────────────────────────────────────────────────────
 
+def _display_name(team_data) -> str:
+    page = page_for(team_data.team.team_code)
+    return page.display_name if page else team_data.team.team_name
+
+
 def _header(team_data, flag_url) -> str:
     logo = (f'<img class="v2-mini-logo" src="{escape(flag_url)}" alt="">'
             if flag_url else "")
@@ -167,7 +205,7 @@ def _header(team_data, flag_url) -> str:
         '<div class="v2-mini-banner">'
         f"{logo}"
         f'<p class="v2-season">{escape(team_data.team.team_name.upper())}</p>'
-        f'<h2 class="v2-mini-league">{escape(DISPLAY_NAME.upper())}</h2>'
+        f'<h2 class="v2-mini-league">{escape(_display_name(team_data).upper())}</h2>'
         f"{coach}"
         "</div>"
     )
@@ -572,8 +610,12 @@ def render_squad(team_data, fl, ds, club_hub_ids=(), flag_url="",
 
 def build_page(dist, templates_dir, static_dir, team_data, ds, updated,
                club_hub_ids=(), player_page_ids=()):
-    """Write dist/scorchers/*.html. Returns the number of pages written."""
-    out_dir = os.path.join(dist, SLUG)
+    """Write dist/<slug>/*.html for one team in PAGES. Returns the page count."""
+    page = page_for(team_data.team.team_code)
+    if page is None:
+        raise ValueError(f"no national-team page for {team_data.team.team_code!r}")
+    display_name = page.display_name
+    out_dir = os.path.join(dist, page.slug)
     os.makedirs(out_dir, exist_ok=True)
     base = render._read(os.path.join(templates_dir, "base.html"))
     css_ver = render.css_version(static_dir)
@@ -601,10 +643,10 @@ def build_page(dist, templates_dir, static_dir, team_data, ds, updated,
     # Scorchers"), instead of the team name twice.
     nav_labels = dict(NAV_ITEMS)
     for filename, content in pages.items():
-        page_title = nav_labels.get(filename, DISPLAY_NAME)
+        page_title = nav_labels.get(filename, display_name)
         html = (
-            base.replace("{{TITLE}}", escape(f"{page_title} · {DISPLAY_NAME}"))
-            .replace("{{LEAGUE_NAME}}", escape(DISPLAY_NAME))
+            base.replace("{{TITLE}}", escape(f"{page_title} · {display_name}"))
+            .replace("{{LEAGUE_NAME}}", escape(display_name))
             .replace("{{LEAGUE_LOGO}}", header_logo)
             .replace("{{LAST_UPDATED}}", escape(updated))
             .replace("{{NAV}}", render._nav(filename, items=NAV_ITEMS))
@@ -615,7 +657,7 @@ def build_page(dist, templates_dir, static_dir, team_data, ds, updated,
             .replace("{{BACK_LINK}}", BACK_LINK)
             .replace("{{FOOTER}}", render.footer(updated))
             .replace("{{SOCIAL}}",
-                     render.social_meta(f"{page_title} · {DISPLAY_NAME}"))
+                     render.social_meta(f"{page_title} · {display_name}"))
         )
         render._write(os.path.join(out_dir, filename), html)
     return len(pages)

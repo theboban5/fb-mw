@@ -1864,7 +1864,7 @@ table.v2-results-compact { table-layout: fixed; width: 100%; }
   color: #888;
 }
 
-/* ─── National team page (/scorchers/) ────────────────
+/* ─── National team pages (/flames/, /scorchers/) ─────
    Mobile-first single column throughout: the line-up is a grouped list by
    position, never a pitch diagram, so it stays readable at 320px. */
 

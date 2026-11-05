@@ -16,7 +16,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import adapt, dataset, matches_page, nt  # noqa: E402
+from src import adapt, dataset, flags, matches_page, nt  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CANONICAL = os.path.join(ROOT, "data", "canonical")
@@ -29,6 +29,67 @@ TODAY = "2026-08-05"
 
 def _load(tabs):
     return dataset.read_snapshot(CANONICAL, tabs)
+
+
+class NationalTeamCardTest(unittest.TestCase):
+    """One card per national team, each under its own name.
+
+    There used to be one card, headed "Malawi Scorchers" and linking to
+    /scorchers/, holding every nt_matches row on the date — so the Flames'
+    friendlies in Ethiopia rendered as the women's team's.
+    """
+
+    HEADER = ("match_id,team_code,date,competition,opponent,home_away,"
+              "neutral,venue,city,country,team_score,opponent_score,status,"
+              "coach,extra_time,penalty_shootout,extra_time_result,kickoff\n")
+
+    def setUp(self):
+        texts = {
+            "nt_teams": "team_code,team_name,category\n"
+                        "MW_W,Malawi (Women's),senior\n"
+                        "MW_M,Malawi (Men's),senior\n"
+                        "MW_U20M,Malawi U20 (Men's),youth\n",
+            "nt_matches": self.HEADER + (
+                "1,MW_W,2026-06-06,Friendly,Zambia,home,FALSE,,,,2,0,played,,"
+                "FALSE,FALSE,,\n"
+                "2,MW_M,2026-06-06,Friendly,Ethiopia,away,FALSE,,,,0,1,played,,"
+                "FALSE,FALSE,,\n"
+                "3,MW_U20M,2026-06-06,Friendly,Kenya U20,home,FALSE,,,,1,1,"
+                "played,,FALSE,FALSE,,\n"),
+        }
+        # The other tabs empty, header only — the snapshot's own header lines.
+        for tab in dataset.NT_TABS:
+            if tab not in texts:
+                with open(os.path.join(CANONICAL, f"{tab}.csv")) as f:
+                    texts[tab] = f.readline()
+        ntd = nt.parse_all(texts)
+        # collect()'s national-team half, without a league dataset behind it.
+        day = matches_page.Day("2026-06-06", nt_matches=[
+            (m, ntd.nt_teams[m.team_code]) for m in ntd.nt_matches.values()])
+        self.html = matches_page.render_day(
+            None, day, "2026-06-06", "2026-06-06",
+            ["2026-06-06"], ["2026-06-06"], STATIC, "", set(),
+            flags.Flags(STATIC))
+
+    def _cards(self):
+        return self.html.split('<section class="day-comp">')[1:]
+
+    def test_a_card_per_team_flames_first(self):
+        cards = self._cards()
+        self.assertEqual(len(cards), 3)
+        self.assertIn('href="flames/"', cards[0])
+        self.assertIn("Malawi Flames", cards[0])
+        self.assertIn("Ethiopia", cards[0])
+        self.assertNotIn("Zambia", cards[0])
+        self.assertIn('href="scorchers/"', cards[1])
+        self.assertIn("Zambia", cards[1])
+        self.assertNotIn("Ethiopia", cards[1])
+
+    def test_a_team_without_a_page_gets_a_card_that_links_nowhere(self):
+        youth = self._cards()[2]
+        self.assertIn("Malawi U20 (Men&#x27;s)", youth)
+        self.assertIn("Kenya U20", youth)
+        self.assertNotIn("<a ", youth)
 
 
 class ClockTest(unittest.TestCase):

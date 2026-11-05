@@ -29,7 +29,9 @@ from . import dataset, lineups
 from .dataset import (DataError, _enum, _flag, _opt_int, _put, _require,
                       _rows)
 
-# The women's senior side — the team this site currently builds a page for.
+# The women's senior side: the default for load_team/team_data, because the
+# tests and every caller before /flames/ meant this one. Which teams get a page
+# is nt_page.PAGES, not this.
 SCORCHERS = "MW_W"
 
 # The squad/line-up vocabulary is shared with the league tab — see src/lineups.py.

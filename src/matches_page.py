@@ -38,7 +38,7 @@ from html import escape
 import json
 import os
 
-from . import adapt, flags, home, nt, nt_page, render
+from . import adapt, flags, home, nt_page, render
 
 SLUG = "matches"
 
@@ -405,14 +405,32 @@ def _match_rows(ds, group, crest, club_hub_ids, prefix, match_href=None):
     return out
 
 
-def _nt_rows(day, fl, prefix):
+def _nt_by_team(day):
+    """The day's national-team matches as [(NTTeam, [NTMatch])], one per side.
+
+    A card each, because the card's heading names the team: when there was
+    one heading for all of them, the Flames' June friendlies rendered under
+    "Malawi Scorchers". Teams with a page come first, in nt_page.PAGES order.
+    """
+    by_code = {}
+    for m, team in day.nt_matches:
+        by_code.setdefault(team.team_code, (team, []))[1].append(m)
+    order = {p.team_code: i for i, p in enumerate(nt_page.PAGES)}
+    return sorted(by_code.values(),
+                  key=lambda pair: (order.get(pair[0].team_code, len(order)),
+                                    pair[0].team_name))
+
+
+def _nt_rows(team, matches, fl, prefix):
     """The national-team lines: Malawi always on the left, flags for crests.
 
-    Same convention as /scorchers/ — a national-team line reads from one
-    team's perspective, so home/away moves into the note under it.
+    Same convention as /flames/ and /scorchers/ — a national-team line reads
+    from one team's perspective, so home/away moves into the note under it.
     """
+    page = nt_page.page_for(team.team_code)
+    ours_href = f"{prefix}{page.slug}/" if page else ""
     out = []
-    for m, team in day.nt_matches:
+    for m in matches:
         notes = [escape(m.competition)] if m.competition else []
         if m.ground_label:
             notes.append(escape(m.ground_label))
@@ -422,8 +440,6 @@ def _nt_rows(day, fl, prefix):
                 notes.append(escape(m.score_note))
         else:
             mid, fixture = _time_or_vs(m.kickoff), True
-        ours_href = (f"{prefix}{nt_page.SLUG}/"
-                     if team.team_code == nt.SCORCHERS else "")
         ours = _side(escape(nt_page.SIDE_NAME),
                      fl.img_for(nt_page.OUR_COUNTRY, "dm-crest dm-flag"),
                      ours_href, "home")
@@ -600,14 +616,23 @@ def render_day(ds, day, iso, today, dates, dates_with_matches, static_dir,
         return "\n".join(out)
 
     out.append('<div class="day-comps">')
-    if day.nt_matches:
+    for team, matches in _nt_by_team(day):
         logo = fl.img_for(nt_page.OUR_COUNTRY, "day-comp-logo")
-        head = (f'<a class="day-comp-head" href="{css_prefix}{nt_page.SLUG}/">'
-                f"{logo}"
-                f'<span class="day-comp-name">{escape(nt_page.DISPLAY_NAME)}</span>'
-                '<span class="day-comp-arrow" aria-hidden="true">&#x203A;</span>'
-                "</a>")
-        out.append(_card(head, _nt_rows(day, fl, css_prefix)))
+        page = nt_page.page_for(team.team_code)
+        # A side with no page of its own (the youth teams) still gets its
+        # card, under its nt_teams name and linking nowhere.
+        if page is not None:
+            head = (f'<a class="day-comp-head" href="{css_prefix}{page.slug}/">'
+                    f"{logo}"
+                    f'<span class="day-comp-name">{escape(page.display_name)}'
+                    "</span>"
+                    '<span class="day-comp-arrow" aria-hidden="true">&#x203A;'
+                    "</span></a>")
+        else:
+            head = (f'<div class="day-comp-head">{logo}'
+                    f'<span class="day-comp-name">{escape(team.team_name)}'
+                    "</span></div>")
+        out.append(_card(head, _nt_rows(team, matches, fl, css_prefix)))
 
     for group in day.groups:
         logo = render._league_logo_lookup(

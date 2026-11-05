@@ -576,8 +576,11 @@ hubs, player pages and the snapshot audit trail work exactly as for leagues.
 Six tabs in the same spreadsheet, parsed by `src/nt.py` and rendered by
 `src/nt_page.py`. They are **a separate schema, not part of the `Dataset`** —
 they share no ids with the league tabs, so nothing in the league build path
-sees them. Currently one page is built from them: the women's senior team
-(`MW_W`, "Malawi Scorchers") at `/scorchers/`.
+sees them. Two pages are built from them, one per entry in `nt_page.PAGES`:
+the men's senior team (`MW_M`, "Malawi Flames") at `/flames/` and the women's
+(`MW_W`, "Malawi Scorchers") at `/scorchers/`. A team with an `nt_teams` row
+and no entry there (the youth sides) gets no page; its matches still show on
+`/matches/`, under its `team_name`, linking nowhere.
 
 - **nt_teams** — `team_code` (`MW_W`, `MW_M`, `MW_U20W`, …) + `team_name` +
   `category`. These are **not** `teams.team_id` values.

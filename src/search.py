@@ -203,7 +203,7 @@ def _club_competitions(ds, leagues):
     return out
 
 
-def build_index(ds, leagues, scorchers=None, hidden=(), ntd=None) -> list:
+def build_index(ds, leagues, national=(), hidden=(), ntd=None) -> list:
     """The list of index rows. Pure — writes nothing, so tests can inspect it.
 
     `hidden` is build.HIDDEN_ON_LANDING: competitions whose pages exist but
@@ -250,9 +250,12 @@ def build_index(ds, leagues, scorchers=None, hidden=(), ntd=None) -> list:
         )
 
     # ── National team ───────────────────────────────────────────────────────
-    if scorchers is not None:
-        add(T_NT, nt_page.DISPLAY_NAME, f"{nt_page.SLUG}/", "National Team",
-            _NT_WEIGHT, _extra("Malawi", "Scorchers"))
+    # `national` is one NTTeamData per page build.py wrote.
+    for team_data in national:
+        page = nt_page.page_for(team_data.team.team_code)
+        if page is not None:
+            add(T_NT, page.display_name, f"{page.slug}/", "National Team",
+                _NT_WEIGHT, _extra("Malawi", page.nickname))
 
     # ── Club hubs ───────────────────────────────────────────────────────────
     # The same set hubs.build_club_hubs writes: every club with a team in a
@@ -350,9 +353,9 @@ def build_index(ds, leagues, scorchers=None, hidden=(), ntd=None) -> list:
     return rows
 
 
-def write_index(dist, ds, leagues, scorchers=None, hidden=(), ntd=None) -> int:
+def write_index(dist, ds, leagues, national=(), hidden=(), ntd=None) -> int:
     """Write dist/search-index.json. Returns the number of records."""
-    rows = build_index(ds, leagues, scorchers=scorchers, hidden=hidden, ntd=ntd)
+    rows = build_index(ds, leagues, national=national, hidden=hidden, ntd=ntd)
     payload = {"v": 1, "types": list(TYPES), "docs": rows}
     render._write(
         os.path.join(dist, "search-index.json"),

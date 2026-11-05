@@ -16,7 +16,7 @@ all link here, every one of those links is rendered before these pages are
 written, and deriving the set twice is how a link 404s. It is every
 non-placeholder match in a competition+season the build renders — the same
 matches that have a row on a Matches tab. National-team matches are a
-separate schema with their own page (/scorchers/) and get none.
+separate schema with their own pages (/flames/, /scorchers/) and get none.
 
 NOTHING HERE IS NEW DATA. Every section is a fact the build already had, cut
 per match: the score and scorers from the league view, the team sheets from

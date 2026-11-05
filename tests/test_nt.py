@@ -782,6 +782,76 @@ class HomePageTest(unittest.TestCase):
                          nt_page.HOME_FALLBACK_LIMIT)
 
 
+class FlamesPageTest(unittest.TestCase):
+    """The men's side is the same page built from the other team's rows.
+
+    The fixture's MW_M rows are the ones every test above asserts never reach
+    the Scorchers; here they are the page.
+    """
+
+    def setUp(self):
+        self.td = nt.team_data(nt.parse_all(texts()), nt_page.FLAMES.team_code)
+        self.pages = pages(self.td)
+        self.html = "\n".join(self.pages.values())
+
+    def test_each_team_code_has_its_own_page(self):
+        self.assertIs(nt_page.page_for("MW_M"), nt_page.FLAMES)
+        self.assertIs(nt_page.page_for("MW_W"), nt_page.SCORCHERS)
+        self.assertEqual(nt_page.FLAMES.slug, "flames")
+        # A youth side has an nt_teams row and no page yet.
+        self.assertIsNone(nt_page.page_for("MW_U20M"))
+        self.assertEqual(len({p.slug for p in nt_page.PAGES}),
+                         len(nt_page.PAGES))
+
+    def test_header_names_the_flames_not_the_scorchers(self):
+        self.assertIn("MALAWI FLAMES", self.html)
+        self.assertIn("MALAWI (MEN&#x27;S)", self.html)
+        self.assertNotIn("SCORCHERS", self.html)
+
+    def test_only_the_mens_rows(self):
+        results = self.pages["results.html"]
+        self.assertIn("Botswana", results)
+        self.assertNotIn("Nigeria", results)
+        self.assertIn("Kamogelo Moloi", results)
+        self.assertNotIn("Temwa Chawinga", results)
+        self.assertIn("George Chikooka", self.pages["squad.html"])
+
+    def test_build_page_writes_under_the_teams_own_slug(self):
+        import tempfile
+        root = os.path.dirname(STATIC)
+        with tempfile.TemporaryDirectory() as dist:
+            n = nt_page.build_page(dist, os.path.join(root, "templates"),
+                                   STATIC, self.td, FakeDataset(), "today")
+            self.assertEqual(n, 4)
+            self.assertEqual(sorted(os.listdir(dist)), ["flames"])
+            with open(os.path.join(dist, "flames", "results.html")) as f:
+                self.assertIn("<title>Results · Malawi Flames</title>", f.read())
+
+    def test_a_team_with_no_page_is_refused_rather_than_misfiled(self):
+        teams = TEAMS + "MW_U20M,Malawi U20 (Men's),youth\n"
+        td = nt.team_data(nt.parse_all(texts(teams=teams)), "MW_U20M")
+        with self.assertRaises(ValueError):
+            nt_page.build_page("/nonexistent", "", STATIC, td, FakeDataset(), "")
+
+
+class LandingRowTest(unittest.TestCase):
+    """The homepage's National Team rows go live one team at a time."""
+
+    def _row(self, categories, key):
+        cat = next(c for c in categories if c["key"] == key)
+        group = next(g for g in cat["groups"] if g["label"] == "National Team")
+        return group["items"][0]
+
+    def test_a_built_page_is_a_live_link_and_a_missing_one_stays_soon(self):
+        import build
+        cats = build._landing_categories(None, [], {"MW_M": "National Team"})
+        flames = self._row(cats, "men")
+        self.assertTrue(flames["live"])
+        self.assertEqual(flames["href"], "flames/")
+        self.assertEqual(flames["name"], "Malawi Flames")
+        self.assertFalse(self._row(cats, "women")["live"])
+
+
 class FlagsTest(unittest.TestCase):
     def test_known_country(self):
         self.assertEqual(flags.code_for("Nigeria"), "ng")
