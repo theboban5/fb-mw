@@ -213,10 +213,39 @@ The men's national team page, no migration — `/flames/`:
   a team with no page (the youth sides) gets a card under its `team_name`
   that links nowhere.
 - The fallback feature card is still the Scorchers' hand-written WAFCON one.
-- Next: the RSSSF archive (`/tablesm/malaw-intres.html`, ~676 matches since
-  1957). Decided: opponents as printed ("Swaziland", "Zaire"); unofficial
-  (`*`) and pre-independence matches shown, marked unofficial, and left out
-  of the record totals; a History tab with head-to-head and the record.
+- Next: the RSSSF archive. Decided: opponents as printed ("Swaziland",
+  "Zaire"); unofficial (`*`) and pre-independence matches shown, marked
+  unofficial, and left out of the record totals; a History tab with
+  head-to-head and the record.
+
+Every Flames international since 1957, parsed, no migration yet —
+`scripts/rsssf_nt.py`:
+
+- **RSSSF's "Malawi - List of International Matches"** (Barrie Courtney),
+  fetched once to `data/backfill/rsssf/malaw-intres.html`: 710 matches, 35
+  of them `*` (unofficial), 788 scorer rows. `parse` writes a REVIEW file,
+  `nt_mw_m.json`, one match per line; nothing loads it yet, because an
+  unofficial flag, an abandoned status, a stage and a year-only date (1957)
+  need columns nt_matches does not have.
+- **The table is NOT the answer key here**, unlike the Super League's.
+  RSSSF's by-country summary is hand-kept over decades and disagrees with
+  itself (its rows sum to D199 L249 F790 A838, its TOTAL says D201 L247
+  F793 A840; its São Tomé row is arithmetically impossible). The site
+  follows the lines. Every remaining difference is PINNED in
+  `nt_names.json` `table_differences` with both figures and a reason, and
+  parse fails on a new one, a moved one or a stale pin — so the check still
+  catches a misread line, a lost wrap or a dropped `*`. The one exact
+  figure, 25 unidentified scorers, agrees.
+- Two lines contradict themselves and are settled by the page's other
+  statements (`corrections`): Kenya 1984 printed `w 1-1` (a draw), and
+  Swaziland 2004 printed `d 1-1` with two scorers (2-1).
+- **Names** (`nt_names.json`): the name of the day, RSSSF's capitals and
+  abbreviations undone; `country` groups head-to-head across a rename
+  (Swaziland/Eswatini, Zaire/DR Congo) but keeps the Rhodesias apart from
+  Zambia and Zimbabwe, as RSSSF does. Venue codes carry date ranges.
+- **Against nt_matches**: two of the 2025 COSAFA dates are wrong in the
+  database (Namibia was 8 June, Angola 10 June); Equatorial Guinea (awarded)
+  and every 2026 match are not on RSSSF, which stops in Jan 2026.
 
 League stat boards, no migration — `#/graphics?type=leagues`:
 
