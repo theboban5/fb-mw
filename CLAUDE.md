@@ -255,8 +255,18 @@ Every Flames international since 1957, parsed, no migration yet —
   `next_nt_id` (0012) casts every id. A neutral ground stores
   `home_away='away'`. Plain inserts, so a taken id fails rather than
   overwrites; a second run plans nothing.
+- **The pages** (`nt_page`, both teams): Results is the latest year, every
+  other year `results-YYYY.html` behind render.season_nav's picker ("Past
+  years"); a **History** tab — Head to Head (by `opponent_country`, each a
+  `vs-<slug>.html` of every meeting), By Competition, Biggest Wins, Heaviest
+  Defeats — counting only `in_record` and saying how many it left out. The
+  RSSSF credit (`_credit`) goes on any page showing a row whose source_ref
+  is rsssf.org. Home's "current competition" is now this EDITION
+  (`competition_results`: a run with no gap over 400 days back from the next
+  dated fixture or the latest result), because a competition name has no
+  year. A group table with no figures at all renders nothing.
 - **Deploy order**: migration, then the code (source_supabase selects the
-  new columns, so the code first fails every build), then step 4's results
+  new columns, so the code first fails every build), then the results
   pages, THEN `apply`. Rehearsed against a snapshot copy: validate passes,
   but results.html is 471 kB with 715 results, and the Home tab's "current
   competition" (AFCON Qualification, no year in the name) pulls in every

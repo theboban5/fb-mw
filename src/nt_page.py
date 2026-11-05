@@ -7,10 +7,19 @@ league pages use (index.html + siblings, never subdirectories):
   * **index.html** — the tournament the team is in right now: next match, the
     group table, that tournament's results and its remaining fixtures. Nothing
     else; a visitor arriving mid-WAFCON should see WAFCON.
-  * **results.html** — every result, with scorers and (where the data exists)
-    line-ups.
+  * **results.html** — the latest year's results, with scorers and (where
+    the data exists) line-ups; **results-YYYY.html** for every earlier year,
+    behind a "Past years" picker. One page held them all until the RSSSF
+    archive (0066) made it 715 results and 471 kB.
   * **fixtures.html** — every scheduled match.
   * **squad.html** — the current squad.
+  * **history.html** — the record: by competition, against every opponent,
+    the biggest wins and defeats. Only `NTMatch.in_record` matches count;
+    unofficial and abandoned ones are shown wherever matches are listed and
+    counted nowhere, and each table says how many it left out.
+  * **vs-<country>.html** — every meeting with one opponent, linked from the
+    head-to-head table. Keyed by `opponent_country`, so Swaziland and
+    Eswatini are one page.
 
 Like `hubs.py` this reuses `render.py`'s helpers and the site's existing `v2-*`
 CSS classes, so it inherits the league pages' look without touching their build
@@ -36,8 +45,10 @@ single team needs no matchday pager.
 from dataclasses import dataclass
 from html import escape
 import os
+import re
+import unicodedata
 
-from . import adapt, flags, lineups, render
+from . import adapt, flags, lineups, nt, render
 
 
 @dataclass(frozen=True)
@@ -91,6 +102,7 @@ NAV_ITEMS = (
     ("results.html", "Results"),
     ("fixtures.html", "Fixtures"),
     ("squad.html", "Squad"),
+    ("history.html", "History"),
 )
 
 # How many matches the home page shows when there is no tournament on — enough
@@ -213,7 +225,7 @@ def _display_name(team_data) -> str:
     return page.display_name if page else team_data.team.team_name
 
 
-def _header(team_data, flag_url) -> str:
+def _header(team_data, flag_url, picker="") -> str:
     logo = (f'<img class="v2-mini-logo" src="{escape(flag_url)}" alt="">'
             if flag_url else "")
     coach = (f'<p class="nt-coach">Coach &middot; {escape(team_data.coach)}</p>'
@@ -223,7 +235,7 @@ def _header(team_data, flag_url) -> str:
         f"{logo}"
         f'<p class="v2-season">{escape(team_data.team.team_name.upper())}</p>'
         f'<h2 class="v2-mini-league">{escape(_display_name(team_data).upper())}</h2>'
-        f"{coach}"
+        f"{coach}{picker}"
         "</div>"
     )
 
@@ -481,6 +493,42 @@ def _results(results, fl, title="Recent Results", empty="No results yet.",
     return head + _results_table(body) + (more or "")
 
 
+def results_href(year, latest) -> str:
+    """The latest year is results.html, the tab; every other year its own."""
+    return "results.html" if year == latest else f"results-{year}.html"
+
+
+def _year_picker(years, year) -> str:
+    """render.season_nav's picker, over years: "Past years" on the latest,
+    "Change year" on an older one, nothing for a team with one year."""
+    if not years:
+        return ""
+    links = [(str(y), results_href(y, years[0]), y == year) for y in years]
+    return render.season_nav(links, past="Past years", change="Change year",
+                             label="Years")
+
+
+def _credit(matches) -> str:
+    """RSSSF's acknowledgement, on any page that shows a match it supplied.
+
+    Its condition for copying is "proper acknowledgement is given to the
+    author", so the line goes wherever an archive match renders — a year
+    page, the history, an opponent's page — read off the rows' own
+    source_ref, as build._source_credit does for a league archive. A page of
+    matches a reporter typed carries none.
+    """
+    refs = sorted({m.source_ref.split(",")[0].strip() for m in matches
+                   if "rsssf.org" in (m.source_ref or "")})
+    if not refs:
+        return ""
+    link = f'<a href="{escape(refs[0], quote=True)}" rel="noopener">RSSSF</a>'
+    return (f'<p class="v2-credit">Archive results from {link} — Barrie '
+            f'Courtney, &ldquo;Malawi - List of International Matches&rdquo;, '
+            f'Rec.Sport.Soccer Statistics Foundation. Matches marked '
+            f'Unofficial are not full internationals and are counted in no '
+            f'total.</p>')
+
+
 # ── 5. Fixtures ──────────────────────────────────────────────────────────────
 
 def _fixtures(fixtures, fl, title="Upcoming Fixtures",
@@ -490,6 +538,116 @@ def _fixtures(fixtures, fl, title="Upcoming Fixtures",
         return head + f'<p class="v2-empty">{escape(empty)}</p>'
     body = "".join(_match_rows(m, fl) for m in fixtures)
     return head + _results_table(body) + (more or "")
+
+
+# ── 5b. History ──────────────────────────────────────────────────────────────
+
+def vs_slug(country: str) -> str:
+    """'São Tomé and Príncipe' -> 'sao-tome-and-principe', for vs-<slug>.html.
+
+    A filename from a display name, the one sanctioned kind of string
+    transform (CLAUDE.md: the competition slug for URLs is the other). It is
+    never read back.
+    """
+    ascii_ = unicodedata.normalize("NFKD", country).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "-", ascii_.lower()).strip("-") or "unknown"
+
+
+def _record_cells(rec) -> str:
+    goals = f"{rec.goals_for}:{rec.goals_against}" if rec.played else _DASH
+    return (f"<td>{rec.played}</td>"
+            f"<td>{rec.won}</td><td>{rec.drawn}</td><td>{rec.lost}</td>"
+            f'<td class="nt-goals">{goals}</td>')
+
+
+_RECORD_HEAD = ("<th>P</th><th>W</th><th>D</th><th>L</th><th>GOALS</th>")
+
+
+def _left_out(n) -> str:
+    """The legend line a record table owes its reader when it skipped rows."""
+    if not n:
+        return ""
+    return (f'<p class="v2-res-legend">{n} unofficial or abandoned '
+            f'match{"" if n == 1 else "es"} shown elsewhere and not counted '
+            "here.</p>")
+
+
+def _record_table(title, total, rows, fl=None, href=None) -> str:
+    """A record table: an "All matches" line first, then one line per group.
+
+    `rows` is nt.group_record's output. With `fl`, the label is a country and
+    gets its flag; with `href`, it links to that country's page.
+    """
+    body = [f'<tr class="nt-row-us"><td class="nt-team">All matches</td>'
+            f"{_record_cells(total)}</tr>"]
+    for key, _ms, rec in rows:
+        label = escape(key)
+        if href:
+            label = f'<a class="nt-link" href="{escape(href(key))}">{label}</a>'
+        flag = fl.img_for(key, "nt-flag nt-flag-pre") if fl else ""
+        body.append(f'<tr><td class="nt-team">{flag}{label}</td>'
+                    f"{_record_cells(rec)}</tr>")
+    return (f'<h3 class="v2-sec-title">{escape(title)}</h3>'
+            '<div class="v2-table-outer"><table class="nt-table">'
+            f'<thead><tr><th class="nt-th-team">'
+            f'{"OPPONENT" if fl else "COMPETITION"}</th>{_RECORD_HEAD}</tr></thead>'
+            f'<tbody>{"".join(body)}</tbody></table></div>'
+            + _left_out(total.not_counted))
+
+
+def _match_list(title, matches, fl) -> str:
+    """Plain result rows — no scorers, no line-ups — for a list of matches."""
+    if not matches:
+        return ""
+    body = "".join(_match_rows(m, fl) for m in matches)
+    return f'<h3 class="v2-sec-title">{escape(title)}</h3>' + _results_table(body)
+
+
+def render_history(team_data, fl, flag_url="") -> str:
+    """The record, against everyone and in everything, from matches that count."""
+    matches = [r.match for r in team_data.results]
+    if not matches:
+        return _page([_header(team_data, flag_url),
+                      '<h3 class="v2-sec-title">History</h3>'
+                      '<p class="v2-empty">No results yet.</p>'])
+    total = nt.record("All matches", matches)
+    first = min((m.year for m in matches if m.year), default=None)
+    intro = (f'<p class="nt-squad-note">Every result since {first} &middot; '
+             f"{total.won} won, {total.drawn} drawn, {total.lost} lost</p>"
+             if first else "")
+    return _page([
+        _header(team_data, flag_url),
+        intro,
+        _record_table("Head to Head", total,
+                      nt.group_record(matches, lambda m: m.country_key),
+                      fl=fl, href=lambda k: f"vs-{vs_slug(k)}.html"),
+        _record_table("By Competition", total,
+                      nt.group_record(matches, lambda m: m.competition)),
+        _match_list("Biggest Wins", nt.biggest(matches, wins=True), fl),
+        _match_list("Heaviest Defeats", nt.biggest(matches, wins=False), fl),
+        _credit(matches),
+    ])
+
+
+def render_vs(team_data, fl, country, flag_url="", player_href=None) -> str:
+    """Every meeting with one opponent country, newest first."""
+    results = [r for r in team_data.results if r.match.country_key == country]
+    rec = nt.record(country, [r.match for r in results])
+    names = sorted({r.match.opponent for r in results} - {country})
+    also = (f'<p class="nt-squad-note">Also played as {escape(", ".join(names))}</p>'
+            if names else "")
+    summary = (f'<p class="nt-squad-note">{rec.played} played &middot; '
+               f"{rec.won} won, {rec.drawn} drawn, {rec.lost} lost &middot; "
+               f"goals {rec.goals_for}:{rec.goals_against}</p>")
+    return _page([
+        _header(team_data, flag_url),
+        f'<h3 class="v2-sec-title">{fl.img_for(country, "nt-flag nt-flag-pre")}'
+        f"Malawi v {escape(country)}</h3>",
+        summary, also, _left_out(rec.not_counted),
+        _results(results, fl, title="Every Meeting", player_href=player_href),
+        _more_link("history.html", "Head to head with everyone"),
+        _credit([r.match for r in results]),
+    ])
 
 
 # ── 6. Current squad ─────────────────────────────────────────────────────────
@@ -594,18 +752,29 @@ def render_home(team_data, fl, flag_url="", player_href=None) -> str:
     return _page([
         _header(team_data, flag_url),
         _next_match(team_data.next_match, fl),
-        *[_group_table(g, fl) for g in team_data.groups],
+        # A group whose every row is blank (MW_M's 2026 Four Nations row: a
+        # name and no figures) is a placeholder, and a placeholder renders
+        # nothing — it was a line of dashes above the real fixtures.
+        *[_group_table(g, fl) for g in team_data.groups
+          if any(r.played or r.points or r.position for r in g.rows)],
         *[_bracket(b, fl) for b in team_data.brackets],
         result_block,
         fixture_block,
     ])
 
 
-def render_results(team_data, fl, flag_url="", player_href=None) -> str:
+def render_results(team_data, fl, flag_url="", player_href=None,
+                   year=None) -> str:
+    """One year's results, the latest by default, with the year picker."""
+    years = team_data.result_years
+    year = year if year is not None else (years[0] if years else None)
+    results = team_data.results_in(year) if year is not None else []
     return _page([
-        _header(team_data, flag_url),
-        _results(team_data.results, fl, title="All Results",
+        _header(team_data, flag_url, _year_picker(years, year)),
+        _results(results, fl,
+                 title=f"{year} Results" if year is not None else "Results",
                  player_href=player_href),
+        _credit([r.match for r in results]),
     ])
 
 
@@ -652,7 +821,24 @@ def build_page(dist, templates_dir, static_dir, team_data, ds, updated,
         "fixtures.html": render_fixtures(team_data, fl, flag_url=flag_url),
         "squad.html": render_squad(team_data, fl, ds, club_hub_ids,
                                    flag_url=flag_url, player_href=player_href),
+        "history.html": render_history(team_data, fl, flag_url=flag_url),
     }
+    # The pages behind the History and Results tabs: a title of their own,
+    # and the tab they belong to lit in the nav.
+    titles, tab_of = {}, {}
+    years = team_data.result_years
+    for y in years[1:]:
+        name = results_href(y, years[0])
+        pages[name] = render_results(team_data, fl, flag_url=flag_url,
+                                     player_href=player_href, year=y)
+        titles[name], tab_of[name] = f"{y} Results", "results.html"
+    if years:
+        titles["results.html"] = f"{years[0]} Results"
+    for country in sorted({r.match.country_key for r in team_data.results}):
+        name = f"vs-{vs_slug(country)}.html"
+        pages[name] = render_vs(team_data, fl, country, flag_url=flag_url,
+                                player_href=player_href)
+        titles[name], tab_of[name] = f"Malawi v {country}", "history.html"
     header_logo = (f'<img class="site-logo" src="{escape(flag_url)}" alt="">'
                    if flag_url else "")
     # The nav label is what distinguishes these four pages, so it is the first
@@ -660,13 +846,14 @@ def build_page(dist, templates_dir, static_dir, team_data, ds, updated,
     # Scorchers"), instead of the team name twice.
     nav_labels = dict(NAV_ITEMS)
     for filename, content in pages.items():
-        page_title = nav_labels.get(filename, display_name)
+        page_title = titles.get(filename) or nav_labels.get(filename, display_name)
         html = (
             base.replace("{{TITLE}}", escape(f"{page_title} · {display_name}"))
             .replace("{{LEAGUE_NAME}}", escape(display_name))
             .replace("{{LEAGUE_LOGO}}", header_logo)
             .replace("{{LAST_UPDATED}}", escape(updated))
-            .replace("{{NAV}}", render._nav(filename, items=NAV_ITEMS))
+            .replace("{{NAV}}", render._nav(tab_of.get(filename, filename),
+                                            items=NAV_ITEMS))
             .replace("{{SEARCH}}", render.search_widget("../"))
             .replace("{{CONTENT}}", content)
             .replace("{{CSS_PREFIX}}", "../")

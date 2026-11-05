@@ -822,10 +822,13 @@ class FlamesPageTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as dist:
             n = nt_page.build_page(dist, os.path.join(root, "templates"),
                                    STATIC, self.td, FakeDataset(), "today")
-            self.assertEqual(n, 4)
+            self.assertEqual(n, 6)
             self.assertEqual(sorted(os.listdir(dist)), ["flames"])
+            self.assertEqual(sorted(os.listdir(os.path.join(dist, "flames"))),
+                             ["fixtures.html", "history.html", "index.html",
+                              "results.html", "squad.html", "vs-botswana.html"])
             with open(os.path.join(dist, "flames", "results.html")) as f:
-                self.assertIn("<title>Results · Malawi Flames</title>", f.read())
+                self.assertIn("<title>2026 Results · Malawi Flames</title>", f.read())
 
     def test_a_team_with_no_page_is_refused_rather_than_misfiled(self):
         teams = TEAMS + "MW_U20M,Malawi U20 (Men's),youth\n"
@@ -894,6 +897,74 @@ class ArchiveFieldsTest(unittest.TestCase):
         self.assertTrue(any("abandoned_minute set" in e for e in errs), errs)
         self.assertTrue(any("date_year set beside a date" in e for e in errs), errs)
         self.assertEqual(validate.check_nt(self.ntd), [])
+
+class HistoryPageTest(unittest.TestCase):
+    """history.html, the year pages and an opponent's page, from 0066 rows."""
+
+    def setUp(self):
+        self.td = nt.team_data(nt.parse_all(texts(
+            matches=ArchiveFieldsTest.MATCHES, goals=GOAL_HEADER,
+            lineups=LINEUP_HEADER, comps=M36_COMPS)), "MW_M")
+        self.fl = flags.Flags(STATIC, prefix="../")
+
+    def test_the_record_counts_only_what_is_in_it(self):
+        html = nt_page.render_history(self.td, self.fl)
+        # 4 shown: the abandoned and the unofficial match are left out.
+        self.assertIn("All matches</td><td>2</td><td>1</td><td>1</td><td>0</td>", html)
+        self.assertIn("2 unofficial or abandoned matches", html)
+        self.assertIn('href="vs-eswatini.html"', html)
+
+    def test_a_page_showing_an_rsssf_match_credits_it(self):
+        import dataclasses
+        m = self.td.results[0].match
+        credited = dataclasses.replace(
+            m, source_ref="https://www.rsssf.org/tablesm/malaw-intres.html")
+        self.assertIn("Barrie Courtney", nt_page._credit([credited]))
+        self.assertEqual(nt_page._credit([m]), "")
+
+    def test_a_year_page_per_year_and_a_picker(self):
+        self.assertEqual(self.td.result_years, [2019, 2016, 1976, 1957])
+        latest = nt_page.render_results(self.td, self.fl)
+        self.assertIn("2019 Results", latest)
+        self.assertIn("Past years", latest)
+        self.assertIn('href="results-1957.html"', latest)
+        old = nt_page.render_results(self.td, self.fl, year=1957)
+        self.assertIn("Change year", old)
+        self.assertIn("Northern Rhodesia", old)
+        self.assertNotIn("South Africa", old)
+
+    def test_an_opponent_page_joins_a_rename(self):
+        html = nt_page.render_vs(self.td, self.fl, "Eswatini")
+        self.assertIn("Malawi v Eswatini", html)
+        self.assertIn("Also played as Swaziland", html)
+
+    def test_a_typed_page_carries_no_credit(self):
+        self.assertNotIn("RSSSF", nt_page.render_results(load(), self.fl))
+
+    def test_a_blank_group_table_renders_nothing(self):
+        # M36_COMPS's MW_M row is a competition name and no figures.
+        self.assertNotIn("Four Nations", nt_page.render_home(self.td, self.fl))
+
+    def test_home_shows_this_edition_not_every_one(self):
+        rows = MATCH_HEADER + (
+            "1,MW_M,2021-09-07,World Cup Qualification,Mozambique,home,FALSE,,,,1,0,"
+            "played,,FALSE,FALSE,\n"
+            "2,MW_M,2023-11-21,World Cup Qualification,Tunisia,home,FALSE,,,,0,1,"
+            "played,,FALSE,FALSE,\n"
+            "3,MW_M,2024-06-06,World Cup Qualification,Sao Tome,home,FALSE,,,,3,1,"
+            "played,,FALSE,FALSE,\n"
+            "5,MW_M,2025-03-20,World Cup Qualification,Namibia,home,FALSE,,,,0,1,"
+            "played,,FALSE,FALSE,\n"
+            "4,MW_M,2025-10-13,World Cup Qualification,Liberia,home,FALSE,,,,0,1,"
+            "played,,FALSE,FALSE,\n")
+        td = nt.team_data(nt.parse_all(texts(matches=rows, goals=GOAL_HEADER,
+                                             lineups=LINEUP_HEADER)), "MW_M")
+        ids = [r.match.match_id for r in
+               td.competition_results("World Cup Qualification")]
+        # 2023-11 to 2025-10 is one campaign, no pause over eight months;
+        # 2021 is the edition before, two years earlier.
+        self.assertEqual(ids, ["4", "5", "3", "2"])
+
 
 class LandingRowTest(unittest.TestCase):
     """The homepage's National Team rows go live one team at a time."""

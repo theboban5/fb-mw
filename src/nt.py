@@ -151,6 +151,7 @@ class NTMatch:
     date_year: "int | None" = None   # the year, when the date is unknown
     opponent_country: str = ""   # who the opponent IS, across renames
     source_type: str = ""        # 'backfill' for the archive
+    source_ref: str = ""         # where it came from: a page credits it
 
     @property
     def has_score(self) -> bool:
@@ -223,6 +224,13 @@ class NTMatch:
             parts.append(f"abandoned {self.abandoned_minute}'"
                          if self.abandoned_minute else "abandoned")
         return f"({', '.join(parts)})" if parts else ""
+
+    @property
+    def year(self) -> "int | None":
+        """The calendar year, from the date or, failing that, date_year."""
+        if self.date:
+            return int(self.date[:4])
+        return self.date_year
 
     @property
     def _when(self) -> str:
@@ -617,6 +625,7 @@ def parse_nt_matches(text: str) -> "dict[str, NTMatch]":
             date_year=_opt_int(r.get("date_year", ""), "date_year", "nt_matches", i),
             opponent_country=r.get("opponent_country", ""),
             source_type=r.get("source_type", ""),
+            source_ref=r.get("source_ref", ""),
         ), "nt_matches", i)
     return out
 
@@ -911,13 +920,133 @@ class NTTeamData:
         return ""
 
     def competition_results(self, competition: str) -> "list[NTResult]":
-        return [r for r in self.results if r.match.competition == competition]
+        """This EDITION's results in `competition`, newest first.
+
+        A competition is a name with no year in it ("AFCON Qualification"),
+        which was harmless while the tab held one campaign of each. With the
+        archive (0066) it holds every qualifier since 1976, and the home page
+        — "the tournament the team is in right now" — showed all of them.
+        So an edition is a run of matches in that competition, each within
+        CAMPAIGN_GAP_DAYS of the next, counted back from where the team is
+        now: the next dated fixture in it, else the latest result of any
+        kind. No clock: the data says where "now" is, as seasons.status does
+        for the leagues. A qualifying campaign plays every few months and
+        the next edition starts a year or more after the last ends, which is
+        the gap this reads.
+        """
+        dated = [m.date for m in self.fixtures
+                 if m.competition == competition and m.date]
+        anchor = dated[0] if dated else (
+            self.results[0].match.date if self.results else "")
+        out, prev = [], anchor
+        for r in self.results:
+            if r.match.competition != competition:
+                continue
+            when = r.match.date
+            if not when or (prev and _days_between(prev, when) > CAMPAIGN_GAP_DAYS):
+                break
+            out.append(r)
+            prev = when
+        return out
+
+    @property
+    def result_years(self) -> "list[int]":
+        """Every year with a result, newest first — one results page each."""
+        return sorted({r.match.year for r in self.results if r.match.year},
+                      reverse=True)
+
+    def results_in(self, year: int) -> "list[NTResult]":
+        return [r for r in self.results if r.match.year == year]
 
     def competition_fixtures(self, competition: str) -> "list[NTMatch]":
         return [m for m in self.fixtures if m.competition == competition]
 
 
 _group_by_position = lineups.group_by_position
+
+# How far apart two matches in one competition can be and still be the same
+# edition of it (see NTTeamData.competition_results). A World Cup qualifying
+# campaign's longest pause is about eight months (Nov 2023 to Jun 2024); the
+# gap between two editions is well over a year.
+CAMPAIGN_GAP_DAYS = 400
+
+
+def _days_between(a: str, b: str) -> int:
+    fmt = "%Y-%m-%d"
+    return abs((datetime.strptime(a, fmt) - datetime.strptime(b, fmt)).days)
+
+
+# ── The record: totals over a team's results ─────────────────────────────────
+
+@dataclass(frozen=True)
+class NTRecord:
+    """Won/drawn/lost over matches that count (NTMatch.in_record). What was
+    left out — unofficial and abandoned matches — is counted beside it, so a
+    page can say so rather than let a reader find the arithmetic short."""
+    label: str
+    played: int = 0
+    won: int = 0
+    drawn: int = 0
+    lost: int = 0
+    goals_for: int = 0
+    goals_against: int = 0
+    not_counted: int = 0
+    last_year: "int | None" = None
+
+    @property
+    def goal_difference(self) -> int:
+        return self.goals_for - self.goals_against
+
+
+def record(label: str, matches) -> NTRecord:
+    """An NTRecord over `matches` (NTMatch), counting only `in_record` ones."""
+    p = w = d = l_ = f = a = skipped = 0
+    last = None
+    for m in matches:
+        if not m.played:
+            continue
+        if m.year and (last is None or m.year > last):
+            last = m.year
+        if not m.in_record:
+            skipped += 1
+            continue
+        p += 1
+        f += m.team_score
+        a += m.opponent_score
+        if m.team_score > m.opponent_score:
+            w += 1
+        elif m.team_score < m.opponent_score:
+            l_ += 1
+        else:
+            d += 1
+    return NTRecord(label, p, w, d, l_, f, a, skipped, last)
+
+
+def group_record(matches, key) -> "list[tuple[str, list, NTRecord]]":
+    """[(key, matches, record)] — by opponent country, by competition — most
+    played first, then the most recent. A key whose every match was left out
+    still gets a row: a page lists who Malawi has played, not only who
+    counted."""
+    groups: "dict[str, list]" = {}
+    for m in matches:
+        if m.played:
+            groups.setdefault(key(m), []).append(m)
+    rows = [(k, ms, record(k, ms)) for k, ms in groups.items()]
+    rows.sort(key=lambda t: (-t[2].played, -len(t[1]), -(t[2].last_year or 0), t[0]))
+    return rows
+
+
+def biggest(matches, wins=True, limit=5):
+    """The widest margins either way, among matches that count."""
+    pool = [m for m in matches if m.in_record and
+            ((m.team_score > m.opponent_score) if wins
+             else (m.team_score < m.opponent_score))]
+    # Newest first among equals, then the margin — two stable sorts, because
+    # a date sorts as text and cannot be negated inside one key.
+    pool.sort(key=lambda m: m.recent_key, reverse=True)
+    pool.sort(key=lambda m: (-abs(m.team_score - m.opponent_score),
+                             -(m.team_score if wins else m.opponent_score)))
+    return pool[:limit]
 
 
 _lineup_for = lineups.fold

@@ -617,7 +617,8 @@ def _group_chips(labels):
     return {label: label for label in labels}
 
 
-def season_nav(links, filename="index.html"):
+def season_nav(links, filename="index.html", past="Past seasons",
+               change="Change season", label="Seasons"):
     """The season picker: one button under the league name that opens a grid
     of every season this competition has a table for.
 
@@ -650,11 +651,13 @@ def season_nav(links, filename="index.html"):
         else:
             items.append(f'<a class="v2-season-opt" '
                          f'href="{escape(base + page, quote=True)}">{text}</a>')
-    button = "Past seasons" if on_live else "Change season"
+    # The wording is a parameter because a national team's pages are years,
+    # not seasons (nt_page: "Past years").
+    button = escape(past if on_live else change)
     return ('<details class="v2-seasons">'
             f'<summary class="v2-seasons-btn">{button}'
             '<span class="v2-seasons-caret" aria-hidden="true"></span></summary>'
-            '<nav class="v2-seasons-menu" aria-label="Seasons">'
+            f'<nav class="v2-seasons-menu" aria-label="{escape(label, quote=True)}">'
             + "".join(items) + "</nav></details>")
 
 
