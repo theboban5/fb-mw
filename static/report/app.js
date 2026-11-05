@@ -11461,13 +11461,6 @@ function graphicsLeagueFields() {
       <span class="rp-label">Compare</span>
       ${chips("league-group", LEAGUE_GROUPS, "competition")}
     </div>
-    <div class="rp-row">
-      <div><label class="rp-label" for="gx-level">Level</label>
-        <select class="rp-input" id="gx-level" name="level">${options(ls.LEVELS, "")}</select></div>
-      <div><label class="rp-label" for="gx-cat">Football</label>
-        <select class="rp-input" id="gx-cat" name="cat">${options(ls.CATEGORIES, "")}</select></div>
-    </div>
-
     <div data-league-only="ranking">
       <label class="rp-label" for="gx-metric">Figure</label>
       <select class="rp-input" id="gx-metric" name="metric">${options(ls.BOARD_METRICS, "gpg")}</select>
@@ -11501,9 +11494,7 @@ function graphicsLeagueFields() {
         </select></div>
     </div>
 
-    <fieldset class="rp-fieldset" data-league-comps>
-      <legend class="rp-label">Leagues on the board</legend>
-    </fieldset>
+    <div class="rp-picks" data-league-comps></div>
     <p class="rp-hint" data-league-note></p>
 
     <label class="rp-label" for="gx-eyebrow">Label</label>
@@ -11578,38 +11569,108 @@ function wireLeagueGraphics(accents, format, params) {
     };
   });
   view.querySelectorAll("[data-league-board]").forEach((chip) => {
-    chip.onclick = () => { board = chip.dataset.leagueBoard; syncVisibility(); syncUrl(); redraw(); };
+    chip.onclick = () => {
+      board = chip.dataset.leagueBoard;
+      syncVisibility(); syncUrl(); drawCompTicks(); redraw();
+    };
   });
   view.querySelectorAll("[data-league-group]").forEach((chip) => {
-    chip.onclick = () => { group = chip.dataset.leagueGroup; syncVisibility(); redraw(); };
+    chip.onclick = () => {
+      group = chip.dataset.leagueGroup;
+      syncVisibility(); drawCompTicks(); redraw();
+    };
   });
 
-  /** This season's competitions under the Level and Football filters, before
-   *  the reporter's own ticks. */
-  const scoped = () => (data ? ls.inScope(data.comps, {
-    season: form.season.value, level: form.level.value, cat: form.cat.value,
-  }) : []);
+  /** This season's competitions with a played match, before the reporter's
+   *  ticks. A league with none can never reach a board, so it is not a box. */
+  const scoped = () => (data ? ls.inScope(data.comps, { season: form.season.value })
+    .filter((r) => r.played > 0) : []);
   const keyOf = (r) => `${r.competition_id}|${r.season_id}`;
   const onBoard = () => scoped().filter((r) => !excluded.has(keyOf(r)));
   const minPlayed = () => Number(form.min.value) || 0;
 
-  /** One tick per competition in scope, the matches played beside it. Drawn
-   *  again when the season or a filter changes; never on a tick, so the box
-   *  being tapped is not thrown away under the finger. */
+  /** The tick list: quick picks across the top, then one section per region
+   *  (national first), each with its own tick-all. A league under the minimum
+   *  stays tickable but says it will not show, so a box that changes nothing
+   *  on the board is explained rather than looking broken.
+   *
+   *  Drawn again when the season, the minimum or a pick changes; a single
+   *  tick only updates the counts and the pick highlight, so the box being
+   *  tapped is never thrown away under the finger. */
   function drawCompTicks() {
-    const rows = scoped().slice().sort((a, b) => b.played - a.played
-      || a.competition_name.localeCompare(b.competition_name));
-    compsField.innerHTML = `<legend class="rp-label">Leagues on the board</legend>${
-      rows.length ? rows.map((r) => `<label class="rp-inline"><input type="checkbox"
-        data-league-comp="${esc(keyOf(r))}" ${excluded.has(keyOf(r)) ? "" : "checked"}><span>${
-        esc(r.competition_name)} <em class="rp-hint">${r.played} played</em></span></label>`).join("")
-      : '<p class="rp-hint">No competition matches those filters this season.</p>'}`;
+    const rows = scoped();
+    if (!rows.length) {
+      compsField.innerHTML = '<p class="rp-hint">No league has played a match this season.</p>';
+      return;
+    }
+    const min = board !== "teams" && group === "competition" ? minPlayed() : 0;
+    const sections = ls.regionGroups(rows).map((sec) => {
+      const list = sec.rows.slice().sort((a, b) => b.played - a.played
+        || a.competition_name.localeCompare(b.competition_name));
+      return `<section class="rp-pick-group" data-pick-group="${esc(sec.key)}">
+        <div class="rp-pick-head"><span>${esc(sec.label)}</span>
+          <button class="rp-link" type="button" data-pick-section="${esc(sec.key)}"></button></div>
+        ${list.map((r) => `<label class="rp-pick-row${r.played < min ? " is-short" : ""}">
+          <input type="checkbox" data-league-comp="${esc(keyOf(r))}"
+            ${excluded.has(keyOf(r)) ? "" : "checked"}>
+          <span class="rp-pick-name">${esc(r.competition_name)}</span>
+          <span class="rp-pick-n">${r.played < min ? `${r.played} · too few` : r.played}</span>
+        </label>`).join("")}</section>`;
+    }).join("");
+    compsField.innerHTML = `
+      <div class="rp-pick-top"><span class="rp-label">Leagues on the board</span>
+        <span class="rp-pick-count" data-pick-count></span></div>
+      <div class="rp-chip-row">${ls.usefulPicks(rows).map((p) =>
+        `<button class="rp-chip" type="button" data-pick="${esc(p.key)}">${esc(p.label)}</button>`)
+        .join("")}</div>
+      ${sections}`;
+    syncPicks();
   }
+
+  /** The count, which quick pick (if any) the ticks now equal, and each
+   *  section's button — "Tick all" until it is, then "Untick all". */
+  function syncPicks() {
+    const rows = scoped();
+    const ticked = rows.filter((r) => !excluded.has(keyOf(r)));
+    const count = compsField.querySelector("[data-pick-count]");
+    if (count) count.textContent = `${ticked.length} of ${rows.length}`;
+    compsField.querySelectorAll("[data-pick]").forEach((chip) => {
+      const pick = ls.PICKS.find((p) => p.key === chip.dataset.pick);
+      const on = rows.every((r) => pick.test(r) === !excluded.has(keyOf(r)));
+      chip.classList.toggle("is-on", on);
+      chip.setAttribute("aria-pressed", String(on));
+    });
+    const sections = ls.regionGroups(rows);
+    compsField.querySelectorAll("[data-pick-section]").forEach((btn) => {
+      const sec = sections.find((x) => x.key === btn.dataset.pickSection);
+      const all = sec && sec.rows.every((r) => !excluded.has(keyOf(r)));
+      btn.textContent = all ? "Untick all" : "Tick all";
+    });
+  }
+
+  compsField.addEventListener("click", (event) => {
+    const chip = event.target.closest("[data-pick]");
+    const secBtn = event.target.closest("[data-pick-section]");
+    if (!chip && !secBtn) return;
+    const rows = scoped();
+    if (chip) {
+      const pick = ls.PICKS.find((p) => p.key === chip.dataset.pick);
+      rows.forEach((r) => (pick.test(r) ? excluded.delete(keyOf(r)) : excluded.add(keyOf(r))));
+    } else {
+      const sec = ls.regionGroups(rows).find((x) => x.key === secBtn.dataset.pickSection);
+      if (!sec) return;
+      const all = sec.rows.every((r) => !excluded.has(keyOf(r)));
+      sec.rows.forEach((r) => (all ? excluded.add(keyOf(r)) : excluded.delete(keyOf(r))));
+    }
+    drawCompTicks();
+    redraw();
+  });
   compsField.addEventListener("change", (event) => {
     const box = event.target.closest("[data-league-comp]");
     if (!box) return;
     if (box.checked) excluded.delete(box.dataset.leagueComp);
     else excluded.add(box.dataset.leagueComp);
+    syncPicks();
     redraw();
   });
 
@@ -11624,7 +11685,7 @@ function wireLeagueGraphics(accents, format, params) {
         return;
       }
     }
-    if (["season", "level", "cat"].includes(name)) drawCompTicks();
+    if (["season", "min"].includes(name)) drawCompTicks();
     redraw();
   });
   let typingTimer;
@@ -11642,16 +11703,9 @@ function wireLeagueGraphics(accents, format, params) {
     return { name: t.team_name, img: crests.get(key) };
   }
 
-  /** The words under the headline when none is typed: what the figure
-   *  counts, and over what — the board travels without its caption. */
-  function scopeWords() {
-    const parts = [];
-    const cat = ls.CATEGORIES.find((c) => c.key === form.cat.value && c.key);
-    const level = ls.LEVELS.find((l) => l.key === form.level.value && l.key);
-    if (cat) parts.push(`${cat.label} football`);
-    if (level) parts.push(level.key === "none" ? "unclassified" : level.label.toLowerCase());
-    return parts.join(", ");
-  }
+  /** The words under the headline when none is typed: what the ticked
+   *  leagues have in common — the board travels without its caption. */
+  const scopeWords = () => ls.describeSelection(onBoard(), scoped());
 
   async function buildState() {
     const season = seasons.find((x) => x.season_id === form.season.value);
@@ -11677,7 +11731,8 @@ function wireLeagueGraphics(accents, format, params) {
         crest: await crestFor(r.team),
       })));
       if (!list.length && rows.length) notes.push(`No team has played ${tmin} matches here yet.`);
-      const where = single ? rows[0].competition_name : scope || "every league";
+      const where = single ? rows[0].competition_name : scope
+        || (rows.length === scoped().length ? "every league" : `${rows.length} leagues`);
       return { template: "team_leaders", notes, filled: list.length > 0, state: { ...base,
         accent: single ? accents[rows[0].competition_id] || null : null, rows: list,
         headline: typed.headline || metric.title,

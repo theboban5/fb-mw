@@ -49,6 +49,87 @@ export const CATEGORIES = [
   { key: "youth", label: "Youth" },
 ];
 
+// `competitions.region` names the regional FA a competition sits under — a
+// district league too (Blantyre's youth leagues read SRFA). These are labels
+// for that column's three values, not a reading of any id. A national
+// competition has no region; anything else without one is "No region set",
+// filed visibly rather than guessed into the south.
+export const REGIONS = [
+  { key: "NRFA", label: "Northern Region" },
+  { key: "CRFA", label: "Central Region" },
+  { key: "SRFA", label: "Southern Region" },
+];
+
+/** The list a board's leagues are ticked from, in sections: national
+ *  competitions first, then each region north to south, then any competition
+ *  the data has not placed. Empty sections are dropped. */
+export function regionGroups(rows) {
+  const known = new Set(REGIONS.map((r) => r.key));
+  const sections = [
+    { key: "national", label: "National",
+      rows: rows.filter((r) => !known.has(r.region) && r.level === "national") },
+    ...REGIONS.map((reg) => ({ key: reg.key, label: reg.label,
+      rows: rows.filter((r) => r.region === reg.key) })),
+    { key: "none", label: "No region set",
+      rows: rows.filter((r) => !known.has(r.region) && r.level !== "national") },
+  ];
+  return sections.filter((x) => x.rows.length);
+}
+
+/** One-tap selections over the tick list. Each ticks exactly the leagues it
+ *  matches and unticks the rest: "Women's" means the women's leagues, not the
+ *  women's leagues added to whatever was ticked before. */
+export const PICKS = [
+  { key: "all", label: "All", test: () => true },
+  { key: "none", label: "None", test: () => false },
+  { key: "men", label: "Men's", test: (r) => r.category === "men" },
+  { key: "women", label: "Women's", test: (r) => r.category === "women" },
+  { key: "youth", label: "Youth", test: (r) => r.category === "youth" },
+  { key: "national", label: "National", test: (r) => r.level === "national" },
+  { key: "regional", label: "Regional", test: (r) => r.level === "regional" },
+  { key: "district", label: "District", test: (r) => r.level === "district" },
+  { key: "north", label: "Northern", test: (r) => r.region === "NRFA" },
+  { key: "central", label: "Central", test: (r) => r.region === "CRFA" },
+  { key: "south", label: "Southern", test: (r) => r.region === "SRFA" },
+];
+
+/** The picks that would change anything for these rows: a pick matching no
+ *  league, or every league, is a button that does what All or None does. */
+export function usefulPicks(rows) {
+  return PICKS.filter((p) => {
+    if (p.key === "all" || p.key === "none") return true;
+    const n = rows.filter(p.test).length;
+    return n > 0 && n < rows.length;
+  });
+}
+
+/** What the ticked leagues have in common, for the line under a board's
+ *  headline: "Women's football", "Southern Region", "youth, district". Only a
+ *  trait EVERY ticked league shares is named, and only when it is not true of
+ *  the whole list anyway, or "Men's football" would head a board that simply
+ *  had nothing else to show. Blank when they share nothing worth saying. */
+export function describeSelection(selected, all) {
+  if (!selected.length) return "";
+  const shared = (fn) => {
+    const v = fn(selected[0]);
+    if (v == null || v === "" || !selected.every((r) => fn(r) === v)) return null;
+    return all.every((r) => fn(r) === v) ? null : v;
+  };
+  const parts = [];
+  const cat = shared((r) => r.category);
+  if (cat) parts.push(`${CATEGORIES.find((c) => c.key === cat)?.label || cat} football`);
+  const region = shared((r) => r.region);
+  if (region) parts.push(REGIONS.find((x) => x.key === region)?.label || region);
+  const level = shared((r) => r.level);
+  // "Regional" beside "Southern Region" says the same thing twice.
+  if (level && !(region && level === "regional")) {
+    parts.push(level === "national" ? "national" : level === "district" ? "district" : "regional");
+  }
+  if (!parts.length) return "";
+  const text = parts.join(", ");
+  return text[0].toUpperCase() + text.slice(1);
+}
+
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 // `detail` is the admin screen's sentence; `boardDetail` is the same counts

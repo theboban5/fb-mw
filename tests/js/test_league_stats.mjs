@@ -7,8 +7,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  BOARD_METRICS, METRICS, TEAM_METRICS, cutAt, dashboard, groupRows, inScope,
-  ranking, rate, teamLeaders,
+  BOARD_METRICS, METRICS, PICKS, TEAM_METRICS, cutAt, dashboard, describeSelection,
+  groupRows, inScope, ranking, rate, regionGroups, teamLeaders, usefulPicks,
 } from "../../static/report/league_stats.js";
 
 const metric = (key) => METRICS.find((m) => m.key === key);
@@ -137,4 +137,52 @@ test("team leaders: level teams share a position", () => {
   ];
   assert.deepEqual(teamLeaders(teams, team("attack")).map((r) => [r.position, r.joint]),
     [[1, true], [1, true], [3, false]]);
+});
+
+// The shapes competitions.region actually takes: a regional FA, or blank.
+const C = (id, level, category, region = null) => ({
+  competition_id: id, season_id: "S", competition_name: id, level, category, region,
+});
+const LIST = [
+  C("SL", "national", "men"), C("WP", "national", "women"),
+  C("SRFA", "regional", "men", "SRFA"), C("SRWFL", "regional", "women", "SRFA"),
+  C("KU19", "district", "youth", "SRFA"), C("NRFA", "regional", "men", "NRFA"),
+  C("MDU20", "district", "youth", "NRFA"), C("NDU14", "district", "youth"),
+];
+
+test("sections: national, then north to south, then anything unplaced", () => {
+  assert.deepEqual(regionGroups(LIST).map((g) => [g.label, g.rows.map((r) => r.competition_id)]), [
+    ["National", ["SL", "WP"]],
+    ["Northern Region", ["NRFA", "MDU20"]],
+    ["Southern Region", ["SRFA", "SRWFL", "KU19"]],
+    // A district league with no region is shown as such, not guessed south.
+    ["No region set", ["NDU14"]],
+  ]);
+});
+
+test("a pick ticks exactly what it matches", () => {
+  const pick = (key) => LIST.filter(PICKS.find((p) => p.key === key).test).map((r) => r.competition_id);
+  assert.deepEqual(pick("women"), ["WP", "SRWFL"]);
+  assert.deepEqual(pick("youth"), ["KU19", "MDU20", "NDU14"]);
+  assert.deepEqual(pick("south"), ["SRFA", "SRWFL", "KU19"]);
+  assert.deepEqual(pick("none"), []);
+});
+
+test("a pick that matches nothing, or everything, is not offered", () => {
+  const keys = usefulPicks(LIST.filter((r) => r.category === "youth")).map((p) => p.key);
+  assert.ok(!keys.includes("youth"));      // every row is youth
+  assert.ok(!keys.includes("women"));      // no row is
+  assert.ok(keys.includes("north") && keys.includes("all") && keys.includes("none"));
+  assert.ok(!keys.includes("central"));    // no CRFA league in this list
+});
+
+test("the board's scope line names only what every ticked league shares", () => {
+  const ids = (...x) => LIST.filter((r) => x.includes(r.competition_id));
+  assert.equal(describeSelection(ids("WP", "SRWFL"), LIST), "Women's football");
+  assert.equal(describeSelection(ids("SRFA", "SRWFL", "KU19"), LIST), "Southern Region");
+  assert.equal(describeSelection(ids("SRFA", "SRWFL"), LIST), "Southern Region");
+  assert.equal(describeSelection(ids("KU19", "MDU20", "NDU14"), LIST), "Youth football, district");
+  assert.equal(describeSelection(LIST, LIST), "");
+  assert.equal(describeSelection(ids("SL", "NRFA"), LIST), "Men's football");
+  assert.equal(describeSelection([], LIST), "");
 });

@@ -388,6 +388,28 @@ a { color: var(--accent); }
 .rp-fieldset > legend { grid-column: 1 / -1; padding: 0; margin-bottom: 6px; }
 .rp-fieldset[hidden] { display: none; }
 
+/* The league board's tick list: one section per region, a row per league
+   with its matches played at the right edge. One column, because two put
+   "Nsanje District M'mera Mpoyamba U16 League Bangula Zone" on three lines
+   and the counts in a different place on every row. */
+.rp-picks { margin-top: 16px; }
+.rp-pick-top { display: flex; justify-content: space-between; align-items: baseline; }
+.rp-pick-count { font-size: 0.8rem; color: var(--muted); }
+.rp-pick-group { margin-top: 12px; padding: 2px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius); }
+.rp-pick-head { display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0 6px; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--muted); }
+.rp-pick-head .rp-link { text-transform: none; letter-spacing: 0; font-weight: 600; }
+.rp-pick-row { display: flex; align-items: center; gap: 10px; min-height: 42px;
+  border-top: 1px solid var(--line); font-size: 0.88rem; cursor: pointer; }
+.rp-pick-row input { flex: none; width: 18px; height: 18px; margin: 0; }
+.rp-pick-name { flex: 1; min-width: 0; padding: 6px 0; }
+.rp-pick-n { flex: none; color: var(--muted); font-size: 0.8rem;
+  font-variant-numeric: tabular-nums; }
+.rp-pick-row.is-short .rp-pick-name { color: var(--muted); }
+.rp-pick-row.is-short .rp-pick-n { color: var(--warn); }
+
 /* ─── The scorer picker ──────────────────────────────────────────────────────
    A name typed into a box is a name; a name tapped in this list is a player_id,
    which is what puts the goal in the top-scorer table. The list is absolutely

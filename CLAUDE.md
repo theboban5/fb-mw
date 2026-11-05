@@ -219,6 +219,13 @@ League stat boards, no migration — `#/graphics?type=leagues`:
 - **Joint means level AS PRINTED**: regional and district football both read
   2.93 (2.932 v 2.930), so they are "=1", not 1 and 2. A cut never splits a
   tie unless keeping it would flood the board (`cutAt`).
+- **The leagues are picked by section, not filtered.** The tick list is
+  grouped National / Northern / Central / Southern (`competitions.region`,
+  `regionGroups`), each with a tick-all, under one-tap picks (Women's,
+  Youth, District, Southern…) that tick exactly what they match. The
+  board's subtitle names what every ticked league shares
+  (`describeSelection`). Nsanje's two leagues have no region and sit under
+  "No region set" rather than being guessed south.
 - Not built: one league across seasons as a trend (the Super League's ten
   seasons are there now), and a minimum for a level or category's sum.
 
