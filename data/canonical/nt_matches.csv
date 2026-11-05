@@ -1,13 +1,13 @@
 match_id,team_code,date,competition,opponent,home_away,neutral,venue,kickoff,city,country,team_score,opponent_score,status,coach,extra_time,penalty_shootout,extra_time_result,source_ref,referee,assistant_referee_1,assistant_referee_2,fourth_official,opponent_coach,referee_id,assistant_referee_1_id,assistant_referee_2_id,fourth_official_id,coach_id,opponent_coach_id,unofficial,stage,half_time,crowd,shootout_score,abandoned_minute,date_year,opponent_country,source_type
-1,MW_M,2025-06-05,COSAFA Cup,Lesotho,home,1,Free State Stadium,,Bloemfontein,South Africa,0,1,played,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
-2,MW_M,2025-06-05,COSAFA Cup,Namibia,away,1,Dr. Petrus Molemela Stadium,,Bloemfontein,South Africa,0,0,played,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
-3,MW_M,2025-06-05,COSAFA Cup,Angola,home,1,Free State Stadium,,Bloemfontein,South Africa,0,1,played,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
-4,MW_M,2025-09-05,World Cup Qualification,Namibia,away,1,Obed Itani Chilume Stadium,,Francistown,Botswana,2,1,played,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
-5,MW_M,2025-09-08,World Cup Qualification,Liberia,home,,Bingu National Stadium,,Lilongwe,Malawi,2,2,played,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
+1,MW_M,2025-06-05,COSAFA Cup,Lesotho,home,1,Free State Stadium,,Bloemfontein,South Africa,0,1,played,,,FALSE,,,,,,,,,,,,,,,r1,0-0,,,,,,unknown
+2,MW_M,2025-06-08,COSAFA Cup,Namibia,away,1,Dr. Petrus Molemela Stadium,,Bloemfontein,South Africa,0,0,played,,,FALSE,,,,,,,,,,,,,,,r1,0-0,,,,,,unknown
+3,MW_M,2025-06-10,COSAFA Cup,Angola,home,1,Free State Stadium,,Bloemfontein,South Africa,0,1,played,,,FALSE,,,,,,,,,,,,,,,r1,0-0,,,,,,unknown
+4,MW_M,2025-09-05,World Cup Qualification,Namibia,away,1,Obed Itani Chilume Stadium,,Francistown,Botswana,2,1,played,,,FALSE,,,,,,,,,,,,,,,,1-0,,,,,,unknown
+5,MW_M,2025-09-08,World Cup Qualification,Liberia,home,,Bingu National Stadium,,Lilongwe,Malawi,2,2,played,,,FALSE,,,,,,,,,,,,,,,,0-1,,,,,,unknown
 6,MW_M,2025-10-09,World Cup Qualification,Equatorial Guinea,home,,Bingu National Stadium,,Lilongwe,Malawi,3,0,awarded,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
-7,MW_M,2025-10-13,World Cup Qualification,São Tomé and Príncipe,away,1,Sousse Olympic Stadium,,Sousse,Tunisia,0,1,played,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
-8,MW_M,2025-11-15,Friendly,Lesotho,home,1,Toyota Stadium,,Bloemfontein,South Africa,0,0,played,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
-9,MW_M,2025-11-18,Friendly,Lesotho,home,1,Toyota Stadium,,Bloemfontein,South Africa,1,0,played,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
+7,MW_M,2025-10-13,World Cup Qualification,São Tomé and Príncipe,away,1,Sousse Olympic Stadium,,Sousse,Tunisia,0,1,played,,,FALSE,,,,,,,,,,,,,,,,0-0,,,,,,unknown
+8,MW_M,2025-11-15,Friendly,Lesotho,home,1,Toyota Stadium,,Bloemfontein,South Africa,0,0,played,,,FALSE,,,,,,,,,,,,,,,,0-0,,,,,,unknown
+9,MW_M,2025-11-18,Friendly,Lesotho,home,1,Toyota Stadium,,Bloemfontein,South Africa,1,0,played,,,FALSE,,,,,,,,,,,,,,,,1-0,,,,,,unknown
 10,MW_M,2026-03-28,2026 Four Nations Tournament,Zambia,away,1,Obed Itani Chilume Stadium,,Francistown,Botswana,0,0,played,,1,TRUE,loss,,,,,,,,,,,,,,,,,,,,,unknown
 11,MW_M,2026-03-31,2026 Four Nations Tournament,Botswana,home,1,Obed Itani Chilume Stadium,,Francistown,Botswana,0,1,played,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
 12,MW_M,2026-06-06,Friendly,Ethiopia,away,,Dire Dawa Stadium,,Dire Dawa,Ethiopia,0,1,played,Kalisto Pasuwa,,FALSE,,,,,,,,,,,,MW_OFF_000045,,,,,,,,,,unknown
@@ -31,12 +31,714 @@ match_id,team_code,date,competition,opponent,home_away,neutral,venue,kickoff,cit
 30,MW_W,2026-02-24,2025 COSAFA Championship,Angola,away,1,Old Peter Mokaba Stadium,,Polokwane,South Africa,1,0,played,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
 31,MW_W,2026-04-11,2026 FIFA Series,Australia,away,1,Nyayo National Stadium,,Nairobi,Kenya,0,5,played,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
 32,MW_W,2026-04-15,2026 FIFA Series,India,away,1,Nyayo National Stadium,,Nairobi,Kenya,2,3,played,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
+42,MW_M,,Friendly,Northern Rhodesia,home,,,,,Malawi,0,5,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,,,,,1957,,backfill
 33,MW_W,2026-06-03,Friendly,Tanzania,away,,KMC Complex,,Dar es Salaam,Tanzania,0,1,played,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
+43,MW_M,1962-10-15,Friendly,Ghana,home,,,,,Malawi,0,12,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,,,,,,,backfill
 34,MW_W,2026-06-06,Friendly,Tanzania,away,,KMC Complex,,Dar es Salaam,Tanzania,0,0,played,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
+44,MW_M,1962-12-08,Tanganyika Independence Tournament,Tanzania,away,,,,,Tanzania,2,6,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,,,,,,,backfill
 35,MW_W,2026-07-16,Friendly,Morocco,away,,Al Medina Stadium,,Rabat,Morocco,1,2,played,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
+45,MW_M,1963-10-13,Friendly,Northern Rhodesia,away,,,,,Northern Rhodesia,1,5,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,,,,,,,backfill
 36,MW_W,2026-07-28,WAFCON,Nigeria,away,1,Al Medina Stadium,,Rabat,Morocco,3,2,played,Lovemore Fazili,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
+46,MW_M,1964-06-20,Friendly,Southern Rhodesia,home,,,,,Malawi,1,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,,,,,,,backfill
 37,MW_W,2026-08-01,WAFCON,Egypt,away,1,Moulay El Hassan Stadium,,Rabat,Morocco,3,1,played,Lovemore Fazili,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
+47,MW_M,1964-06-21,Friendly,Southern Rhodesia,home,,,,,Malawi,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,,,,,,,backfill
 38,MW_W,2026-08-05,WAFCON,Zambia,away,1,Al Medina Stadium,22:00,Rabat,Morocco,1,2,played,Lovemore Fazili,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
+48,MW_M,1964-07-04,Malawi Independence Tournament,Northern Rhodesia,home,,,,,Malawi,0,5,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,,,,,,,backfill
 39,MW_W,2026-08-09,WAFCON,Ghana,away,1,Al Medina Stadium,22:00,Rabat,Morocco,2,1,played,Lovemore Fazili,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
+49,MW_M,1964-07-20,Friendly,Northern Rhodesia,away,,,,,Northern Rhodesia,1,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,32000,,,,,backfill
 40,MW_W,2026-08-12,WAFCON,Algeria,away,1,Rabat Olympic Stadium,19:00,Rabat,Morocco,3,1,played,Lovemore Fazili,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
+50,MW_M,1966-07-04,Malawi Independence Tournament,Zambia,home,,,,,Malawi,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
 41,MW_W,2026-08-16,WAFCON,Cameroon,away,1,Moulay El Hassan Stadium,21:00,Rabat,Morocco,0,3,played,,,FALSE,,,,,,,,,,,,,,,,,,,,,,unknown
+51,MW_M,1966-07-06,Malawi Independence Tournament,Zambia,home,,,,,Malawi,0,6,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+52,MW_M,1966-07-07,Malawi Independence Tournament,Madagascar,home,,,,,Malawi,1,6,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+53,MW_M,1966-07-08,Malawi Independence Tournament,Zambia,home,,,,,Malawi,1,5,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+54,MW_M,1966-10-02,Lesotho Independence Tournament,Lesotho,away,,,,,Lesotho,3,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+55,MW_M,1967-03-25,Friendly,Southern Rhodesia,home,,,,,Malawi,3,6,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+56,MW_M,1967-11-11,Friendly,Southern Rhodesia,away,,,,,Southern Rhodesia,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+57,MW_M,1967-11-12,Friendly,Southern Rhodesia,away,,,,,Southern Rhodesia,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+58,MW_M,1968-07-06,Malawi Independence Tournament,Kenya,home,,,,,Malawi,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+59,MW_M,1968-09-06,Friendly,Botswana,away,1,,,,Swaziland,8,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+60,MW_M,1968-09-07,Friendly,Swaziland,away,,,,,Swaziland,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,Eswatini,backfill
+61,MW_M,1969-01-31,Friendly,Southern Rhodesia,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+62,MW_M,1969-02-01,Friendly,Southern Rhodesia,home,,,,,Malawi,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,3000,,,,,backfill
+63,MW_M,1969-02-02,Friendly,Southern Rhodesia,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,8000,,,,,backfill
+64,MW_M,1969-02-08,Friendly,Southern Rhodesia,away,,,,,Southern Rhodesia,0,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-3,3007,,,,,backfill
+65,MW_M,1969-02-09,Friendly,Southern Rhodesia,away,,,,,Southern Rhodesia,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,5748,,,,,backfill
+66,MW_M,1969-05-04,Friendly,Southern Rhodesia,away,,,,,Southern Rhodesia,1,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+67,MW_M,1969-06-27,Friendly,Madagascar,away,,,,,Madagascar,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+68,MW_M,1969-07-06,Malawi Independence Tournament,Swaziland,home,,,,,Malawi,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,Eswatini,backfill
+69,MW_M,1969-07-09,Friendly,Swaziland,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,Eswatini,backfill
+70,MW_M,1969-08-30,Peter Stuyvesant Trophy,Zambia,away,,,,,Zambia,0,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+71,MW_M,1969-08-31,Peter Stuyvesant Trophy,Zambia,away,,,,,Zambia,0,5,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+72,MW_M,1969-09-02,Peter Stuyvesant Trophy,Zambia,away,,,,,Zambia,0,7,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+73,MW_M,1970-07-06,Malawi Independence Tournament,Mauritius,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+74,MW_M,1970-07-09,Malawi Independence Tournament,Mauritius,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+75,MW_M,1971-03-18,Friendly,Zambia,home,,,,,Malawi,5,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+76,MW_M,1971-03-20,Friendly,Zambia,home,,,,,Malawi,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+77,MW_M,1971-03-23,Friendly,Zambia,home,,,,,Malawi,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+78,MW_M,1971-04-11,Olympic Qualification,Madagascar,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,,,,,,backfill
+79,MW_M,1971-05-09,Olympic Qualification,Madagascar,away,,,,,Madagascar,2,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-2,,,,,,backfill
+80,MW_M,1971-05-25,Friendly,Uganda,away,,,,,Uganda,3,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+81,MW_M,1971-07-06,Malawi Independence Tournament,Uganda,home,,,,,Malawi,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+82,MW_M,1971-07-10,Malawi Independence Tournament,Uganda,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+83,MW_M,1971-08-07,Friendly,Lesotho,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+84,MW_M,1971-08-10,Friendly,Lesotho,home,,,,,Malawi,6,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+85,MW_M,1971-10-08,Friendly,Lesotho,away,,,,,Lesotho,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+86,MW_M,1971-10-10,Friendly,Lesotho,away,,,,,Lesotho,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+87,MW_M,1972-07-06,Malawi Independence Tournament,Lesotho,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+88,MW_M,1972-07-08,Malawi Independence Tournament,Lesotho,home,,,,,Malawi,4,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+89,MW_M,1972-10-20,Friendly,Kenya,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+90,MW_M,1972-10-22,Friendly,Kenya,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+91,MW_M,1973-07-06,Malawi Independence Tournament,Mauritius,home,,,,,Malawi,4,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+92,MW_M,1973-07-08,Malawi Independence Tournament,Mauritius,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+93,MW_M,1973-09-06,Friendly,Swaziland,away,,,,,Swaziland,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,Eswatini,backfill
+94,MW_M,1974-01-13,Friendly,Mauritius,away,,,,,Mauritius,1,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,,,,,,backfill
+95,MW_M,1974-01-17,Friendly,Mauritius,away,,,,,Mauritius,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,,,,,,backfill
+96,MW_M,1974-01-20,Friendly,Mauritius,away,,,,,Mauritius,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,,backfill
+97,MW_M,1974-07-06,Malawi Independence Tournament,Ivory Coast,home,,,,,Malawi,5,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+98,MW_M,1974-07-07,Malawi Independence Tournament,Tanzania,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+99,MW_M,1974-07-08,Malawi Independence Tournament,Zambia,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+100,MW_M,1974-12-29,Friendly,Tanzania,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+101,MW_M,1974-12-31,Friendly,Tanzania,home,,,,,Malawi,3,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+102,MW_M,1975-01-29,Friendly,Mauritius,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+103,MW_M,1975-01-31,Friendly,Mauritius,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+104,MW_M,1975-02-02,Friendly,Mauritius,home,,,,,Malawi,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+105,MW_M,1975-02-23,Friendly,Tanzania,away,,,,,Tanzania,1,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+106,MW_M,1975-02-25,Friendly,Tanzania,away,,,,,Tanzania,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+107,MW_M,1975-02-27,Friendly,Zanzibar,away,,,,,Zanzibar,7,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+108,MW_M,1975-03-29,AFCON Qualification,Zambia,home,,,,,Malawi,1,6,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,40000,,,,,backfill
+109,MW_M,1975-04-13,AFCON Qualification,Zambia,away,,,,,Zambia,3,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,10000,,,,,backfill
+110,MW_M,1975-07-06,Malawi Independence Tournament,Kenya,home,,,,,Malawi,3,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+111,MW_M,1975-07-08,Malawi Independence Tournament,Kenya,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+112,MW_M,1975-07-10,Malawi Independence Tournament,Kenya,home,,,,,Malawi,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+113,MW_M,1975-08-31,Olympic Qualification,Zambia,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+114,MW_M,1975-10-12,Olympic Qualification,Zambia,away,,,,,Zambia,1,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+115,MW_M,1975-11-01,CECAFA Cup,Tanzania,away,1,,,,Zambia,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+116,MW_M,1975-11-03,CECAFA Cup,Zanzibar,away,1,,,,Zambia,4,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+117,MW_M,1975-11-07,CECAFA Cup,Uganda,away,1,,,,Zambia,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,,,,,,,backfill
+118,MW_M,1975-11-09,CECAFA Cup,Kenya,away,1,,,,Zambia,2,2,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,1-0,,2-3,,,,backfill
+119,MW_M,1975-12-20,Friendly,Swaziland,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,Eswatini,backfill
+120,MW_M,1975-12-22,Friendly,Swaziland,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,Eswatini,backfill
+121,MW_M,1976-02-28,Friendly,Lesotho,home,,,,,Malawi,4,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+122,MW_M,1976-03-02,Friendly,Lesotho,home,,,,,Malawi,0,1,abandoned,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,53,,,backfill
+123,MW_M,1976-05-09,World Cup Qualification,Zambia,away,,,,,Zambia,0,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,16000,,,,,backfill
+124,MW_M,1976-05-30,World Cup Qualification,Zambia,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,8230,,,,,backfill
+125,MW_M,1976-07-06,Malawi Independence Tournament,Kenya,home,,,,,Malawi,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+126,MW_M,1976-07-08,Malawi Independence Tournament,Sierra Leone,home,,,,,Malawi,4,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+127,MW_M,1976-09-04,Friendly,Uganda,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+128,MW_M,1976-09-05,Friendly,Uganda,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+129,MW_M,1976-09-13,Botswana Independence Tournament,Botswana,away,,,,,Botswana,7,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+130,MW_M,1976-09-15,Botswana Independence Tournament,Botswana,away,,,,,Botswana,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+131,MW_M,1976-10-24,AFCON Qualification,Mauritius,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,20000,,,,,backfill
+132,MW_M,1976-10-31,AFCON Qualification,Mauritius,away,,,,,Mauritius,2,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,5000,,,,,backfill
+133,MW_M,1976-11-07,CECAFA Cup,Tanzania,away,1,,,,Zanzibar,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-1,,,,,,backfill
+134,MW_M,1976-11-09,CECAFA Cup,Kenya,away,1,,,,Zanzibar,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-2,,,,,,backfill
+135,MW_M,1976-11-12,CECAFA Cup,Uganda,away,1,,,,Zanzibar,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,0-2,,,,,,backfill
+136,MW_M,1977-03-27,Friendly,Zambia,away,,,,,Zambia,1,8,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+137,MW_M,1977-07-06,Malawi Independence Tournament,Tanzania,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+138,MW_M,1977-07-08,Malawi Independence Tournament,Tanzania,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+139,MW_M,1977-07-10,Malawi Independence Tournament,Tanzania,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+140,MW_M,1977-09-30,Botswana Independence Tournament,Botswana,away,,,,,Botswana,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+141,MW_M,1977-10-01,Botswana Independence Tournament,Botswana,away,,,,,Botswana,5,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+142,MW_M,1977-11-11,Friendly,Lesotho,home,,,,,Malawi,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+143,MW_M,1977-11-13,Friendly,Lesotho,home,,,,,Malawi,6,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+144,MW_M,1977-11-29,CECAFA Cup,Zambia,away,1,,,,Somalia,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+145,MW_M,1977-12-01,CECAFA Cup,Tanzania,away,1,,,,Somalia,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+146,MW_M,1977-12-06,CECAFA Cup,Uganda,away,1,,,,Somalia,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,,,,,,,backfill
+147,MW_M,1977-12-08,CECAFA Cup,Kenya,away,1,,,,Somalia,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,3p,1-0,,,,,,backfill
+148,MW_M,1977-12-12,Jamhuri Cup,Kenya,away,,,,,Kenya,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,,,,,,backfill
+149,MW_M,1978-01-24,All-Africa Games Qualification,Mauritius,away,,,,,Mauritius,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+150,MW_M,1978-06-18,Friendly,Zambia,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+151,MW_M,1978-06-25,Friendly,Zambia,away,,,,,Zambia,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+152,MW_M,1978-07-06,Malawi Independence Tournament,Sierra Leone,home,,,,,Malawi,5,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+153,MW_M,1978-07-09,Malawi Independence Tournament,Sierra Leone,home,,,,,Malawi,4,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+154,MW_M,1978-07-14,All-Africa Games,Libya,away,1,,,,Algeria,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+155,MW_M,1978-07-18,All-Africa Games,Egypt,away,1,,,,Algeria,1,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+156,MW_M,1978-07-22,All-Africa Games,Algeria,away,,,,,Algeria,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+157,MW_M,1978-07-26,All-Africa Games,Nigeria,away,1,,,,Algeria,2,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,,,,,,,backfill
+158,MW_M,1978-07-28,All-Africa Games,Ghana,away,1,,,,Algeria,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,3p,,,,,,,backfill
+159,MW_M,1978-10-22,Friendly,Algeria,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+160,MW_M,1978-10-24,Friendly,Algeria,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+161,MW_M,1978-11-05,CECAFA Cup,Somalia,home,,,,,Malawi,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+162,MW_M,1978-11-07,CECAFA Cup,Kenya,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+163,MW_M,1978-11-11,CECAFA Cup,Zambia,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+164,MW_M,1978-11-15,CECAFA Cup,Uganda,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+165,MW_M,1978-11-17,CECAFA Cup,Kenya,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,1-0,,,,,,backfill
+166,MW_M,1978-11-19,CECAFA Cup,Zambia,home,,,,,Malawi,3,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,1-0,,,,,,backfill
+167,MW_M,1978-12-03,AFCON Qualification,Madagascar,away,,,,,Madagascar,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,10000,,,,,backfill
+168,MW_M,1978-12-17,AFCON Qualification,Madagascar,home,,,,,Malawi,5,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,20000,,,,,backfill
+169,MW_M,1979-04-15,AFCON Qualification,Zambia,home,,,,,Malawi,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,40000,,,,,backfill
+170,MW_M,1979-04-29,AFCON Qualification,Zambia,away,,,,,Zambia,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,20000,,,,,backfill
+171,MW_M,1979-06-24,Friendly,Lesotho,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+172,MW_M,1979-06-26,Friendly,Lesotho,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+173,MW_M,1979-07-06,Malawi Independence Tournament,Kenya,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+174,MW_M,1979-07-08,Malawi Independence Tournament,Kenya,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+175,MW_M,1979-07-15,Friendly,Tanzania,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+176,MW_M,1979-07-17,Friendly,Tanzania,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+177,MW_M,1979-07-19,Friendly,Tanzania,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+178,MW_M,1979-08-25,Friendly,Lesotho,away,,,,,Lesotho,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+179,MW_M,1979-11-04,CECAFA Cup,Sudan,away,1,,,,Kenya,4,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+180,MW_M,1979-11-07,CECAFA Cup,Zanzibar,away,1,,,,Kenya,4,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+181,MW_M,1979-11-13,CECAFA Cup,Tanzania,away,1,,,,Kenya,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,,,,,,,backfill
+182,MW_M,1979-11-14,CECAFA Cup,Tanzania,away,1,,,,Kenya,0,0,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,,,1-4,,,,backfill
+183,MW_M,1979-11-17,CECAFA Cup,Kenya,away,,,,,Kenya,3,2,played,,1,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,0-2,,,,,,backfill
+184,MW_M,1980-05-11,Friendly,Zambia,away,,,,,Zambia,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+185,MW_M,1980-06-15,Friendly,Zambia,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+186,MW_M,1980-06-29,World Cup Qualification,Cameroon,away,,,,,Cameroon,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,41970,,,,,backfill
+187,MW_M,1980-07-06,Malawi Independence Tournament,Zimbabwe,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+188,MW_M,1980-07-08,Malawi Independence Tournament,Zimbabwe,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+189,MW_M,1980-07-20,World Cup Qualification,Cameroon,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,30000,,,,,backfill
+190,MW_M,1980-10-26,AFCON Qualification,Zimbabwe,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,40000,,,,,backfill
+191,MW_M,1980-11-09,AFCON Qualification,Zimbabwe,away,,,,,Zimbabwe,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,30000,,,,,backfill
+192,MW_M,1980-11-16,CECAFA Cup,Zanzibar,away,1,,,,Sudan,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+193,MW_M,1980-11-19,CECAFA Cup,Kenya,away,1,,,,Sudan,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+194,MW_M,1980-11-22,CECAFA Cup,Zambia B,away,1,,,,Sudan,2,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,r1,,,,,,,backfill
+195,MW_M,1980-11-24,CECAFA Cup,Tanzania,away,1,,,,Sudan,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,,,,,,,backfill
+196,MW_M,1980-11-27,CECAFA Cup,Zambia B,away,1,,,,Sudan,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,3p,,,,,,,backfill
+197,MW_M,1981-04-18,Tournament in Zimbabwe,Botswana,away,1,,,,Zimbabwe,5,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,qf,,,,,,,backfill
+198,MW_M,1981-04-19,Tournament in Zimbabwe,Zambia,away,1,,,,Zimbabwe,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,,,,,,,backfill
+199,MW_M,1981-04-20,Tournament in Zimbabwe,Zimbabwe,away,,,,,Zimbabwe,0,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,,,,,,,backfill
+200,MW_M,1981-06-19,Friendly,Tanzania,home,,,,,Malawi,4,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+201,MW_M,1981-06-21,Friendly,Tanzania,home,,,,,Malawi,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+202,MW_M,1981-06-23,Friendly,Tanzania,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+203,MW_M,1981-07-06,Malawi Independence Tournament,Mozambique,home,,,,,Malawi,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+204,MW_M,1981-07-10,Malawi Independence Tournament,Zimbabwe,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+205,MW_M,1981-09-04,Swaziland Independence Tournament,Zimbabwe,away,1,,,,Swaziland,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+206,MW_M,1981-09-05,Swaziland Independence Tournament,Lesotho,away,1,,,,Swaziland,4,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+207,MW_M,1981-09-06,Swaziland Independence Tournament,Swaziland,away,,,,,Swaziland,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,Eswatini,backfill
+208,MW_M,1981-11-01,Friendly,Mozambique B,away,,,,,Mozambique,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,,,,,,,backfill
+209,MW_M,1981-11-04,Friendly,Mozambique,away,,,,,Mozambique,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+210,MW_M,1981-11-15,CECAFA Cup,Kenya,away,1,,,,Tanzania,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+211,MW_M,1981-11-18,CECAFA Cup,Tanzania,away,,,,,Tanzania,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+212,MW_M,1981-11-20,CECAFA Cup,Zanzibar,away,1,,,,Tanzania,4,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+213,MW_M,1982-07-06,Malawi Independence Tournament,Tanzania,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+214,MW_M,1982-07-08,Malawi Independence Tournament,Tanzania,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+215,MW_M,1982-09-12,AFCON Qualification,Zimbabwe,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,60000,,,,,backfill
+216,MW_M,1982-10-03,AFCON Qualification,Zimbabwe,away,,,,,Zimbabwe,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,40000,,,,,backfill
+217,MW_M,1982-11-13,CECAFA Cup,Uganda,away,,,,,Uganda,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,35000,,,,,backfill
+218,MW_M,1982-11-16,CECAFA Cup,Zimbabwe,away,1,,,,Uganda,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+219,MW_M,1982-11-19,CECAFA Cup,Tanzania,away,1,,,,Uganda,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+220,MW_M,1983-06-16,Mozambique Independence Tournament,Mozambique,away,,,,,Mozambique,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+221,MW_M,1983-06-18,Mozambique Independence Tournament,Mozambique,away,,,,,Mozambique,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+222,MW_M,1983-07-06,Malawi Independence Tournament,Zimbabwe,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+223,MW_M,1983-07-08,Malawi Independence Tournament,Zimbabwe,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+224,MW_M,1983-08-14,AFCON Qualification,Madagascar,away,,,,,Madagascar,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,30000,,,,,backfill
+225,MW_M,1983-08-28,AFCON Qualification,Madagascar,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,30000,,,,,backfill
+226,MW_M,1983-10-22,Friendly,Tanzania,away,,,,,Tanzania,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+227,MW_M,1983-10-24,Friendly,Tanzania,away,,,,,Tanzania,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+228,MW_M,1983-10-26,Friendly,Zanzibar,away,,,,,Zanzibar,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+229,MW_M,1983-10-29,Friendly,Tanzania,away,,,,,Tanzania,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+230,MW_M,1983-11-13,CECAFA Cup,Zimbabwe,away,1,,,,Kenya,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+231,MW_M,1983-11-17,CECAFA Cup,Somalia,away,1,,,,Kenya,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+232,MW_M,1983-11-20,CECAFA Cup,Zanzibar,away,1,,,,Kenya,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+233,MW_M,1983-11-23,CECAFA Cup,Kenya,away,,,,,Kenya,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,0-1,,,,,,backfill
+234,MW_M,1983-11-25,CECAFA Cup,Uganda,away,1,,,,Kenya,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,3p,,,,,,,backfill
+235,MW_M,1984-02-12,Friendly,Zambia,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+236,MW_M,1984-02-15,Friendly,Zambia,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+237,MW_M,1984-03-05,Africa Cup of Nations,Algeria,away,1,,,,Ivory Coast,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-3,10000,,,,,backfill
+238,MW_M,1984-03-08,Africa Cup of Nations,Nigeria,away,1,,,,Ivory Coast,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,2-2,10000,,,,,backfill
+239,MW_M,1984-03-11,Africa Cup of Nations,Ghana,away,1,,,,Ivory Coast,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-1,3000,,,,,backfill
+240,MW_M,1984-07-06,Malawi Independence Tournament,Kenya,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,,backfill
+241,MW_M,1984-07-08,Malawi Independence Tournament,Kenya,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+242,MW_M,1984-07-10,Malawi Independence Tournament,Kenya,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,,,,,,backfill
+243,MW_M,1984-07-15,World Cup Qualification,Mauritius,away,,,,,Mauritius,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,10892,,,,,backfill
+244,MW_M,1984-07-28,World Cup Qualification,Mauritius,home,,,,,Malawi,4,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,25000,,,,,backfill
+245,MW_M,1984-11-17,Friendly,Zimbabwe,home,,,,,Malawi,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+246,MW_M,1984-11-19,Friendly,Zimbabwe,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+247,MW_M,1984-12-02,CECAFA Cup,Kenya,away,1,,,,Uganda,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,,,,,,backfill
+248,MW_M,1984-12-05,CECAFA Cup,Somalia,away,1,,,,Uganda,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+249,MW_M,1984-12-09,CECAFA Cup,Zanzibar,away,1,,,,Uganda,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+250,MW_M,1984-12-12,CECAFA Cup,Uganda,away,,,,,Uganda,2,0,played,,1,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,0-0,,,,,,backfill
+251,MW_M,1984-12-15,CECAFA Cup,Zambia,away,1,,,,Uganda,0,0,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,0-0,,0-3,,,,backfill
+252,MW_M,1985-03-23,Friendly,Zambia,away,,,,,Zambia,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+253,MW_M,1985-03-25,Friendly,Zambia,away,,,,,Zambia,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+254,MW_M,1985-03-30,AFCON Qualification,Mozambique,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+255,MW_M,1985-04-07,World Cup Qualification,Morocco,away,,,,,Morocco,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,20862,,,,,backfill
+256,MW_M,1985-04-16,AFCON Qualification,Mozambique,away,,,,,Mozambique,1,1,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,5-6,,,,backfill
+257,MW_M,1985-04-21,World Cup Qualification,Morocco,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,20000,,,,,backfill
+258,MW_M,1985-05-02,Friendly,Zimbabwe,away,,,,,Zimbabwe,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+259,MW_M,1985-07-01,Indian Ocean Tournament,Réunion,away,,,,,Réunion,8,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+260,MW_M,1985-07-02,Indian Ocean Tournament,Zaire,away,1,,,,Réunion,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,DR Congo,backfill
+261,MW_M,1985-07-06,Malawi Independence Tournament,Tanzania,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+262,MW_M,1985-07-08,Malawi Independence Tournament,Tanzania,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+263,MW_M,1985-07-10,Malawi Independence Tournament,Tanzania,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+264,MW_M,1985-10-04,CECAFA Cup,Uganda,away,1,,,,Zimbabwe,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+265,MW_M,1985-10-06,CECAFA Cup,Zambia,away,1,,,,Zimbabwe,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-1,,,,,,backfill
+266,MW_M,1985-10-10,CECAFA Cup,Zimbabwe,away,,,,,Zimbabwe,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,0-1,,,,,,backfill
+267,MW_M,1985-10-12,CECAFA Cup,Uganda,away,1,,,,Zimbabwe,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,3p,,,,,,,backfill
+268,MW_M,1986-02-23,Friendly,Zambia,away,,,,,Zambia,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,,,,,,,backfill
+269,MW_M,1986-06-21,Friendly,Zambia,home,,,,,Malawi,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+270,MW_M,1986-06-22,Friendly,Zambia,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+271,MW_M,1986-07-06,Malawi Independence Tournament,Uganda,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+272,MW_M,1986-07-08,Malawi Independence Tournament,Uganda,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+273,MW_M,1986-07-10,Malawi Independence Tournament,Uganda,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+274,MW_M,1986-07-19,All-Africa Games Qualification,Zimbabwe,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+275,MW_M,1986-08-03,All-Africa Games Qualification,Zimbabwe,away,,,,,Zimbabwe,1,1,played,,,TRUE,win,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,4-2,,,,backfill
+276,MW_M,1986-09-30,Botswana Independence Tournament,Botswana,away,,,,,Botswana,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+277,MW_M,1986-11-16,Olympic Qualification,Rwanda,away,,,,,Rwanda,5,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+278,MW_M,1986-11-30,Olympic Qualification,Rwanda,home,,,,,Malawi,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+279,MW_M,1987-01-04,All-Africa Games Qualification,Swaziland,away,,,,,Swaziland,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,Eswatini,backfill
+280,MW_M,1987-01-18,All-Africa Games Qualification,Swaziland,home,,,,,Malawi,6,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-0,,,,,Eswatini,backfill
+281,MW_M,1987-04-05,All-Africa Games Qualification,Zambia,away,,,,,Zambia,1,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+282,MW_M,1987-04-18,All-Africa Games Qualification,Zambia,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,40000,,,,,backfill
+283,MW_M,1987-06-13,Friendly,Zimbabwe,home,,,,,Malawi,1,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+284,MW_M,1987-06-14,Friendly,Zimbabwe,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+285,MW_M,1987-06-17,Olympic Qualification,Cameroon,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+286,MW_M,1987-07-03,AFCON Qualification,Ivory Coast,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,30000,,,,,backfill
+287,MW_M,1987-07-12,Olympic Qualification,Cameroon,away,,,,,Cameroon,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+288,MW_M,1987-07-19,AFCON Qualification,Ivory Coast,away,,,,,Ivory Coast,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,45000,,,,,backfill
+289,MW_M,1987-08-02,All-Africa Games,Ivory Coast,away,1,,,,Kenya,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+290,MW_M,1987-08-04,All-Africa Games,Senegal,away,1,,,,Kenya,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,,,,,,backfill
+291,MW_M,1987-08-06,All-Africa Games,Egypt,away,1,,,,Kenya,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,,,,,,backfill
+292,MW_M,1987-08-10,All-Africa Games,Kenya,away,,,,,Kenya,1,1,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,0-1,35000,2-3,,,,backfill
+293,MW_M,1987-08-12,All-Africa Games,Cameroon,away,1,,,,Kenya,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,3p,1-1,25000,,,,,backfill
+294,MW_M,1987-09-02,Friendly,Zambia,away,,,,,Zambia,1,7,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+295,MW_M,1987-12-02,Friendly,Tunisia,away,,,,,Tunisia,3,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-1,,,,,,backfill
+296,MW_M,1987-12-13,CECAFA Cup,Zimbabwe,away,1,,,,Ethiopia,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+297,MW_M,1988-06-10,Mozambique Independence Tournament,Mozambique,away,,,,,Mozambique,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+298,MW_M,1988-06-14,Mozambique Independence Tournament,Mozambique,away,,,,,Mozambique,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+299,MW_M,1988-07-06,Malawi Independence Tournament,Zambia,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+300,MW_M,1988-07-08,Malawi Independence Tournament,Zambia,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+301,MW_M,1988-07-10,Malawi Independence Tournament,Zambia,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+302,MW_M,1988-07-16,World Cup Qualification,Uganda,away,,,,,Uganda,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,5613,,,,,backfill
+303,MW_M,1988-07-30,World Cup Qualification,Uganda,home,,,,,Malawi,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-0,25000,,,,,backfill
+304,MW_M,1988-08-04,Friendly,Zambia,away,,,,,Zambia,1,7,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+305,MW_M,1988-08-31,Friendly,Zambia,away,,,,,Zambia,1,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+306,MW_M,1988-09-26,Friendly,Mozambique,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+307,MW_M,1988-09-28,Friendly,Mozambique,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+308,MW_M,1988-10-12,Tournament in Kenya,Kenya,away,,,,,Kenya,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,,backfill
+309,MW_M,1988-10-14,Tournament in Kenya,Kenya,away,,,,,Kenya,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,,,,,,backfill
+310,MW_M,1988-11-06,CECAFA Cup,Tanzania,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+311,MW_M,1988-11-10,CECAFA Cup,Zanzibar,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,,,,,,,backfill
+312,MW_M,1988-11-12,CECAFA Cup,Kenya,home,,,,,Malawi,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,2-0,,,,,,backfill
+313,MW_M,1988-11-16,CECAFA Cup,Zimbabwe,home,,,,,Malawi,0,0,abandoned,,1,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,0-0,,,107,,,backfill
+314,MW_M,1988-11-17,CECAFA Cup,Zimbabwe,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,0-0,,,,,,backfill
+315,MW_M,1988-11-19,CECAFA Cup,Zambia,home,,,,,Malawi,3,1,played,,1,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,0-1,50000,,,,,backfill
+316,MW_M,1989-01-07,World Cup Qualification,Kenya,away,,,,,Kenya,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,30000,,,,,backfill
+317,MW_M,1989-01-21,World Cup Qualification,Egypt,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,25000,,,,,backfill
+318,MW_M,1989-03-26,Friendly,Ethiopia,away,,,,,Ethiopia,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+319,MW_M,1989-03-28,Friendly,Ethiopia,away,,,,,Ethiopia,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+320,MW_M,1989-04-09,AFCON Qualification,Swaziland,away,,,,,Swaziland,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-0,10000,,,,Eswatini,backfill
+321,MW_M,1989-04-23,AFCON Qualification,Swaziland,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,20000,,,,Eswatini,backfill
+322,MW_M,1989-06-03,Friendly,Tunisia,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+323,MW_M,1989-06-11,World Cup Qualification,Liberia,away,,,,,Liberia,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,28000,,,,,backfill
+324,MW_M,1989-06-24,World Cup Qualification,Kenya,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,25000,,,,,backfill
+325,MW_M,1989-07-06,Malawi Independence Tournament,Gabon,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+326,MW_M,1989-07-09,Malawi Independence Tournament,Mozambique,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+327,MW_M,1989-07-11,Malawi Independence Tournament,Mozambique,home,,,,,Malawi,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+328,MW_M,1989-07-15,AFCON Qualification,Kenya,home,,,,,Malawi,2,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,40000,,,,,backfill
+329,MW_M,1989-07-29,AFCON Qualification,Kenya,away,,,,,Kenya,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,40000,,,,,backfill
+330,MW_M,1989-08-05,Friendly,Tunisia,away,,,,,Tunisia,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,12000,,,,,backfill
+331,MW_M,1989-08-12,World Cup Qualification,Egypt,away,,,,,Egypt,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,55000,,,,,backfill
+332,MW_M,1989-08-26,World Cup Qualification,Liberia,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,17000,,,,,backfill
+333,MW_M,1989-12-02,CECAFA Cup,Zanzibar,away,1,,,,Kenya,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+334,MW_M,1989-12-06,CECAFA Cup,Kenya B,away,,,,,Kenya,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,r1,0-0,,,,,,backfill
+335,MW_M,1989-12-09,CECAFA Cup,Zambia,away,1,,,,Kenya,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+336,MW_M,1989-12-14,CECAFA Cup,Kenya,away,,,,,Kenya,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,1-0,,,,,,backfill
+337,MW_M,1989-12-16,CECAFA Cup,Uganda,away,1,,,,Kenya,3,3,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,3-2,,1-2,,,,backfill
+338,MW_M,1990-01-20,SADCC Tournament,Tanzania,away,1,,,,Swaziland,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,10000,,,,,backfill
+339,MW_M,1990-01-21,SADCC Tournament,Botswana,away,1,,,,Swaziland,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,15000,,,,,backfill
+340,MW_M,1990-01-23,SADCC Tournament,Swaziland,away,,,,,Swaziland,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,20000,,,,Eswatini,backfill
+341,MW_M,1990-07-06,Malawi Independence Tournament,Tanzania,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,,backfill
+342,MW_M,1990-07-09,Malawi Independence Tournament,Tanzania,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+343,MW_M,1990-07-11,Malawi Independence Tournament,Tanzania,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+344,MW_M,1990-08-04,Friendly,Zaire,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,DR Congo,backfill
+345,MW_M,1990-08-06,Friendly,Zaire,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,DR Congo,backfill
+346,MW_M,1990-08-08,Friendly,Zaire,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,DR Congo,backfill
+347,MW_M,1990-08-18,AFCON Qualification,Congo,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,15000,,,,,backfill
+348,MW_M,1990-12-09,CECAFA Cup,Zimbabwe,away,1,,,,Zanzibar,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+349,MW_M,1990-12-11,CECAFA Cup,Tanzania,away,1,,,,Zanzibar,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,,,,,,backfill
+350,MW_M,1990-12-14,CECAFA Cup,Zanzibar,away,,,,,Zanzibar,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-2,,,,,,backfill
+351,MW_M,1991-04-14,AFCON Qualification,Zimbabwe,away,,,,,Zimbabwe,0,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,12000,,,,,backfill
+352,MW_M,1991-04-28,AFCON Qualification,Congo,away,,,,,Congo,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,23000,,,,,backfill
+353,MW_M,1991-07-06,Malawi Independence Tournament,Kenya,home,,,,,Malawi,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+354,MW_M,1991-07-08,Malawi Independence Tournament,Kenya,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+355,MW_M,1991-07-10,Malawi Independence Tournament,Kenya,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,,backfill
+356,MW_M,1991-07-27,AFCON Qualification,Zimbabwe,home,,,,,Malawi,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,5000,,,,,backfill
+357,MW_M,1991-08-19,Friendly,Mozambique,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+358,MW_M,1991-08-20,Friendly,Mozambique,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+359,MW_M,1991-11-25,CECAFA Cup,Zanzibar,away,1,,,,Uganda,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,,,,,,backfill
+360,MW_M,1991-11-28,CECAFA Cup,Kenya,away,1,,,,Uganda,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-1,,,,,,backfill
+361,MW_M,1991-12-01,CECAFA Cup,Zambia,away,1,,,,Uganda,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+362,MW_M,1991-12-30,Friendly,Zambia,home,,,,,Malawi,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+363,MW_M,1992-07-06,Malawi Independence Tournament,Zimbabwe,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+364,MW_M,1992-07-08,Malawi Independence Tournament,Zimbabwe,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+365,MW_M,1992-07-11,Malawi Independence Tournament,Zimbabwe,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+366,MW_M,1992-08-15,AFCON Qualification,Egypt,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,40000,,,,,backfill
+367,MW_M,1992-08-29,AFCON Qualification,Mali,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,40000,,,,,backfill
+368,MW_M,1992-11-07,Friendly,Zimbabwe,away,,,,,Zimbabwe,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,,,,,,,backfill
+369,MW_M,1992-11-09,Friendly,Zimbabwe,away,,,,,Zimbabwe,1,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,,,,,,,backfill
+370,MW_M,1992-11-16,CECAFA Cup,Tanzania,away,,,,,Tanzania,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+371,MW_M,1992-11-19,CECAFA Cup,Zambia,away,1,,,,Tanzania,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,,,,,,backfill
+372,MW_M,1992-11-22,CECAFA Cup,Ethiopia,away,1,,,,Tanzania,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,,,,,,backfill
+373,MW_M,1992-11-24,CECAFA Cup,Zanzibar,away,1,,,,Tanzania,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-1,,,,,,backfill
+374,MW_M,1992-11-25,CECAFA Cup,Tanzania B,away,,,,,Tanzania,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,sf,0-0,,,,,,backfill
+375,MW_M,1992-11-28,CECAFA Cup,Zambia,away,1,,,,Tanzania,0,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,3p,0-2,,,,,,backfill
+376,MW_M,1993-03-27,Friendly,Zambia,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+377,MW_M,1993-04-11,AFCON Qualification,Morocco,away,,,,,Morocco,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,22000,,,,,backfill
+378,MW_M,1993-04-23,AFCON Qualification,Egypt,away,,,,,Egypt,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,30000,,,,,backfill
+379,MW_M,1993-05-22,Friendly,Zambia,away,,,,,Zambia,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,,,,,,backfill
+380,MW_M,1993-05-23,Friendly,Zambia,away,,,,,Zambia,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,,backfill
+381,MW_M,1993-05-25,Friendly,Zambia,away,,,,,Zambia,2,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,,,,,,backfill
+382,MW_M,1993-07-06,Malawi Independence Tournament,Swaziland,home,,,,,Malawi,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-0,,,,,Eswatini,backfill
+383,MW_M,1993-07-08,Malawi Independence Tournament,Swaziland,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,Eswatini,backfill
+384,MW_M,1993-07-10,Malawi Independence Tournament,Swaziland,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,Eswatini,backfill
+385,MW_M,1993-07-11,AFCON Qualification,Mali,away,,,,,Mali,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,40000,,,,,backfill
+386,MW_M,1993-07-24,AFCON Qualification,Morocco,home,,,,,Malawi,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,20000,,,,,backfill
+387,MW_M,1994-02-12,Friendly,Zambia,home,,,,,Malawi,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+388,MW_M,1994-02-13,Friendly,Zambia,home,,,,,Malawi,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+389,MW_M,1994-09-04,AFCON Qualification,Zaire,away,,,,,Zaire,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,50000,,,,DR Congo,backfill
+390,MW_M,1994-10-09,Friendly,Zambia,away,,,,,Zambia,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+391,MW_M,1994-10-15,AFCON Qualification,Zimbabwe,home,,,,,Malawi,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,8000,,,,,backfill
+392,MW_M,1995-01-08,AFCON Qualification,Cameroon,away,,,,,Cameroon,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,35000,,,,,backfill
+393,MW_M,1995-01-22,AFCON Qualification,Lesotho,away,,,,,Lesotho,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,10000,,,,,backfill
+394,MW_M,1995-04-09,AFCON Qualification,Zaire,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,20000,,,,DR Congo,backfill
+395,MW_M,1995-04-23,AFCON Qualification,Zimbabwe,away,,,,,Zimbabwe,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,35000,,,,,backfill
+396,MW_M,1995-07-16,AFCON Qualification,Cameroon,home,,,,,Malawi,1,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,25000,,,,,backfill
+397,MW_M,1996-05-11,Friendly,Zambia,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+398,MW_M,1996-05-12,Friendly,Zambia,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+399,MW_M,1996-05-26,Friendly,Mozambique,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+400,MW_M,1996-06-01,World Cup Qualification,South Africa,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,55000,,,,,backfill
+401,MW_M,1996-06-15,World Cup Qualification,South Africa,away,,,,,South Africa,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-3,30000,,,,,backfill
+402,MW_M,1996-07-06,Malawi Independence Tournament,Tanzania,home,,,,,Malawi,3,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+403,MW_M,1996-07-08,Malawi Independence Tournament,Tanzania,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+404,MW_M,1996-07-10,Malawi Independence Tournament,Tanzania,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+405,MW_M,1996-10-06,AFCON Qualification,Mauritius,away,,,,,Mauritius,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,7000,,,,,backfill
+406,MW_M,1997-01-04,Friendly,Kenya,away,,,,,Kenya,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,,,,,,backfill
+407,MW_M,1997-01-05,Friendly,Kenya,away,,,,,Kenya,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+408,MW_M,1997-01-25,AFCON Qualification,Zambia,home,,,,,Malawi,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,40000,,,,,backfill
+409,MW_M,1997-02-22,AFCON Qualification,Mozambique,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,60000,,,,,backfill
+410,MW_M,1997-03-01,COSAFA Cup,Botswana,away,,,,,Botswana,4,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-1,8000,,,,,backfill
+411,MW_M,1997-04-12,COSAFA Cup,Mozambique,home,,,,,Malawi,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,0-1,15000,,,,,backfill
+412,MW_M,1997-04-19,COSAFA Cup,Zambia,away,,,,,Zambia,0,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,0-2,12000,,,,,backfill
+413,MW_M,1997-06-21,AFCON Qualification,Mauritius,home,,,,,Malawi,3,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,30000,,,,,backfill
+414,MW_M,1997-06-28,COSAFA Cup,Namibia,away,,,,,Namibia,1,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,0-1,8000,,,,,backfill
+415,MW_M,1997-07-06,Malawi Independence Tournament,Botswana,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+416,MW_M,1997-07-12,AFCON Qualification,Zambia,away,,,,,Zambia,1,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,35000,,,,,backfill
+417,MW_M,1997-07-27,AFCON Qualification,Mozambique,away,,,,,Mozambique,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,35000,,,,,backfill
+418,MW_M,1997-08-09,COSAFA Cup,Tanzania,home,,,,,Malawi,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,1-2,9000,,,,,backfill
+419,MW_M,1998-01-03,Friendly,Zimbabwe,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,6000,,,,,backfill
+420,MW_M,1998-01-04,Friendly,Zimbabwe,home,,,,,Malawi,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+421,MW_M,1998-01-10,COSAFA Cup,Zambia,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-1,40000,,,,,backfill
+422,MW_M,1998-07-06,Malawi Independence Tournament,Mozambique,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+423,MW_M,1998-07-08,Malawi Independence Tournament,Mozambique,home,,,,,Malawi,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+424,MW_M,1998-07-11,Malawi Independence Tournament,Mozambique,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+425,MW_M,1998-07-18,Friendly,Zimbabwe,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+426,MW_M,1998-07-20,Friendly,Zimbabwe,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+427,MW_M,1998-08-01,AFCON Qualification,Namibia,away,,,,,Namibia,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,5000,,,,,backfill
+428,MW_M,1998-08-15,AFCON Qualification,Namibia,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,8000,,,,,backfill
+429,MW_M,1999-01-23,Friendly,Zimbabwe,away,,,,,Zimbabwe,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+430,MW_M,1999-01-24,Friendly,Zimbabwe,away,,,,,Zimbabwe,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+431,MW_M,1999-04-24,COSAFA Cup,Angola,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,10000,,,,,backfill
+432,MW_M,1999-05-22,COSAFA Cup,Namibia,home,,,,,Malawi,1,1,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-1,20000,2-4,,,,backfill
+433,MW_M,1999-07-06,Malawi Independence Tournament,Uganda,home,,,,,Malawi,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+434,MW_M,1999-12-04,Friendly,Libya,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+435,MW_M,1999-12-11,Friendly,Rwanda,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+436,MW_M,1999-12-13,Friendly,Rwanda,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+437,MW_M,1999-12-15,Friendly,Rwanda,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+438,MW_M,2000-03-12,Friendly,Zambia,away,,,,,Zambia,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,12000,,,,,backfill
+439,MW_M,2000-03-13,Friendly,Zambia,away,,,,,Zambia,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,14000,,,,,backfill
+440,MW_M,2000-03-25,Friendly,Tanzania,away,,,,,Tanzania,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,,,,,,backfill
+441,MW_M,2000-03-26,Friendly,Tanzania,away,,,,,Tanzania,3,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,,,,,,backfill
+442,MW_M,2000-04-08,World Cup Qualification,Kenya,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,18000,,,,,backfill
+443,MW_M,2000-04-15,COSAFA Cup,Mozambique,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,2-0,15000,,,,,backfill
+444,MW_M,2000-04-22,World Cup Qualification,Kenya,away,,,,,Kenya,0,0,abandoned,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,25000,,87,,,backfill
+445,MW_M,2000-05-20,COSAFA Cup,Angola,home,,,,,Malawi,0,0,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,qf,0-0,17000,4-5,,,,backfill
+446,MW_M,2000-06-04,Friendly,Nigeria,away,,,,,Nigeria,2,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,20000,,,,,backfill
+447,MW_M,2000-06-06,Friendly,Nigeria,away,,,,,Nigeria,1,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,8000,,,,,backfill
+448,MW_M,2000-06-17,World Cup Qualification,Burkina Faso,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,44781,,,,,backfill
+449,MW_M,2000-07-01,AFCON Qualification,Uganda,away,,,,,Uganda,1,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,15000,,,,,backfill
+450,MW_M,2000-07-06,Malawi Independence Tournament,Namibia,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,20000,,,,,backfill
+451,MW_M,2000-07-15,AFCON Qualification,Uganda,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,25000,,,,,backfill
+452,MW_M,2001-01-28,World Cup Qualification,Guinea,away,,,,,Guinea,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,15000,,,,,backfill
+453,MW_M,2001-02-25,World Cup Qualification,South Africa,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,60000,,,,,backfill
+454,MW_M,2001-03-11,World Cup Qualification,Zimbabwe,away,,,,,Zimbabwe,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,25000,,,,,backfill
+455,MW_M,2001-03-17,COSAFA Cup,Botswana,away,,,,,Botswana,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,25000,,,,,backfill
+456,MW_M,2001-04-21,World Cup Qualification,Burkina Faso,away,,,,,Burkina Faso,2,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,22631,,,,,backfill
+457,MW_M,2001-07-01,Malawi Independence Tournament,Swaziland,home,,,,,Malawi,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,Eswatini,backfill
+458,MW_M,2001-07-14,World Cup Qualification,South Africa,away,,,,,South Africa,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,17500,,,,,backfill
+459,MW_M,2001-07-21,COSAFA Cup,South Africa,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,qf,0-0,45000,,,,,backfill
+460,MW_M,2001-07-28,World Cup Qualification,Zimbabwe,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,20000,,,,,backfill
+461,MW_M,2001-08-25,COSAFA Cup,Zimbabwe,home,,,,,Malawi,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,0-1,20000,,,,,backfill
+462,MW_M,2002-05-04,Friendly,Tanzania,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+463,MW_M,2002-05-18,COSAFA Cup,Angola,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,qf,2-0,20000,,,,,backfill
+464,MW_M,2002-06-08,Friendly,Botswana,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+465,MW_M,2002-06-09,Friendly,Botswana,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+466,MW_M,2002-07-07,Malawi Independence Tournament,Zimbabwe,home,,,,,Malawi,3,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-0,35000,,,,,backfill
+467,MW_M,2002-07-08,Malawi Independence Tournament,Zimbabwe,home,,,,,Malawi,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,20000,,,,,backfill
+468,MW_M,2002-08-10,COSAFA Cup,Zambia,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,0-0,25000,,,,,backfill
+469,MW_M,2002-09-21,COSAFA Cup,South Africa,home,,,,,Malawi,1,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,1-1,60000,,,,,backfill
+470,MW_M,2002-09-28,COSAFA Cup,South Africa,away,,,,,South Africa,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,0-0,30000,,,,,backfill
+471,MW_M,2002-10-12,AFCON Qualification,Angola,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,40000,,,,,backfill
+472,MW_M,2003-02-22,Friendly,DR Congo,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+473,MW_M,2003-02-23,Friendly,DR Congo,home,,,,,Malawi,2,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,,backfill
+474,MW_M,2003-03-16,Friendly,Zimbabwe,away,,,,,Zimbabwe,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,10000,,,,,backfill
+475,MW_M,2003-03-29,AFCON Qualification,Nigeria,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,60000,,,,,backfill
+476,MW_M,2003-05-17,Friendly,Zambia,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+477,MW_M,2003-05-21,Friendly,Lesotho,away,,,,,Lesotho,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+478,MW_M,2003-05-25,COSAFA Cup,Botswana,away,,,,,Botswana,1,1,played,,,TRUE,win,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,qf,0-1,25000,4-1,,,,backfill
+479,MW_M,2003-06-07,AFCON Qualification,Nigeria,away,,,,,Nigeria,1,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-4,40000,,,,,backfill
+480,MW_M,2003-07-06,AFCON Qualification,Angola,away,,,,,Angola,1,5,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-3,10000,,,,,backfill
+481,MW_M,2003-08-16,COSAFA Cup,Zambia,home,,,,,Malawi,1,1,played,,,TRUE,win,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,1-0,55000,4-2,,,,backfill
+482,MW_M,2003-09-27,COSAFA Cup,Zimbabwe,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,0-1,60000,,,,,backfill
+483,MW_M,2003-10-05,COSAFA Cup,Zimbabwe,away,,,,,Zimbabwe,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,0-1,15000,,,,,backfill
+484,MW_M,2003-10-12,World Cup & AFCON Qualification,Ethiopia,away,,,,,Ethiopia,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,30000,,,,,backfill
+485,MW_M,2003-11-15,World Cup & AFCON Qualification,Ethiopia,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,20000,,,,,backfill
+486,MW_M,2004-05-22,Friendly,Zambia,away,,,,,Zambia,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,20000,,,,,backfill
+487,MW_M,2004-06-05,World Cup & AFCON Qualification,Morocco,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,30040,,,,,backfill
+488,MW_M,2004-06-13,COSAFA Cup,Mozambique,away,,,,,Mozambique,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-1,30000,,,,,backfill
+489,MW_M,2004-06-19,World Cup & AFCON Qualification,Botswana,away,,,,,Botswana,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,15000,,,,,backfill
+490,MW_M,2004-07-03,World Cup & AFCON Qualification,Guinea,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,11383,,,,,backfill
+491,MW_M,2004-07-06,Malawi Independence Tournament,Swaziland,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,Eswatini,backfill
+492,MW_M,2004-07-08,Malawi Independence Tournament,Swaziland,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,,,,,,Eswatini,backfill
+493,MW_M,2004-09-04,World Cup & AFCON Qualification,Kenya,away,,,,,Kenya,2,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-3,13000,,,,,backfill
+494,MW_M,2004-10-09,World Cup & AFCON Qualification,Tunisia,home,,,,,Malawi,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-0,20000,,,,,backfill
+495,MW_M,2005-02-27,Friendly,Zimbabwe,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,,backfill
+496,MW_M,2005-03-26,World Cup & AFCON Qualification,Tunisia,away,,,,,Tunisia,0,7,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,30000,,,,,backfill
+497,MW_M,2005-05-27,Friendly,Libya,away,,,,,Libya,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,,,,,,backfill
+498,MW_M,2005-06-04,World Cup & AFCON Qualification,Morocco,away,,,,,Morocco,1,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-2,48000,,,,,backfill
+499,MW_M,2005-06-11,COSAFA Cup,Lesotho,away,1,,,,Zambia,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,2000,,,,,backfill
+500,MW_M,2005-06-12,COSAFA Cup,Zambia,away,,,,,Zambia,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,15000,,,,,backfill
+501,MW_M,2005-06-18,World Cup & AFCON Qualification,Botswana,home,,,,,Malawi,1,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,20000,,,,,backfill
+502,MW_M,2005-09-04,World Cup & AFCON Qualification,Guinea,away,,,,,Guinea,1,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-2,2518,,,,,backfill
+503,MW_M,2005-09-25,Friendly,Zambia,home,,,,,Malawi,1,1,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,,,4-5,,,,backfill
+504,MW_M,2005-10-08,World Cup & AFCON Qualification,Kenya,home,,,,,Malawi,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,12000,,,,,backfill
+505,MW_M,2006-06-24,Tournament in Mozambique,Zimbabwe,away,1,,,,Mozambique,1,1,played,,,TRUE,win,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,1-1,,2-1,,,,backfill
+506,MW_M,2006-06-25,Tournament in Mozambique,Mozambique,away,,,,,Mozambique,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,1-0,,,,,,backfill
+507,MW_M,2006-07-06,Malawi Independence Tournament,Botswana,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,,,,,,backfill
+508,MW_M,2006-07-08,Malawi Independence Tournament,Botswana,home,,,,,Malawi,0,0,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,2-3,,,,backfill
+509,MW_M,2006-07-22,COSAFA Cup,Zambia,away,1,,,,Namibia,1,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,3500,,,,,backfill
+510,MW_M,2006-07-23,COSAFA Cup,Namibia,away,,,,,Namibia,2,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-1,800,,,,,backfill
+511,MW_M,2006-09-03,AFCON Qualification,Morocco,away,,,,,Morocco,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,15000,,,,,backfill
+512,MW_M,2006-10-07,AFCON Qualification,Zimbabwe,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,20000,,,,,backfill
+513,MW_M,2006-11-26,CECAFA Cup,Djibouti,away,1,,,,Ethiopia,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,,,,,,backfill
+514,MW_M,2006-11-28,CECAFA Cup,Tanzania,away,1,,,,Ethiopia,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-1,15000,,,,,backfill
+515,MW_M,2006-12-01,CECAFA Cup,Ethiopia,away,,,,,Ethiopia,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-1,,,,,,backfill
+516,MW_M,2006-12-06,CECAFA Cup,Uganda,away,1,,,,Ethiopia,0,0,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,qf,0-0,1000,2-4,,,,backfill
+517,MW_M,2007-05-26,COSAFA Cup,South Africa,away,1,,,,Swaziland,0,0,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,2599,4-5,,,,backfill
+518,MW_M,2007-05-27,COSAFA Cup,Swaziland,away,,,,,Swaziland,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,4000,,,,Eswatini,backfill
+519,MW_M,2007-06-10,Friendly,Senegal,home,,,,,Malawi,2,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,50000,,,,,backfill
+520,MW_M,2007-06-16,AFCON Qualification,Morocco,home,,,,,Malawi,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,30000,,,,,backfill
+521,MW_M,2007-07-06,Malawi Independence Tournament,Namibia,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,10000,,,,,backfill
+522,MW_M,2007-09-09,AFCON Qualification,Zimbabwe,away,,,,,Zimbabwe,1,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,20000,,,,,backfill
+523,MW_M,2007-11-18,Friendly,Swaziland,away,,,,,Swaziland,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-0,2000,,,,Eswatini,backfill
+524,MW_M,2008-03-26,Namibia Independence Tournament,Namibia,away,,,,,Namibia,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-0,2000,,,,,backfill
+525,MW_M,2008-03-30,CHAN Qualification,Mozambique,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,0-0,,,,,,backfill
+526,MW_M,2008-04-13,CHAN Qualification,Mozambique,away,,,,,Mozambique,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,,,,,,,backfill
+527,MW_M,2008-05-25,Friendly,Tanzania,away,,,,,Tanzania,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+528,MW_M,2008-05-31,World Cup & AFCON Qualification,Djibouti,home,,,,,Malawi,8,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-1,35000,,,,,backfill
+529,MW_M,2008-06-08,World Cup & AFCON Qualification,DR Congo,away,,,,,DR Congo,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,35000,,,,,backfill
+530,MW_M,2008-06-14,World Cup & AFCON Qualification,Egypt,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,40000,,,,,backfill
+531,MW_M,2008-06-22,World Cup & AFCON Qualification,Egypt,away,,,,,Egypt,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,55000,,,,,backfill
+532,MW_M,2008-07-06,Malawi Independence Tournament,Kenya,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,0-0,,,,,,backfill
+533,MW_M,2008-07-20,COSAFA Cup,Lesotho,away,1,,,,South Africa,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,750,,,,,backfill
+534,MW_M,2008-07-22,COSAFA Cup,Comoros,away,1,,,,South Africa,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,450,,,,,backfill
+535,MW_M,2008-07-24,COSAFA Cup,Namibia,away,1,,,,South Africa,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,950,,,,,backfill
+536,MW_M,2008-09-05,World Cup & AFCON Qualification,Djibouti,away,,,,,Djibouti,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,5000,,,,,backfill
+537,MW_M,2008-09-30,Friendly,South Africa,away,,,,,South Africa,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,8342,,,,,backfill
+538,MW_M,2008-10-11,World Cup & AFCON Qualification,DR Congo,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,50000,,,,,backfill
+539,MW_M,2009-02-11,Friendly,Mozambique,away,,,,,Mozambique,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,2000,,,,,backfill
+540,MW_M,2009-03-21,Friendly,Uganda,away,,,,,Uganda,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,,,,,,backfill
+541,MW_M,2009-03-29,World Cup & AFCON Qualification,Ivory Coast,away,,,,,Ivory Coast,0,5,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-3,34000,,,,,backfill
+542,MW_M,2009-05-23,Friendly,Lesotho,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,,,,,,,backfill
+543,MW_M,2009-05-30,Friendly,Rwanda,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,12000,,,,,backfill
+544,MW_M,2009-06-06,World Cup & AFCON Qualification,Burkina Faso,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,25000,,,,,backfill
+545,MW_M,2009-06-21,World Cup & AFCON Qualification,Guinea,away,,,,,Guinea,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,14000,,,,,backfill
+546,MW_M,2009-07-06,Malawi Independence Tournament,Swaziland,home,,,,,Malawi,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-0,30000,,,,Eswatini,backfill
+547,MW_M,2009-09-05,World Cup & AFCON Qualification,Guinea,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,15000,,,,,backfill
+548,MW_M,2009-10-10,World Cup & AFCON Qualification,Ivory Coast,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,25000,,,,,backfill
+549,MW_M,2009-10-25,COSAFA Cup,Mozambique,away,1,,,,Zimbabwe,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,qf,0-1,,,,,,backfill
+550,MW_M,2009-11-14,World Cup & AFCON Qualification,Burkina Faso,away,,,,,Burkina Faso,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,20000,,,,,backfill
+551,MW_M,2009-12-19,Friendly,Mozambique,away,,,,,Mozambique,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+552,MW_M,2009-12-29,Friendly,Egypt,away,,,,,Egypt,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,,,,,,backfill
+553,MW_M,2010-01-05,Friendly,Ghana,away,1,,,,Swaziland,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,2000,,,,,backfill
+554,MW_M,2010-01-11,Africa Cup of Nations,Algeria,away,1,,,,Angola,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,2-0,1500,,,,,backfill
+555,MW_M,2010-01-14,Africa Cup of Nations,Angola,away,,,,,Angola,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,48500,,,,,backfill
+556,MW_M,2010-01-18,Africa Cup of Nations,Mali,away,1,,,,Angola,1,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-2,21000,,,,,backfill
+557,MW_M,2010-03-03,Friendly,Zimbabwe,away,,,,,Zimbabwe,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-2,,,,,,backfill
+558,MW_M,2010-03-13,CHAN Qualification,Mozambique,home,,,,,Malawi,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,1-0,,,,,,backfill
+559,MW_M,2010-03-27,CHAN Qualification,Mozambique,away,,,,,Mozambique,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,0-1,,,,,,backfill
+560,MW_M,2010-05-12,Friendly,Yemen,away,,,,,Yemen,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,,,,,,,backfill
+561,MW_M,2010-05-22,CHAN Qualification,Angola,away,,,,,Angola,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,1-0,,,,,,backfill
+562,MW_M,2010-06-05,CHAN Qualification,Angola,home,,,,,Malawi,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,0-2,,,,,,backfill
+563,MW_M,2010-07-09,AFCON Qualification,Togo,away,,,,,Togo,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,8000,,,,,backfill
+564,MW_M,2010-08-11,AFCON Qualification,Botswana,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,25000,,,,,backfill
+565,MW_M,2010-09-04,AFCON Qualification,Tunisia,away,,,,,Tunisia,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-2,14000,,,,,backfill
+566,MW_M,2010-10-09,AFCON Qualification,Chad,home,,,,,Malawi,6,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-1,25000,,,,,backfill
+567,MW_M,2010-11-17,Friendly,Rwanda,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,15000,,,,,backfill
+568,MW_M,2010-11-29,CECAFA Cup,Kenya,away,1,,,,Tanzania,3,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,2-2,,,,,,backfill
+569,MW_M,2010-12-02,CECAFA Cup,Uganda,away,1,,,,Tanzania,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,,,,,,backfill
+570,MW_M,2010-12-04,CECAFA Cup,Ethiopia,away,1,,,,Tanzania,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,,,,,,backfill
+571,MW_M,2010-12-07,CECAFA Cup,Ivory Coast CHAN,away,1,,,,Tanzania,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,r1,0-0,,,,,,backfill
+572,MW_M,2011-02-09,Friendly,Namibia,away,,,,,Namibia,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,,,,,,backfill
+573,MW_M,2011-03-26,AFCON Qualification,Togo,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,25000,,,,,backfill
+574,MW_M,2011-05-29,Friendly,Swaziland,away,,,,,Swaziland,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,1000,,,,Eswatini,backfill
+575,MW_M,2011-06-05,AFCON Qualification,Botswana,away,,,,,Botswana,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,8000,,,,,backfill
+576,MW_M,2011-07-06,Malawi Independence Tournament,Namibia,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,60000,,,,,backfill
+577,MW_M,2011-09-03,AFCON Qualification,Tunisia,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,30000,,,,,backfill
+578,MW_M,2011-10-04,Friendly,Ethiopia,away,,,,,Ethiopia,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+579,MW_M,2011-10-08,AFCON Qualification,Chad,away,,,,,Chad,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,1000,,,,,backfill
+580,MW_M,2011-11-28,CECAFA Cup,Kenya,away,1,,,,Tanzania,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,,,,,,backfill
+581,MW_M,2011-11-30,CECAFA Cup,Sudan,away,1,,,,Tanzania,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+582,MW_M,2011-12-02,CECAFA Cup,Tanzania,away,,,,,Tanzania,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-1,,,,,,backfill
+583,MW_M,2011-12-06,CECAFA Cup,Tanzania,away,,,,,Tanzania,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-1,3000,,,,,backfill
+584,MW_M,2012-02-29,AFCON Qualification,Chad,away,,,,,Chad,2,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-2,30000,,,,,backfill
+585,MW_M,2012-05-26,Friendly,Tanzania,away,,,,,Tanzania,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+586,MW_M,2012-05-28,Friendly,Zanzibar,away,,,,,Zanzibar,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+587,MW_M,2012-06-02,World Cup Qualification,Kenya,away,,,,,Kenya,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,14000,,,,,backfill
+588,MW_M,2012-06-09,World Cup Qualification,Nigeria,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,25000,,,,,backfill
+589,MW_M,2012-06-16,AFCON Qualification,Chad,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,30000,,,,,backfill
+590,MW_M,2012-07-06,Malawi Independence Tournament,Zambia,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+591,MW_M,2012-09-04,Liberia Independence Tournament,Liberia,away,,,,,Liberia,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+592,MW_M,2012-09-08,AFCON Qualification,Ghana,away,,,,,Ghana,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,25000,,,,,backfill
+593,MW_M,2012-10-13,AFCON Qualification,Ghana,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,25000,,,,,backfill
+594,MW_M,2012-11-26,CECAFA Cup,Rwanda,away,1,,,,Uganda,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-1,,,,,,backfill
+595,MW_M,2012-11-29,CECAFA Cup,Eritrea,away,1,,,,Uganda,3,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,2-0,,,,,,backfill
+596,MW_M,2012-12-01,CECAFA Cup,Zanzibar,away,1,,,,Uganda,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,2-0,,,,,,backfill
+597,MW_M,2012-12-04,CECAFA Cup,Kenya,away,1,,,,Uganda,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,qf,0-0,,,,,,backfill
+598,MW_M,2012-12-22,Friendly,South Africa,away,,,,,South Africa,1,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,,,,,,backfill
+599,MW_M,2013-03-19,Friendly,Botswana,away,,,,,Botswana,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+600,MW_M,2013-03-23,World Cup Qualification,Namibia,away,,,,,Namibia,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,5000,,,,,backfill
+601,MW_M,2013-05-25,Friendly,Zimbabwe,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,1-0,,,,,,backfill
+602,MW_M,2013-06-05,World Cup Qualification,Namibia,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,17000,,,,,backfill
+603,MW_M,2013-06-12,World Cup Qualification,Kenya,home,,,,,Malawi,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,13000,,,,,backfill
+604,MW_M,2013-07-06,Malawi Independence Tournament,Mozambique,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,,,,,,backfill
+605,MW_M,2013-07-13,COSAFA Cup,Zimbabwe,away,1,,,,Zambia,1,1,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,qf,0-1,,1-3,,,,backfill
+606,MW_M,2013-07-16,COSAFA Plate,Angola,away,1,,,,Zambia,2,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,1-1,,,,,,backfill
+607,MW_M,2013-08-14,Friendly,Rwanda,away,,,,,Rwanda,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,,backfill
+608,MW_M,2013-09-03,Friendly,Botswana,away,,,,,Botswana,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,0-0,,,,,,backfill
+609,MW_M,2013-09-07,World Cup Qualification,Nigeria,away,,,,,Nigeria,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,8000,,,,,backfill
+610,MW_M,2014-03-05,Friendly,Zimbabwe,home,,,,,Malawi,1,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,2500,,,,,backfill
+611,MW_M,2014-05-04,Friendly,Tanzania,away,,,,,Tanzania,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,0-0,,,,,,backfill
+612,MW_M,2014-05-17,AFCON Qualification,Chad,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,30000,,,,,backfill
+613,MW_M,2014-05-27,Friendly,Tanzania,away,,,,,Tanzania,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,0-1,,,,,,backfill
+614,MW_M,2014-06-01,AFCON Qualification,Chad,away,,,,,Chad,1,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-3,15000,,,,,backfill
+615,MW_M,2014-07-06,Malawi Independence Tournament,Mozambique,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,1-0,,,,,,backfill
+616,MW_M,2014-07-15,Friendly,Uganda,away,,,,,Uganda,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+617,MW_M,2014-07-20,AFCON Qualification,Benin,away,,,,,Benin,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,20000,,,,,backfill
+618,MW_M,2014-08-02,AFCON Qualification,Benin,home,,,,,Malawi,1,0,played,,,TRUE,win,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,40000,4-3,,,,backfill
+619,MW_M,2014-09-06,AFCON Qualification,Mali,away,,,,,Mali,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,40000,,,,,backfill
+620,MW_M,2014-09-10,AFCON Qualification,Ethiopia,home,,,,,Malawi,3,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,20000,,,,,backfill
+621,MW_M,2014-10-11,AFCON Qualification,Algeria,home,,,,,Malawi,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,40000,,,,,backfill
+622,MW_M,2014-10-15,AFCON Qualification,Algeria,away,,,,,Algeria,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,20000,,,,,backfill
+623,MW_M,2014-11-15,AFCON Qualification,Mali,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,40000,,,,,backfill
+624,MW_M,2014-11-19,AFCON Qualification,Ethiopia,away,,,,,Ethiopia,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,35000,,,,,backfill
+625,MW_M,2015-03-29,Friendly,Tanzania,away,,,,,Tanzania,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,34000,,,,,backfill
+626,MW_M,2015-05-10,Friendly,Zambia,away,,,,,Zambia,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,5000,,,,,backfill
+627,MW_M,2015-05-25,COSAFA Cup,Mozambique,away,1,,,,South Africa,2,2,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,qf,0-1,,4-5,,,,backfill
+628,MW_M,2015-05-27,COSAFA Plate,South Africa,away,,,,,South Africa,0,0,played,,,TRUE,win,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,0-0,4000,5-4,,,,backfill
+629,MW_M,2015-05-29,COSAFA Plate,Zambia,away,1,,,,South Africa,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,0-0,,,,,,backfill
+630,MW_M,2015-06-08,Friendly,Egypt,away,,,,,Egypt,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,,,,,,backfill
+631,MW_M,2015-06-13,AFCON Qualification,Zimbabwe,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,19000,,,,,backfill
+632,MW_M,2015-07-06,Malawi Independence Tournament,Uganda,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,0-0,,,,,,backfill
+633,MW_M,2015-09-06,AFCON Qualification,Swaziland,away,,,,,Swaziland,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-1,10000,,,,Eswatini,backfill
+634,MW_M,2015-10-07,World Cup Qualification,Tanzania,away,,,,,Tanzania,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,11474,,,,,backfill
+635,MW_M,2015-10-11,World Cup Qualification,Tanzania,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,7656,,,,,backfill
+636,MW_M,2015-11-23,CECAFA Cup,Sudan,away,1,,,,Ethiopia,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,2-1,,,,,,backfill
+637,MW_M,2015-11-25,CECAFA Cup,Djibouti,away,1,,,,Ethiopia,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,2-0,,,,,,backfill
+638,MW_M,2015-11-27,CECAFA Cup,South Sudan,away,1,,,,Ethiopia,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-1,,,,,,backfill
+639,MW_M,2015-11-30,CECAFA Cup,Uganda,away,1,,,,Ethiopia,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,qf,0-1,,,,,,backfill
+640,MW_M,2016-03-22,Friendly,Sierra Leone,away,,,,,Sierra Leone,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,,,,,,backfill
+641,MW_M,2016-03-25,AFCON Qualification,Guinea,away,,,,,Guinea,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,20000,,,,,backfill
+642,MW_M,2016-03-29,AFCON Qualification,Guinea,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,25000,,,,,backfill
+643,MW_M,2016-06-05,AFCON Qualification,Zimbabwe,away,,,,,Zimbabwe,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,40000,,,,,backfill
+644,MW_M,2016-06-08,Friendly,Namibia,away,,,,,Namibia,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,700,,,,,backfill
+645,MW_M,2016-06-12,COSAFA Cup,Angola,away,1,,,,Namibia,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,2100,,,,,backfill
+646,MW_M,2016-06-14,COSAFA Cup,Mauritius,away,1,,,,Namibia,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+647,MW_M,2016-06-16,COSAFA Cup,Lesotho,away,1,,,,Namibia,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+648,MW_M,2016-09-04,AFCON Qualification,Swaziland,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,5000,,,,Eswatini,backfill
+649,MW_M,2017-04-18,Friendly,Kenya,away,,,,,Kenya,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,0-0,1000,,,,,backfill
+650,MW_M,2017-04-22,CHAN Qualification,Madagascar,away,,,,,Madagascar,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,2713,,,,,backfill
+651,MW_M,2017-04-29,CHAN Qualification,Madagascar,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,9696,,,,,backfill
+652,MW_M,2017-06-10,AFCON Qualification,Comoros,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,12032,,,,,backfill
+653,MW_M,2017-06-25,COSAFA Cup,Tanzania,away,1,,,,South Africa,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-2,2000,,,,,backfill
+654,MW_M,2017-06-27,COSAFA Cup,Mauritius,away,1,,,,South Africa,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,2000,,,,,backfill
+655,MW_M,2017-06-29,COSAFA Cup,Angola,away,1,,,,South Africa,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,1000,,,,,backfill
+656,MW_M,2017-09-04,Friendly,Togo,away,1,,,,Morocco,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,,backfill
+657,MW_M,2017-10-07,Friendly,Tanzania,away,,,,,Tanzania,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,,backfill
+658,MW_M,2017-11-11,Friendly,Lesotho,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,,,,,,backfill
+659,MW_M,2018-03-27,Friendly,Uganda,away,,,,,Uganda,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,8000,,,,,backfill
+660,MW_M,2018-05-28,COSAFA Cup,Mauritius,away,1,,,,South Africa,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-1,300,,,,,backfill
+661,MW_M,2018-05-30,COSAFA Cup,Botswana,away,1,,,,South Africa,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,500,,,,,backfill
+662,MW_M,2018-06-01,COSAFA Cup,Angola,away,1,,,,South Africa,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+663,MW_M,2018-09-08,AFCON Qualification,Morocco,away,,,,,Morocco,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,25000,,,,,backfill
+664,MW_M,2018-09-11,Friendly,Kenya,away,,,,,Kenya,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,3500,,,,,backfill
+665,MW_M,2018-10-12,AFCON Qualification,Cameroon,away,,,,,Cameroon,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,25000,,,,,backfill
+666,MW_M,2018-10-16,AFCON Qualification,Cameroon,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,5000,,,,,backfill
+667,MW_M,2018-11-17,AFCON Qualification,Comoros,away,,,,,Comoros,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,3000,,,,,backfill
+668,MW_M,2019-03-22,AFCON Qualification,Morocco,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,5000,,,,,backfill
+669,MW_M,2019-04-20,CHAN Qualification,Swaziland,away,,,,,Eswatini,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,Eswatini,backfill
+670,MW_M,2019-05-11,CHAN Qualification,Swaziland,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,Eswatini,backfill
+671,MW_M,2019-05-26,COSAFA Cup,Seychelles,away,1,,,,South Africa,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,,,,,,backfill
+672,MW_M,2019-05-28,COSAFA Cup,Namibia,away,1,,,,South Africa,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-1,,,,,,backfill
+673,MW_M,2019-05-30,COSAFA Cup,Mozambique,away,1,,,,South Africa,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,,,,,,backfill
+674,MW_M,2019-06-02,COSAFA Cup,Zambia,away,1,,,,South Africa,2,2,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,qf,1-0,,2-4,,,,backfill
+675,MW_M,2019-06-04,COSAFA Plate,Comoros,away,1,,,,South Africa,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,1-0,,,,,,backfill
+676,MW_M,2019-06-07,COSAFA Plate,South Africa,away,,,,,South Africa,0,0,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,final,0-0,,4-5,,,,backfill
+677,MW_M,2019-09-07,World Cup Qualification,Botswana,away,,,,,Botswana,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,9000,,,,,backfill
+678,MW_M,2019-09-10,World Cup Qualification,Botswana,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,10000,,,,,backfill
+679,MW_M,2019-10-13,Friendly,Lesotho,away,,,,,Lesotho,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,768,,,,,backfill
+680,MW_M,2019-11-13,AFCON Qualification,South Sudan,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,15000,,,,,backfill
+681,MW_M,2019-11-17,AFCON Qualification,Uganda,away,,,,,Uganda,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,5000,,,,,backfill
+682,MW_M,2020-03-12,Friendly,Zambia,away,,,,,Zambia,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,0-1,,,,,,backfill
+683,MW_M,2020-10-07,Friendly,Zambia,away,,,,,Zambia,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,1,,0-1,,,,,,backfill
+684,MW_M,2020-10-11,Friendly,Zimbabwe,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+685,MW_M,2020-11-12,AFCON Qualification,Burkina Faso,away,,,,,Burkina Faso,1,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,,,,,,backfill
+686,MW_M,2020-11-16,AFCON Qualification,Burkina Faso,home,,,,,Malawi,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+687,MW_M,2021-03-17,Friendly,Ethiopia,away,,,,,Ethiopia,0,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,,,,,,backfill
+688,MW_M,2021-03-24,AFCON Qualification,South Sudan,away,,,,,South Sudan,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+689,MW_M,2021-03-29,AFCON Qualification,Uganda,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,,backfill
+690,MW_M,2021-06-13,Friendly,Tanzania,away,,,,,Tanzania,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+691,MW_M,2021-07-09,COSAFA Cup,Zimbabwe,away,1,,,,South Africa,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,,,,,,backfill
+692,MW_M,2021-07-11,COSAFA Cup,Mozambique,away,1,,,,South Africa,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+693,MW_M,2021-07-13,COSAFA Cup,Namibia,away,1,,,,South Africa,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+694,MW_M,2021-07-14,COSAFA Cup,Senegal,away,1,,,,South Africa,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-1,,,,,,backfill
+695,MW_M,2021-09-03,World Cup Qualification,Cameroon,away,,,,,Cameroon,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,,,,,,backfill
+696,MW_M,2021-09-07,World Cup Qualification,Mozambique,away,1,,,,South Africa,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,,backfill
+697,MW_M,2021-10-08,World Cup Qualification,Ivory Coast,away,1,,,,South Africa,0,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,,,,,,backfill
+698,MW_M,2021-10-11,World Cup Qualification,Ivory Coast,away,1,,,,Benin,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,,,,,,backfill
+699,MW_M,2021-11-13,World Cup Qualification,Cameroon,away,1,,,,South Africa,0,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,,,,,,backfill
+700,MW_M,2021-11-16,World Cup Qualification,Mozambique,away,1,,,,Benin,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+701,MW_M,2021-12-31,Friendly,Comoros,away,1,,,,Saudi Arabia,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-1,,,,,,backfill
+702,MW_M,2022-01-10,Africa Cup of Nations,Guinea,away,1,,,,Cameroon,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-1,,,,,,backfill
+703,MW_M,2022-01-14,Africa Cup of Nations,Zimbabwe,away,1,,,,Cameroon,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-1,,,,,,backfill
+704,MW_M,2022-01-18,Africa Cup of Nations,Senegal,away,1,,,,Cameroon,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+705,MW_M,2022-01-25,Africa Cup of Nations,Morocco,away,1,,,,Cameroon,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r2,1-0,,,,,,backfill
+706,MW_M,2022-06-05,AFCON Qualification,Ethiopia,home,,,,,Malawi,2,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-0,,,,,,backfill
+707,MW_M,2022-06-09,AFCON Qualification,Guinea,away,,,,,Guinea,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+708,MW_M,2022-07-06,COSAFA Cup,Lesotho,away,1,,,,South Africa,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-1,,,,,,backfill
+709,MW_M,2022-07-08,COSAFA Cup,Eswatini,away,1,,,,South Africa,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+710,MW_M,2022-07-10,COSAFA Cup,Mauritius,away,1,,,,South Africa,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+711,MW_M,2022-08-27,CHAN Qualification,Mozambique,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-1,,,,,,backfill
+712,MW_M,2022-09-04,CHAN Qualification,Mozambique,away,,,,,Mozambique,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,25000,,,,,backfill
+713,MW_M,2023-02-25,Friendly,Lesotho,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,,backfill
+714,MW_M,2023-03-15,Friendly,Bangladesh,away,1,,,,Saudi Arabia,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+715,MW_M,2023-03-24,AFCON Qualification,Egypt,away,,,,,Egypt,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,,,,,,backfill
+716,MW_M,2023-03-28,AFCON Qualification,Egypt,away,1,,,,Mauritius,0,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-3,,,,,,backfill
+717,MW_M,2023-06-14,Mozambique Independence Tournament,Mozambique,away,,,,,Mozambique,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+718,MW_M,2023-06-19,AFCON Qualification,Ethiopia,away,1,,,,Mozambique,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+719,MW_M,2023-07-06,COSAFA Cup,Zambia,away,1,,,,South Africa,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,1-0,,,,,,backfill
+720,MW_M,2023-07-09,COSAFA Cup,Seychelles,away,1,,,,South Africa,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,0-0,,,,,,backfill
+721,MW_M,2023-07-11,COSAFA Cup,Comoros,away,1,,,,South Africa,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,r1,2-0,,,,,,backfill
+722,MW_M,2023-07-14,COSAFA Cup,Lesotho,away,1,,,,South Africa,1,1,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,1-1,,0-3,,,,backfill
+723,MW_M,2023-07-16,COSAFA Cup,South Africa,away,,,,,South Africa,0,0,played,,,TRUE,loss,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,3p,0-0,,3-5,,,,backfill
+724,MW_M,2023-09-09,AFCON Qualification,Guinea,home,,,,,Malawi,2,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,,backfill
+725,MW_M,2023-11-17,World Cup Qualification,Liberia,away,,,,,Liberia,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+726,MW_M,2023-11-21,World Cup Qualification,Tunisia,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,23000,,,,,backfill
+727,MW_M,2024-03-23,Four Nations Tournament,Kenya,home,,,,,Malawi,0,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,sf,0-2,,,,,,backfill
+728,MW_M,2024-03-26,Four Nations Tournament,Zambia,home,,,,,Malawi,1,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,3p,1-2,,,,,,backfill
+729,MW_M,2024-06-06,World Cup Qualification,São Tomé and Príncipe,home,,,,,Malawi,3,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,2-0,14000,,,,,backfill
+730,MW_M,2024-06-10,World Cup Qualification,Equatorial Guinea,away,,,,,Equatorial Guinea,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+731,MW_M,2024-09-05,AFCON Qualification,Burundi,home,,,,,Malawi,2,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-2,,,,,,backfill
+732,MW_M,2024-09-10,AFCON Qualification,Burkina Faso,away,1,,,,Mali,1,3,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-2,,,,,,backfill
+733,MW_M,2024-10-11,AFCON Qualification,Senegal,away,,,,,Senegal,0,4,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,,,,,,backfill
+734,MW_M,2024-10-15,AFCON Qualification,Senegal,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+735,MW_M,2024-11-14,AFCON Qualification,Burundi,away,1,,,,Ivory Coast,0,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,313,,,,,backfill
+736,MW_M,2024-11-18,AFCON Qualification,Burkina Faso,home,,,,,Malawi,3,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,,backfill
+737,MW_M,2025-03-02,CHAN Qualification,Comoros,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,1-0,,,,,,backfill
+738,MW_M,2025-03-08,CHAN Qualification,Comoros,home,,,,,Malawi,2,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+739,MW_M,2025-03-20,World Cup Qualification,Namibia,home,,,,,Malawi,0,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,17706,,,,,backfill
+740,MW_M,2025-03-24,World Cup Qualification,Tunisia,away,,,,,Tunisia,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,30000,,,,,backfill
+741,MW_M,2025-05-03,CHAN Qualification,South Africa,home,,,,,Malawi,1,0,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,,,,,,backfill
+742,MW_M,2025-05-11,CHAN Qualification,South Africa,away,,,,,South Africa,0,2,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-1,,,,,,backfill
+743,MW_M,2025-07-06,Malawi Independence Tournament,Botswana,home,,,,,Malawi,1,1,played,,,FALSE,,https://www.rsssf.org/tablesm/malaw-intres.html,,,,,,,,,,,,,,0-0,15000,,,,,backfill
