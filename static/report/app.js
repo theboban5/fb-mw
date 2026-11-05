@@ -12484,11 +12484,15 @@ async function renderNTHome(params) {
   const rows = matches || [];
   // "tbd" is a legal date meaning the fixture is agreed with no day yet, so it
   // sorts as upcoming rather than as something overdue.
-  const undated = rows.filter((m) => !/^\d{4}-\d{2}-\d{2}$/.test(m.date || ""));
+  // A result with no date is not a fixture waiting for one: the archive
+  // (0066) holds a 1957 friendly known only to the year, and it belongs with
+  // the results, not under "Date to be confirmed".
+  const undated = rows.filter((m) => !/^\d{4}-\d{2}-\d{2}$/.test(m.date || "")
+    && m.team_score == null);
   const dated = rows.filter((m) => /^\d{4}-\d{2}-\d{2}$/.test(m.date || ""));
   const awaiting = dated.filter((m) => m.team_score == null && m.date <= today);
   const upcoming = dated.filter((m) => m.team_score == null && m.date > today);
-  const done = dated.filter((m) => m.team_score != null);
+  const done = rows.filter((m) => m.team_score != null);
 
   const list = (title, set) => set.length
     ? `<h2 class="rp-group-head">${esc(title)}

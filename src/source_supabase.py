@@ -118,7 +118,12 @@ COLUMNS = {
                    "assistant_referee_2", "fourth_official", "opponent_coach",
                    "referee_id", "assistant_referee_1_id",
                    "assistant_referee_2_id", "fourth_official_id", "coach_id",
-                   "opponent_coach_id"),
+                   "opponent_coach_id",
+                   # 0066: what a match from the archive says that a fixture
+                   # never needed to (scripts/rsssf_nt.py).
+                   "unofficial", "stage", "half_time", "crowd",
+                   "shootout_score", "abandoned_minute", "date_year",
+                   "opponent_country", "source_type"),
     "nt_goals": ("goal_id", "match_id", "team_id", "player_name", "player_id",
                  "minute", "stoppage", "period", "goal_type",
                  "assist_player_id", "source_type", "source_ref", "reported_by",

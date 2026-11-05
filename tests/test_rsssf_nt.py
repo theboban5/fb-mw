@@ -157,5 +157,60 @@ class CheckTest(unittest.TestCase):
                 R.parse_page(fh.read(), self.names)
 
 
+class LoadPlanTest(unittest.TestCase):
+    """`apply`'s plan, against the committed snapshot standing in for the live
+    table — the same rows, without a network."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.rows, _, _ = parsed()
+        cls.live = R.snapshot_rows()
+        cls.goals = [{"goal_id": str(i), "match_id": "1"} for i in range(1, 87)]
+        cls.inserts, cls.goal_inserts, cls.patches = R.plan_load(
+            cls.rows, cls.live, cls.goals)
+
+    def test_pairs_the_typed_rows_and_inserts_the_rest(self):
+        self.assertEqual(len(self.inserts), 702)
+        self.assertEqual(len(self.goal_inserts), 783)
+
+    def test_ids_follow_the_table_and_stay_numeric(self):
+        # next_nt_id (0012) casts every id to an integer.
+        ids = [int(m["match_id"]) for m in self.inserts]
+        self.assertEqual(ids[0], max(int(m["match_id"]) for m in self.live) + 1)
+        self.assertEqual(ids, list(range(ids[0], ids[0] + len(ids))))
+        self.assertEqual(int(self.goal_inserts[0]["goal_id"]), 87)
+
+    def test_the_cosafa_dates_are_corrected_and_nothing_typed_is_overwritten(self):
+        dates = {d["match_id"]: p.get("date") for d, p in self.patches}
+        self.assertEqual(dates["2"], "2025-06-08")
+        self.assertEqual(dates["3"], "2025-06-10")
+        for _d, patch in self.patches:
+            self.assertLessEqual(set(patch), {"date", *R._FILL})
+
+    def test_inserts_are_backfill_oldest_first(self):
+        self.assertTrue(all(m["source_type"] == "backfill" for m in self.inserts))
+        first = self.inserts[0]
+        self.assertEqual((first["date"], first["date_year"]), ("", 1957))
+        self.assertTrue(first["unofficial"])
+
+    def test_a_neutral_ground_is_stored_away(self):
+        m = next(m for m in self.inserts if m["neutral"])
+        self.assertEqual(m["home_away"], "away")
+
+    def test_a_second_run_plans_nothing(self):
+        live = [dict(m) for m in self.live] + [dict(m) for m in self.inserts]
+        for d, patch in self.patches:
+            next(m for m in live if m["match_id"] == d["match_id"]).update(patch)
+        goals = self.goals + [{"goal_id": g["goal_id"], "match_id": g["match_id"]}
+                              for g in self.goal_inserts]
+        self.assertEqual(R.plan_load(self.rows, live, goals), ([], [], []))
+
+    def test_an_archive_match_missing_its_goals_gets_them_on_the_next_run(self):
+        live = [dict(m) for m in self.live] + [dict(m) for m in self.inserts]
+        goals = self.goals    # the match inserts landed, the goals did not
+        _i, goal_inserts, _p = R.plan_load(self.rows, live, goals)
+        self.assertEqual(len(goal_inserts), 783)
+
+
 if __name__ == "__main__":
     unittest.main()

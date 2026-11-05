@@ -464,10 +464,19 @@ def check_nt(ntd):
             errors.append(f"{lbl}: team_code {m.team_code!r} does not resolve")
         if (m.team_score is None) != (m.opponent_score is None):
             errors.append(f"{lbl}: only one of team_score/opponent_score present")
-        elif m.status in ("played", "awarded") and not m.has_score:
+        elif m.status in ("played", "awarded", "abandoned") and not m.has_score:
+            # An abandoned match keeps the score at the time (0066): that is
+            # what renders beside "abandoned 53'".
             errors.append(f"{lbl}: status={m.status} but the score is blank")
         elif m.status == "scheduled" and m.has_score:
             errors.append(f"{lbl}: status=scheduled but a score is present")
+        # 0066's two pairings, the database's own checks restated so a tab
+        # read from a CSV snapshot is held to them too.
+        if m.abandoned_minute is not None and m.status != "abandoned":
+            errors.append(f"{lbl}: abandoned_minute set but status={m.status}")
+        if m.date_year is not None and m.date:
+            errors.append(f"{lbl}: date_year set beside a date ({m.date}) — "
+                          "it stands in for a date, never beside one")
 
     # Goal rows per match+side never exceed that side's score (fewer is fine —
     # incomplete scorer data is expected). Own-goal rows already credit the

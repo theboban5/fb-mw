@@ -246,6 +246,21 @@ Every Flames international since 1957, parsed, no migration yet —
 - **Against nt_matches**: two of the 2025 COSAFA dates are wrong in the
   database (Namibia was 8 June, Angola 10 June); Equatorial Guinea (awarded)
   and every 2026 match are not on RSSSF, which stops in Jan 2026.
+- **The load, migration `0066`** — `rsssf_nt.py apply [--dry-run]`:
+  nine columns on nt_matches (see DATA_MODEL) and `abandoned` as a status.
+  It pairs with the live table by opponent and score within ten days,
+  corrects a paired row's DATE and fills its blank archive fields, never its
+  score, status or goals; everything else inserts as `backfill`, Malawi's
+  scorers as name-only nt_goals rows. Ids are the next integers, because
+  `next_nt_id` (0012) casts every id. A neutral ground stores
+  `home_away='away'`. Plain inserts, so a taken id fails rather than
+  overwrites; a second run plans nothing.
+- **Deploy order**: migration, then the code (source_supabase selects the
+  new columns, so the code first fails every build), then step 4's results
+  pages, THEN `apply`. Rehearsed against a snapshot copy: validate passes,
+  but results.html is 471 kB with 715 results, and the Home tab's "current
+  competition" (AFCON Qualification, no year in the name) pulls in every
+  qualifier since the 1970s.
 
 League stat boards, no migration — `#/graphics?type=leagues`:
 

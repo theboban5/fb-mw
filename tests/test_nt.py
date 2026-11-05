@@ -834,6 +834,67 @@ class FlamesPageTest(unittest.TestCase):
             nt_page.build_page("/nonexistent", "", STATIC, td, FakeDataset(), "")
 
 
+ARCHIVE_HEADER = MATCH_HEADER.rstrip("\n") + (
+    ",unofficial,stage,half_time,crowd,shootout_score,abandoned_minute,"
+    "date_year,opponent_country,source_type\n")
+
+
+class ArchiveFieldsTest(unittest.TestCase):
+    """0066: what a match from the RSSSF archive carries, and how it shows."""
+
+    MATCHES = ARCHIVE_HEADER + (
+        "50,MW_M,1976-03-02,Friendly,Lesotho,home,FALSE,,,Malawi,0,1,abandoned,,"
+        "FALSE,FALSE,,,FALSE,,,,,53,,,backfill\n"
+        "51,MW_M,2019-06-07,COSAFA Plate,South Africa,away,TRUE,,,South Africa,0,0,"
+        "played,,FALSE,TRUE,loss,,FALSE,final,0-0,,4-5,,,,backfill\n"
+        "52,MW_M,,Friendly,Northern Rhodesia,home,FALSE,,,Malawi,0,5,played,,"
+        "FALSE,FALSE,,,TRUE,,,,,,1957,,backfill\n"
+        "53,MW_M,2016-09-04,AFCON Qualification,Swaziland,home,FALSE,,,Malawi,1,0,"
+        "played,,FALSE,FALSE,,,FALSE,,1-0,5000,,,,Eswatini,backfill\n"
+    )
+
+    def setUp(self):
+        self.ntd = nt.parse_all(texts(matches=self.MATCHES, goals=GOAL_HEADER,
+                                      lineups=LINEUP_HEADER))
+        self.m = self.ntd.nt_matches
+
+    def test_abandoned_is_a_result_but_not_in_the_record(self):
+        m = self.m["50"]
+        self.assertTrue(m.played)
+        self.assertFalse(m.in_record)
+        self.assertEqual(m.score_note, "(abandoned 53')")
+
+    def test_unofficial_is_a_result_but_not_in_the_record(self):
+        self.assertTrue(self.m["52"].played)
+        self.assertFalse(self.m["52"].in_record)
+        self.assertTrue(self.m["53"].in_record)
+
+    def test_shootout_score_and_round(self):
+        self.assertEqual(self.m["51"].score_note, "(lost 4\u20135 on pens)")
+        html = nt_page._meta_line(self.m["51"])
+        self.assertIn("COSAFA Plate &middot; Final", html)
+
+    def test_a_year_only_date_shows_and_sorts_as_the_year(self):
+        m = self.m["52"]
+        self.assertEqual(nt_page._date_label(m), "1957")
+        td = nt.team_data(self.ntd, "MW_M")
+        self.assertEqual(td.results[-1].match.match_id, "52")   # oldest last
+        self.assertIn("Unofficial", nt_page._meta_line(m))
+
+    def test_a_rename_keeps_one_head_to_head(self):
+        self.assertEqual(self.m["53"].country_key, "Eswatini")
+        self.assertEqual(self.m["51"].country_key, "South Africa")
+
+    def test_the_validator_holds_the_pairings(self):
+        bad = ARCHIVE_HEADER + (
+            "60,MW_M,2000-01-01,Friendly,Kenya,home,FALSE,,,Malawi,0,0,played,,"
+            "FALSE,FALSE,,,FALSE,,,,,87,1999,,backfill\n")
+        errs = validate.check_nt(nt.parse_all(texts(
+            matches=bad, goals=GOAL_HEADER, lineups=LINEUP_HEADER)))
+        self.assertTrue(any("abandoned_minute set" in e for e in errs), errs)
+        self.assertTrue(any("date_year set beside a date" in e for e in errs), errs)
+        self.assertEqual(validate.check_nt(self.ntd), [])
+
 class LandingRowTest(unittest.TestCase):
     """The homepage's National Team rows go live one team at a time."""
 

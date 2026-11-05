@@ -106,18 +106,35 @@ _MDASH = "&mdash;"
 # ── Small shared pieces ──────────────────────────────────────────────────────
 
 def _date_label(match) -> str:
-    """"28 Jul 2026", or "Date TBC" for a fixture the sheet dates as tbd."""
-    return render._format_date(match.date) or "Date TBC"
+    """"28 Jul 2026"; "1957" for a match known only to the year (0066); or
+    "Date TBC" for a fixture the sheet dates as tbd."""
+    if match.date:
+        return render._format_date(match.date)
+    return str(match.date_year) if match.date_year else "Date TBC"
+
+
+# One match's round, singular — adapt.STAGE_LABELS names a column of ties
+# ("Semi-finals"), this names the one being captioned.
+_STAGE_NAMES = {"r1": "First round", "r2": "Second round",
+                "r64": "Round of 64", "r32": "Round of 32", "r16": "Round of 16",
+                "qf": "Quarter-final", "sf": "Semi-final",
+                "3p": "Third-place play-off", "final": "Final"}
 
 
 def _meta_line(match, with_competition=True) -> str:
-    """The caption above a result/fixture: date · competition · ground · venue."""
+    """The caption above a result/fixture: date · competition · round ·
+    ground · venue, and "Unofficial" last for a match that is not a full
+    international — shown, never counted."""
     parts = [_date_label(match)]
     if with_competition and match.competition:
         parts.append(match.competition)
+        if match.stage in _STAGE_NAMES:
+            parts.append(_STAGE_NAMES[match.stage])
     parts.append(match.ground_label)
     if match.venue_label:
         parts.append(match.venue_label)
+    if match.unofficial:
+        parts.append("Unofficial")
     return " &middot; ".join(escape(p) for p in parts)
 
 

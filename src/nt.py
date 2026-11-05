@@ -39,7 +39,14 @@ POSITIONS = lineups.POSITIONS
 POSITION_LABELS = lineups.POSITION_LABELS
 _POSITION_SET = lineups.POSITION_SET
 
-NT_MATCH_STATUSES = frozenset({"scheduled", "played", "awarded"})
+# "abandoned" since 0066: three archive matches (RSSSF) were, and the score
+# at the time is kept beside it. Shown with the results, never counted.
+NT_MATCH_STATUSES = frozenset({"scheduled", "played", "awarded", "abandoned"})
+# nt_matches.stage (0066): adapt.STAGE_ORDER's codes, plus r1/r2 for RSSSF's
+# "Rd 1"/"Rd 2", which is a group stage in one tournament and a first knockout
+# round in another, so it says "first round" and nothing more.
+NT_STAGES = frozenset({"", "r1", "r2", "r64", "r32", "r16", "qf", "sf", "3p",
+                       "final"})
 # What a knockout slot can be filled by: the winner or the loser of another
 # tie ("winner:WAFCON26_QF1"). Losers feed exactly one thing, the third-place
 # play-off, but they feed it the same way.
@@ -127,12 +134,23 @@ class NTMatch:
     country: str
     team_score: "int | None"
     opponent_score: "int | None"
-    status: str          # scheduled | played | awarded
+    status: str          # scheduled | played | awarded | abandoned
     coach: str
     extra_time: bool
     penalty_shootout: bool
     extra_time_result: str
     kickoff: str = ""    # HH:MM in Malawi time, or "" when not announced
+    # 0066 — what an archive match (scripts/rsssf_nt.py) says. All optional,
+    # and every one renders nothing when blank.
+    unofficial: bool = False     # not a full international: never in a total
+    stage: str = ""              # r1 | r2 | qf | sf | 3p | final | ...
+    half_time: str = ""          # "1-0", ours first
+    crowd: "int | None" = None
+    shootout_score: str = ""     # "4-5", ours first
+    abandoned_minute: "int | None" = None
+    date_year: "int | None" = None   # the year, when the date is unknown
+    opponent_country: str = ""   # who the opponent IS, across renames
+    source_type: str = ""        # 'backfill' for the archive
 
     @property
     def has_score(self) -> bool:
@@ -140,7 +158,29 @@ class NTMatch:
 
     @property
     def played(self) -> bool:
-        return self.status in ("played", "awarded") and self.has_score
+        """A result to show. An abandoned match is one — with its score at
+        the time and the minute beside it — but see `in_record`."""
+        return (self.status in ("played", "awarded", "abandoned")
+                and self.has_score)
+
+    @property
+    def abandoned(self) -> bool:
+        return self.status == "abandoned"
+
+    @property
+    def in_record(self) -> bool:
+        """Counted in a won/drawn/lost total: played, and neither abandoned
+        nor unofficial (RSSSF's '*'). Both are still shown."""
+        return self.played and not self.abandoned and not self.unofficial
+
+    @property
+    def is_backfill(self) -> bool:
+        return self.source_type == "backfill"
+
+    @property
+    def country_key(self) -> str:
+        """The opponent for a head-to-head: Swaziland and Eswatini are one."""
+        return self.opponent_country or self.opponent
 
     @property
     def scheduled(self) -> bool:
@@ -167,25 +207,37 @@ class NTMatch:
 
     @property
     def score_note(self) -> str:
-        """"(AET)" / "(pens)" / "(AET, lost on pens)" beside a score."""
+        """"(AET)" / "(pens)" / "(AET, lost 4–5 on pens)" / "(abandoned 53')"."""
         parts = []
         if self.extra_time:
             parts.append("AET")
         if self.penalty_shootout:
             result = self.extra_time_result.strip().lower()
             outcome = {"win": "won", "loss": "lost"}.get(result, "")
-            parts.append(f"{outcome} on pens" if outcome else "pens")
+            score = self.shootout_score.replace("-", "\u2013")
+            if outcome and score:
+                parts.append(f"{outcome} {score} on pens")
+            else:
+                parts.append(f"{outcome} on pens" if outcome else "pens")
+        if self.abandoned:
+            parts.append(f"abandoned {self.abandoned_minute}'"
+                         if self.abandoned_minute else "abandoned")
         return f"({', '.join(parts)})" if parts else ""
+
+    @property
+    def _when(self) -> str:
+        """The date, or the year alone (1957), or "" — sortable as text."""
+        return self.date or (f"{self.date_year:04d}" if self.date_year else "")
 
     @property
     def sort_key(self):
         """Chronological; an undated fixture sorts after every dated one."""
-        return (self.date == "", self.date, _id_sort(self.match_id))
+        return (self._when == "", self._when, _id_sort(self.match_id))
 
     @property
     def recent_key(self):
         """Reverse-chronological ordering that still leaves undated rows last."""
-        return (self.date != "", self.date, _id_sort(self.match_id))
+        return (self._when != "", self._when, _id_sort(self.match_id))
 
 
 @dataclass(frozen=True)
@@ -555,6 +607,16 @@ def parse_nt_matches(text: str) -> "dict[str, NTMatch]":
             _flag(r.get("penalty_shootout", ""), "penalty_shootout", "nt_matches", i),
             r.get("extra_time_result", ""),
             _nt_time(r.get("kickoff", ""), "kickoff", "nt_matches", i),
+            unofficial=_flag(r.get("unofficial", ""), "unofficial", "nt_matches", i),
+            stage=_enum(r.get("stage", ""), NT_STAGES, "stage", "nt_matches", i),
+            half_time=r.get("half_time", ""),
+            crowd=_opt_int(r.get("crowd", ""), "crowd", "nt_matches", i),
+            shootout_score=r.get("shootout_score", ""),
+            abandoned_minute=_opt_int(r.get("abandoned_minute", ""),
+                                      "abandoned_minute", "nt_matches", i),
+            date_year=_opt_int(r.get("date_year", ""), "date_year", "nt_matches", i),
+            opponent_country=r.get("opponent_country", ""),
+            source_type=r.get("source_type", ""),
         ), "nt_matches", i)
     return out
 

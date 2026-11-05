@@ -8,6 +8,8 @@ half-time, shootout, crowd, competition and Malawi's scorers, newest first.
 
     python3 scripts/rsssf_nt.py fetch     # once; the page is committed
     python3 scripts/rsssf_nt.py parse     # -> data/backfill/rsssf/nt_mw_m.json
+    python3 scripts/rsssf_nt.py apply --dry-run   # the plan, against the live DB
+    python3 scripts/rsssf_nt.py apply             # needs migration 0066
 
 The arrangement is scripts/rsssf.py's, and so are its three rules:
 
@@ -31,13 +33,31 @@ Rhodesia — with RSSSF's capitals and abbreviations undone), which country's
 head-to-head it belongs to, what each venue code was called on the date, and
 what each competition code means. A spelling it does not cover stops the parse.
 
-The output is a REVIEW FILE, not a load. Nothing here writes to the database:
-the shape of a few fields (an unofficial flag, an abandoned match, a stage, a
-date known only to the year) needs columns nt_matches does not have yet, and
-that is a migration of its own. Where nt_matches already holds the match (the
-2025 rows), the parse matches it by opponent and date and says how the two
-differ — the database rows were typed by someone, and nothing is overwritten
-without a person deciding.
+`parse` writes a REVIEW FILE and touches nothing. `apply` is the load, and it
+re-parses the committed page rather than reading the review file, so nothing
+that fails the check can reach the database. Against the LIVE nt_matches:
+
+  * a match already there (the 2025 rows a reporter typed, or an archive row
+    from an earlier apply) is paired by opponent and score within ten days.
+    Its date is corrected where RSSSF's differs — the decision for the 2025
+    COSAFA rows, all three entered as 5 June — and the archive-only fields
+    (stage, half-time, crowd, shootout score, opponent_country) are filled
+    where blank. Its score, status, competition, venue and goals are never
+    touched: a person typed them.
+  * anything else is inserted as source_type 'backfill', which keeps it off
+    /matches/ (as an archived league season is), with its Malawi scorers as
+    name-only nt_goals rows — no player_id, so no profile is invented for a
+    1970s international from an initial and a surname.
+  * ids are the next integers after the largest in the table, because
+    next_nt_id (0012) casts every match_id and goal_id to an integer and a
+    non-numeric one would break every national-team write in the portal.
+  * a neutral ground is stored home_away 'away': RSSSF never says which side
+    was the designated home team, the column is required, and the page reads
+    "Neutral" either way.
+
+Running it twice changes nothing the second time: every row it inserted pairs
+with itself. An archive match whose goals did not arrive (a failed run) gets
+them on the next one; a typed match never gets RSSSF's.
 
 RSSSF's terms: "You are free to copy this document in whole or part provided
 that proper acknowledgement is given to the author." Every match carries the
@@ -56,6 +76,10 @@ from collections import defaultdict
 from datetime import date as date_cls
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+from src import supabase_client as sb  # noqa: E402
+
 DATA_DIR = os.path.join(ROOT, "data", "backfill", "rsssf")
 PAGE = "malaw-intres.html"
 URL = "https://www.rsssf.org/tablesm/" + PAGE
@@ -506,31 +530,49 @@ def check(rows, tables, names):
 
 # ── What the database already holds ──────────────────────────────────────────
 
-def reconcile(rows, existing_path=EXISTING_PATH, window_days=10):
+def snapshot_rows(path=EXISTING_PATH):
+    """nt_matches as data/canonical/ last saw it — what `parse` compares with."""
+    if not os.path.exists(path):
+        return []
+    with open(path, newline="", encoding="utf-8") as fh:
+        return list(csv.DictReader(fh))
+
+
+def reconcile(rows, db_rows, window_days=10):
     """Pair each existing MW_M result with its RSSSF line, and say how they differ.
 
     Paired by opponent and score within `window_days`, not by date alone:
     the date is one of the things that may be wrong (all three 2025 COSAFA
-    rows were entered as 5 June). Returns (pairs, only_db, only_rsssf_since).
+    rows were entered as 5 June). `db_rows` are nt_matches rows, from the
+    snapshot or the live table. Returns (pairs, only_db, only_rsssf_since).
     """
-    if not os.path.exists(existing_path):
-        return [], [], []
-    with open(existing_path, newline="", encoding="utf-8") as fh:
-        db = [r for r in csv.DictReader(fh)
-              if r["team_code"] == TEAM_CODE and r["status"] in ("played", "awarded")]
+    db = [r for r in db_rows
+          if r["team_code"] == TEAM_CODE
+          and r["status"] in ("played", "awarded", "abandoned")
+          and (re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(r.get("date") or ""))
+               or str(r.get("date_year") or "").isdigit())]
 
     def days(a, b):
         return abs((date_cls.fromisoformat(a) - date_cls.fromisoformat(b)).days)
+
+    def when(d):
+        """A DB row's date, or Jan 1 of its year: the one undated archive
+        match (1957) pairs with itself by year and nothing else."""
+        return d.get("date") or f"{int(d['date_year']):04d}-01-01"
+
+    def rsssf_when(r):
+        return r["date"] or f"{r['year']:04d}-01-01"
 
     def same_team(db_name, row):
         return db_name.strip().casefold() in (row["opponent"].casefold(),
                                               row["opponent_country"].casefold())
 
     pairs, only_db, used = [], [], set()
-    for d in sorted(db, key=lambda r: r["date"]):
-        options = [(days(d["date"], r["date"]), i) for i, r in enumerate(rows)
-                   if i not in used and r["date"] and same_team(d["opponent"], r)
-                   and days(d["date"], r["date"]) <= window_days]
+    for d in sorted(db, key=when):
+        options = [(days(when(d), rsssf_when(r)), i) for i, r in enumerate(rows)
+                   if i not in used and bool(r["date"]) == bool(d.get("date"))
+                   and same_team(d["opponent"], r)
+                   and days(when(d), rsssf_when(r)) <= window_days]
         if not options:
             only_db.append(d)
             continue
@@ -542,7 +584,7 @@ def reconcile(rows, existing_path=EXISTING_PATH, window_days=10):
         used.add(i)
         r = rows[i]
         diffs = []
-        if d["date"] != r["date"]:
+        if (d.get("date") or "") != r["date"]:
             diffs.append(f"date {d['date']} v RSSSF {r['date']}")
         if (int(d["team_score"]), int(d["opponent_score"])) != (r["team_score"],
                                                                r["opponent_score"]):
@@ -555,7 +597,7 @@ def reconcile(rows, existing_path=EXISTING_PATH, window_days=10):
         r["existing_match_id"] = d["match_id"]
         pairs.append((d, r, diffs))
 
-    earliest = min((d["date"] for d in db), default="")
+    earliest = min((d["date"] for d in db if d.get("date")), default="")
     only_rsssf = [r for i, r in enumerate(rows)
                   if i not in used and earliest and r["date"] >= earliest]
     return pairs, only_db, only_rsssf
@@ -609,7 +651,7 @@ def cmd_parse(_args):
             print(f"    {e}")
         return 1
 
-    pairs, only_db, only_rsssf = reconcile(rows)
+    pairs, only_db, only_rsssf = reconcile(rows, snapshot_rows())
     official = [r for r in rows if not r["unofficial"]]
     print(f"{len(rows)} matches ({len(official)} official, "
           f"{len(rows) - len(official)} unofficial), "
@@ -635,17 +677,174 @@ def cmd_parse(_args):
     return 0
 
 
+# The archive-only fields `apply` fills on a paired row where it is blank.
+_FILL = ("stage", "half_time", "crowd", "shootout_score", "opponent_country")
+
+
+def _blank(v):
+    return v is None or v == ""
+
+
+def match_row(r, match_id):
+    """A review row -> an nt_matches insert. Every row carries the same keys,
+    which PostgREST requires of a bulk insert."""
+    return {
+        "match_id": match_id, "team_code": TEAM_CODE,
+        "date": r["date"], "date_year": None if r["date"] else r["year"],
+        "competition": r["competition"], "stage": r["stage"],
+        "opponent": r["opponent"],
+        # Blank means "the same as opponent" (0066's comment on the column).
+        "opponent_country": ("" if r["opponent_country"] == r["opponent"]
+                             else r["opponent_country"]),
+        "home_away": r["home_away"] or "away", "neutral": r["neutral"],
+        "venue": "", "city": "", "country": r["country"], "kickoff": "",
+        "team_score": r["team_score"], "opponent_score": r["opponent_score"],
+        "status": r["status"], "abandoned_minute": r["abandoned_minute"],
+        "half_time": r["half_time"], "crowd": r["crowd"],
+        "extra_time": r["extra_time"],
+        "penalty_shootout": "TRUE" if r["penalty_shootout"] else "FALSE",
+        "shootout_score": r["shootout_score"],
+        "extra_time_result": r["extra_time_result"],
+        "unofficial": r["unofficial"],
+        "coach": "", "source_type": "backfill", "source_ref": URL,
+    }
+
+
+def goal_rows(r, match_id, next_id):
+    """Malawi's scorers for one match -> nt_goals inserts. Every one is OURS
+    (RSSSF lists no opponent's scorers); an own goal is an opponent's player
+    scoring for us, so team_id is still ours, which is the beneficiary rule."""
+    out = []
+    for g in r["goals"]:
+        out.append({
+            "goal_id": str(next_id + len(out)), "match_id": match_id,
+            "team_id": TEAM_CODE, "player_name": g["player_name"],
+            "player_id": "", "minute": g["minute"], "stoppage": g["stoppage"],
+            "period": g["period"], "goal_type": g["goal_type"],
+            "source_type": "backfill", "source_ref": URL,
+        })
+    return out
+
+
+def plan_load(rows, live_matches, live_goals):
+    """(inserts, goal_inserts, patches) — what `apply` would write.
+
+    `live_matches` / `live_goals` are every nt_matches / nt_goals row, both
+    teams: the next id is after the largest in the whole table.
+    """
+    pairs, _only_db, _ = reconcile(rows, live_matches)
+    paired = {id(r) for _d, r, _diffs in pairs}
+    goals_by_match = defaultdict(int)
+    for g in live_goals:
+        goals_by_match[g["match_id"]] += 1
+
+    next_match = max((int(m["match_id"]) for m in live_matches), default=0) + 1
+    next_goal = max((int(g["goal_id"]) for g in live_goals), default=0) + 1
+
+    patches, goal_inserts = [], []
+    for d, r, _diffs in pairs:
+        patch = {}
+        if r["date"] and d.get("date") != r["date"]:
+            patch["date"] = r["date"]
+        want = match_row(r, d["match_id"])
+        for field in _FILL:
+            if _blank(d.get(field)) and not _blank(want[field]):
+                patch[field] = want[field]
+        if patch:
+            patches.append((d, patch))
+        # Only an archive row of our own making gets RSSSF's scorers, and
+        # only when it has none — the half of a failed earlier run.
+        if d.get("source_type") == "backfill" and not goals_by_match[d["match_id"]]:
+            new = goal_rows(r, d["match_id"], next_goal)
+            next_goal += len(new)
+            goal_inserts += new
+
+    inserts = []
+    # Oldest first, so ids (and `ord`) run with the calendar.
+    for r in sorted((r for r in rows if id(r) not in paired),
+                    key=lambda r: (r["date"] or f"{r['year']:04d}")):
+        mid = str(next_match)
+        next_match += 1
+        inserts.append(match_row(r, mid))
+        new = goal_rows(r, mid, next_goal)
+        next_goal += len(new)
+        goal_inserts += new
+    return inserts, goal_inserts, patches
+
+
+def _insert(table, rows, chunk=200):
+    """A plain INSERT, never an upsert: an id that already exists must fail,
+    not overwrite a match someone typed."""
+    for start in range(0, len(rows), chunk):
+        sb._request("POST", table, body=rows[start:start + chunk],
+                    headers={"Prefer": "return=minimal"}, require_secret=True)
+
+
+def cmd_apply(args):
+    with open(os.path.join(DATA_DIR, PAGE), "rb") as fh:
+        rows, _tables, errors = parse_page(fh.read(), load_names())
+    if errors:
+        print("The page no longer passes the check; run `parse` and fix it first.")
+        return 1
+
+    sb.load_dotenv(os.path.join(ROOT, ".env"))
+    live_matches = sb.select("nt_matches", order="ord.asc", require_secret=True)
+    live_goals = sb.select("nt_goals", columns="goal_id,match_id",
+                           require_secret=True)
+    if live_matches and "unofficial" not in live_matches[0]:
+        print("nt_matches has no `unofficial` column: apply migration 0066 first.")
+        return 1
+
+    inserts, goal_inserts, patches = plan_load(rows, live_matches, live_goals)
+    print(f"Plan: {len(inserts)} matches to insert "
+          f"({sum(1 for m in inserts if m['unofficial'])} unofficial, "
+          f"{sum(1 for m in inserts if m['status'] == 'abandoned')} abandoned), "
+          f"{len(goal_inserts)} scorer rows, {len(patches)} existing matches "
+          "to update.")
+    if inserts:
+        print(f"  match_id {inserts[0]['match_id']}..{inserts[-1]['match_id']}"
+              f"  ({inserts[0]['date'] or inserts[0]['date_year']} .. "
+              f"{inserts[-1]['date']})")
+    if goal_inserts:
+        print(f"  goal_id  {goal_inserts[0]['goal_id']}..{goal_inserts[-1]['goal_id']}")
+    for d, patch in patches:
+        print(f"  #{d['match_id']:>3} {d.get('date') or d.get('date_year')} "
+              f"{d['opponent']:24} " + ", ".join(
+                  f"{k} {d.get(k)!r} -> {v!r}" if k == "date" else f"{k}={v!r}"
+                  for k, v in patch.items()))
+
+    if args.dry_run:
+        print("\n(dry run — nothing written. Drop --dry-run to apply.)")
+        return 0
+    _insert("nt_matches", inserts)
+    print(f"  wrote {len(inserts):4} -> nt_matches")
+    for d, patch in patches:
+        sb._request("PATCH", "nt_matches",
+                    query=f"match_id=eq.{d['match_id']}", body=patch,
+                    headers={"Prefer": "return=minimal"}, require_secret=True)
+    print(f"  updated {len(patches):2} nt_matches")
+    _insert("nt_goals", goal_inserts)
+    print(f"  wrote {len(goal_inserts):4} -> nt_goals")
+    print("\nDone. The next build renders them; nudge one to see it now.")
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     for name, func, text in (("fetch", cmd_fetch, f"download {PAGE}"),
-                             ("parse", cmd_parse, "check it and write the review file")):
-        sub.add_parser(name, help=text).set_defaults(func=func)
+                             ("parse", cmd_parse, "check it and write the review file"),
+                             ("apply", cmd_apply, "load it into nt_matches/nt_goals")):
+        p = sub.add_parser(name, help=text)
+        p.set_defaults(func=func)
+        if name == "apply":
+            p.add_argument("--dry-run", action="store_true",
+                           help="print the plan and write nothing")
     args = parser.parse_args(argv)
     try:
         return args.func(args)
-    except ParseError as err:
+    except (ParseError, sb.SupabaseError) as err:
         print(f"ERROR: {err}", file=sys.stderr)
         return 1
 

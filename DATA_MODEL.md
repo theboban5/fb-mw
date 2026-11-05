@@ -588,7 +588,16 @@ and no entry there (the youth sides) gets no page; its matches still show on
   `team_code`, `opponent`, `team_score`/`opponent_score`, `home_away`,
   `neutral`, `venue`/`city`/`country`, `coach`, the optional `kickoff`, and the
   knockout columns `extra_time`/`penalty_shootout`/`extra_time_result`.
-  `status` is `scheduled | played | awarded` (no postponed/abandoned yet).
+  `status` is `scheduled | played | awarded | abandoned` (abandoned since
+  0066, with the score at the time and `abandoned_minute`).
+  0066 added what an archive match says (`scripts/rsssf_nt.py`):
+  `unofficial` (RSSSF's `*` — shown, marked, in no record total), `stage`
+  (`r1 | r2 | r64..r16 | qf | sf | 3p | final`), `half_time`, `crowd`,
+  `shootout_score` (ours first), `date_year` (only when `date` is blank:
+  the 1957 friendly), `opponent_country` (who the opponent IS across a
+  rename, blank = same as `opponent`) and `source_type` (matches'
+  vocabulary; `backfill` rows stay off `/matches/`). `NTMatch.in_record`
+  is played, not abandoned, not unofficial.
 - **nt_goals**, **nt_lineups** — hold **both sides'** rows, distinguished by
   `team_id`: ours is the `team_code`, the opponent's is a code like
   `NIGERIA_W`. `goal_type` is already display vocabulary here — blank,

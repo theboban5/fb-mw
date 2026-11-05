@@ -216,7 +216,10 @@ def collect(ds, nt_data=None) -> "dict[str, Day]":
     if nt_data is not None:
         for m in nt_data.nt_matches.values():
             team = nt_data.nt_teams.get(m.team_code)
-            if team is None or not m.date:
+            # The archive (source_type backfill, 0066) stays off the by-date
+            # pages, as an archived league season does: 700 Flames matches
+            # since 1957 would write a day page for each of them.
+            if team is None or not m.date or m.is_backfill:
                 continue
             days.setdefault(m.date, Day(m.date)).nt_matches.append((m, team))
 

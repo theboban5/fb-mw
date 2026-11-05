@@ -143,6 +143,20 @@ class CollectTest(unittest.TestCase):
         cls.nt_data = nt.parse_all(nt_texts)
         cls.days = matches_page.collect(cls.ds, cls.nt_data)
 
+    def test_the_national_team_archive_stays_off_the_day_pages(self):
+        # 0066: RSSSF's 700 Flames matches since 1957 are source_type
+        # backfill and would otherwise write a day page each.
+        import dataclasses
+        ntd = nt.parse_all(_load(dataset.NT_TABS))
+        m = next(iter(ntd.nt_matches.values()))
+        typed = dataclasses.replace(m, match_id="9001", date="1984-07-08")
+        archive = dataclasses.replace(m, match_id="9002", date="1984-07-09",
+                                      source_type="backfill")
+        ntd.nt_matches.update({"9001": typed, "9002": archive})
+        days = matches_page.collect(self.ds, ntd)
+        self.assertIn("1984-07-08", days)
+        self.assertNotIn("1984-07-09", days)
+
     def test_every_dated_match_lands_on_its_date(self):
         # ...except a past season's, which is read on its archive page
         # (adapt.archive_competition_seasons) rather than one Saturday at a
