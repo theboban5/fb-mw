@@ -1714,6 +1714,8 @@ MW_SRWFL_2627_011,MW_SRWFL,MW_2026_27,md_3,3,2026-11-15,14:00,MW_MU_001,MW_FFC_W
 MW_SRWFL_2627_012,MW_SRWFL,MW_2026_27,md_3,3,2026-11-15,14:00,MW_WORKS,MW_AL_W1,MW_EW_W1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_SRWFL_2627_013,MW_SRWFL,MW_2026_27,md_4,4,2026-11-21,14:00,MW_SITIMA,MW_SYS_W1,MW_FFC_W1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_SRWFL_2627_014,MW_SRWFL,MW_2026_27,md_4,4,2026-11-21,14:00,MW_WORKS,MW_AL_W1,MW_NSG_W1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_SRWFL_2627_015,MW_SRWFL,MW_2026_27,md_4,4,2026-11-22,14:00,MW_B_001,MW_EW_W1,MW_NQ_W1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_SRWFL_2627_016,MW_SRWFL,MW_2026_27,md_4,4,2026-11-22,14:00,MW_ST_MATTHEWS,MW_EB_W1,MW_BAS_W1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_SL_2016_001,MW_SL,MW_2016,,,2016-04-16,,,MW_MAFC_M1,MW_MZUZ_M1,1,0,played,,backfill,https://www.rsssf.org/tablesm/malaw2016.html,,,confirmed,,,,,,,,,,,,,,,,,
 MW_SL_2016_002,MW_SL,MW_2016,,,2016-04-16,,,MW_KB_M1,MW_CIVO_M1,2,2,played,,backfill,https://www.rsssf.org/tablesm/malaw2016.html,,,confirmed,,,,,,,,,,,,,,,,,
 MW_SL_2016_003,MW_SL,MW_2016,,,2016-04-16,,,MW_BULL_M1,MW_MB_M1,0,0,played,,backfill,https://www.rsssf.org/tablesm/malaw2016.html,,,confirmed,,,,,,,,,,,,,,,,,
