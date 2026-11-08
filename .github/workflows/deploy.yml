@@ -11,6 +11,13 @@ name: Build and deploy
 on:
   schedule:
     - cron: "7 5 * * *"  # daily 05:07 UTC (:07 to dodge the on-the-hour cron rush)
+    # 00:01 CAT: the day changes. Every page says "Today" about the day it was
+    # built, so without this the homepage described yesterday until 07:07 or
+    # the first result published. GitHub can start a scheduled run late,
+    # especially near the hour, which is why calendar.js also relabels the
+    # days in the browser — this is what fixes the HTML itself, for crawlers,
+    # link previews and anyone reading without JavaScript.
+    - cron: "1 22 * * *"  # daily 22:01 UTC = 00:01 CAT
   push:
     branches: [main]
   workflow_dispatch:

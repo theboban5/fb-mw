@@ -30,6 +30,51 @@
     return;                      // no data, no picker — the chips still work
   }
 
+  // The page says "Today" about the day it was BUILT. A page built on
+  // Saturday night and read on Sunday morning said "TOMORROW Sunday 8
+  // November" over Sunday's own fixtures, with the Today chip on Saturday —
+  // the midnight hop (matches_page._TODAY_JS) had moved the reader to the
+  // right page, and the page still described the night before. So the words
+  // that depend on the clock are worked out again here, from Malawi's date in
+  // the reader's browser; the dates, links and fixtures are the build's and
+  // stay as they are. Only inside the window the build wrote pages for: past
+  // it, "Jump to today" would point at a page that does not exist.
+  var WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+                  'Friday', 'Saturday'];
+  function malawiToday() {
+    return new Date(Date.now() + (cfg.tz == null ? 2 : cfg.tz) * 3600000)
+      .toISOString().slice(0, 10);
+  }
+  function dayDiff(d, from) {
+    return Math.round((Date.parse(d + 'T00:00:00Z') -
+                       Date.parse(from + 'T00:00:00Z')) / 86400000);
+  }
+  // matches_page.relative_label / offset_label, to the word.
+  function relative(d) {
+    return {'0': 'Today', '-1': 'Yesterday', '1': 'Tomorrow'}[dayDiff(d, cfg.today)] || '';
+  }
+  function relabel() {
+    var now = malawiToday();
+    if (now === cfg.today || now < cfg.win[0] || now > cfg.win[1]) return;
+    cfg.today = now;
+    document.querySelectorAll('[data-day-label]').forEach(function (el) {
+      var d = el.getAttribute('data-day-label');
+      el.textContent = relative(d) ||
+        WEEKDAYS[new Date(d + 'T00:00:00Z').getUTCDay()];
+    });
+    document.querySelectorAll('[data-day-rel]').forEach(function (el) {
+      var d = el.getAttribute('data-day-rel');
+      var n = dayDiff(d, now);
+      el.textContent = relative(d) ||
+        (n > 0 ? 'In ' + n + ' days' : -n + ' days ago');
+    });
+    document.querySelectorAll('[data-day-empty]').forEach(function (el) {
+      var r = relative(el.getAttribute('data-day-empty'));
+      el.textContent = 'No matches ' + (r ? r.toLowerCase() : 'on this date') + '.';
+    });
+  }
+  relabel();
+
   var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
                 'August', 'September', 'October', 'November', 'December'];
   // Monday-first, matching how a fixture list is read.

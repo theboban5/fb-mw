@@ -49,6 +49,11 @@ SLUG = "matches"
 WINDOW_BACK = 7
 WINDOW_FORWARD = 30
 
+# Malawi is CAT (UTC+2), no DST — build.TZ_OFFSET_HOURS says the same. The
+# date pages inline it so calendar.js can tell, in the reader's browser, which
+# day it is in Malawi (see _cal_data).
+TZ_OFFSET_HOURS = 2
+
 # Cache-buster for static/calendar.js, set once by build_pages. Same pattern
 # (and reason) as render.SEARCH_JS_VERSION: every page embeds the versioned
 # URL, and threading it through render_day's signature would be noise.
@@ -469,7 +474,8 @@ def _chip(iso, today, active, base=""):
     if not iso:
         return ('<span class="day-chip is-off" aria-hidden="true">'
                 '<span class="day-chip-date">&mdash;</span></span>')
-    inner = (f'<span class="day-chip-label">{escape(_chip_label(iso, today))}</span>'
+    inner = (f'<span class="day-chip-label" data-day-label="{iso}">'
+             f'{escape(_chip_label(iso, today))}</span>'
              f'<span class="day-chip-date">{escape(short_date_label(iso))}</span>')
     href = f"{base}{iso}.html"
     if active:
@@ -493,6 +499,7 @@ def _cal_data(iso, today, dates_with_matches, base="") -> str:
         "win": [_shift(today, -WINDOW_BACK), _shift(today, WINDOW_FORWARD)],
         "match": dates_with_matches,
         "base": base,
+        "tz": TZ_OFFSET_HOURS,
     }, separators=(",", ":"))
 
 
@@ -569,7 +576,8 @@ def _empty_body(iso, today, dates_with_matches, base=""):
     jump = (f'<p class="day-jump">{"".join(links)}</p>' if links else "")
     rel = relative_label(iso, today)
     when = rel.lower() if rel else "on this date"
-    return ('<div class="day-empty"><p class="day-empty-msg">'
+    return ('<div class="day-empty">'
+            f'<p class="day-empty-msg" data-day-empty="{iso}">'
             f"No matches {when}.</p>" + jump + "</div>")
 
 
@@ -593,7 +601,7 @@ def _heading(iso, today, day):
     if iso[:4] != today[:4]:
         label += f" {d.year}"
     return ('<div class="day-head"><h2 class="day-title">'
-            f'<span class="day-rel">{escape(rel)}</span>'
+            f'<span class="day-rel" data-day-rel="{iso}">{escape(rel)}</span>'
             f"{escape(label)}</h2>{count}</div>")
 
 
@@ -660,12 +668,14 @@ def render_day(ds, day, iso, today, dates, dates_with_matches, static_dir,
     return "\n".join(out)
 
 
-# A page is baked with the build's today. CI builds daily at 07:07 CAT, so
-# between midnight and the build a visitor's "today" is one day ahead of the
-# page. The window is contiguous around today, so today+1 always has a page —
-# hop to it rather than showing yesterday's football under a heading that
+# A page is baked with the build's today. CI rebuilds at 00:01 CAT, but a
+# scheduled run can start late and takes minutes, so between midnight and the
+# build a visitor's "today" is one day ahead of the page. The window is
+# contiguous around today, so today+1 always has a page — hop to it rather than showing yesterday's football under a heading that
 # says Today. Only ever moves by a day, and only on the two "today" pages (the
-# homepage and /matches/), never on a dated one somebody shared.
+# homepage and /matches/), never on a dated one somebody shared. The page it
+# lands on was baked the same night, so its Today/Tomorrow labels are a day
+# behind too — calendar.js rewrites those (relabel), on every date page.
 _TODAY_JS = """
 (function(){
   var el=document.querySelector('[data-day-today]');
@@ -719,7 +729,8 @@ def _page(ds, days, iso, today, dates, dates_with_matches, static_dir, updated,
 
 
 def build_pages(dist, templates_dir, static_dir, ds, updated, today,
-                nt_data=None, club_hub_ids=(), tz_offset_hours=2, days=None,
+                nt_data=None, club_hub_ids=(), tz_offset_hours=TZ_OFFSET_HOURS,
+                days=None,
                 leagues_html="", nav_js="", match_pages=None):
     """Write /matches/ and one page per date. Returns (pages, dates with matches).
 

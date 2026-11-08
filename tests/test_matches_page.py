@@ -263,9 +263,20 @@ class BuiltPagesTest(unittest.TestCase):
         self.assertEqual(self.pages, len(self.files))
 
     def test_index_is_todays_page(self):
-        self.assertIn('<span class="day-rel">Today</span>Wednesday 5 August<',
-                      self._body("index.html"))
+        self.assertIn('<span class="day-rel" data-day-rel="2026-08-05">Today'
+                      '</span>Wednesday 5 August<', self._body("index.html"))
         self.assertIn(f'data-day-today="{TODAY}"', self._body("index.html"))
+
+    def test_clock_words_carry_their_date_for_calendar_js(self):
+        """A page says Today about the day it was BUILT; read after midnight it
+        is a day behind, and calendar.js rewrites the words in the browser. It
+        can only do that if every clock-dependent word says which date it is
+        about, and the page says which timezone "today" is in."""
+        body = self._body("2026-08-06.html")
+        self.assertIn('data-day-label="2026-08-05">Today<', body)
+        self.assertIn('data-day-label="2026-08-06">Tomorrow<', body)
+        self.assertIn('data-day-rel="2026-08-06">Tomorrow<', body)
+        self.assertIn('"tz":2', body)
 
     def test_every_date_link_resolves(self):
         """The whole point of generating a contiguous window: an arrow or chip
