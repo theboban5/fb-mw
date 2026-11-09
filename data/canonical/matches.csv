@@ -1724,6 +1724,8 @@ MW_MDU20_2627_172,MW_MDU20,MW_2026_27,md_20,20,2026-11-08,10:00,MW_BOTA_G,MW_VA_
 MW_MDU20_2627_173,MW_MDU20,MW_2026_27,md_20,20,2026-11-08,08:00,MW_CHIB_G,MW_CP_M1,MW_CRS2_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_MDU20_2627_174,MW_MDU20,MW_2026_27,md_20,20,2026-11-08,10:00,MW_CHIB_G,MW_TA_M1,MW_CU2_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_MDU20_2627_175,MW_MDU20,MW_2026_27,md_20,20,2026-11-08,12:30,MW_MZUZU_CCAP,MW_A1A_M1,MW_KU2_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_NRFA2_2627_118,MW_NRFA2,MW_2026_27,md_10,10,2026-11-07,03:00,MW_MHUJU,MW_MHUJ_M1,MW_AS2_M1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_NRFA2_2627_119,MW_NRFA2,MW_2026_27,md_10,10,2026-11-07,03:00,MW_THUMBI,MW_THUM_M1,MW_NU2_M1,3,0,played,,reporter,,MW_REP_004,2026-11-09T06:34:02.326455+00:00,confirmed,MW_REP_004,2026-11-09T06:34:02.326455+00:00,,,,,,,,,,,,,,,
 MW_SL_2016_001,MW_SL,MW_2016,,,2016-04-16,,,MW_MAFC_M1,MW_MZUZ_M1,1,0,played,,backfill,https://www.rsssf.org/tablesm/malaw2016.html,,,confirmed,,,,,,,,,,,,,,,,,
 MW_SL_2016_002,MW_SL,MW_2016,,,2016-04-16,,,MW_KB_M1,MW_CIVO_M1,2,2,played,,backfill,https://www.rsssf.org/tablesm/malaw2016.html,,,confirmed,,,,,,,,,,,,,,,,,
 MW_SL_2016_003,MW_SL,MW_2016,,,2016-04-16,,,MW_BULL_M1,MW_MB_M1,0,0,played,,backfill,https://www.rsssf.org/tablesm/malaw2016.html,,,confirmed,,,,,,,,,,,,,,,,,
