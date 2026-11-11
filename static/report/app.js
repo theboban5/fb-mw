@@ -16474,13 +16474,24 @@ function quizContact(phone) {
     <a href="https://wa.me/${esc(digits)}" target="_blank" rel="noopener">WhatsApp</a>`;
 }
 
-function quizDrawHtml(d) {
+// Which prize each place in a round's FIRST draw wins, as src/quiz.py's
+// prize_rule says ("the first drawn wins…"). A redraw replaces a winner who
+// could not be reached, so it takes that winner's prize, whichever it was.
+const QUIZ_PRIZES = {
+  "flames-egypt-1": ["New Malawi national team jersey", "Football jersey"],
+  "flames-egypt-2": ["VIP ticket", "Standard ticket"],
+};
+
+function quizDrawHtml(d, first) {
+  const prizes = first ? QUIZ_PRIZES[d.quiz_id] || [] : [];
   const winners = (d.winners || []).map((w, i) => `
-    <div class="rp-account-row"><span>${i + 1}. ${esc(w.name)}</span>
+    <div class="rp-account-row"><span>${i + 1}. ${esc(w.name)}${prizes[i]
+      ? `<br><small>${esc(prizes[i])}</small>` : ""}</span>
       <span>${quizContact(w.phone)}${w.email ? `<br>${esc(w.email)}` : ""}</span></div>`).join("");
   return `
     <p class="rp-hint">Drawn ${esc(quizWhen(d.drawn_at))}${d.drawn_by ? ` by ${esc(d.drawn_by)}` : ""}
       from ${d.pool} with every answer right (${d.entries} entries).</p>
+    ${first ? "" : '<p class="rp-hint">A replacement: they take the prize of the winner who could not be reached.</p>'}
     ${winners || '<p class="rp-empty">Nobody was left to draw.</p>'}`;
 }
 
@@ -16514,7 +16525,7 @@ function quizRoundHtml(r, draws) {
         <a class="rp-btn is-ghost" href="#/ops?tab=quiz&quiz=${encodeURIComponent(r.quiz_id)}">See every entry &rarr;</a>
         <button class="rp-btn is-ghost" type="button" data-quiz-csv="${esc(r.quiz_id)}">Download entries (CSV)</button>
         ${draw}
-        ${mine.map(quizDrawHtml).join("")}
+        ${mine.map((d, i) => quizDrawHtml(d, i === mine.length - 1)).join("")}
       </div>
     </details>`;
 }
