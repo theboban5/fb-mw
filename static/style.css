@@ -3229,3 +3229,241 @@ table.mp-table { table-layout: fixed; }
   color: var(--muted);
 }
 .mp-sec { margin-top: 8px; }
+
+
+/* ─── Know Your Flames (src/quiz.py, 0067) ─────────────────
+   A strip above every page's search bar, and the quiz page itself. The
+   strip is the campaign's one piece of chrome: Malawi green with a red
+   call to action in both themes, because it has to read as "not part of
+   the results" at a glance, and a theme token would make it blend in. */
+.qz-banner {
+  position: relative;
+  max-width: var(--max);
+  margin: 8px auto 0;
+  padding: 0 16px;
+}
+.hm-wrap > .qz-banner { max-width: none; padding: 0; margin: 10px 0 0; }
+.qz-banner-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 40px 8px 12px;
+  border-radius: 10px;
+  background: #0b6b3a;
+  color: #ffffff;
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.qz-banner-link:active { transform: translateY(1px); }
+.qz-banner-flag { flex: 0 0 auto; font-size: 1.1rem; line-height: 1; }
+.qz-banner-text { flex: 1 1 auto; min-width: 0; }
+.qz-banner-go {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #ce1126;
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.qz-banner-x {
+  position: absolute;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #ffffff;
+  opacity: 0.75;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.hm-wrap > .qz-banner .qz-banner-x { right: 4px; }
+.qz-banner-x[hidden] { display: none; }
+
+.qz-wrap {
+  flex: 1 0 auto;
+  width: 100%;
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 12px 16px 36px;
+}
+.qz-main { margin-top: 14px; }
+.qz-hero, .qz-state {
+  padding: 18px 16px;
+  border: 1px solid var(--feature-line);
+  border-radius: 14px;
+  background: var(--feature-bg);
+}
+.qz-eyebrow {
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.qz-title { margin: 0; font-size: 1.45rem; line-height: 1.15; letter-spacing: -0.01em; }
+.qz-lede { margin: 8px 0 0; }
+.qz-when { margin: 10px 0 0; color: var(--muted); font-size: 0.85rem; font-weight: 600; }
+
+.qz-form { margin-top: 14px; }
+.qz-q, .qz-details {
+  min-width: 0;
+  margin: 0 0 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.qz-q.is-missing { border-color: #ce1126; box-shadow: 0 0 0 1px #ce1126; }
+/* A <legend> sits ON a fieldset's border unless it is floated; floated, it
+   is an ordinary first line inside the card. */
+.qz-q-text { float: left; width: 100%; padding: 0; font-size: 1.02rem; font-weight: 700; line-height: 1.3; }
+.qz-q > legend + *, .qz-details > legend + * { clear: both; }
+.qz-q-n {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.qz-hint {
+  display: inline-block;
+  margin: 6px 0 10px;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.qz-opts { display: grid; gap: 8px; }
+.qz-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.qz-opt input { flex: 0 0 auto; width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
+.qz-opt:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); font-weight: 700; }
+
+.qz-score { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.qz-score-team { font-weight: 700; }
+.qz-score-dash { color: var(--muted); font-weight: 700; }
+.qz-score-box {
+  width: 3.2em;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1.3rem;     /* never under 16px: iOS zooms on focus */
+  font-weight: 800;
+  text-align: center;
+}
+
+.qz-details .qz-q-text { margin-bottom: 8px; }
+.qz-field { display: block; margin: 0 0 12px; }
+.qz-field > span { display: block; margin-bottom: 4px; font-size: 0.9rem; font-weight: 600; }
+.qz-field em { color: var(--muted); font-style: normal; font-weight: 400; }
+.qz-field small { display: block; margin-top: 4px; color: var(--muted); font-size: 0.8rem; }
+.qz-field input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;       /* 16px exactly, same reason as .ss-input */
+}
+.qz-field input:focus, .qz-score-box:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.qz-field input.is-missing { border-color: #ce1126; }
+.qz-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 10px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.qz-check input { flex: 0 0 auto; width: 20px; height: 20px; margin: 1px 0 0; accent-color: var(--accent); }
+.qz-check.is-missing { color: #ce1126; }
+.qz-check a { color: var(--accent); }
+.qz-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+.qz-submit, .qz-share {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  border: 0;
+  border-radius: 12px;
+  background: #ce1126;
+  color: #ffffff;
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.qz-submit:disabled { opacity: 0.6; cursor: wait; }
+.qz-share { margin-top: 14px; background: #0b6b3a; }
+.qz-share[hidden] { display: none; }
+.qz-status { min-height: 1.3em; margin: 10px 0 0; font-size: 0.9rem; font-weight: 600; text-align: center; }
+.qz-status.is-error { color: #ce1126; }
+
+.qz-done {
+  margin-top: 14px;
+  padding: 22px 16px;
+  border: 1px solid var(--feature-line);
+  border-radius: 14px;
+  background: var(--feature-bg);
+  text-align: center;
+}
+.qz-done-tick {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 10px;
+  border-radius: 50%;
+  background: #0b6b3a;
+  color: #ffffff;
+  font-size: 1.6rem;
+  font-weight: 900;
+  line-height: 52px;
+}
+.qz-done-note { margin: 8px 0 0; }
+.qz-follow { display: grid; gap: 8px; margin-top: 14px; }
+.qz-state .qz-follow { margin-top: 12px; }
+.qz-follow-link {
+  display: block;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+.qz-back { display: inline-block; margin-top: 14px; color: var(--accent); font-weight: 700; }
+
+.qz-rules { margin-top: 22px; color: var(--muted); font-size: 0.85rem; }
+.qz-rules h2 { margin: 0 0 6px; color: var(--ink); font-size: 1rem; }
+.qz-rules ul { margin: 0; padding-left: 18px; }
+.qz-rules li { margin-bottom: 6px; }

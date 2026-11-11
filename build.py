@@ -32,7 +32,7 @@ sys.path.insert(0, ROOT)
 import validate  # noqa: E402
 from src import (adapt, dataset, flags, home, hubs, match_page,  # noqa: E402
                  matches_page, nt, nt_page, og_card, officials, render, scorers,
-                 search, standings, trending)
+                 quiz, search, standings, trending)
 
 STATIC = os.path.join(ROOT, "static")
 TEMPLATES = os.path.join(ROOT, "templates")
@@ -718,6 +718,23 @@ def _write_report_config(dist):
     ))
 
 
+def _quiz_endpoint():
+    """Where /quiz/ sends an entry: submit_quiz_entry, with the publishable key.
+
+    The same key and the same refusal as /report/config.js above, and the same
+    degradation: unset, the page renders and says it cannot send.
+    """
+    url = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
+    key = os.environ.get("SUPABASE_PUBLISHABLE_KEY", "").strip()
+    if "secret" in key:
+        raise SystemExit(
+            "REFUSING TO BUILD: SUPABASE_PUBLISHABLE_KEY looks like a secret "
+            "key. It would be published in everyleague.co/quiz/.")
+    if not (url and key):
+        return {}
+    return {"rpc_url": f"{url}/rest/v1/rpc/submit_quiz_entry", "key": key}
+
+
 def _crest_report(ds, club_ids):
     """Which of `club_ids` would render with no crest on the live site.
 
@@ -853,6 +870,10 @@ def main(argv):
     render.SEARCH_INDEX_VERSION = search.index_version(texts, nt_texts)
     render.SEARCH_JS_VERSION = render.file_version(
         os.path.join(STATIC, "search.js"))
+    # Know Your Flames (0067): the strip above every page's search bar, until
+    # the last round closes. Set before the first page renders, like the two
+    # versions above, because every page carries it.
+    render.BANNER = lambda prefix: quiz.banner(prefix, now)
 
     # 4. Render.
     if not render.FEEDBACK_URL:
@@ -1012,6 +1033,9 @@ def main(argv):
                                   national=list(national.values()), ntd=nt_data,
                                   hidden=HIDDEN_ON_LANDING)
     search.build_page(dist, TEMPLATES, STATIC, updated)
+    quiz.build_page(dist, css_ver=render.css_version(STATIC),
+                    fl=flags.Flags(STATIC), updated=updated, now=now,
+                    **_quiz_endpoint())
 
     # Written last: club_hub_ids is only known once the leagues are built, and
     # the file should describe a build that actually finished.

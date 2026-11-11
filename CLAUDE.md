@@ -90,6 +90,7 @@ src/trending.py        the homepage carousel (the `trending` tab, 0030)
 src/matches_page.py    /matches/ — every match on one date, any date
 src/home.py            the homepage shell: the day first, leagues beside it
 src/og_card.py         a link-preview PNG per match (/og/match/), cached in CI
+src/quiz.py            /quiz/ (Know Your Flames, 0067) + the banner on every page
 static/report/results_grid.js  the matchday grid's rules, DOM-free and tested
 static/report/fixture_import.js  the fixture importer's rules, same bargain
 static/report/error_report.js  what to report when a screen breaks (0052)
@@ -198,6 +199,48 @@ fixture and clean up, and they never mutate a real match.
 ---
 
 ## Recent work (Nov 2026)
+
+Know Your Flames, migrations `0067`–`0068` — `/quiz/`, `#/ops?tab=quiz`:
+
+- **A prize quiz to bring visits to the Flames pages** around Egypt (Cairo
+  13 Nov, Lilongwe 17 Nov). Two rounds of three questions, every answer on a
+  Flames page, each with a "Find it:" link to the tab it is on. Round 1
+  (jerseys) closes 18:00 CAT on the 13th; Round 2 (tickets) opens 23:00 that
+  night, because its first question is the Cairo score, and closes 24 hours
+  before the Lilongwe kick-off.
+- **`quiz.QUIZZES` is the single source** for the page; 0067's seed carries
+  the same windows and question ids for the database, and `test_quiz` fails
+  if they disagree. The page ships every round and every closed-state message,
+  with the one the build saw showing; `static/quiz/quiz.js` re-picks it on the
+  reader's clock, and the database enforces it on its own.
+- **The schema's first anon write**, against 0052's stated trade. A quiz you
+  must sign in to enter is one nobody enters, so the endpoint is made small
+  instead: one function, no table grants, one entry per normalised phone, a
+  row cap per round, a honeypot. No per-IP limit, deliberately: Malawi's
+  mobile networks put many subscribers behind one address.
+- **The entries never reach the repo.** Not a tab, so not in
+  `data/canonical/`; `scripts/quiz.py export` refuses a path inside the repo.
+  `draw` marks against `QUIZZES` (and nt_matches for the score), picks with
+  `secrets.SystemRandom`, and records the pool and key in `quiz_draws`.
+- **`#/ops?tab=quiz` (0068) is where the campaign is run**, admins only:
+  per round the entries, how many got every answer right, who wants updates,
+  a CSV of each round and of the subscribers (made on the phone), and the
+  draw. The answer key moved INTO `quizzes` so the database marks entries
+  itself (`answers @> key`), and the Cairo score is read from nt_matches, so
+  until that result is entered Round 2 cannot be marked or drawn.
+  `admin_draw_quiz` is two taps, uses `gen_random_uuid()` order, and a redraw
+  leaves out everyone already drawn: the replacement for a winner who cannot
+  be reached is a new person, and a new `quiz_draws` row. `scripts/quiz.py`
+  does the same from a laptop.
+- **A banner, not a pop-up**, on every page that has a search bar
+  (`render.BANNER`, emitted by `search_widget`), until the last round closes.
+  Its inline script re-picks the words on the reader's clock, removes it once
+  the campaign is over (a page built on Sunday is still served on Tuesday),
+  and remembers a dismissal per round.
+- Consent: contacting a winner is required to enter; updates are a second,
+  optional box. That list is the subscriber list. A WhatsApp channel cannot
+  be joined on anyone's behalf, so `WHATSAPP_CHANNEL_URL` is a follow button
+  (empty: none yet).
 
 The men's national team page, no migration — `/flames/`:
 

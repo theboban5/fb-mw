@@ -15619,6 +15619,10 @@ const OPS_TABS = [
   // thing on this screen worth reading.
   { key: "errors",       label: "Errors",       flag: null },
   { key: "reporters",    label: "Reporters",    flag: null },
+  // Know Your Flames (0067-0068): the campaign's entries and its draw. The
+  // other tab about people, so it sits beside Reporters, and it is the one
+  // screen in the portal that shows a member of the public's phone number.
+  { key: "quiz",         label: "Quiz",         flag: null },
   { key: "crests",       label: "Crests",       flag: null,
     head: "Clubs without a crest", blank: "Every club has a crest." },
 ];
@@ -16429,6 +16433,218 @@ function opsErrorRow(r) {
     </details>`;
 }
 
+// ── Know Your Flames (0067-0068) ─────────────────────────────────────────────
+// The quiz's entries and its prize draw, admin only. Every figure comes from
+// the database, which holds the answer key and marks each entry itself, so
+// this screen and scripts/quiz.py cannot disagree about who got it right. The
+// draw is the database's too (admin_draw_quiz): this screen only asks for it
+// and shows who came out, and a second draw for an unreachable winner leaves
+// everyone already drawn out of the pool. That is the rule on the quiz page.
+
+async function loadOpsQuiz() {
+  const [rounds, draws] = await Promise.all([
+    supabase.rpc("admin_quiz_rounds"), supabase.rpc("admin_quiz_draws")]);
+  if (rounds.error) throw rounds.error;
+  if (draws.error) throw draws.error;
+  return { rounds: rounds.data || [], draws: draws.data || [] };
+}
+
+async function loadOpsQuizEntries(quizId) {
+  const { data, error } = await supabase.rpc("admin_quiz_entries", { p_quiz: quizId });
+  if (error) throw error;
+  return data || [];
+}
+
+const quizWhen = (iso) => new Date(iso).toLocaleString("en-GB", {
+  weekday: "short", day: "numeric", month: "short", hour: "2-digit",
+  minute: "2-digit", timeZone: "Africa/Blantyre" });
+
+/** "Open until …", "Closed …" or "Opens …", on this phone's clock. */
+function quizWindow(r) {
+  const now = Date.now();
+  if (now < new Date(r.opens_at).getTime()) return `Opens ${quizWhen(r.opens_at)}`;
+  if (now < new Date(r.closes_at).getTime()) return `Open until ${quizWhen(r.closes_at)} CAT`;
+  return `Closed ${quizWhen(r.closes_at)} CAT`;
+}
+
+/** A winner's number as two taps: call, and WhatsApp. */
+function quizContact(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  return `<a href="tel:${esc(phone)}">${esc(phone)}</a> ·
+    <a href="https://wa.me/${esc(digits)}" target="_blank" rel="noopener">WhatsApp</a>`;
+}
+
+function quizDrawHtml(d) {
+  const winners = (d.winners || []).map((w, i) => `
+    <div class="rp-account-row"><span>${i + 1}. ${esc(w.name)}</span>
+      <span>${quizContact(w.phone)}${w.email ? `<br>${esc(w.email)}` : ""}</span></div>`).join("");
+  return `
+    <p class="rp-hint">Drawn ${esc(quizWhen(d.drawn_at))}${d.drawn_by ? ` by ${esc(d.drawn_by)}` : ""}
+      from ${d.pool} with every answer right (${d.entries} entries).</p>
+    ${winners || '<p class="rp-empty">Nobody was left to draw.</p>'}`;
+}
+
+function quizRoundHtml(r, draws) {
+  const closed = Date.now() >= new Date(r.closes_at).getTime();
+  const mine = draws.filter((d) => d.quiz_id === r.quiz_id);
+  const correct = r.correct == null
+    ? "Can't be marked until the match result is entered in /report"
+    : `${r.correct}`;
+  let draw = "";
+  if (closed && r.answer_key) {
+    const n = mine.length ? 1 : 2;
+    draw = `<button class="rp-btn" type="button" data-quiz-draw="${esc(r.quiz_id)}"
+        data-n="${n}">${mine.length ? "Draw 1 more (a winner could not be reached)"
+                                    : "Draw 2 winners"}</button>`;
+  } else if (closed) {
+    draw = `<p class="rp-hint">The draw opens once the match this round asks
+      about has a result in /report.</p>`;
+  } else {
+    draw = `<p class="rp-hint">The draw opens when the round closes.</p>`;
+  }
+  return `
+    <details class="rp-sec" open>
+      <summary><span class="rp-sec-name">${esc(r.title)}</span>
+        <span class="rp-sec-note">${esc(quizWindow(r))}</span>
+        <span class="rp-sec-count">${r.entries}</span></summary>
+      <div class="rp-sec-body">
+        <div class="rp-account-row"><span>Entries</span><span>${r.entries}</span></div>
+        <div class="rp-account-row"><span>Every answer right</span><span>${esc(correct)}</span></div>
+        <div class="rp-account-row"><span>Want updates</span><span>${r.opted_in}</span></div>
+        <a class="rp-btn is-ghost" href="#/ops?tab=quiz&quiz=${encodeURIComponent(r.quiz_id)}">See every entry &rarr;</a>
+        <button class="rp-btn is-ghost" type="button" data-quiz-csv="${esc(r.quiz_id)}">Download entries (CSV)</button>
+        ${draw}
+        ${mine.map(quizDrawHtml).join("")}
+      </div>
+    </details>`;
+}
+
+function quizEntryHtml(e) {
+  const mark = e.correct == null ? "" : e.correct
+    ? '<span class="ops-ok">All right</span>' : '<span class="ops-warn">Not all right</span>';
+  const answers = Object.entries(e.answers || {})
+    .map(([k, v]) => `${esc(k)}: ${esc(v)}`).join(" · ");
+  return `
+    <div class="ops-row">
+      <span class="ops-row-teams">${esc(e.name)} ${mark}</span>
+      <span class="ops-row-meta">${quizContact(e.phone)}${e.email ? ` · ${esc(e.email)}` : ""}
+        ${e.opt_in_updates ? " · wants updates" : ""}</span>
+      <span class="ops-row-meta">${esc(quizWhen(e.created_at))} · ${answers}</span>
+    </div>`;
+}
+
+/** A spreadsheet of entries, made on the phone: nothing is uploaded, and the
+ *  file goes wherever this browser saves downloads. */
+function quizCsv(rows, filename) {
+  const keys = [];
+  for (const r of rows) {
+    for (const k of Object.keys(r.answers || {})) if (!keys.includes(k)) keys.push(k);
+  }
+  const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lines = [["round", "entered (CAT)", "name", "phone", "email",
+    "wants updates", "every answer right", ...keys].map(cell).join(",")];
+  for (const r of rows) {
+    lines.push([r.quiz_id || "", quizWhen(r.created_at), r.name, r.phone, r.email,
+      r.opt_in_updates ? "yes" : "no",
+      r.correct == null ? "" : r.correct ? "yes" : "no",
+      ...keys.map((k) => (r.answers || {})[k] || "")].map(cell).join(","));
+  }
+  const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function renderOpsQuiz(params, header) {
+  const quizId = params.get("quiz");
+  if (quizId) {
+    const rows = await loadOpsQuizEntries(quizId);
+    header(`<a class="rp-btn is-ghost" href="#/ops?tab=quiz">&larr; Quiz</a>
+            <h2 class="rp-group-head">${esc(quizId)}
+              <span class="rp-count">${rows.length}</span></h2>
+            <p class="rp-hint">Newest first. Phone numbers are stored the same
+              way however they were typed, so each number appears once.</p>
+            ${rows.map(quizEntryHtml).join("")
+              || '<p class="rp-empty">No entries yet.</p>'}`);
+    return;
+  }
+
+  const { rounds, draws } = await loadOpsQuiz();
+  header(`<h2 class="rp-group-head">Know Your Flames</h2>
+          <p class="rp-hint">Entries from <a href="/quiz/" target="_blank"
+            rel="noopener">everyleague.co/quiz/</a>. Only administrators can see
+            this tab. Treat these numbers as private.</p>
+          ${rounds.map((r) => quizRoundHtml(r, draws)).join("")
+            || '<p class="rp-empty">No quiz rounds in the database.</p>'}
+          <button class="rp-btn is-ghost" type="button" data-quiz-subs>Download
+            everyone who wants updates (CSV)</button>`);
+
+  for (const btn of view.querySelectorAll("[data-quiz-csv]")) {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        const id = btn.dataset.quizCsv;
+        const rows = (await loadOpsQuizEntries(id)).map((r) => ({ ...r, quiz_id: id }));
+        quizCsv(rows, `${id}-entries.csv`);
+      } catch (error) {
+        flash(humanError(error), "error");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+
+  // One row per phone number across both rounds: the subscriber list.
+  view.querySelector("[data-quiz-subs]")?.addEventListener("click", async (event) => {
+    const btn = event.currentTarget;
+    btn.disabled = true;
+    try {
+      const seen = new Map();
+      for (const r of rounds) {
+        for (const e of await loadOpsQuizEntries(r.quiz_id)) {
+          if (e.opt_in_updates && !seen.has(e.phone)) seen.set(e.phone, { ...e, quiz_id: r.quiz_id });
+        }
+      }
+      quizCsv([...seen.values()], "everyleague-subscribers.csv");
+    } catch (error) {
+      flash(humanError(error), "error");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // Two taps, because a draw cannot be taken back: the first arms the button
+  // and says what the second will do.
+  for (const btn of view.querySelectorAll("[data-quiz-draw]")) {
+    let armed = null;
+    btn.addEventListener("click", async () => {
+      const n = Number(btn.dataset.n);
+      if (!armed) {
+        const label = btn.textContent;
+        btn.textContent = `Tap again to draw ${n} at random`;
+        armed = setTimeout(() => { armed = null; btn.textContent = label; }, 5000);
+        return;
+      }
+      clearTimeout(armed);
+      btn.disabled = true;
+      const { data, error } = await supabase.rpc("admin_draw_quiz",
+        { p_quiz: btn.dataset.quizDraw, p_winners: n });
+      if (error) {
+        flash(humanError(error), "error");
+        btn.disabled = false;
+        armed = null;
+        return;
+      }
+      flash(`Drawn ${data.winners.length} from ${data.pool}.`, "ok");
+      await renderOps(params);
+    });
+  }
+}
+
 // ── Site freshness panel ─────────────────────────────────────────────────────
 
 function opsSitePanel(fresh) {
@@ -16957,6 +17173,11 @@ async function renderOps(params) {
 
     if (tab === "site") {
       header(opsSitePanel(await loadOpsFreshness()));
+      return;
+    }
+
+    if (tab === "quiz") {
+      await renderOpsQuiz(params, header);
       return;
     }
 

@@ -660,6 +660,27 @@ Rules that differ from the league schema, and why:
   else in `NTTeamData` is filtered to one `team_code`; `NTGroup` also carries
   the rows whose code is *not* in `nt_teams`, which is exactly the rivals.
 
+## Quiz entries (0067) — not in the Dataset
+
+`quizzes`, `quiz_entries` and `quiz_draws` hold the Know Your Flames campaign
+(`/quiz/`, `src/quiz.py`). They are **not tabs**: `source_supabase` never reads
+them, so nothing here reaches `data/canonical/`, which is public. An entry is
+a member of the public's name and phone number.
+
+- `submit_quiz_entry` is the only write, and it is **granted to anon**: the
+  schema's one unauthenticated write. It never raises for bad input; it
+  returns `{ok, status, message}`. The window is the database clock's.
+- One entry per **normalised** phone per round (`quiz_normalise_phone`:
+  `+265` and nine digits for a Malawian number however it was typed).
+- `answers` is `{question_id: value}`, unmarked. The question ids must be
+  exactly the round's `question_ids`. Marking happens at the draw
+  (`scripts/quiz.py draw`), because the Cairo score does not exist until the
+  match has been played.
+- `consent_contact` is required (contact about the prize); `opt_in_updates` is
+  the subscriber list, and is optional on purpose.
+- No grants and no policies on any of the three; read them with the secret
+  key or the Supabase dashboard.
+
 ## Validation (`validate.py`, first build step)
 
 1. No duplicate or blank primary keys in any tab.

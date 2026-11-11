@@ -36,7 +36,7 @@ _OG_URL_TOKEN = "{{OG_URL}}"
 
 
 def social_meta(title: str, url: str = "", image: str = "",
-                image_alt: str = "") -> str:
+                image_alt: str = "", description: str = "") -> str:
     """Open Graph + Twitter tags, so a shared link previews as a card.
 
     Without these a chat client has nothing to show but the bare domain — it
@@ -50,8 +50,11 @@ def social_meta(title: str, url: str = "", image: str = "",
     and 1200x630 — the size tags below are not per-image). Only a match page
     has one, and only near match day (og_card.py); everything else, and every
     match page without one, keeps the site card.
+
+    `description` replaces the site's one-line description; only the quiz
+    page has its own, because its preview is the invitation.
     """
-    t, d = escape(title), escape(SITE_DESCRIPTION)
+    t, d = escape(title), escape(description or SITE_DESCRIPTION)
     img = escape(image) or OG_IMAGE
     alt = (escape(image_alt) if image else
            f"{SITE_NAME} — every league, every level")
@@ -145,6 +148,11 @@ def footer(updated: str) -> str:
 # renderers and threading two version strings through all of their signatures
 # would be noise. Same pattern as BUILD_ISO above.
 SEARCH_INDEX_VERSION = ""    # search.index_version(texts) — busts the JSON URL
+# A site-wide strip above the search bar, `(css_prefix) -> html`, or None. The
+# search bar is the one piece of chrome every page carries, so a banner set
+# here reaches every page without six renderers learning about it. Set by
+# build.main; today it is quiz.banner (Know Your Flames, 0067).
+BANNER = None
 SEARCH_JS_VERSION = ""       # file_version(static/search.js) — busts the script
 
 # Two placeholders, because the descriptive one does not fit a phone. Measured
@@ -182,7 +190,9 @@ def search_widget(css_prefix: str, variant: str = "bar") -> str:
     if SEARCH_JS_VERSION:
         js += f"?v={SEARCH_JS_VERSION}"
     cls = "site-search" + (" site-search-hero" if variant == "hero" else "")
+    strip = BANNER(css_prefix) if BANNER and variant == "bar" else ""
     return (
+        strip +
         f'<div class="{cls}" data-search data-search-index="{idx}" '
         f'data-search-prefix="{p}">'
         f'<form class="ss-form" action="{p}search/" method="get" role="search">'
