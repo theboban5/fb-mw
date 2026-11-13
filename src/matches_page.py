@@ -430,10 +430,15 @@ def _nt_by_team(day):
 
 
 def _nt_rows(team, matches, fl, prefix):
-    """The national-team lines: Malawi always on the left, flags for crests.
+    """The national-team lines: the home side on the left, flags for crests.
 
-    Same convention as /flames/ and /scorchers/ — a national-team line reads
-    from one team's perspective, so home/away moves into the note under it.
+    /flames/ and /scorchers/ keep Malawi on the left whatever `home_away`
+    says, because a results list there reads from one team's perspective and
+    its scorer columns line up under the teams. The day view is not that
+    page: every other line on it reads home first, so "Malawi 21:00 Egypt"
+    for a match in Cairo read as a home game whatever the note said. An away
+    match swaps; a neutral one (stored as `away`, 0066) keeps Malawi first,
+    since neither side is at home. The note still says Home / Away / Neutral.
     """
     page = nt_page.page_for(team.team_code)
     ours_href = f"{prefix}{page.slug}/" if page else ""
@@ -442,19 +447,23 @@ def _nt_rows(team, matches, fl, prefix):
         notes = [escape(m.competition)] if m.competition else []
         if m.ground_label:
             notes.append(escape(m.ground_label))
+        we_host = m.home_away != "away" or m.neutral
         if m.played:
-            mid, fixture = _score(m.team_score, m.opponent_score), False
+            scores = (m.team_score, m.opponent_score)
+            mid, fixture = _score(*(scores if we_host else scores[::-1])), False
             if m.score_note:
                 notes.append(escape(m.score_note))
         else:
             mid, fixture = _time_or_vs(m.kickoff), True
+        left, right = ("home", "away") if we_host else ("away", "home")
         ours = _side(escape(nt_page.SIDE_NAME),
                      fl.img_for(nt_page.OUR_COUNTRY, "dm-crest dm-flag"),
-                     ours_href, "home")
+                     ours_href, left)
         theirs = _side(escape(m.opponent),
                        fl.img_for(m.opponent, "dm-crest dm-flag") or _crest(""),
-                       "", "away")
-        out.append(_row(ours, mid, theirs, notes, fixture))
+                       "", right)
+        out.append(_row(ours, mid, theirs, notes, fixture) if we_host
+                   else _row(theirs, mid, ours, notes, fixture))
     return out
 
 

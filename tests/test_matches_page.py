@@ -55,7 +55,9 @@ class NationalTeamCardTest(unittest.TestCase):
                 "2,MW_M,2026-06-06,Friendly,Ethiopia,away,FALSE,,,,0,1,played,,"
                 "FALSE,FALSE,,\n"
                 "3,MW_U20M,2026-06-06,Friendly,Kenya U20,home,FALSE,,,,1,1,"
-                "played,,FALSE,FALSE,,\n"),
+                "played,,FALSE,FALSE,,\n"
+                "4,MW_M,2026-06-06,Friendly,Tanzania,away,TRUE,,,,1,2,played,,"
+                "FALSE,FALSE,,\n"),
         }
         # The other tabs empty, header only — the snapshot's own header lines.
         for tab in dataset.NT_TABS:
@@ -84,6 +86,26 @@ class NationalTeamCardTest(unittest.TestCase):
         self.assertIn('href="scorchers/"', cards[1])
         self.assertIn("Zambia", cards[1])
         self.assertNotIn("Ethiopia", cards[1])
+
+    def _line(self, card, opponent):
+        line = next(li for li in card.split('<li class="dm')
+                    if opponent in li)
+        names = re.findall(r'<span class="dm-name">([^<]*)</span>', line)
+        score = re.search(r'class="dm-score">(\d+)<span class="dm-dash">'
+                          r'&ndash;</span>(\d+)', line).groups()
+        return names, score
+
+    def test_the_home_side_reads_first(self):
+        # Every club line on the day view reads home first, so "Malawi 0–1
+        # Ethiopia" for a match in Addis read as a home defeat. An away match
+        # swaps, score with it; a neutral one (stored `away`) does not.
+        flames, scorchers = self._cards()[:2]
+        self.assertEqual(self._line(flames, "Ethiopia"),
+                         (["Ethiopia", "Malawi"], ("1", "0")))
+        self.assertEqual(self._line(flames, "Tanzania"),
+                         (["Malawi", "Tanzania"], ("1", "2")))
+        self.assertEqual(self._line(scorchers, "Zambia"),
+                         (["Malawi", "Zambia"], ("2", "0")))
 
     def test_a_team_without_a_page_gets_a_card_that_links_nowhere(self):
         youth = self._cards()[2]
