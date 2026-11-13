@@ -228,9 +228,6 @@ class Banner(unittest.TestCase):
         self.assertNotIn('class="qz-banner"', _page(R1.opens))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class DrawMarking(unittest.TestCase):
     """scripts/quiz.py: an entry is in the pool only with EVERY answer right."""
@@ -258,3 +255,27 @@ class DrawMarking(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.script.cmd_export(args)
         self.assertFalse(os.path.exists(os.path.join(ROOT, "entries.csv")))
+
+
+class Winners(unittest.TestCase):
+
+    def test_named_winners_show_whichever_round_is_open(self):
+        for now in (R1.closes + timedelta(minutes=1), R2.opens + timedelta(hours=1)):
+            html = _page(now)
+            self.assertIn('class="qz-winners"', html)
+            for name in R1.winner_names:
+                self.assertIn(f"<li>{name}</li>", html)
+
+    def test_first_names_only(self):
+        # The rules promised first names; a surname here is a broken promise.
+        for q in quiz.QUIZZES:
+            for name in q.winner_names:
+                self.assertNotIn(" ", name.strip(), name)
+
+    def test_a_round_without_winners_renders_no_card(self):
+        self.assertEqual(_page(R2.opens).count('class="qz-winners"'),
+                         sum(1 for q in quiz.QUIZZES if q.winner_names))
+
+
+if __name__ == "__main__":
+    unittest.main()

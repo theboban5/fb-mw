@@ -72,6 +72,11 @@ class Quiz:
     draw: str            # when the winners are drawn, in words
     winners: int
     questions: tuple
+    # Who won, as the page names them: FIRST NAMES ONLY, because the rules
+    # every entrant agreed to say first names, on Facebook. Empty renders
+    # nothing; filled in by hand once the winners are confirmed.
+    winner_names: tuple = ()
+    winners_note: str = ""   # a sentence under the names, when one is owed
 
 
 QUIZZES = (
@@ -118,6 +123,14 @@ QUIZZES = (
                          ("nkhoma", "Lanjesi Nkhoma")),
                 answer="jaziya"),
         ),
+        # The first five drawn (scripts/quiz.py, 25 in order) who follow
+        # EveryLeague on Facebook. The rules promised two winners; the
+        # jerseys came to five, and the page says so rather than letting
+        # the rules and the list quietly disagree.
+        winner_names=("Charles", "Allan", "Thomas", "Leenah", "Gwazanga"),
+        winners_note="We found three more jerseys, so Round 1 has five "
+                     "winners instead of two. Congratulations, and thank "
+                     "you to everyone who played.",
     ),
     Quiz(
         id="flames-egypt-2",
@@ -407,6 +420,25 @@ def _states(showing):
     return before + "".join(between) + over
 
 
+def _winners():
+    """A card per round that has named its winners, under whatever the page
+    is showing: Round 1's winners stay up while Round 2 is open."""
+    out = []
+    for q in QUIZZES:
+        if not q.winner_names:
+            continue
+        names = "".join(f"<li>{escape(n)}</li>" for n in q.winner_names)
+        note = (f'<p class="qz-lede">{escape(q.winners_note)}</p>'
+                if q.winners_note else "")
+        out.append(f"""<section class="qz-winners">
+  <p class="qz-eyebrow">&#x1F1F2;&#x1F1FC; {escape(q.title)}</p>
+  <h2 class="qz-title">The winners</h2>
+  <ul class="qz-winners-list">{names}</ul>
+  {note}
+</section>""")
+    return "".join(out)
+
+
 def _rules():
     rounds = "".join(
         f"<li>{escape(q.title)} is open from {escape(_when(q.opens))} until "
@@ -489,6 +521,7 @@ def render_page(*, css_ver, fl, updated, now, rpc_url="", key=""):
   <main class="qz-main">
 {rounds}
 {_states(showing)}
+{_winners()}
 {_rules()}
   </main>
 </div>

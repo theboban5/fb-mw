@@ -3298,7 +3298,7 @@ table.mp-table { table-layout: fixed; }
   padding: 12px 16px 36px;
 }
 .qz-main { margin-top: 14px; }
-.qz-hero, .qz-state {
+.qz-hero, .qz-state, .qz-winners {
   padding: 18px 16px;
   border: 1px solid var(--feature-line);
   border-radius: 14px;
@@ -3462,6 +3462,25 @@ table.mp-table { table-layout: fixed; }
   text-decoration: none;
 }
 .qz-back { display: inline-block; margin-top: 14px; color: var(--accent); font-weight: 700; }
+
+.qz-winners { margin-top: 14px; }
+.qz-winners-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.qz-winners-list li {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  font-weight: 800;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
 
 .qz-rules { margin-top: 22px; color: var(--muted); font-size: 0.85rem; }
 .qz-rules h2 { margin: 0 0 6px; color: var(--ink); font-size: 1rem; }
