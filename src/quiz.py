@@ -72,9 +72,11 @@ class Quiz:
     draw: str            # when the winners are drawn, in words
     winners: int
     questions: tuple
-    # Who won, as the page names them: FIRST NAMES ONLY, because the rules
-    # every entrant agreed to say first names, on Facebook. Empty renders
-    # nothing; filled in by hand once the winners are confirmed.
+    # Who won, as the page names them: the name on the entry, capitalised.
+    # Round 1's went up as first names (what its rules then promised) and
+    # were changed to full names at the organisers' decision; the rules say
+    # full names from Round 2 on. Empty renders nothing; filled in by hand
+    # once the winners are confirmed.
     winner_names: tuple = ()
     winners_note: str = ""   # a sentence under the names, when one is owed
 
@@ -127,7 +129,9 @@ QUIZZES = (
         # EveryLeague on Facebook. The rules promised two winners; the
         # jerseys came to five, and the page says so rather than letting
         # the rules and the list quietly disagree.
-        winner_names=("Charles", "Allan", "Josophine", "Leenah", "Gwazanga"),
+        winner_names=("Charles Jolamu Lubani", "Allan January",
+                      "Josophine Mambo", "Leenah Jr",
+                      "Gwazanga Simon-Howard"),
         winners_note="We found three more jerseys, so Round 1 has five "
                      "winners instead of two. Congratulations, and thank "
                      "you to everyone who played.",
@@ -454,7 +458,8 @@ def _rules():
     <li>We contact winners on the phone number they gave, by call, SMS or
       WhatsApp. A winner we cannot reach within 24 hours (for Round 2, by 10:00
       CAT on Tuesday 17 November) is replaced by another draw.</li>
-    <li>We may announce winners' first names on our Facebook page.</li>
+    <li>We may announce winners' names on EveryLeague and on our
+      Facebook page.</li>
     <li>Your details are used to run this competition and to contact winners.
       If you tick the updates box we will also send you EveryLeague news, and
       you can ask us to stop at any time. We never sell or share your details;

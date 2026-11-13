@@ -266,11 +266,9 @@ class Winners(unittest.TestCase):
             for name in R1.winner_names:
                 self.assertIn(f"<li>{name}</li>", html)
 
-    def test_first_names_only(self):
-        # The rules promised first names; a surname here is a broken promise.
-        for q in quiz.QUIZZES:
-            for name in q.winner_names:
-                self.assertNotIn(" ", name.strip(), name)
+    def test_the_rules_say_names_may_be_published_here(self):
+        # The page prints winners' full names; the rules must say it may.
+        self.assertIn("names on EveryLeague", quiz._rules())
 
     def test_a_round_without_winners_renders_no_card(self):
         self.assertEqual(_page(R2.opens).count('class="qz-winners"'),

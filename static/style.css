@@ -3485,6 +3485,11 @@ table.mp-table { table-layout: fixed; }
   overflow-wrap: anywhere;
 }
 .qz-winners .qz-lede { max-width: 34em; margin: 14px auto 0; }
+/* Full names on a phone wrap 1-1-2-1, which reads as an accident: stack
+   them, one name a row, all the same width. */
+@media (max-width: 520px) {
+  .qz-winners-list { flex-direction: column; }
+}
 
 .qz-rules { margin-top: 22px; color: var(--muted); font-size: 0.85rem; }
 .qz-rules h2 { margin: 0 0 6px; color: var(--ink); font-size: 1rem; }
