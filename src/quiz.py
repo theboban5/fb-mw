@@ -127,7 +127,7 @@ QUIZZES = (
         # EveryLeague on Facebook. The rules promised two winners; the
         # jerseys came to five, and the page says so rather than letting
         # the rules and the list quietly disagree.
-        winner_names=("Charles", "Allan", "Thomas", "Leenah", "Gwazanga"),
+        winner_names=("Charles", "Allan", "Josophine", "Leenah", "Gwazanga"),
         winners_note="We found three more jerseys, so Round 1 has five "
                      "winners instead of two. Congratulations, and thank "
                      "you to everyone who played.",
