@@ -53,6 +53,16 @@ class SeedAgreesWithPage(unittest.TestCase):
         self.rows = re.findall(
             r"\('([\w-]+)',\s*'[^']*',\s*'([^']+)',\s*'([^']+)',\s*"
             r"array\[([^\]]*)\]\)", seed)
+        # 0069 moved Round 2's opening; the database holds the seed with that
+        # update on top, so that is what the page must agree with.
+        with open(os.path.join(os.path.dirname(MIGRATION),
+                               "0069_quiz_round2_midnight.sql"),
+                  encoding="utf-8") as fh:
+            moved = dict((qid, at) for at, qid in re.findall(
+                r"set opens_at = '([^']+)'\s*where quiz_id = '([\w-]+)'",
+                fh.read()))
+        self.rows = [(qid, moved.get(qid, opens), closes, ids)
+                     for qid, opens, closes, ids in self.rows]
 
     def test_every_round_is_seeded_with_the_same_window_and_questions(self):
         self.assertEqual([r[0] for r in self.rows], [q.id for q in quiz.QUIZZES])
@@ -195,7 +205,7 @@ class Banner(unittest.TestCase):
 
     def test_between_rounds_says_round_two_is_coming(self):
         html = quiz.banner("", R1.closes + timedelta(minutes=1))
-        self.assertIn("Round 2 opens 23:00 CAT tonight", html)
+        self.assertIn("Round 2 opens at midnight tonight", html)
 
     def test_gone_once_the_last_round_closes(self):
         self.assertEqual(quiz.banner("", R2.closes), "")

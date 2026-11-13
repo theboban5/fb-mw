@@ -132,7 +132,9 @@ QUIZZES = (
                    "check the people drawn in the order they were drawn, and "
                    "the first two who follow our page win.",
         banner="Know Your Flames: win tickets for Malawi v Egypt",
-        opens=datetime(2026, 11, 13, 23, 0, tzinfo=CAT),
+        # Midnight, not 23:00 (0069): an hour after the final whistle was too
+        # little time for the Cairo score to be entered and the site rebuilt.
+        opens=datetime(2026, 11, 14, 0, 0, tzinfo=CAT),
         closes=datetime(2026, 11, 16, 15, 0, tzinfo=CAT),
         draw="Monday 16 November, so the winners can collect their tickets",
         winners=2,
@@ -207,11 +209,14 @@ def _banner_segments():
         if i:
             prev = QUIZZES[i - 1]
             if prev.closes < q.opens:
+                # "00:00 CAT tonight" reads as a typo; midnight is the word.
+                at = ("midnight" if (q.opens.hour, q.opens.minute) == (0, 0)
+                      else f"{q.opens:%H:%M} CAT")
                 segs.append({
                     "key": f"{q.id}:soon", "from": _ms(prev.closes),
                     "until": _ms(q.opens), "cta": "How",
-                    "text": f"Know Your Flames Round {q.round} opens "
-                            f"{q.opens:%H:%M} CAT tonight: "
+                    "text": f"Know Your Flames Round {q.round} opens at "
+                            f"{at} tonight: "
                             f"{q.prize[0].lower()}{q.prize[1:]}"})
         segs.append({"key": q.id, "from": _ms(q.opens), "until": _ms(q.closes),
                      "cta": "Play", "text": q.banner})
@@ -373,11 +378,16 @@ def _states(showing):
     first, last = QUIZZES[0], QUIZZES[-1]
     between = []
     for prev, q in zip(QUIZZES, QUIZZES[1:]):
+        # Shown only between the two windows, so a midnight opening is always
+        # tonight's; "Saturday 14 November, 00:00" read on Friday evening
+        # sounds a day away.
+        when = (f"at midnight tonight ({_when(q.opens)})"
+                if (q.opens.hour, q.opens.minute) == (0, 0) else _when(q.opens))
         between.append(f"""<section class="qz-state" data-qz-state="between"{"" if showing == ("between", q) else " hidden"}>
   <p class="qz-eyebrow">&#x1F1F2;&#x1F1FC; Know Your Flames</p>
   <h2 class="qz-title">Round {prev.round} has closed</h2>
   <p class="qz-lede">Thank you to everyone who entered. Round {q.round} opens
-    {escape(_when(q.opens))}, after the final whistle in Cairo. This time:
+    {escape(when)}, after the final whistle in Cairo. This time:
     {escape(q.prize[0].lower() + q.prize[1:])}.</p>
   {_follow()}
   <a class="qz-back" href="../flames/">Follow the match on the Flames page &rarr;</a>
