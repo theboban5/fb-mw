@@ -127,7 +127,10 @@ QUIZZES = (
         prize_rule="Round 2: two winners, for Malawi v Egypt at Bingu "
                    "National Stadium, Lilongwe, on Tuesday 17 November. The "
                    "first drawn wins a VIP ticket, the second a standard "
-                   "ticket, both collected in Lilongwe before kick-off.",
+                   "ticket, both collected in Lilongwe before kick-off. To "
+                   "win Round 2 you must follow EveryLeague on Facebook: we "
+                   "check the people drawn in the order they were drawn, and "
+                   "the first two who follow our page win.",
         banner="Know Your Flames: win tickets for Malawi v Egypt",
         opens=datetime(2026, 11, 13, 23, 0, tzinfo=CAT),
         closes=datetime(2026, 11, 16, 15, 0, tzinfo=CAT),
