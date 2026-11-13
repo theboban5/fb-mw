@@ -729,6 +729,40 @@ MIXED_MATCHES = MATCH_HEADER + (
 )
 
 
+class HomeSideFirstTest(unittest.TestCase):
+    """The home side reads on the left, Malawi's matches included.
+
+    It used to be Malawi on the left whatever `home_away` said, so "Malawi
+    1:3 Angola" for a match in Talatona read as a home defeat. M36 is at a
+    neutral ground and keeps Malawi first; the same match made a true away
+    one swaps names, score, scorer columns and the next-match panel.
+    """
+
+    AWAY = M36_MATCHES.replace("Nigeria,away,TRUE", "Nigeria,away,FALSE") \
+                      .replace("Egypt,away,TRUE", "Egypt,away,FALSE")
+
+    def _row(self, html):
+        row = re.search(r'<tr class="v2-res-row.*?</tr>', html, re.S).group(0)
+        return (re.sub(r"<[^>]+>", " ", row).split(),
+                html.index("Ajibade") < html.index("Temwa Chawinga"))
+
+    def test_a_neutral_ground_keeps_malawi_first(self):
+        html = pages()["results.html"]
+        self.assertEqual(self._row(html), (["Malawi", "3:2", "Nigeria"], False))
+        self.assertIn('<th class="v2-res-th-home">HOME</th>', html)
+
+    def test_an_away_match_reads_the_hosts_first(self):
+        td = load(matches=self.AWAY)
+        fl = flags.Flags(STATIC)
+        self.assertEqual(self._row(nt_page.render_results(td, fl)),
+                         (["Nigeria", "2:3", "Malawi"], True))
+        for panel in (nt_page.render_home(td, fl),
+                      nt_page.landing_next_match(td, fl)):
+            teams = re.search(r'next-teams">(.*?)-v">vs', panel).group(1)
+            self.assertIn("Egypt", teams)
+            self.assertNotIn("Malawi", teams)
+
+
 class HomePageTest(unittest.TestCase):
     """index.html shows the current tournament; the tabs show everything."""
 

@@ -200,6 +200,22 @@ class NTMatch:
         return f"{self.kickoff} {KICKOFF_TZ}" if self.kickoff else ""
 
     @property
+    def ours_first(self) -> bool:
+        """Does Malawi read on the left of a line? Yes unless we are away.
+
+        The home side reads first everywhere on the site, Malawi's matches
+        included — they used to put Malawi on the left whatever `home_away`
+        said, so "Malawi 1:3 Angola" in Talatona read as a home defeat. A
+        neutral ground (stored `away`, 0066) has no home side, and Malawi
+        stays first there.
+        """
+        return self.home_away != "away" or self.neutral
+
+    def sides(self, ours, theirs):
+        """(left, right): `ours` and `theirs` in the order the line reads."""
+        return (ours, theirs) if self.ours_first else (theirs, ours)
+
+    @property
     def ground_label(self) -> str:
         """Home / Away / Neutral — neutral wins, as it is the useful fact."""
         if self.neutral:

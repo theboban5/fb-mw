@@ -27,10 +27,13 @@ path.
 
 Three deliberate departures from the club pages:
 
-  * **Malawi is always the left-hand side**, whatever `home_away` says, so the
-    scorer columns stay aligned with the teams above them (home/away/neutral
-    moves into the caption line). A national-team results list reads from one
-    team's perspective; a club results table does not.
+  * **The home side reads first**, as on the club pages, and the scorer
+    columns follow the teams above them (`NTMatch.ours_first`). It used to be
+    Malawi on the left whatever `home_away` said, on the argument that the
+    list reads from one team's perspective; but "Malawi 1:3 Angola" for a
+    match in Talatona read as a home defeat to anyone who did not read the
+    caption. A neutral ground keeps Malawi first. Home/Away/Neutral stays in
+    the caption line.
   * **Country flags stand in for crests** (`flags.py`), with the club pages'
     placement: the left side's flag sits after its name, the right side's
     before, both nearest the score. An unmapped country renders no flag.
@@ -151,28 +154,30 @@ def _meta_line(match, with_competition=True) -> str:
 
 
 def _score_cell(match) -> str:
-    """Malawi's score first — this table is always from Malawi's perspective."""
+    """The home side's score first, like the names either side of it."""
     if not match.played:
         return '<td class="v2-res-score v2-res-vs">vs</td>'
     note = match.score_note
     note_html = f'<span class="v2-res-note">{escape(note)}</span>' if note else ""
-    return (f'<td class="v2-res-score">{match.team_score}:{match.opponent_score}'
-            f"{note_html}</td>")
+    left, right = match.sides(match.team_score, match.opponent_score)
+    return f'<td class="v2-res-score">{left}:{right}{note_html}</td>'
 
 
 def _match_rows(match, fl, extra_rows=()):
     """The caption row + result row for one match, plus any extra full-width rows."""
+    home, away = match.sides((SIDE_NAME, OUR_COUNTRY),
+                             (match.opponent, match.opponent))
     out = [
         f'<tr class="v2-res-meta-row"><td colspan="3">'
         f'<span class="v2-res-meta">{_meta_line(match)}</span></td></tr>',
         f'<tr class="v2-res-row v2-res-row-compact'
         f'{"" if match.played else " v2-res-row-fixture"}">'
-        f'<td class="v2-res-home">{escape(SIDE_NAME)}'
-        f'{fl.img_for(OUR_COUNTRY, "nt-flag nt-flag-post")}</td>'
+        f'<td class="v2-res-home">{escape(home[0])}'
+        f'{fl.img_for(home[1], "nt-flag nt-flag-post")}</td>'
         f"{_score_cell(match)}"
         f'<td class="v2-res-away">'
-        f'{fl.img_for(match.opponent, "nt-flag nt-flag-pre")}'
-        f"{escape(match.opponent)}</td></tr>",
+        f'{fl.img_for(away[1], "nt-flag nt-flag-pre")}'
+        f"{escape(away[0])}</td></tr>",
     ]
     out += [r for r in extra_rows if r]
     return "".join(out)
@@ -183,9 +188,9 @@ def _results_table(body: str) -> str:
         '<div class="v2-results-outer">'
         '<table class="v2-results-table v2-results-compact">'
         "<thead><tr>"
-        f'<th class="v2-res-th-home">{escape(SIDE_NAME.upper())}</th>'
+        '<th class="v2-res-th-home">HOME</th>'
         '<th class="v2-res-th-score">RESULT</th>'
-        '<th class="v2-res-th-away">OPPONENT</th>'
+        '<th class="v2-res-th-away">AWAY</th>'
         "</tr></thead>"
         f"<tbody>{body}</tbody></table></div>"
     )
@@ -242,6 +247,19 @@ def _header(team_data, flag_url, picker="") -> str:
 
 # ── 2. Next match ────────────────────────────────────────────────────────────
 
+def _next_sides(match, fl, cls):
+    """"Egypt [flag] vs [flag] Malawi" — the two spans of a next-match panel,
+    home side first, each flag nearest the "vs"."""
+    home, away = match.sides((SIDE_NAME, OUR_COUNTRY),
+                             (match.opponent, match.opponent))
+    return (f'<span class="{cls}-side">{escape(home[0])}'
+            f'{fl.img_for(home[1], "nt-flag nt-flag-post")}</span>'
+            f'<span class="{cls}-v">vs</span>'
+            f'<span class="{cls}-side">'
+            f'{fl.img_for(away[1], "nt-flag nt-flag-pre")}'
+            f"{escape(away[0])}</span>")
+
+
 def _next_match(match, fl) -> str:
     if match is None:
         return ""
@@ -254,14 +272,7 @@ def _next_match(match, fl) -> str:
         '<div class="nt-next">'
         + (f'<p class="nt-next-comp">{escape(match.competition)}</p>'
            if match.competition else "")
-        + '<p class="nt-next-teams">'
-        f'<span class="nt-next-side">{escape(SIDE_NAME)}'
-        f'{fl.img_for(OUR_COUNTRY, "nt-flag nt-flag-post")}</span>'
-        f'<span class="nt-next-v">vs</span>'
-        f'<span class="nt-next-side">'
-        f'{fl.img_for(match.opponent, "nt-flag nt-flag-pre")}'
-        f"{escape(match.opponent)}</span>"
-        "</p>"
+        + f'<p class="nt-next-teams">{_next_sides(match, fl, "nt-next")}</p>'
         f'<p class="nt-next-meta">{" &middot; ".join(escape(p) for p in meta)}</p>'
         "</div>"
     )
@@ -452,9 +463,10 @@ def _bracket(bracket, fl) -> str:
 # ── 4. Results ───────────────────────────────────────────────────────────────
 
 def _scorers_row(result) -> str:
-    """Both sides' scorers under one result: ours left, the opponent's right."""
+    """Both sides' scorers under one result, under the side they scored for."""
     if not (result.our_goals or result.their_goals):
         return ""
+    left, right = result.match.sides(result.our_goals, result.their_goals)
 
     def column(goals, side_cls):
         lines = "".join(
@@ -465,7 +477,7 @@ def _scorers_row(result) -> str:
     return (
         '<tr class="v2-scorers-row"><td colspan="3">'
         '<div class="v2-match-scorers">'
-        f'{column(result.our_goals, "home")}{column(result.their_goals, "away")}'
+        f'{column(left, "home")}{column(right, "away")}'
         "</div></td></tr>"
     )
 
@@ -898,14 +910,7 @@ def landing_next_match(team_data, fl) -> str:
         '<span class="el-next-card">'
         + (f'<span class="el-next-comp">{escape(match.competition)}</span>'
            if match.competition else "")
-        + '<span class="el-next-teams">'
-        f'<span class="el-next-side">{escape(SIDE_NAME)}'
-        f'{fl.img_for(OUR_COUNTRY, "nt-flag nt-flag-post")}</span>'
-        f'<span class="el-next-v">vs</span>'
-        f'<span class="el-next-side">'
-        f'{fl.img_for(match.opponent, "nt-flag nt-flag-pre")}'
-        f"{escape(match.opponent)}</span>"
-        "</span>"
+        + f'<span class="el-next-teams">{_next_sides(match, fl, "el-next")}</span>'
         f'<span class="el-next-meta">{meta}</span>{venue}'
         "</span></div>"
     )
