@@ -152,7 +152,9 @@ QUIZZES = (
         # Midnight, not 23:00 (0069): an hour after the final whistle was too
         # little time for the Cairo score to be entered and the site rebuilt.
         opens=datetime(2026, 11, 14, 0, 0, tzinfo=CAT),
-        closes=datetime(2026, 11, 16, 15, 0, tzinfo=CAT),
+        # 10:00, not 15:00 (0070): the draw and the winners' calls in
+        # Monday's working hours, with the day left to collect.
+        closes=datetime(2026, 11, 16, 10, 0, tzinfo=CAT),
         draw="Monday 16 November, so the winners can collect their tickets",
         winners=2,
         questions=(

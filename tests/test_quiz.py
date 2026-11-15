@@ -53,15 +53,20 @@ class SeedAgreesWithPage(unittest.TestCase):
         self.rows = re.findall(
             r"\('([\w-]+)',\s*'[^']*',\s*'([^']+)',\s*'([^']+)',\s*"
             r"array\[([^\]]*)\]\)", seed)
-        # 0069 moved Round 2's opening; the database holds the seed with that
-        # update on top, so that is what the page must agree with.
-        with open(os.path.join(os.path.dirname(MIGRATION),
-                               "0069_quiz_round2_midnight.sql"),
-                  encoding="utf-8") as fh:
-            moved = dict((qid, at) for at, qid in re.findall(
-                r"set opens_at = '([^']+)'\s*where quiz_id = '([\w-]+)'",
-                fh.read()))
-        self.rows = [(qid, moved.get(qid, opens), closes, ids)
+        # 0069 moved Round 2's opening and 0070 its close; the database holds
+        # the seed with those updates on top, so that is what the page must
+        # agree with.
+        moved = {}
+        for name in ("0069_quiz_round2_midnight.sql",
+                     "0070_quiz_round2_closes_10am.sql"):
+            with open(os.path.join(os.path.dirname(MIGRATION), name),
+                      encoding="utf-8") as fh:
+                for col, at, qid in re.findall(
+                        r"set (opens_at|closes_at) = '([^']+)'\s*"
+                        r"where quiz_id = '([\w-]+)'", fh.read()):
+                    moved[(qid, col)] = at
+        self.rows = [(qid, moved.get((qid, "opens_at"), opens),
+                      moved.get((qid, "closes_at"), closes), ids)
                      for qid, opens, closes, ids in self.rows]
 
     def test_every_round_is_seeded_with_the_same_window_and_questions(self):
@@ -123,11 +128,12 @@ class EveryRoundCanBeWon(unittest.TestCase):
                     self.assertTrue(all(1 <= len(v) <= 20 for v in values))
 
     def test_round_two_opens_after_cairo_and_closes_a_day_before_lilongwe(self):
+        # At least a day: 0070 moved the close to Monday morning.
         cairo_kickoff = datetime(2026, 11, 13, 21, 0, tzinfo=quiz.CAT)
         lilongwe_kickoff = datetime(2026, 11, 17, 15, 0, tzinfo=quiz.CAT)
         self.assertLess(R1.closes, cairo_kickoff)
         self.assertGreater(R2.opens, cairo_kickoff + timedelta(minutes=105))
-        self.assertEqual(R2.closes, lilongwe_kickoff - timedelta(hours=24))
+        self.assertLessEqual(R2.closes, lilongwe_kickoff - timedelta(hours=24))
 
     def test_hints_point_at_the_flames_pages(self):
         slug = nt_page.page_for("MW_M").slug
@@ -190,7 +196,7 @@ class PageStates(unittest.TestCase):
     def test_rules_name_both_windows(self):
         html = _page(R1.opens)
         self.assertIn("Friday 13 November, 18:00 CAT", html)
-        self.assertIn("Monday 16 November, 15:00 CAT", html)
+        self.assertIn("Monday 16 November, 10:00 CAT", html)
 
 
 class Banner(unittest.TestCase):
