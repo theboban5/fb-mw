@@ -206,7 +206,7 @@ Know Your Flames, migrations `0067`–`0068` — `/quiz/`, `#/ops?tab=quiz`:
   13 Nov, Lilongwe 17 Nov). Two rounds of three questions, every answer on a
   Flames page, each with a "Find it:" link to the tab it is on. Round 1
   (jerseys) closes 18:00 CAT on the 13th; Round 2 (tickets) opens at midnight
-  night, because its first question is the Cairo score, and closes 10:00 CAT
+  after the match, because its first question is the Cairo score, and closes 10:00 CAT
   on Monday the 16th (0069 moved the opening to midnight, 0070 the close).
 - **`quiz.QUIZZES` is the single source** for the page; 0067's seed carries
   the same windows and question ids for the database, and `test_quiz` fails
