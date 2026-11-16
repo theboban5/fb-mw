@@ -213,14 +213,20 @@ class Banner(unittest.TestCase):
         html = quiz.banner("", R1.closes + timedelta(minutes=1))
         self.assertIn("Round 2 opens at midnight tonight", html)
 
-    def test_gone_once_the_last_round_closes(self):
-        self.assertEqual(quiz.banner("", R2.closes), "")
+    def test_points_at_the_winners_after_the_last_round_closes(self):
+        html = quiz.banner("", R2.closes + timedelta(days=1))
+        self.assertIn("meet the winners", html)
+        self.assertIn('href="quiz/"', html)
+
+    def test_gone_once_the_winners_have_had_their_days(self):
+        self.assertEqual(quiz.banner("", quiz.WINNERS_BANNER_UNTIL), "")
 
     def test_segments_cover_the_whole_campaign_without_gaps(self):
         segs = quiz._banner_segments()
         for a, b in zip(segs, segs[1:]):
             self.assertEqual(a["until"], b["from"])
-        self.assertEqual(segs[-1]["until"], int(R2.closes.timestamp() * 1000))
+        self.assertEqual(segs[-1]["until"],
+                         int(quiz.WINNERS_BANNER_UNTIL.timestamp() * 1000))
 
     def test_search_bar_carries_it_and_the_hero_search_does_not(self):
         render.BANNER = lambda p: quiz.banner(p, R1.opens)

@@ -189,6 +189,11 @@ QUIZZES = (
 )
 
 
+# The banner's last day: "meet the winners" until the end of the week of the
+# Lilongwe match, then nothing.
+WINNERS_BANNER_UNTIL = datetime(2026, 11, 21, 0, 0, tzinfo=CAT)
+
+
 def by_id(quiz_id):
     return next((q for q in QUIZZES if q.id == quiz_id), None)
 
@@ -239,6 +244,14 @@ def _banner_segments():
                             f"{q.prize[0].lower()}{q.prize[1:]}"})
         segs.append({"key": q.id, "from": _ms(q.opens), "until": _ms(q.closes),
                      "cta": "Play", "text": q.banner})
+    # After the last close the banner stays a few days more, pointing at the
+    # winners: the week of the Lilongwe match brings the most readers the
+    # campaign will see, and a draw nobody sees announced reads as no draw.
+    last = QUIZZES[-1]
+    if last.closes < WINNERS_BANNER_UNTIL:
+        segs.append({"key": "winners", "from": _ms(last.closes),
+                     "until": _ms(WINNERS_BANNER_UNTIL), "cta": "See",
+                     "text": "Know Your Flames: meet the winners"})
     return segs
 
 
@@ -261,7 +274,8 @@ x.addEventListener('click',function(){gone();try{localStorage.setItem('qz-banner
 
 
 def banner(css_prefix, now):
-    """The strip above the search bar, or "" once every round has closed.
+    """The strip above the search bar, or "" once the winners have had their
+    few days (WINNERS_BANNER_UNTIL).
 
     It ships showing what was true at build time, so a reader without JS
     still sees it; the inline script re-picks the words on the reader's clock,
@@ -418,7 +432,7 @@ def _states(showing):
     over = f"""<section class="qz-state" data-qz-state="over"{"" if showing == ("over", last) else " hidden"}>
   <p class="qz-eyebrow">&#x1F1F2;&#x1F1FC; Know Your Flames</p>
   <h2 class="qz-title">Know Your Flames has closed</h2>
-  <p class="qz-lede">Thank you for playing. The winners are announced on our
+  <p class="qz-lede">Thank you for playing. The winners are below, and on our
     Facebook page.</p>
   {_follow()}
   <a class="qz-back" href="../flames/">Malawi Flames: results, squad and history &rarr;</a>
