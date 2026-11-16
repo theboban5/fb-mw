@@ -1711,7 +1711,7 @@ MW_NRFA2_2627_117,MW_NRFA2,MW_2026_27,md_9,9,2026-11-10,15:00,MW_LIKO,MW_LIKO_M1
 MW_SRWFL_2627_009,MW_SRWFL,MW_2026_27,md_3,3,2026-11-14,14:00,MW_MU_001,MW_NQ_W1,MW_SYS_W1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_SRWFL_2627_010,MW_SRWFL,MW_2026_27,md_3,3,2026-11-14,14:00,MW_NYAMBADWE,MW_NSG_W1,MW_EB_W1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_SRWFL_2627_011,MW_SRWFL,MW_2026_27,md_3,3,2026-11-15,14:00,MW_MU_001,MW_FFC_W1,MW_BAS_W1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
-MW_SRWFL_2627_012,MW_SRWFL,MW_2026_27,md_3,3,2026-11-15,14:00,MW_WORKS,MW_AL_W1,MW_EW_W1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
+MW_SRWFL_2627_012,MW_SRWFL,MW_2026_27,md_3,3,2026-11-15,14:00,MW_WORKS,MW_AL_W1,MW_EW_W1,2,0,played,,reporter,,MW_REP_003,2026-11-16T05:26:48.438851+00:00,confirmed,MW_REP_003,2026-11-16T05:26:48.438851+00:00,,,,,,,,,,,,,,,
 MW_SRWFL_2627_013,MW_SRWFL,MW_2026_27,md_4,4,2026-11-21,14:00,MW_SITIMA,MW_SYS_W1,MW_FFC_W1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_SRWFL_2627_014,MW_SRWFL,MW_2026_27,md_4,4,2026-11-21,14:00,MW_WORKS,MW_AL_W1,MW_NSG_W1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
 MW_SRWFL_2627_015,MW_SRWFL,MW_2026_27,md_4,4,2026-11-22,14:00,MW_B_001,MW_EW_W1,MW_NQ_W1,,,scheduled,,reporter,,,,unconfirmed,,,,,,,,,,,,,,,,,
