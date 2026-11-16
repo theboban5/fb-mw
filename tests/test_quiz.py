@@ -287,5 +287,43 @@ class Winners(unittest.TestCase):
                          sum(1 for q in quiz.QUIZZES if q.winner_names))
 
 
+class Signup(unittest.TestCase):
+    """"Hear about the next quiz" (0071): on the page in every state, posting
+    to its own RPC, never into a quiz round."""
+
+    def test_on_the_page_before_during_and_after(self):
+        for now in (R1.opens, R2.opens + timedelta(hours=1),
+                    R2.closes + timedelta(days=1)):
+            html = _page(now)
+            self.assertIn('class="qz-signup"', html)
+            self.assertIn('class="qz-signup-form"', html)
+
+    def test_it_has_a_honeypot_and_no_quiz_round(self):
+        html = _page(R2.closes)
+        form = html[html.index('class="qz-signup-form"'):]
+        form = form[:form.index("</form>")]
+        self.assertIn('name="hp_field"', form)
+        self.assertNotIn("data-qz-q", form)
+
+    def test_posts_beside_the_quiz_endpoint(self):
+        html = _page(R2.closes,
+                     rpc_url="https://x.supabase.co/rest/v1/rpc/submit_quiz_entry",
+                     key="sb_publishable_x")
+        cfg = json.loads(re.search(
+            r'<script type="application/json" id="qz-config">(.*?)</script>',
+            html).group(1))
+        self.assertEqual(cfg["signup"],
+                         "https://x.supabase.co/rest/v1/rpc/submit_update_signup")
+        self.assertEqual(_page_cfg_signup(R2.closes), "")
+
+
+def _page_cfg_signup(now):
+    """No endpoint configured (an offline build): no sign-up URL either."""
+    html = _page(now)
+    return json.loads(re.search(
+        r'<script type="application/json" id="qz-config">(.*?)</script>',
+        html).group(1))["signup"]
+
+
 if __name__ == "__main__":
     unittest.main()

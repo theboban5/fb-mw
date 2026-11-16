@@ -63,3 +63,21 @@ export function scoreValue(home, away) {
 export function missingAnswers(questionIds, answers) {
   return questionIds.filter((id) => !answers[id]);
 }
+
+/* What is wrong with a sign-up (0071), as the sentence to show, or "" when it
+ * can be sent. A name, and a way to reach them: a phone number, an email, or
+ * both, and whichever is given must look right. submit_update_signup asks
+ * the same questions; this only saves the round trip. */
+export function signupProblem(name, phone, email) {
+  if ((name || "").trim().length < 2) return "Please enter your name.";
+  const hasPhone = (phone || "").trim() !== "";
+  const hasEmail = (email || "").trim() !== "";
+  if (!hasPhone && !hasEmail) {
+    return "Please give a phone number or an email address, so we can reach you.";
+  }
+  if (hasPhone && !normalisePhone(phone)) {
+    return "That phone number does not look right, like 0991 234 567. Fix it, or leave it empty.";
+  }
+  if (!emailOk(email)) return "That email address does not look right. Fix it, or leave it empty.";
+  return "";
+}

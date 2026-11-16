@@ -16609,7 +16609,10 @@ async function renderOpsQuiz(params, header) {
     });
   }
 
-  // One row per phone number across both rounds: the subscriber list.
+  // One row per person across both rounds and the sign-up box (0071): the
+  // subscriber list. A sign-up may have only an email, so it is keyed on
+  // whichever it has. The sign-ups are optional: an export must still work
+  // if that RPC is not live yet.
   view.querySelector("[data-quiz-subs]")?.addEventListener("click", async (event) => {
     const btn = event.currentTarget;
     btn.disabled = true;
@@ -16620,6 +16623,15 @@ async function renderOpsQuiz(params, header) {
           if (e.opt_in_updates && !seen.has(e.phone)) seen.set(e.phone, { ...e, quiz_id: r.quiz_id });
         }
       }
+      try {
+        const { data, error } = await supabase.rpc("admin_update_signups");
+        if (error) throw error;
+        const emails = new Set([...seen.values()].map((e) => e.email).filter(Boolean));
+        for (const s of data || []) {
+          if ((s.phone && seen.has(s.phone)) || (s.email && emails.has(s.email))) continue;
+          seen.set(s.phone || s.email, { ...s, quiz_id: "sign-up", opt_in_updates: true });
+        }
+      } catch (_) { /* the quiz entries alone are still the list */ }
       quizCsv([...seen.values()], "everyleague-subscribers.csv");
     } catch (error) {
       flash(humanError(error), "error");

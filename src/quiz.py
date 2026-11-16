@@ -459,6 +459,43 @@ def _winners():
     return "".join(out)
 
 
+def _signup():
+    """"Tell me about the next one" (0071): a name and a phone or an email.
+
+    Always on the page, under the winners: the quiz is the reason a fan came,
+    and when it is over this is the one thing left for them to do. Its own
+    form and its own RPC (submit_update_signup), never a quiz entry.
+    """
+    return """<section class="qz-signup" id="updates">
+  <p class="qz-eyebrow">&#x1F1F2;&#x1F1FC; What&rsquo;s next</p>
+  <h2 class="qz-title">Hear about the next quiz</h2>
+  <p class="qz-lede">Leave your name and a phone number or email, and we will
+    tell you when the next EveryLeague quiz or event opens. You can ask us to
+    stop at any time.</p>
+  <form class="qz-signup-form" novalidate>
+    <label class="qz-field"><span>Your name</span>
+      <input name="name" type="text" autocomplete="name" maxlength="80"></label>
+    <label class="qz-field"><span>Phone number</span>
+      <input name="phone" type="tel" inputmode="tel" autocomplete="tel"
+             placeholder="0991 234 567" maxlength="24"></label>
+    <label class="qz-field"><span>Email</span>
+      <input name="email" type="email" autocomplete="email" maxlength="120">
+      <small>A phone number or an email is enough. Both is fine.</small></label>
+    <div class="qz-hp" aria-hidden="true"><label>Leave this empty
+      <input name="hp_field" type="text" tabindex="-1" autocomplete="off"></label></div>
+    <button class="qz-submit" type="submit">Keep me posted</button>
+    <p class="qz-status" role="status" aria-live="polite"></p>
+    <noscript><p class="qz-status is-error">Signing up needs JavaScript,
+      which this browser has turned off.</p></noscript>
+  </form>
+  <div class="qz-signup-done" hidden>
+    <p class="qz-done-tick" aria-hidden="true">&#x2713;</p>
+    <h2 class="qz-title">You&rsquo;re on the list</h2>
+    <p class="qz-done-note">We will tell you when the next quiz or event opens.</p>
+  </div>
+</section>"""
+
+
 def _rules():
     rounds = "".join(
         f"<li>{escape(q.title)} is open from {escape(_when(q.opens))} until "
@@ -507,6 +544,10 @@ def render_page(*, css_ver, fl, updated, now, rpc_url="", key=""):
                     "draw.")
     config = json.dumps({
         "rpc": rpc_url,
+        # submit_update_signup (0071), beside submit_quiz_entry: the same
+        # PostgREST base and the same publishable key.
+        "signup": (rpc_url.rsplit("/", 1)[0] + "/submit_update_signup"
+                   if rpc_url else ""),
         "key": key,
         "quizzes": [{"id": q.id, "opens": _ms(q.opens), "closes": _ms(q.closes)}
                     for q in QUIZZES],
@@ -543,6 +584,7 @@ def render_page(*, css_ver, fl, updated, now, rpc_url="", key=""):
 {rounds}
 {_states(showing)}
 {_winners()}
+{_signup()}
 {_rules()}
   </main>
 </div>

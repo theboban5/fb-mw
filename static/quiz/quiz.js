@@ -12,7 +12,7 @@
  * page works without it.
  */
 
-import { emailOk, missingAnswers, normalisePhone, phaseAt, scoreValue } from "./rules.js";
+import { emailOk, missingAnswers, normalisePhone, phaseAt, scoreValue, signupProblem } from "./rules.js";
 
 const cfg = JSON.parse(document.getElementById("qz-config").textContent);
 const DETAILS_KEY = "qz-details";
@@ -102,11 +102,11 @@ function finish(round, quizId, message) {
   drop(`qz-draft:${quizId}`);
 }
 
-async function send(payload) {
+async function send(payload, url = cfg.rpc) {
   const ctl = typeof AbortController === "function" ? new AbortController() : null;
   const timer = ctl ? setTimeout(() => ctl.abort(), TIMEOUT_MS) : null;
   try {
-    const res = await fetch(cfg.rpc, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: cfg.key },
       body: JSON.stringify(payload),
@@ -246,8 +246,72 @@ function wireShare() {
   }
 }
 
+/* "Hear about the next quiz" (0071). The quiz's bargain: what was typed
+ * stays in the boxes on any failure, and a phone that has signed up once is
+ * shown the tick rather than the form again. */
+function wireSignup() {
+  const section = document.querySelector(".qz-signup");
+  if (!section) return;
+  const form = section.querySelector(".qz-signup-form");
+  const done = section.querySelector(".qz-signup-done");
+  const SIGNED_KEY = "qz-signed-up";
+  const finished = () => {
+    form.hidden = true;
+    done.hidden = false;
+    save(SIGNED_KEY, true);
+  };
+  if (load(SIGNED_KEY)) { finished(); return; }
+
+  // A quiz entrant has typed these once already; do not ask twice.
+  const details = load(DETAILS_KEY);
+  if (details) {
+    for (const name of ["name", "phone", "email"]) {
+      const el = field(form, name);
+      if (el && !el.value && details[name]) el.value = details[name];
+    }
+  }
+
+  let busy = false;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (busy) return;
+    const name = field(form, "name").value;
+    const phone = field(form, "phone").value;
+    const email = field(form, "email").value;
+    const problem = signupProblem(name, phone, email);
+    if (problem) { setStatus(form, problem, "error"); return; }
+    if (!cfg.signup) {
+      setStatus(form, "Sign-ups can't be sent from this copy of the site.", "error");
+      return;
+    }
+    busy = true;
+    const button = form.querySelector(".qz-submit");
+    button.disabled = true;
+    setStatus(form, "Sending…");
+    try {
+      const out = await send({ p_name: name, p_phone: phone, p_email: email,
+        p_website: field(form, "hp_field").value }, cfg.signup);
+      if (out && out.ok) {
+        try { if (typeof gtag === "function") gtag("event", "updates_signup"); } catch (_) { /* fine */ }
+        if (out.message) done.querySelector(".qz-done-note").textContent = out.message;
+        finished();
+      } else if (out && out.message) {
+        setStatus(form, out.message, "error");
+      } else {
+        setStatus(form, "Something went wrong on our side. Try again in a minute.", "error");
+      }
+    } catch (_) {
+      setStatus(form, "We couldn't reach EveryLeague. Check your connection and try again.", "error");
+    } finally {
+      busy = false;
+      button.disabled = false;
+    }
+  });
+}
+
 showPhase();
 for (const round of document.querySelectorAll("[data-qz-round]")) wire(round);
 wireShare();
+wireSignup();
 // A page left open across a close or an opening catches up within a minute.
 setInterval(showPhase, 60000);

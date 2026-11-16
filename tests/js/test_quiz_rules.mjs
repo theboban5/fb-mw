@@ -11,7 +11,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { emailOk, missingAnswers, normalisePhone, phaseAt, scoreValue } from "../../static/quiz/rules.js";
+import { emailOk, missingAnswers, normalisePhone, phaseAt, scoreValue, signupProblem } from "../../static/quiz/rules.js";
 
 test("every way of writing a Malawian mobile is one number", () => {
   for (const raw of ["0991234567", "0991 234 567", "099-123-4567", "991234567",
@@ -72,4 +72,14 @@ test("missing answers come back in page order", () => {
   assert.deepEqual(missingAnswers(["a", "b", "c"], { a: "x", b: "", c: "y" }), ["b"]);
   assert.deepEqual(missingAnswers(["a", "b"], {}), ["a", "b"]);
   assert.deepEqual(missingAnswers(["a"], { a: "1" }), []);
+});
+
+test("a sign-up needs a name and a phone or an email", () => {
+  assert.equal(signupProblem("Ama Banda", "0991 234 567", ""), "");
+  assert.equal(signupProblem("Ama Banda", "", "ama@example.com"), "");
+  assert.equal(signupProblem("Ama Banda", "0991234567", "ama@example.com"), "");
+  assert.match(signupProblem("A", "0991 234 567", ""), /name/);
+  assert.match(signupProblem("Ama Banda", "", ""), /phone number or an email/);
+  assert.match(signupProblem("Ama Banda", "12", ""), /phone number does not look right/);
+  assert.match(signupProblem("Ama Banda", "", "ama@"), /email address/);
 });
