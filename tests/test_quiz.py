@@ -282,6 +282,11 @@ class Winners(unittest.TestCase):
         # The page prints winners' full names; the rules must say it may.
         self.assertIn("names on EveryLeague", quiz._rules())
 
+    def test_the_newest_round_s_winners_come_first(self):
+        html = _page(R2.closes + timedelta(hours=1))
+        self.assertLess(html.index(f"<li>{R2.winner_names[0]}</li>"),
+                        html.index(f"<li>{R1.winner_names[0]}</li>"))
+
     def test_a_round_without_winners_renders_no_card(self):
         self.assertEqual(_page(R2.opens).count('class="qz-winners"'),
                          sum(1 for q in quiz.QUIZZES if q.winner_names))

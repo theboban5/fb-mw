@@ -185,6 +185,16 @@ QUIZZES = (
                          ("580", "About 580"), ("680", "About 680")),
                 answer="680"),
         ),
+        # The first drawn (scripts/quiz.py, 15 in order) who follow on
+        # Facebook, and five tickets again where the rules promised two:
+        # one VIP, four standard. The note says which is which.
+        winner_names=("Tuntufye Kuwali", "Marcus Chimombo", "Joe Mphepo",
+                      "Silvester Kathebwe", "Akirah Azungu"),
+        winners_note="We had three more tickets to give away, so Round 2 has "
+                     "five winners instead of two. Tuntufye wins the VIP "
+                     "ticket, and Marcus, Joe, Silvester and Akirah a ticket "
+                     "each, for Malawi v Egypt at Bingu National Stadium on "
+                     "Tuesday. Congratulations!",
     ),
 )
 
@@ -442,9 +452,10 @@ def _states(showing):
 
 def _winners():
     """A card per round that has named its winners, under whatever the page
-    is showing: Round 1's winners stay up while Round 2 is open."""
+    is showing: Round 1's winners stay up while Round 2 is open. Newest
+    round first, because the latest winners are the news."""
     out = []
-    for q in QUIZZES:
+    for q in reversed(QUIZZES):
         if not q.winner_names:
             continue
         names = "".join(f"<li>{escape(n)}</li>" for n in q.winner_names)
