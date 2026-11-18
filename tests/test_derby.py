@@ -31,6 +31,7 @@ sys.path.insert(0, ROOT)
 from src import derby, events, flags, quiz  # noqa: E402
 
 MIGRATION = os.path.join(ROOT, "supabase", "migrations", "0072_derby_referrals.sql")
+OPENING = os.path.join(ROOT, "supabase", "migrations", "0074_derby_opens_now.sql")
 STATIC = os.path.join(ROOT, "static")
 
 
@@ -48,6 +49,8 @@ class SeedAgreesWithPage(unittest.TestCase):
     def setUp(self):
         with open(MIGRATION, encoding="utf-8") as fh:
             self.sql = fh.read()
+        with open(OPENING, encoding="utf-8") as fh:
+            self.opening = fh.read()
 
     def test_the_campaign_is_seeded_with_the_same_window(self):
         seed = self.sql.split("insert into public.referral_campaigns", 1)[1]
@@ -55,8 +58,12 @@ class SeedAgreesWithPage(unittest.TestCase):
         cid, opens, closes = re.search(
             r"\('([\w-]+)',\s*'[^']*',\s*'([^']+)',\s*'([^']+)'\)", seed).groups()
         self.assertEqual(cid, derby.CAMPAIGN_ID)
-        self.assertEqual(datetime.fromisoformat(opens + ":00"), derby.OPENS)
         self.assertEqual(datetime.fromisoformat(closes + ":00"), derby.CLOSES)
+        # 0074 moved the opening; the LAST statement setting it is the one
+        # running, so the page must agree with that one.
+        moved = re.findall(r"set opens_at = '([^']+)'", self.opening)
+        self.assertEqual(datetime.fromisoformat((moved or [opens])[-1] + ":00"),
+                         derby.OPENS)
 
     def test_the_signup_defaults_to_this_campaign(self):
         self.assertIn(f"p_campaign  text    default '{derby.CAMPAIGN_ID}'",
@@ -182,7 +189,7 @@ class TheBannerPointsHere(unittest.TestCase):
 
     def test_it_says_when_points_start_before_they_do(self):
         html = events.banner("", derby.ANNOUNCED + timedelta(hours=1))
-        self.assertIn("starts Thursday", html)
+        self.assertIn(f"starts {derby.OPENS:%A}", html)
         self.assertIn(derby.CASH, html)
 
     def test_it_goes_once_the_winners_have_had_their_days(self):

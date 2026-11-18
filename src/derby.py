@@ -36,9 +36,13 @@ from . import quiz, render
 
 CAT = quiz.CAT
 
-# The same id and times as 0072's seed; tests/test_derby.py compares.
+# The same id and times as the database (0072's seed, 0074's opening);
+# tests/test_derby.py compares.
 CAMPAIGN_ID = "derby-2026"
-OPENS = datetime(2026, 11, 19, 0, 0, tzinfo=CAT)
+# Wednesday 15:00, not Thursday 00:00 (0074): opened early the afternoon it
+# was promoted, with nobody yet brought through a link, so nobody's count
+# moved. Two and a half days to share instead of two.
+OPENS = datetime(2026, 11, 18, 15, 0, tzinfo=CAT)
 CLOSES = datetime(2026, 11, 21, 12, 0, tzinfo=CAT)
 
 # MW_SL_2627_158. Words, not a lookup: this page is about one match and says
@@ -57,9 +61,9 @@ UTM_CAMPAIGN = "derby2026"
 # On while the page was being tried; promoted 18 Nov.
 NOINDEX = False
 
-# The banner points here from this moment, a day before points count: the
-# page's "before" line says so, and a link in hand on Thursday morning is
-# the head start the fastest sharers need.
+# The banner points here from this moment. It was to be a day before points
+# counted; 0074 opened the race the same afternoon, so the "starts" segment
+# ran for fifteen hours of a day nobody saw it on.
 ANNOUNCED = datetime(2026, 11, 18, 0, 0, tzinfo=CAT)
 # After the close the banner says where the winners are, until the week of
 # the match is out: quiz.WINNERS_BANNER_UNTIL's reasoning.
@@ -103,7 +107,7 @@ def banner_segments():
         {"key": f"{CAMPAIGN_ID}:soon", "from": _ms(ANNOUNCED),
          "until": _ms(OPENS), "cta": "Get my link", "href": "derby/",
          "icon": ICON,
-         "text": f"Derby race starts Thursday: invite friends, win {CASH}"},
+         "text": f"Derby race starts {OPENS:%A}: invite friends, win {CASH}"},
         {"key": CAMPAIGN_ID, "from": _ms(OPENS), "until": _ms(CLOSES),
          "cta": "Join", "href": "derby/", "icon": ICON,
          "text": f"Invite your friends: win {CASH} or Derby VIP tickets"},

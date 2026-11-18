@@ -207,7 +207,7 @@ Bring your friends to the Derby, migration `0072` — `/derby/`, `#/ops?tab=quiz
 - **A referral race before Bullets v Wanderers** (Sun 22 Nov): MK50,000 for
   whoever brings the most, two VIP tickets drawn among everyone else with 3+.
   A fan signs up and gets `/derby/?r=<code>`; a friend counts when they sign
-  up through it with a NEW phone number, inside the window (Thu 19 00:00 →
+  up through it with a NEW phone number, inside the window (Wed 18 15:00 →
   Sat 21 12:00 CAT), and was not already a quiz opt-in. Clicks are never
   counted: a refreshed page is not a person. UTMs ride the share buttons only
   for GA4's per-platform split.
@@ -222,7 +222,8 @@ Bring your friends to the Derby, migration `0072` — `/derby/`, `#/ops?tab=quiz
   platform lets a page verify it, so winners are asked to show it.
 - **Shipped unlisted, promoted 18 Nov** after two rounds of trying it: the
   site banner points at it from `derby.ANNOUNCED` ("starts Thursday") to a
-  few days after the close, and `NOINDEX` is off.
+  few days after the close, and `NOINDEX` is off. `0074` opened the race
+  the same afternoon (Wed 15:00, not Thu 00:00), with no referral yet made.
 - **Written for people who do not sign up for things online** (second cut,
   `0073`): "1 friend who joins = 1 point", the prize in big type, and the
   flow as three lit steps (Join → Get your link → Share it). Joining jumps
