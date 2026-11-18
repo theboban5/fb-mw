@@ -3577,6 +3577,7 @@ table.mp-table { table-layout: fixed; }
 }
 .dy-share a.qz-submit { background: #0b6b3a; }
 .dy-share a.qz-share { background: #1877f2; }
+.dy-who { margin: 10px 0 0; color: var(--muted); font-size: 0.85rem; }
 .dy-count { margin: 16px 0 0; font-size: 1.05rem; font-weight: 800; }
 .dy-count[hidden] { display: none; }
 .dy-reset {

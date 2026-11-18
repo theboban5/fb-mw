@@ -16595,7 +16595,7 @@ function referrerHtml(r, campaignId) {
   const extra = r.uncounted ? ` <small>(+${r.uncounted} not counted)</small>` : "";
   return `
     <div class="ops-row">
-      <span class="ops-row-teams">${r.place}. ${esc(r.name)} · ${r.counted}${extra}
+      <span class="ops-row-teams">${r.counted ? `${r.place}. ` : ""}${esc(r.name)} · ${r.counted}${extra}
         ${r.drawn ? '<span class="ops-ok">Won a ticket</span>' : ""}</span>
       <span class="ops-row-meta">${quizContact(r.phone)}${r.email ? ` · ${esc(r.email)}` : ""}</span>
       <span class="ops-row-meta">Code ${esc(r.code)} · follows ${esc(followsText(r.follows) || "nothing ticked")}
@@ -16644,6 +16644,10 @@ function referralsHtml({ campaign: c, referrers, draws }) {
           A referral counts when a NEW phone number signs up through someone's
           link inside the window, and was not already on the list from the quiz.
           Phone a few of the top referrer's people before paying.</p>
+        <p class="rp-hint">The list below is everyone whose link has been used,
+          most counted first. Before the race opens nothing counts, so every
+          sign-up shows as "not counted" until then.</p>
+        <a class="rp-btn is-ghost" href="#/ops?tab=quiz&signups=derby">See every sign-up &rarr;</a>
         <div class="rp-account-row"><span>Sign-ups on /derby/</span><span>${c.signups}</span></div>
         <div class="rp-account-row"><span>Through someone's link</span><span>${c.referred}</span></div>
         <div class="rp-account-row"><span>Counting</span><span>${c.counted}</span></div>
@@ -16707,6 +16711,34 @@ function wireReferrals(data, params) {
   });
 }
 
+/** Everyone who signed up on /derby/, newest first, and whose link brought
+ *  them. admin_update_signups is the subscriber list's own RPC; the race
+ *  view only lists people whose link was used, so a sign-up who brought
+ *  nobody was findable only by knowing who referred them. */
+async function renderOpsDerbySignups(header) {
+  const { data, error } = await supabase.rpc("admin_update_signups");
+  if (error) throw error;
+  const all = data || [];
+  const byCode = new Map(all.filter((s) => s.ref_code).map((s) => [s.ref_code, s]));
+  const rows = all.filter((s) => s.source === "derby").reverse();
+  header(`<a class="rp-btn is-ghost" href="#/ops?tab=quiz">&larr; Quiz</a>
+          <h2 class="rp-group-head">Sign-ups on /derby/
+            <span class="rp-count">${rows.length}</span></h2>
+          <p class="rp-hint">Newest first. Whether a referral counts is on
+            the referrer's "Who they brought" list.</p>
+          ${rows.map((s) => {
+            const via = s.referred_by ? byCode.get(s.referred_by) : null;
+            return `
+            <div class="ops-row">
+              <span class="ops-row-teams">${esc(s.name)}</span>
+              <span class="ops-row-meta">${quizContact(s.phone)}${s.email ? ` · ${esc(s.email)}` : ""}</span>
+              <span class="ops-row-meta">${esc(quizWhen(s.created_at))} · code ${esc(s.ref_code || "none")}
+                · follows ${esc(followsText(s.follows) || "nothing ticked")}
+                · ${s.referred_by ? `via ${esc(via ? via.name : "?")} (${esc(s.referred_by)})` : "came on their own"}</span>
+            </div>`;
+          }).join("") || '<p class="rp-empty">Nobody has signed up yet.</p>'}`);
+}
+
 async function renderOpsReferees(code, campaignId, header) {
   const { data, error } = await supabase.rpc("admin_referral_referees",
     { p_campaign: campaignId, p_code: code });
@@ -16731,6 +16763,10 @@ async function renderOpsReferees(code, campaignId, header) {
 }
 
 async function renderOpsQuiz(params, header) {
+  if (params.get("signups") === "derby") {
+    await renderOpsDerbySignups(header);
+    return;
+  }
   const derbyCode = params.get("derby");
   if (derbyCode) {
     await renderOpsReferees(derbyCode, params.get("campaign") || "derby-2026", header);

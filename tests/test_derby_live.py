@@ -25,6 +25,7 @@ import os
 import random
 import sys
 import unittest
+import urllib.parse
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -67,14 +68,22 @@ class DerbyReferralsTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        # A bare "+" in a query string is a space, so "phone=eq.+44…" matched
+        # nothing and the first run of this file left ten rows on the live
+        # list. Encoded, and every row checked gone afterwards.
         for phone in cls.phones:
             # Referred rows first: referred_by references ref_code.
-            delete("update_signups", f"phone=eq.{phone}&referred_by=not.is.null")
+            delete("update_signups", f"phone=eq.{urllib.parse.quote(phone, safe='')}"
+                                     "&referred_by=not.is.null")
         for phone in cls.phones:
-            delete("update_signups", f"phone=eq.{phone}")
+            delete("update_signups", f"phone=eq.{urllib.parse.quote(phone, safe='')}")
+        left = sb._request("GET", "update_signups",
+                           query="select=id&phone=like.%2B447700900*",
+                           require_secret=True)
         delete("referral_draws", f"campaign_id=eq.{cls.campaign}")
         delete("referral_campaigns", f"campaign_id=eq.{cls.campaign}")
         cls.identities.teardown()
+        assert not left, f"live test rows left on the list: {left}"
 
     def phone(self):
         n = next(self.pool)

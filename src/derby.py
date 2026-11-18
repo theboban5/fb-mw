@@ -159,6 +159,7 @@ def _done():
     <h2 class="qz-title">Your link</h2>
     <p class="qz-done-note">Send it to your friends. Everyone new who signs up
       through it counts for you.</p>
+    <p class="dy-who" hidden></p>
     <div class="dy-link">
       <p class="dy-link-box" aria-label="Your link"></p>
       <button class="dy-copy" type="button">Copy</button>

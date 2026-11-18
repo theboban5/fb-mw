@@ -120,6 +120,18 @@ async function refreshCount(code) {
   } catch (_) { /* the link is what matters; the count can wait */ }
 }
 
+/* Whose link this is. The page remembers a sign-up per browser, so a phone
+ * that signed up and then opens a FRIEND's link shows its own link, not the
+ * form: it cannot be referred again. Without a sentence saying so, that
+ * reads as the friend's link being broken. */
+function whoLine(me, incoming) {
+  const as = me.name ? `Signed up as ${me.name} on this phone.` : "This phone has signed up already.";
+  if (incoming && incoming !== me.code) {
+    return `${as} You opened a friend's link, but this phone already has its own, so it is shown here. Someone else using this phone? Tap "Not you?" below.`;
+  }
+  return as;
+}
+
 function showDone(me, counts) {
   const short = linkFor(cfg.page, me.code);
   const tagged = (source) => linkFor(cfg.page, me.code, source, cfg.utm);
@@ -141,6 +153,10 @@ function showDone(me, counts) {
     navigator.share({ title: document.title, text: shareText(words, ""),
       url: tagged("share") }).catch(() => {});
   };
+
+  const who = done.querySelector(".dy-who");
+  who.textContent = whoLine(me, incoming);
+  who.hidden = false;
 
   form.hidden = true;
   document.querySelector(".dy-invited").hidden = true;
@@ -177,6 +193,7 @@ function wireDone() {
     drop(ME_KEY);
     done.hidden = true;
     form.hidden = false;
+    if (load(REF_KEY)) document.querySelector(".dy-invited").hidden = false;
     setStatus("");
     field("phone").focus();
   });
@@ -253,7 +270,7 @@ function wireForm() {
         p_website: field("hp_field").value,
       });
       if (out && out.ok && out.code) {
-        const me = { code: out.code, pred: pred.home != null ? pred : null };
+        const me = { code: out.code, name: values.name.trim(), pred: pred.home != null ? pred : null };
         save(ME_KEY, me);
         drop(DRAFT_KEY);
         save(DETAILS_KEY, { name: values.name, phone: values.phone, email: values.email });
