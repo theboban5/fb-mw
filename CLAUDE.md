@@ -102,6 +102,7 @@ static/report/stats.js  #/stats: periods, sums, the copyable sentences (0062)
 static/report/pre_match.js  a team sheet as a line-up board: box text, name styles
 static/report/compare.js  two teams side by side, last five: table, form, H2H
 static/report/league_stats.js  leagues against each other: metrics, ranks (Compare tab + boards)
+static/report/ideas.js  #/ideas: sorting, tag filter, quick-add, ▲▼ (0075)
 src/nt.py, nt_page.py  national teams (the nt_* tabs, /flames/ + /scorchers/)
 src/search.py          the site search index
 static/report/app.js   the reporter portal (one file, no framework)
@@ -166,8 +167,8 @@ way. It covers `static/report/results_grid.js`,
 `static/report/fixture_import.js`, `static/report/error_report.js`,
 `static/report/match_report.js`, `static/report/squad.js`,
 `static/report/stats.js`, `static/report/pre_match.js`,
-`static/report/compare.js` and `static/report/league_stats.js`, which
-import nothing but each other; the
+`static/report/compare.js`, `static/report/league_stats.js` and
+`static/report/ideas.js`, which import nothing but each other; the
 moment one of them needs `document` or `supabase`, its tests stop meaning
 anything.
 
@@ -201,6 +202,27 @@ fixture and clean up, and they never mutate a real match.
 ---
 
 ## Recent work (Nov 2026)
+
+The ideas board, migration `0075` — `#/ideas`, admins only:
+
+- **Every idea for the site had nowhere to live** — a stepper thumbs miss,
+  a WhatsApp launch, "move to a private repo" — so nothing could be sorted
+  or ticked off, and a thing done looked like a thing forgotten.
+- **A kanban that is a list on a phone**: lane tabs with counts, one lane
+  at a time; from 900px every lane is a column (`main.is-board`). The same
+  markup either way — every lane is drawn and CSS shows the selected one.
+- **Lanes are rows** (`idea_lanes`), added, renamed, reordered and removed
+  under ⚙ Edit lanes; Done is never a lane. ✓ closes an idea into the
+  Archive (`closed_at` + `outcome` done/dropped) with Undo in place of the
+  card; Reopen puts it back in its lane. Delete is two taps and only for
+  mistakes.
+- Quick-add takes `#tag`, `!high`, `!low`. Tags are free text offered back
+  as chips (most used first); sort is My order / Priority / Quick wins
+  (small first) / Newest / Oldest; search covers title, notes and tags.
+- **Never a Dataset tab**: `data/canonical/` is public, so plain RLS
+  (`is_admin()` for reading too) and `tests/test_ideas_private.py` guarding
+  the build. A draft typed into an open card survives a save elsewhere
+  (`ideasState.drafts`), because every save redraws the board.
 
 Bring your friends to the Derby, migration `0072` — `/derby/`, `#/ops?tab=quiz`:
 

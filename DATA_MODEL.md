@@ -681,6 +681,29 @@ a member of the public's name and phone number.
 - No grants and no policies on any of the three; read them with the secret
   key or the Supabase dashboard.
 
+## Ideas board (0075) — not in the Dataset
+
+`idea_lanes` and `ideas` are the portal's `#/ideas` board: improvements,
+plans and decisions for the site. They are **not tabs** and must never
+become one (`tests/test_ideas_private.py` fails if the build names either):
+`data/canonical/` is public, and these are notes about the site's plans.
+
+- **Admins only, reading included.** Plain RLS, every policy `is_admin()`;
+  anon revoked. No RPCs: the build never reads them, so a bad row breaks
+  nothing, and the CHECKs are the whole validation.
+- `idea_lanes` (`lane_id` identity, `name` ≤30, `sort_order` float) are the
+  board's columns, seeded Inbox / Next up / Doing. Done is not a lane.
+- `ideas`: `title` ≤200, `notes` ≤4000, `tags text[]` (≤12, each 1–24
+  trimmed — `idea_tags_ok`), `priority` 1 high / 2 normal / 3 low, `size`
+  `'' | small | medium | big`, `sort_order` float within the lane.
+- **Closing is `closed_at` + `outcome`** (`done | dropped`), both or
+  neither. A closed idea keeps its `lane_id` for Reopen.
+- `lane_id` is `on delete set null`, and an OPEN idea must have one — so a
+  lane cannot be deleted while it holds an open idea; the portal moves them
+  first. A closed idea whose lane went keeps a null lane.
+- Ids are plain identities, not `MW_…`: nothing joins on them or publishes
+  them.
+
 ## Validation (`validate.py`, first build step)
 
 1. No duplicate or blank primary keys in any tab.

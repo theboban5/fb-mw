@@ -70,6 +70,7 @@ body {
 main { max-width: var(--max); margin: 0 auto; padding: 16px 16px 40px; }
 /* Only the operations dashboard, which compares competitions side by side. */
 main.is-wide { max-width: 900px; }
+main.is-board { max-width: 1240px; }
 
 .rp-loading { padding: 48px 0; text-align: center; color: var(--muted); }
 .rp-spinner {
@@ -1754,3 +1755,126 @@ a { color: var(--accent); }
 .rp-stats-lines p { margin: 0 0 6px; font-weight: 600; overflow-wrap: anywhere; }
 .rp-stats-lines .rp-btn { margin-top: 8px; }
 .rp-chip-row + .rp-chip-row { margin-top: 10px; }
+
+/* ─── Ideas board (#/ideas, 0075) ────────────────────────────────────────── */
+
+/* The quick-add line: the box takes the row, the button only what it needs.
+   .rp-btn is width:100% and would otherwise take a line of its own (0053's
+   first layout bug). */
+.rp-ideas-quick { display: flex; gap: 8px; margin-top: 12px; }
+.rp-ideas-quick .rp-input { flex: 1 1 auto; min-width: 0; }
+.rp-ideas-quick .rp-btn { flex: 0 0 auto; width: auto; margin-top: 0; padding: 0 18px; }
+
+.rp-ideas-tools { display: flex; gap: 8px; }
+.rp-ideas-tools .rp-input { min-width: 0; }
+.rp-ideas-tools [type="search"] { flex: 1 1 auto; }
+.rp-ideas-tools select { flex: 0 0 auto; width: auto; }
+.rp-ideas-tools [hidden] { display: none; }
+.rp-ideas-filter { margin: 8px 0 14px; }
+.rp-ideas-filter:empty { display: none; }
+
+/* A phone shows the selected lane only; the tabs say which it is, so its
+   heading is not drawn twice. */
+.rp-ideas-lane { display: none; }
+.rp-ideas-lane.is-on { display: block; }
+.rp-ideas-lane-head { display: none; }
+
+.rp-idea { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.rp-idea-card {
+  flex: 1 1 auto; min-width: 0;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg);
+}
+.rp-idea-card > summary {
+  display: flex; align-items: flex-start; gap: 10px;
+  min-height: var(--tap); padding: 11px 12px;
+  cursor: pointer; list-style: none;
+}
+.rp-idea-card > summary::-webkit-details-marker { display: none; }
+.rp-idea-card[open] > summary { border-bottom: 1px solid var(--line); }
+.rp-idea-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rp-idea-title { font-weight: 600; overflow-wrap: anywhere; }
+.rp-idea-meta { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
+.rp-idea-meta:empty { display: none; }
+.rp-idea-unsaved {
+  margin-left: 4px; color: var(--warn); font-size: 0.72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+
+/* Priority as a dot: high is solid accent, normal muted, low hollow — read
+   at a glance down a lane, and still there when the tags line is empty. */
+.rp-idea-dot {
+  flex: 0 0 auto; width: 10px; height: 10px; margin-top: 7px;
+  border-radius: 50%; border: 2px solid var(--muted); background: var(--muted);
+}
+.rp-idea-dot.is-high { border-color: var(--accent); background: var(--accent); }
+.rp-idea-dot.is-normal { border-color: #b8bdc4; background: #b8bdc4; }
+.rp-idea-dot.is-low { background: transparent; border-color: #b8bdc4; }
+
+.rp-idea-tick {
+  flex: 0 0 auto; width: var(--tap); height: var(--tap);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg); color: var(--accent);
+  font-size: 1.2rem; font-weight: 800; cursor: pointer;
+}
+.rp-idea-tick:active:not([disabled]) { background: var(--accent-wash); border-color: var(--accent); }
+.rp-idea-tick[disabled] { opacity: 0.5; }
+
+.rp-idea-body { padding: 4px 12px 14px; }
+.rp-idea-body .rp-label:first-child { margin-top: 8px; }
+.rp-idea-notes { resize: vertical; min-height: 96px; line-height: 1.4; }
+.rp-idea-notes-read { margin: 10px 0 0; white-space: pre-wrap; font-size: 0.9rem; }
+.rp-idea-order { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.rp-idea-order .rp-hint { margin: 0; }
+
+.rp-idea.is-done .rp-idea-title, .rp-idea.is-dropped .rp-idea-title { color: var(--muted); }
+.rp-idea.is-dropped .rp-idea-title { text-decoration: line-through; }
+
+/* Where a ticked card was, until the next redraw: the Undo has to be under
+   the thumb that just tapped ✓, not in a flash at the top of the screen. */
+.rp-idea-gone {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 8px; padding: 6px 6px 6px 14px;
+  border: 1px dashed var(--line); border-radius: var(--radius);
+  color: var(--muted); font-size: 0.86rem;
+}
+.rp-idea-gone span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-idea-gone .rp-chip { flex: 0 0 auto; }
+
+.rp-ideas-lanes { margin-top: 24px; }
+.rp-ideas-lane-row { display: flex; gap: 6px; margin-top: 8px; }
+.rp-ideas-lane-row .rp-input { flex: 1 1 auto; min-width: 0; }
+.rp-ideas-lane-row .rp-trend-arrow { flex: 0 0 auto; height: var(--tap); }
+.rp-ideas-lane-row .rp-trend-arrow.is-danger {
+  background: var(--danger-wash); border-color: var(--danger); color: var(--danger);
+}
+
+/* A wide screen is a kanban: every lane a column, each scrolling on its own
+   so a long Inbox does not push Doing off the page. The strip of columns
+   scrolls sideways inside itself when there are more lanes than fit; the
+   page body never does. */
+@media (min-width: 900px) {
+  .rp-ideas-board {
+    display: grid; grid-auto-flow: column;
+    grid-auto-columns: minmax(280px, 1fr);
+    gap: 12px; overflow-x: auto; align-items: start;
+    padding-bottom: 6px;
+  }
+  .rp-ideas-lane, .rp-ideas-lane.is-on {
+    display: block; min-width: 0;
+    max-height: calc(100vh - 140px); overflow-y: auto;
+    padding: 0 8px 8px; border-radius: var(--radius); background: var(--row-alt);
+  }
+  .rp-ideas-lane.is-on { outline: 2px solid var(--accent-wash); }
+  .rp-ideas-lane-head {
+    display: block; position: sticky; top: 0; z-index: 1;
+    margin: 0 -8px 8px; padding: 10px 12px; background: var(--row-alt);
+    font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .rp-ideas-lane-head a { color: var(--ink); text-decoration: none; }
+  .rp-ideas-lane.is-on .rp-ideas-lane-head a { color: var(--accent); }
+  .rp-ideas-lane-head em { font-style: normal; color: var(--muted); margin-left: 6px; }
+  .rp-ideas-archive { max-width: 640px; }
+  /* The column is the one place a card's editor is narrow, so its order row
+     wraps rather than squeezing the arrows. */
+  .rp-idea-order { flex-wrap: wrap; }
+}

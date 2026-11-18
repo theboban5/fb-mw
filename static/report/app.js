@@ -14,6 +14,7 @@
  *   #/add         add a whole fixture list to a competition you cover
  *   #/league/new  create a competition and its teams (administrators only)
  *   #/squad       one team's squad and staff for the season (from #/teams)
+ *   #/ideas       the ideas board: what to do to the site next (admins only)
  *   #/account     who am I, change password, sign out
  *
  * Three rules the code keeps:
@@ -57,6 +58,9 @@ import * as sq from "./squad.js";
 // A pasted team sheet in any of the shapes clubs post one, and who each
 // printed name is in the squad (0059).
 import * as lp from "./lineup_paste.js";
+// #/ideas' sorting, filtering and quick-add rules (0075), tested in
+// tests/js/test_ideas.mjs.
+import * as ix from "./ideas.js";
 
 const view = document.querySelector("[data-view]");
 const flashEl = document.querySelector("[data-flash]");
@@ -1155,6 +1159,7 @@ async function renderHome(params) {
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/trending">Homepage</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/graphics">Graphics</a>' : ""}
       ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/reporters">Reporters</a>' : ""}
+      ${context.isAdmin ? '<a class="rp-btn is-ghost" href="#/ideas">Ideas</a>' : ""}
       ${hasNT ? '<a class="rp-btn is-ghost" href="#/nt">National teams</a>' : ""}
       <button class="rp-btn is-quiet" type="button" data-refresh>Refresh</button>
     </div>`;
@@ -9808,6 +9813,737 @@ function wireTrending(tab) {
 }
 
 
+// ── Ideas ────────────────────────────────────────────────────────────────────
+// #/ideas — everything worth doing to the site, from a 28px stepper to "move
+// to a private repo", on one board (0075). Administrators only, reading
+// included: none of it is football, and the tables are deliberately not a
+// Dataset tab, because data/canonical/ is public.
+//
+// A phone sees one lane at a time under a strip of tabs; from 900px every
+// lane is a column. It is the SAME markup either way — every lane is drawn,
+// and on a phone CSS shows the selected one — so there is no second renderer
+// to drift. ✓ ticks an idea off into the Archive; nothing finished is ever
+// deleted, and Reopen puts it back where it was.
+//
+// The rules (sorting, the tag filter, "#ui !high", which card ▲ swaps with)
+// are in ideas.js, tested in tests/js/test_ideas.mjs.
+
+// What the board is showing, kept for the session so a save, a tab tap or a
+// lane rename does not forget the filter the admin was in. Not in the URL
+// (only the lane is): a search box that rewrote the hash on every keystroke
+// would re-route and lose its own focus.
+//
+// `drafts` is what has been typed into an open card and not saved, keyed by
+// idea_id. A save elsewhere redraws the board, and the board draws a draft
+// over its row — so ticking one card off never wipes what was half-typed into
+// another. Cleared on that card's own save.
+const ideasState = {
+  lanes: [], ideas: [], lane: null,
+  sort: "manual", tags: [], text: "", outcome: "", quick: "",
+  open: new Set(), drafts: new Map(),
+};
+
+async function loadIdeas() {
+  const [lanes, open, closed] = await Promise.all([
+    supabase.from("idea_lanes").select("*").order("sort_order"),
+    supabase.from("ideas").select("*").is("closed_at", null),
+    // The archive only ever grows, and the newest 200 is more history than
+    // anyone scrolls; search runs over what was loaded.
+    supabase.from("ideas").select("*").not("closed_at", "is", null)
+      .order("closed_at", { ascending: false }).limit(200),
+  ]);
+  for (const res of [lanes, open, closed]) if (res.error) throw res.error;
+  ideasState.lanes = ix.sortLanes(lanes.data);
+  ideasState.ideas = [...open.data, ...closed.data];
+}
+
+const ideaById = (id) => ideasState.ideas.find((i) => i.idea_id === id);
+const laneName = (id) => ideasState.lanes.find((l) => l.lane_id === id)?.name || "";
+const openInLane = (laneId) => ix.sortIdeas(
+  ideasState.ideas.filter((i) => ix.isOpen(i) && i.lane_id === laneId), "manual");
+
+function ideasReplace(row) {
+  const at = ideasState.ideas.findIndex((i) => i.idea_id === row.idea_id);
+  if (at < 0) ideasState.ideas.push(row);
+  else ideasState.ideas[at] = row;
+}
+
+async function ideaUpdate(id, patch) {
+  const { data, error } = await supabase.from("ideas").update(patch)
+    .eq("idea_id", id).select().single();
+  if (error) throw error;
+  ideasReplace(data);
+  return data;
+}
+
+/** The card editor's values: the unsaved draft if there is one, else the row. */
+function ideaDraft(idea) {
+  return ideasState.drafts.get(idea.idea_id) || {
+    title: idea.title, notes: idea.notes || "",
+    tags: (idea.tags || []).join(", "),
+    priority: idea.priority, size: idea.size || "",
+  };
+}
+
+function ideaMeta(idea) {
+  const bits = [...(idea.tags || [])];
+  if (idea.size) bits.push(ix.SIZES.find((s) => s.value === idea.size)?.label.toLowerCase());
+  if (ix.isOpen(idea)) {
+    bits.push(ix.ageLabel(idea.created_at));
+  } else {
+    const when = new Date(idea.closed_at)
+      .toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    bits.unshift(`${idea.outcome === "dropped" ? "Dropped" : "Done"} ${when}`);
+  }
+  if (idea.notes) bits.push("notes");
+  return bits.filter(Boolean).join(" · ");
+}
+
+function ideaChips(name, options, current) {
+  return options.map((o) => `
+    <button class="rp-chip${String(o.value) === String(current) ? " is-on" : ""}"
+            type="button" data-${name}="${esc(o.value)}">${esc(o.label)}</button>`).join("");
+}
+
+function ideaEditor(idea, laneList) {
+  const d = ideaDraft(idea);
+  const manual = ideasState.sort === "manual";
+  const index = laneList.findIndex((i) => i.idea_id === idea.idea_id);
+  const own = ix.tagsFromText(d.tags).map((t) => t.toLowerCase());
+  const tagChips = ix.allTags(ideasState.ideas).map((t) => `
+    <button class="rp-chip${own.includes(t.toLowerCase()) ? " is-on" : ""}"
+            type="button" data-tag-toggle="${esc(t)}">${esc(t)}</button>`).join("");
+  return `
+    <form class="rp-form rp-idea-form" data-idea-form autocomplete="off">
+      <label class="rp-label" for="idea-title-${idea.idea_id}">Idea</label>
+      <input class="rp-input" id="idea-title-${idea.idea_id}" name="title"
+             maxlength="${ix.TITLE_MAX}" value="${esc(d.title)}">
+      <label class="rp-label" for="idea-notes-${idea.idea_id}">Notes</label>
+      <textarea class="rp-input rp-idea-notes" id="idea-notes-${idea.idea_id}"
+                name="notes" rows="4" maxlength="${ix.NOTES_MAX}"
+                placeholder="Why, how, links…">${esc(d.notes)}</textarea>
+      <label class="rp-label" for="idea-tags-${idea.idea_id}">Tags</label>
+      <input class="rp-input" id="idea-tags-${idea.idea_id}" name="tags"
+             value="${esc(d.tags)}" placeholder="UI, Marketing">
+      <div class="rp-chip-row" data-tag-chips>${tagChips}</div>
+      <span class="rp-label">Priority</span>
+      <div class="rp-chip-row" data-chip-group="priority">
+        ${ideaChips("priority", ix.PRIORITIES, d.priority)}</div>
+      <span class="rp-label">Size</span>
+      <div class="rp-chip-row" data-chip-group="size">
+        ${ideaChips("size", ix.SIZES, d.size)}</div>
+      <label class="rp-label" for="idea-lane-${idea.idea_id}">Lane</label>
+      <select class="rp-input" id="idea-lane-${idea.idea_id}" data-idea-lane>
+        ${ideasState.lanes.map((l) => `<option value="${l.lane_id}"${
+          l.lane_id === idea.lane_id ? " selected" : ""}>${esc(l.name)}</option>`).join("")}
+      </select>
+      <div class="rp-idea-order" role="group" aria-label="Order in this lane">
+        <button class="rp-trend-arrow" type="button" data-idea-move="top"
+                ${!manual || index <= 0 ? "disabled" : ""} aria-label="Move to the top">&#8676;</button>
+        <button class="rp-trend-arrow" type="button" data-idea-move="up"
+                ${!manual || index <= 0 ? "disabled" : ""} aria-label="Move up">&uarr;</button>
+        <button class="rp-trend-arrow" type="button" data-idea-move="down"
+                ${!manual || index >= laneList.length - 1 ? "disabled" : ""}
+                aria-label="Move down">&darr;</button>
+        ${manual ? "" : '<span class="rp-hint">Sort by My order to move it.</span>'}
+      </div>
+      <button class="rp-btn" type="submit">Save</button>
+      <div class="rp-btn-row">
+        <button class="rp-btn is-quiet" type="button" data-idea-drop>Drop it</button>
+        <button class="rp-btn is-quiet" type="button" data-idea-delete>Delete</button>
+      </div>
+    </form>`;
+}
+
+function ideaArchived(idea) {
+  return `
+    ${idea.notes ? `<p class="rp-idea-notes-read">${esc(idea.notes)}</p>` : ""}
+    <div class="rp-btn-row">
+      <button class="rp-btn" type="button" data-idea-reopen>Reopen</button>
+      <button class="rp-btn is-quiet" type="button" data-idea-delete>Delete</button>
+    </div>`;
+}
+
+function ideaCard(idea, laneList) {
+  const open = ix.isOpen(idea);
+  const dot = { 1: "is-high", 2: "is-normal", 3: "is-low" }[idea.priority] || "is-normal";
+  const unsaved = ideasState.drafts.has(idea.idea_id)
+    ? ' <span class="rp-idea-unsaved">unsaved</span>' : "";
+  return `
+    <div class="rp-idea${open ? "" : ` is-${esc(idea.outcome)}`}" data-idea="${idea.idea_id}">
+      <details class="rp-idea-card"${ideasState.open.has(idea.idea_id) ? " open" : ""}>
+        <summary>
+          <span class="rp-idea-dot ${dot}" aria-label="${
+            esc(ix.PRIORITIES.find((p) => p.value === idea.priority)?.label || "")} priority"></span>
+          <span class="rp-idea-text">
+            <span class="rp-idea-title">${esc(idea.title)}${unsaved}</span>
+            <span class="rp-idea-meta">${esc(ideaMeta(idea))}</span>
+          </span>
+        </summary>
+        <div class="rp-idea-body">
+          ${open ? ideaEditor(idea, laneList) : ideaArchived(idea)}
+        </div>
+      </details>
+      ${open ? `<button class="rp-idea-tick" type="button" data-idea-tick
+                  aria-label="Tick off: done">&#10003;</button>` : ""}
+    </div>`;
+}
+
+function ideasBoardHtml() {
+  const filter = { tags: ideasState.tags, text: ideasState.text };
+  const filtering = ideasState.tags.length || ideasState.text.trim();
+  if (ideasState.lane === "archive") {
+    const list = ix.filterIdeas(ix.archivedIdeas(ideasState.ideas, ideasState.outcome), filter);
+    return `<div class="rp-ideas-archive">${list.map((i) => ideaCard(i, [])).join("")
+      || `<p class="rp-empty">${filtering || ideasState.outcome
+        ? "Nothing in the archive matches."
+        : "Nothing ticked off yet. Ideas you finish or drop land here."}</p>`}</div>`;
+  }
+  const lanes = ideasState.lanes.map((lane) => {
+    const all = openInLane(lane.lane_id);
+    const shown = ix.sortIdeas(ix.filterIdeas(all, filter), ideasState.sort);
+    return `
+      <section class="rp-ideas-lane${lane.lane_id === ideasState.lane ? " is-on" : ""}"
+               data-lane-col="${lane.lane_id}">
+        <h2 class="rp-ideas-lane-head"><a href="#/ideas?lane=${lane.lane_id}"
+            data-lane-tab="${lane.lane_id}"><span data-lane-name>${esc(lane.name)}</span>
+            <em>${all.length}</em></a></h2>
+        ${shown.map((i) => ideaCard(i, all)).join("")
+          || `<p class="rp-empty">${filtering ? "No ideas here match."
+            : "Nothing here yet."}</p>`}
+      </section>`;
+  }).join("");
+  return `<div class="rp-ideas-board">${lanes}</div>`;
+}
+
+function ideasTabsHtml() {
+  const counts = ix.laneCounts(ideasState.ideas, ideasState.lanes);
+  const closed = ideasState.ideas.filter((i) => !ix.isOpen(i)).length;
+  const tab = (key, label, n) => `
+    <a class="ops-tab${String(key) === String(ideasState.lane) ? " is-on" : ""}"
+       href="#/ideas?lane=${key}" data-lane-tab="${key}"
+       ><span data-lane-name>${esc(label)}</span> <em>${n}</em></a>`;
+  return ideasState.lanes.map((l) => tab(l.lane_id, l.name, counts[l.lane_id])).join("")
+    + tab("archive", "Archive", closed >= 200 ? "200+" : closed);
+}
+
+function ideasTagChipsHtml() {
+  const on = ideasState.tags.map((t) => t.toLowerCase());
+  return ix.allTags(ideasState.ideas, []).map((t) => `
+    <button class="rp-chip${on.includes(t.toLowerCase()) ? " is-on" : ""}"
+            type="button" data-filter-tag="${esc(t)}">${esc(t)}</button>`).join("");
+}
+
+function ideasLanesPanel() {
+  const counts = ix.laneCounts(ideasState.ideas, ideasState.lanes);
+  const lanes = ideasState.lanes;
+  const rows = lanes.map((lane, i) => `
+    <div class="rp-ideas-lane-row" data-lane-row="${lane.lane_id}">
+      <input class="rp-input" value="${esc(lane.name)}" maxlength="${ix.LANE_NAME_MAX}"
+             aria-label="Lane name" data-lane-rename>
+      <button class="rp-trend-arrow" type="button" data-lane-move="up"
+              ${i === 0 ? "disabled" : ""} aria-label="Move left">&uarr;</button>
+      <button class="rp-trend-arrow" type="button" data-lane-move="down"
+              ${i === lanes.length - 1 ? "disabled" : ""} aria-label="Move right">&darr;</button>
+      <button class="rp-trend-arrow" type="button" data-lane-remove
+              data-count="${counts[lane.lane_id]}"
+              ${lanes.length < 2 ? "disabled" : ""} aria-label="Remove lane">&times;</button>
+    </div>`).join("");
+  return `
+    <details class="rp-sec rp-ideas-lanes">
+      <summary>&#9881; Edit lanes</summary>
+      <div class="rp-sec-body">
+        <p class="rp-hint">Rename a lane by typing over it. ↑↓ move it left
+          and right on a wide screen. Done is not a lane: ✓ sends an idea to
+          the Archive.</p>
+        ${rows}
+        <p class="rp-hint" data-lane-remove-note hidden></p>
+        <form class="rp-ideas-quick" data-lane-add autocomplete="off">
+          <input class="rp-input" name="lane_name" maxlength="${ix.LANE_NAME_MAX}"
+                 placeholder="New lane, e.g. Waiting on FAM">
+          <button class="rp-btn" type="submit">Add</button>
+        </form>
+      </div>
+    </details>`;
+}
+
+async function renderIdeas(params) {
+  view.classList.add("is-board");
+  const back = '<a class="rp-btn is-quiet" href="#/">&larr; My matches</a>';
+  if (!context.isAdmin) {
+    h(`${back}<h1 class="rp-login-head">Ideas</h1>
+       <p class="rp-empty">The ideas board is for administrators.</p>`);
+    return;
+  }
+  // Drawn from memory while the fetch runs, when there is one: a tab tapped
+  // on one bar of signal should not blank the board it is switching within.
+  if (!ideasState.lanes.length) h(`${back}<p class="rp-empty">Loading ideas…</p>`);
+  try {
+    await loadIdeas();
+  } catch (error) {
+    if (error.code === "42P01" || error.code === "PGRST205") {
+      h(`${back}<h1 class="rp-login-head">Ideas</h1>
+         <p class="rp-empty">The ideas board is not set up on this server yet
+           (migration 0075).</p>`);
+      return;
+    }
+    if (!ideasState.lanes.length) {
+      h(`${back}<p class="rp-empty">Could not load the ideas.</p>`);
+      flash(humanError(error), "error");
+      return;
+    }
+    flash(humanError(error), "error");
+  }
+  ideasState.lane = ix.pickLane(params?.get("lane"), ideasState.lanes);
+  drawIdeas();
+}
+
+function drawIdeas() {
+  const archive = ideasState.lane === "archive";
+  h(`<div data-ideas-root>
+    <a class="rp-btn is-quiet" href="#/">&larr; My matches</a>
+    <h1 class="rp-login-head">Ideas</h1>
+    <p class="rp-login-sub">Everything worth doing to EveryLeague, big or
+      small. Only administrators see this board.</p>
+
+    <form class="rp-ideas-quick" data-quick-add autocomplete="off">
+      <input class="rp-input" name="line" maxlength="${ix.TITLE_MAX + 80}"
+             value="${esc(ideasState.quick)}" data-quick-input
+             aria-label="New idea">
+      <button class="rp-btn" type="submit">Add</button>
+    </form>
+    <p class="rp-hint">Type <b>#tag</b>, <b>!high</b> or <b>!low</b> in the
+      line to file it as you add it.</p>
+
+    <nav class="ops-tabs rp-ideas-tabs" data-ideas-tabs>${ideasTabsHtml()}</nav>
+
+    <div class="rp-ideas-tools">
+      <input class="rp-input" type="search" placeholder="Search ideas"
+             value="${esc(ideasState.text)}" data-ideas-search aria-label="Search ideas">
+      <select class="rp-input" data-ideas-sort aria-label="Sort" ${archive ? "hidden" : ""}>
+        ${ix.SORTS.map((s) => `<option value="${s.key}"${
+          s.key === ideasState.sort ? " selected" : ""}>${esc(s.label)}</option>`).join("")}
+      </select>
+      <select class="rp-input" data-ideas-outcome aria-label="Show" ${archive ? "" : "hidden"}>
+        <option value="">Done and dropped</option>
+        <option value="done"${ideasState.outcome === "done" ? " selected" : ""}>Done</option>
+        <option value="dropped"${ideasState.outcome === "dropped" ? " selected" : ""}>Dropped</option>
+      </select>
+    </div>
+    <div class="rp-chip-row rp-ideas-filter" data-ideas-tags>${ideasTagChipsHtml()}</div>
+
+    <div data-ideas-board class="${archive ? "is-archive" : ""}"></div>
+
+    ${ideasLanesPanel()}
+  </div>`);
+  paintQuickPlaceholder();
+  wireIdeasChrome();
+  drawIdeasBoard();
+}
+
+function paintQuickPlaceholder() {
+  const input = view.querySelector("[data-quick-input]");
+  if (!input) return;
+  const target = ideasState.lane === "archive" ? ideasState.lanes[0]?.lane_id : ideasState.lane;
+  input.placeholder = `Add an idea to ${laneName(target) || "the board"}…`;
+}
+
+/** Tabs and tag chips again, without touching the search box or the quick-add
+ *  box — repainting those would take the cursor out of them. */
+function paintIdeasChrome() {
+  const tabs = view.querySelector("[data-ideas-tabs]");
+  if (tabs) tabs.innerHTML = ideasTabsHtml();
+  const tags = view.querySelector("[data-ideas-tags]");
+  if (tags) tags.innerHTML = ideasTagChipsHtml();
+  const archive = ideasState.lane === "archive";
+  const sort = view.querySelector("[data-ideas-sort]");
+  if (sort) sort.hidden = archive;
+  const outcome = view.querySelector("[data-ideas-outcome]");
+  if (outcome) outcome.hidden = !archive;
+  view.querySelector("[data-ideas-board]")?.classList.toggle("is-archive", archive);
+  paintQuickPlaceholder();
+}
+
+/** Switch lane without a re-route: the board is already in memory, and on a
+ *  weak connection a tab tap that refetches everything is a tab tap that
+ *  takes ten seconds. replaceState fires no hashchange, which is the point. */
+function selectIdeasLane(key) {
+  ideasState.lane = ix.pickLane(key, ideasState.lanes);
+  history.replaceState(null, "", `#/ideas?lane=${ideasState.lane}`);
+  paintIdeasChrome();
+  drawIdeasBoard();
+  // A wide screen shows every lane anyway; bring the chosen one into view.
+  view.querySelector(`[data-lane-col="${ideasState.lane}"]`)
+    ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+function wireIdeasChrome() {
+  // Tabs here and column headings on the board are both [data-lane-tab], and
+  // both are repainted, so one delegated listener serves all of them. On the
+  // screen's own root, never on `view`, which outlives every screen (drawMatch's
+  // stepper lesson).
+  view.querySelector("[data-ideas-root]").onclick = (event) => {
+    const tab = event.target.closest("[data-lane-tab]");
+    if (tab) {
+      event.preventDefault();
+      selectIdeasLane(tab.dataset.laneTab);
+      return;
+    }
+    const chip = event.target.closest("[data-filter-tag]");
+    if (chip) {
+      const tag = chip.dataset.filterTag;
+      const on = ideasState.tags.some((t) => t.toLowerCase() === tag.toLowerCase());
+      ideasState.tags = on
+        ? ideasState.tags.filter((t) => t.toLowerCase() !== tag.toLowerCase())
+        : [...ideasState.tags, tag];
+      paintIdeasChrome();
+      drawIdeasBoard();
+    }
+  };
+
+  const quick = view.querySelector("[data-quick-add]");
+  const quickInput = quick.querySelector("[data-quick-input]");
+  quickInput.addEventListener("input", () => { ideasState.quick = quickInput.value; });
+  quick.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const parsed = ix.parseQuickAdd(quickInput.value);
+    if (!parsed.title) {
+      flash("Type the idea first — the #tags and !high go with it.", "error");
+      return;
+    }
+    const laneId = ideasState.lane === "archive" ? ideasState.lanes[0]?.lane_id : ideasState.lane;
+    if (!laneId) { flash("Add a lane first (Edit lanes, below).", "error"); return; }
+    const button = quick.querySelector('button[type="submit"]');
+    let row = null;
+    const ok = await trendingAction(button, "…", async () => {
+      const { data, error } = await supabase.from("ideas").insert({
+        title: parsed.title, tags: parsed.tags, priority: parsed.priority,
+        lane_id: laneId, sort_order: ix.edgeOrder(openInLane(laneId), "top"),
+      }).select().single();
+      if (error) throw error;
+      row = data;
+    });
+    if (!ok) return;     // the line stays in the box, exactly as typed
+    button.disabled = false;
+    button.textContent = "Add";
+    ideasReplace(row);
+    ideasState.quick = "";
+    quickInput.value = "";
+    if (ideasState.lane === "archive") ideasState.lane = laneId;
+    flash(`Added to ${laneName(laneId)}.`, "ok", 2500);
+    paintIdeasChrome();
+    drawIdeasBoard();
+    quickInput.focus();
+  });
+
+  const search = view.querySelector("[data-ideas-search]");
+  search.addEventListener("input", () => {
+    ideasState.text = search.value;
+    drawIdeasBoard();
+  });
+  view.querySelector("[data-ideas-sort]").addEventListener("change", (event) => {
+    ideasState.sort = event.target.value;
+    drawIdeasBoard();
+  });
+  view.querySelector("[data-ideas-outcome]").addEventListener("change", (event) => {
+    ideasState.outcome = event.target.value;
+    drawIdeasBoard();
+  });
+
+  wireIdeasLanes();
+}
+
+function wireIdeasLanes() {
+  const panel = view.querySelector(".rp-ideas-lanes");
+  // Kept open across the redraw an add or a move causes.
+  if (ideasState.open.has("lanes")) panel.open = true;
+  panel.addEventListener("toggle", () => {
+    if (panel.open) ideasState.open.add("lanes");
+    else ideasState.open.delete("lanes");
+  });
+
+  panel.querySelectorAll("[data-lane-row]").forEach((row) => {
+    const laneId = Number(row.dataset.laneRow);
+    // A rename saves on `change`, which fires on the blur that is also the tap
+    // onto the next control — so it patches the names in place and redraws
+    // NOTHING (the team-sheet lesson, 0018's screen).
+    const input = row.querySelector("[data-lane-rename]");
+    input.addEventListener("change", async () => {
+      const name = input.value.replace(/\s+/g, " ").trim();
+      const lane = ideasState.lanes.find((l) => l.lane_id === laneId);
+      if (!name) { input.value = lane.name; return; }
+      if (name === lane.name) return;
+      const { error } = await supabase.from("idea_lanes").update({ name })
+        .eq("lane_id", laneId);
+      if (error) { flash(humanError(error), "error"); return; }
+      lane.name = name;
+      input.value = name;
+      view.querySelectorAll(`[data-lane-tab="${laneId}"] [data-lane-name]`)
+        .forEach((el) => { el.textContent = name; });
+      view.querySelectorAll(`[data-idea-lane] option[value="${laneId}"]`)
+        .forEach((el) => { el.textContent = name; });
+      paintQuickPlaceholder();
+      flash("Lane renamed.", "ok", 2000);
+    });
+
+    row.querySelectorAll("[data-lane-move]").forEach((button) => {
+      button.onclick = async () => {
+        const updates = ix.moveUpdates(ideasState.lanes, laneId, button.dataset.laneMove, "lane_id");
+        const ok = await trendingAction(button, "…", async () => {
+          for (const u of updates) {
+            const { error } = await supabase.from("idea_lanes")
+              .update({ sort_order: u.sort_order }).eq("lane_id", u.id);
+            if (error) throw error;
+            ideasState.lanes.find((l) => l.lane_id === u.id).sort_order = u.sort_order;
+          }
+        });
+        ideasState.lanes = ix.sortLanes(ideasState.lanes);
+        if (ok) drawIdeas();
+      };
+    });
+
+    // Two taps, never a confirm(). A lane holding open ideas moves them to
+    // the first other lane before it goes; 0075 refuses to orphan one.
+    const remove = row.querySelector("[data-lane-remove]");
+    let armed = false;
+    remove.onclick = async () => {
+      const note = panel.querySelector("[data-lane-remove-note]");
+      const lane = ideasState.lanes.find((l) => l.lane_id === laneId);
+      const target = ideasState.lanes.find((l) => l.lane_id !== laneId);
+      const count = Number(remove.dataset.count);
+      if (!armed) {
+        armed = true;
+        remove.classList.add("is-danger");
+        note.hidden = false;
+        note.textContent = count
+          ? `Tap × again to remove "${lane.name}". Its ${count} ${
+              count === 1 ? "idea moves" : "ideas move"} to "${target.name}".`
+          : `Tap × again to remove "${lane.name}".`;
+        return;
+      }
+      const ok = await trendingAction(remove, "…", async () => {
+        if (count) {
+          const { error } = await supabase.from("ideas")
+            .update({ lane_id: target.lane_id, sort_order: ix.edgeOrder(openInLane(target.lane_id), "bottom") })
+            .eq("lane_id", laneId).is("closed_at", null);
+          if (error) throw error;
+        }
+        const { error } = await supabase.from("idea_lanes").delete().eq("lane_id", laneId);
+        if (error) throw error;
+      });
+      if (!ok) return;
+      flash(`Removed "${lane.name}".`, "ok");
+      await renderIdeas(new URLSearchParams(`lane=${
+        ideasState.lane === laneId ? target.lane_id : ideasState.lane}`));
+    };
+  });
+
+  const add = panel.querySelector("[data-lane-add]");
+  add.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = add.elements.namedItem("lane_name").value.replace(/\s+/g, " ").trim();
+    if (!name) return;
+    const button = add.querySelector('button[type="submit"]');
+    let row = null;
+    const ok = await trendingAction(button, "…", async () => {
+      const { data, error } = await supabase.from("idea_lanes").insert({
+        name, sort_order: ix.edgeOrder(ideasState.lanes, "bottom"),
+      }).select().single();
+      if (error) throw error;
+      row = data;
+    });
+    if (!ok) return;
+    ideasState.lanes = ix.sortLanes([...ideasState.lanes, row]);
+    flash(`Added the lane "${name}".`, "ok", 2500);
+    drawIdeas();
+  });
+}
+
+/** The cards, from state. Redrawn after every save, which is why drafts and
+ *  open cards live in ideasState rather than in the DOM. */
+function drawIdeasBoard() {
+  const board = view.querySelector("[data-ideas-board]");
+  if (!board) return;
+  board.innerHTML = ideasBoardHtml();
+  board.querySelectorAll("[data-idea]").forEach(wireIdeaCard);
+}
+
+function wireIdeaCard(host) {
+  const id = Number(host.dataset.idea);
+  const idea = ideaById(id);
+  const details = host.querySelector("details");
+  details.addEventListener("toggle", () => {
+    if (details.open) ideasState.open.add(id);
+    else ideasState.open.delete(id);
+  });
+
+  // Ticked off: the card is replaced IN PLACE by a line with Undo, rather
+  // than the board redrawing under the thumb that tapped it.
+  const closeAs = async (button, outcome) => {
+    const ok = await trendingAction(button, "…", () => ideaUpdate(id, {
+      closed_at: new Date().toISOString(), outcome,
+    }));
+    if (!ok) return;
+    ideasState.open.delete(id);
+    host.outerHTML = `
+      <div class="rp-idea-gone" data-idea-gone="${id}">
+        <span>${outcome === "done" ? "✓ Done" : "Dropped"} — ${esc(idea.title)}</span>
+        <button class="rp-chip" type="button" data-idea-undo>Undo</button>
+      </div>`;
+    paintIdeasChrome();
+    const gone = view.querySelector(`[data-idea-gone="${id}"]`);
+    gone.querySelector("[data-idea-undo]").onclick = async (event) => {
+      const undone = await trendingAction(event.target, "…", () =>
+        ideaUpdate(id, { closed_at: null, outcome: null }));
+      if (!undone) return;
+      paintIdeasChrome();
+      drawIdeasBoard();
+    };
+  };
+
+  host.querySelector("[data-idea-tick]")?.addEventListener("click", (event) =>
+    closeAs(event.currentTarget, "done"));
+
+  const del = host.querySelector("[data-idea-delete]");
+  let armed = false;
+  del.onclick = async () => {
+    if (!armed) {
+      armed = true;
+      del.textContent = "Tap again to delete for good";
+      del.classList.add("is-danger");
+      return;
+    }
+    const ok = await trendingAction(del, "Deleting…", async () => {
+      const { error } = await supabase.from("ideas").delete().eq("idea_id", id);
+      if (error) throw error;
+    });
+    if (!ok) return;
+    ideasState.ideas = ideasState.ideas.filter((i) => i.idea_id !== id);
+    ideasState.drafts.delete(id);
+    flash("Deleted.", "ok", 2000);
+    paintIdeasChrome();
+    drawIdeasBoard();
+  };
+
+  if (!ix.isOpen(idea)) {
+    host.querySelector("[data-idea-reopen]").onclick = async (event) => {
+      const laneId = ix.reopenLane(idea, ideasState.lanes);
+      if (!laneId) { flash("Add a lane first (Edit lanes, below).", "error"); return; }
+      const ok = await trendingAction(event.target, "…", () => ideaUpdate(id, {
+        closed_at: null, outcome: null, lane_id: laneId,
+        sort_order: ix.edgeOrder(openInLane(laneId), "top"),
+      }));
+      if (!ok) return;
+      ideasState.open.delete(id);
+      flash(`Back in ${laneName(laneId)}.`, "ok", 2500);
+      paintIdeasChrome();
+      drawIdeasBoard();
+    };
+    return;
+  }
+
+  const form = host.querySelector("[data-idea-form]");
+  const draft = () => {
+    const d = ideaDraft(idea);
+    ideasState.drafts.set(id, d);
+    return d;
+  };
+  // Text boxes only record; they never redraw (a blur is the tap onto the
+  // next box). The chips below them repaint just themselves.
+  const field = (name) => form.elements.namedItem(name);
+  const paintTagChips = () => {
+    const own = ix.tagsFromText(field("tags").value).map((t) => t.toLowerCase());
+    form.querySelectorAll("[data-tag-toggle]").forEach((chip) => {
+      chip.classList.toggle("is-on", own.includes(chip.dataset.tagToggle.toLowerCase()));
+    });
+  };
+  ["title", "notes", "tags"].forEach((name) => {
+    field(name).addEventListener("input", () => {
+      draft()[name] = field(name).value;
+      if (name === "tags") paintTagChips();
+    });
+  });
+  // THE BOX IS THE TRUTH; THE CHIPS ARE A SHORTCUT TO IT — trending's
+  // eyebrow rule. A chip adds or removes its tag in the box.
+  form.querySelectorAll("[data-tag-toggle]").forEach((chip) => {
+    chip.onclick = () => {
+      const tag = chip.dataset.tagToggle;
+      const tags = ix.tagsFromText(field("tags").value);
+      const has = tags.some((t) => t.toLowerCase() === tag.toLowerCase());
+      field("tags").value = (has ? tags.filter((t) => t.toLowerCase() !== tag.toLowerCase())
+                                 : [...tags, tag]).join(", ");
+      draft().tags = field("tags").value;
+      paintTagChips();
+    };
+  });
+  // Priority always has a value; tapping the lit Size chip clears it, because
+  // "not sized yet" is a real answer and the only one with no chip.
+  [["priority", (v) => Number(v), false], ["size", (v) => v, true]].forEach(([name, cast, clears]) => {
+    form.querySelectorAll(`[data-${name}]`).forEach((chip) => {
+      chip.onclick = () => {
+        const d = draft();
+        const value = cast(chip.dataset[name]);
+        d[name] = clears && String(d[name]) === String(value) ? "" : value;
+        form.querySelectorAll(`[data-${name}]`).forEach((c) => {
+          c.classList.toggle("is-on", String(cast(c.dataset[name])) === String(d[name]));
+        });
+      };
+    });
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const d = ideaDraft(idea);
+    const title = d.title.replace(/\s+/g, " ").trim();
+    if (!title) { flash("An idea needs a title.", "error"); return; }
+    const button = form.querySelector('button[type="submit"]');
+    const ok = await trendingAction(button, "Saving…", () => ideaUpdate(id, {
+      title, notes: d.notes.trim(), tags: ix.tagsFromText(d.tags),
+      priority: d.priority, size: d.size,
+    }));
+    if (!ok) return;     // the draft is still there, and so is every field
+    ideasState.drafts.delete(id);
+    ideasState.open.delete(id);
+    flash("Saved.", "ok", 2000);
+    paintIdeasChrome();
+    drawIdeasBoard();
+  });
+
+  // A <select> may move the card at once: its change lands when the picker
+  // closes, and the next tap is a fresh one.
+  form.querySelector("[data-idea-lane]").addEventListener("change", async (event) => {
+    const laneId = Number(event.target.value);
+    try {
+      await ideaUpdate(id, { lane_id: laneId, sort_order: ix.edgeOrder(openInLane(laneId), "top") });
+    } catch (error) {
+      event.target.value = String(idea.lane_id);
+      flash(humanError(error), "error");
+      return;
+    }
+    flash(`Moved to ${laneName(laneId)}.`, "ok", 2500);
+    paintIdeasChrome();
+    drawIdeasBoard();
+  });
+
+  form.querySelectorAll("[data-idea-move]").forEach((button) => {
+    button.onclick = async () => {
+      const lane = openInLane(idea.lane_id);
+      const dir = button.dataset.ideaMove;
+      const updates = dir === "top"
+        ? [{ id, sort_order: ix.edgeOrder(lane.filter((i) => i.idea_id !== id), "top") }]
+        : ix.moveUpdates(lane, id, dir);
+      const ok = await trendingAction(button, "…", async () => {
+        for (const u of updates) await ideaUpdate(u.id, { sort_order: u.sort_order });
+      });
+      if (ok) drawIdeasBoard();
+    };
+  });
+
+  form.querySelector("[data-idea-drop]").addEventListener("click", (event) =>
+    closeAs(event.currentTarget, "dropped"));
+}
+
+
 // ── Graphics ─────────────────────────────────────────────────────────────────
 // On-brand "news card" images — a weekend preview, a results board, a plain
 // announcement — drawn client-side (graphics.js, a <canvas> renderer with the
@@ -17658,9 +18394,10 @@ async function route() {
   clearFlash();
   // The scorer picker belongs to the screen being left.
   dismissPicker = null;
-  // Only /ops widens the column (see main.is-wide). Cleared on every route so
-  // leaving it cannot strand another screen at the wrong width.
-  view.classList.remove("is-wide");
+  // Only /ops widens the column (see main.is-wide), and /ideas widens it
+  // further for its columns (main.is-board). Cleared on every route so
+  // leaving either cannot strand another screen at the wrong width.
+  view.classList.remove("is-wide", "is-board");
   const { path, params } = parseHash();
   const { data: { session } } = await supabase.auth.getSession();
 
@@ -17710,6 +18447,7 @@ async function route() {
   if (path === "/teams") return renderTeams(params);
   if (path === "/squad") return renderSquad(params);
   if (path === "/trending") return renderTrending(params);
+  if (path === "/ideas") return renderIdeas(params);
   if (path === "/graphics") return renderGraphics(params);
   if (path === "/reporters") return renderReporters();
   if (path === "/login") { location.hash = "#/"; return; }
