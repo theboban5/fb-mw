@@ -3714,3 +3714,75 @@ details.qz-rules > summary {
   cursor: pointer;
 }
 details.qz-rules[open] > summary { margin-bottom: 8px; }
+
+/* ── /events/: every campaign, newest first (src/events.py) ─────────────── */
+.ev-list { margin: 14px 0 0; padding: 0; list-style: none; }
+.ev-card {
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+}
+.ev-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.ev-chip {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.ev-chip[hidden], .ev-go[hidden] { display: none; }
+.ev-chip.is-on { background: #ce1126; color: #ffffff; }
+.ev-chip.is-soon { background: var(--accent); color: #ffffff; }
+.ev-chip.is-over { border: 1px solid var(--line); color: var(--muted); }
+.ev-title { margin: 8px 0 0; font-size: 1.2rem; line-height: 1.2; }
+.ev-about { margin: 6px 0 0; }
+.ev-prize { margin: 6px 0 0; font-size: 0.92rem; }
+.ev-h { margin: 14px 0 0; font-size: 0.95rem; }
+.ev-winners { justify-content: flex-start; margin-top: 8px; }
+.ev-note { margin: 10px 0 0; color: var(--muted); font-size: 0.88rem; }
+.ev-photos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.ev-photo { margin: 0; }
+.ev-photo img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 10px;
+  background: var(--line);
+}
+.ev-photo figcaption { margin-top: 3px; color: var(--muted); font-size: 0.72rem; }
+.ev-go {
+  display: inline-block;
+  margin-top: 12px;
+  color: var(--accent);
+  font-weight: 800;
+  text-decoration: none;
+}
+.ev-go.is-live {
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #ffffff;
+}
+.ev-more { margin: 18px 0 0; text-align: center; font-weight: 700; }
+.ev-more a { color: var(--accent); }
+@media (max-width: 520px) {
+  .ev-winners { flex-direction: column; }
+}

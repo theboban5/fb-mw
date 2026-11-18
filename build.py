@@ -30,7 +30,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
 import validate  # noqa: E402
-from src import (adapt, dataset, derby, flags, home, hubs,  # noqa: E402
+from src import (adapt, dataset, derby, events, flags, home, hubs,  # noqa: E402
                  match_page, matches_page, nt, nt_page, og_card, officials,
                  render, scorers, quiz, search, standings, trending)
 
@@ -870,10 +870,10 @@ def main(argv):
     render.SEARCH_INDEX_VERSION = search.index_version(texts, nt_texts)
     render.SEARCH_JS_VERSION = render.file_version(
         os.path.join(STATIC, "search.js"))
-    # Know Your Flames (0067): the strip above every page's search bar, until
-    # the last round closes. Set before the first page renders, like the two
-    # versions above, because every page carries it.
-    render.BANNER = lambda prefix: quiz.banner(prefix, now)
+    # The strip above every page's search bar: the Derby race, then Know Your
+    # Flames' winners (events.banner). Set before the first page renders,
+    # like the two versions above, because every page carries it.
+    render.BANNER = lambda prefix: events.banner(prefix, now)
 
     # 4. Render.
     if not render.FEEDBACK_URL:
@@ -1037,12 +1037,14 @@ def main(argv):
     quiz.build_page(dist, css_ver=render.css_version(STATIC),
                     fl=flags.Flags(STATIC), updated=updated, now=now,
                     **quiz_ep)
-    # /derby/ (0072): the same PostgREST base and publishable key. Unlisted:
-    # nothing above links to it until it is promoted.
+    # /derby/ (0072): the same PostgREST base and publishable key. The
+    # banner points here from 18 Nov (derby.ANNOUNCED).
     derby.build_page(dist, css_ver=render.css_version(STATIC),
                      fl=flags.Flags(STATIC), updated=updated, now=now,
                      rpc_base=quiz_ep.get("rpc_url", "").rsplit("/", 1)[0],
                      key=quiz_ep.get("key", ""))
+    events.build_page(dist, css_ver=render.css_version(STATIC),
+                      fl=flags.Flags(STATIC), updated=updated, now=now)
 
     # Written last: club_hub_ids is only known once the leagues are built, and
     # the file should describe a build that actually finished.

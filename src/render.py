@@ -113,11 +113,12 @@ _FOOTER_JS = """
 """
 
 
-def footer(updated: str) -> str:
+def footer(updated: str, prefix: str = "") -> str:
     """The site-wide footer. Same markup on every page, landing included.
 
     `updated` is the absolute build stamp ("31 July 2026, 10:35 CAT"); it is
     what a visitor without JS sees, and stays as the <time> title either way.
+    `prefix` is the page's depth prefix, for the link to /events/.
     """
     contact = ""
     if FEEDBACK_URL:
@@ -137,6 +138,8 @@ def footer(updated: str) -> str:
         "</p>"
         '<p class="ft-about">Everyleague is an independent, community-built '
         "football results platform.</p>"
+        f'<p class="ft-contact"><a class="ft-link" href="{escape(prefix)}events/">'
+        "Quizzes, prizes and winners</a></p>"
         f"{contact}"
         "</footer>"
         f"<script>{_FOOTER_JS}</script>"
@@ -151,7 +154,8 @@ SEARCH_INDEX_VERSION = ""    # search.index_version(texts) — busts the JSON UR
 # A site-wide strip above the search bar, `(css_prefix) -> html`, or None. The
 # search bar is the one piece of chrome every page carries, so a banner set
 # here reaches every page without six renderers learning about it. Set by
-# build.main; today it is quiz.banner (Know Your Flames, 0067).
+# build.main; today it is events.banner (the Derby race, then Know Your
+# Flames' winners).
 BANNER = None
 SEARCH_JS_VERSION = ""       # file_version(static/search.js) — busts the script
 
@@ -1764,7 +1768,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             .replace("{{CSS_PREFIX}}", css_prefix)
             .replace("{{CSS_VER}}", css_ver)
             .replace("{{BACK_LINK}}", back_link)
-            .replace("{{FOOTER}}", footer(updated))
+            .replace("{{FOOTER}}", footer(updated, css_prefix))
             .replace("{{SOCIAL}}", social_meta(f"{title} · {league_name}"))
         )
         _write(os.path.join(dist, filename), html)
@@ -1820,7 +1824,7 @@ def build_site(dist, templates_dir, static_dir, league_name, updated, rows, matc
             .replace("{{CSS_PREFIX}}", club_css_prefix)
             .replace("{{CSS_VER}}", css_ver)
             .replace("{{BACK_LINK}}", club_back)
-            .replace("{{FOOTER}}", footer(updated))
+            .replace("{{FOOTER}}", footer(updated, club_css_prefix))
             .replace("{{SOCIAL}}", social_meta(f"{team.name} · {league_name}"))
         )
         _write(os.path.join(clubs_dir, f"{code}.html"), html)

@@ -91,7 +91,8 @@ src/matches_page.py    /matches/ — every match on one date, any date
 src/home.py            the homepage shell: the day first, leagues beside it
 src/og_card.py         a link-preview PNG per match (/og/match/), cached in CI
 src/quiz.py            /quiz/ (Know Your Flames, 0067) + the banner on every page
-src/derby.py           /derby/ — the referral race (0072), unlisted until promoted
+src/derby.py           /derby/ — the referral race (0072), promoted 18 Nov
+src/events.py          /events/ — every campaign and its winners; the site banner
 static/report/results_grid.js  the matchday grid's rules, DOM-free and tested
 static/report/fixture_import.js  the fixture importer's rules, same bargain
 static/report/error_report.js  what to report when a screen breaks (0052)
@@ -219,9 +220,9 @@ Bring your friends to the Derby, migration `0072` — `/derby/`, `#/ops?tab=quiz
   `submit_update_signup` is unchanged. Following on Facebook / the WhatsApp
   channel / LinkedIn is required and **self-declared** (`follows`): no
   platform lets a page verify it, so winners are asked to show it.
-- **Unlisted on purpose**: `derby.NOINDEX`, no banner, no homepage link, and
-  `test_derby` fails if a page starts linking to it. Promoting it is a
-  separate decision.
+- **Shipped unlisted, promoted 18 Nov** after two rounds of trying it: the
+  site banner points at it from `derby.ANNOUNCED` ("starts Thursday") to a
+  few days after the close, and `NOINDEX` is off.
 - **Written for people who do not sign up for things online** (second cut,
   `0073`): "1 friend who joins = 1 point", the prize in big type, and the
   flow as three lit steps (Join → Get your link → Share it). Joining jumps
@@ -230,6 +231,23 @@ Bring your friends to the Derby, migration `0072` — `/derby/`, `#/ops?tab=quiz
   "Chikondi invited you" (`referral_inviter`: a code's first name, nothing
   else). The prediction is gone for now; the columns stay for its own
   competition later.
+
+Events and winners, no migration — `/events/`, and the site banner:
+
+- **Winners outlive their campaign.** Know Your Flames' winners sat on
+  /quiz/ under a quiz nobody could play, reached only by a banner that took
+  itself down on the 21st. `/events/` is every campaign, newest first,
+  "Coming up / On now / Finished" re-picked on the reader's clock, linked
+  from every page's footer ("Quizzes, prizes and winners") and from /derby/.
+- **A winner's name is typed once**: the cards are built from
+  `quiz.QUIZZES` and `derby.WINNER_NAMES`, which the campaigns' own pages
+  read. Photos are the one thing only this page has: `events.PHOTOS`, files
+  under `static/events/`, shrunk before committing (copied verbatim;
+  `test_events` holds each under 300 kB and fails on a missing file).
+- **The banner speaks for more than one campaign**: `quiz.strip` renders any
+  list of segments, each with its own link and icon, first match wins;
+  `events.banner` puts the Derby's in front of the quiz's. `render.footer`
+  takes the page's prefix now, for the one link it carries.
 
 Know Your Flames, migrations `0067`–`0068` — `/quiz/`, `#/ops?tab=quiz`:
 

@@ -15,10 +15,10 @@ screen the prize is decided on. UTMs still go on the share buttons, because
 they are free and they answer the other question: which platform the friends
 came from.
 
-UNLISTED FOR NOW. Nothing links here, the page carries noindex, and no banner
-points at it, so it can be tried and changed before anyone is sent to it.
-Promoting it is a separate step (the quiz banner's segments, and dropping
-NOINDEX).
+PROMOTED ON 18 NOV. It shipped unlisted (noindex, no links) and was tried
+and rewritten twice before anyone was sent to it. Now the site-wide banner
+points here (`banner_segments`, put in front of the quiz's by events.banner)
+and the page is indexed; /events/ lists it beside Know Your Flames.
 
 The page has three states, before the race, during it and after, all written
 into the page with the build's one showing; static/derby/derby.js re-picks it
@@ -54,8 +54,23 @@ MIN_REFERRALS = 3   # admin_draw_referral_tickets' p_min, as the rules say it
 PAGE_URL = render.SITE_URL + "/derby/"
 UTM_CAMPAIGN = "derby2026"
 
-# Testing, not finished: off once the page is promoted.
-NOINDEX = True
+# On while the page was being tried; promoted 18 Nov.
+NOINDEX = False
+
+# The banner points here from this moment, a day before points count: the
+# page's "before" line says so, and a link in hand on Thursday morning is
+# the head start the fastest sharers need.
+ANNOUNCED = datetime(2026, 11, 18, 0, 0, tzinfo=CAT)
+# After the close the banner says where the winners are, until the week of
+# the match is out: quiz.WINNERS_BANNER_UNTIL's reasoning.
+WINNERS_BANNER_UNTIL = datetime(2026, 11, 25, 0, 0, tzinfo=CAT)
+ICON = "\U0001F3C6"   # the banner's trophy
+
+# Who won, filled in by hand once they are verified (the call, the follow).
+# The cash winner first; empty renders nothing. quiz.Quiz.winner_names'
+# arrangement, and /events/ reads the same two.
+WINNER_NAMES = ()
+WINNERS_NOTE = ""
 
 # (value stored in update_signups.follows, label, link)
 FOLLOWS = (
@@ -78,6 +93,24 @@ def phase_at(now):
     if now < OPENS:
         return "before"
     return "open" if now < CLOSES else "closed"
+
+
+def banner_segments():
+    """The Derby's part of the site-wide strip (quiz.strip's shape)."""
+    after = ("Derby race: meet the winners" if WINNER_NAMES
+             else "Derby race: winners announced here soon")
+    return [
+        {"key": f"{CAMPAIGN_ID}:soon", "from": _ms(ANNOUNCED),
+         "until": _ms(OPENS), "cta": "Get my link", "href": "derby/",
+         "icon": ICON,
+         "text": f"Derby race starts Thursday: invite friends, win {CASH}"},
+        {"key": CAMPAIGN_ID, "from": _ms(OPENS), "until": _ms(CLOSES),
+         "cta": "Join", "href": "derby/", "icon": ICON,
+         "text": f"Invite your friends: win {CASH} or Derby VIP tickets"},
+        {"key": f"{CAMPAIGN_ID}:winners", "from": _ms(CLOSES),
+         "until": _ms(WINNERS_BANNER_UNTIL), "cta": "See", "href": "derby/",
+         "icon": ICON, "text": after},
+    ]
 
 
 def _phases(showing):
@@ -185,6 +218,22 @@ def _done():
   </section>"""
 
 
+def _winners():
+    """The winners, under the hero once they are named: the closed line
+    promises they will be announced HERE."""
+    if not WINNER_NAMES:
+        return ""
+    names = "".join(f"<li>{escape(n)}</li>" for n in WINNER_NAMES)
+    note = (f'<p class="qz-lede">{escape(WINNERS_NOTE)}</p>'
+            if WINNERS_NOTE else "")
+    return f"""<section class="qz-winners">
+  <p class="qz-eyebrow">{ICON} {escape(HOME)} v {escape(AWAY)}</p>
+  <h2 class="qz-title">The winners</h2>
+  <ul class="qz-winners-list">{names}</ul>
+  {note}
+</section>"""
+
+
 def _rules():
     return f"""<details class="qz-rules" id="rules">
   <summary>Full rules</summary>
@@ -284,13 +333,15 @@ def render_page(*, css_ver, fl, updated, now, rpc_base="", key=""):
       point.</strong> Most points wins.</p>
     {_phases(showing)}
   </header>
+  {_winners()}
   {_flow()}
   {_form()}
   {_done()}
   {_rules()}
+  <p class="ev-more"><a href="../events/">Past events and winners &rarr;</a></p>
   </main>
 </div>
-{render.footer(updated)}
+{render.footer(updated, "../")}
 <script type="application/json" id="dy-config">{config}</script>
 <script type="module" src="derby.js?v={js_ver}"></script>
 </body>

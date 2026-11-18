@@ -9,8 +9,10 @@ What is being protected:
   * **The page always says something true** before, during and after the
     race, and the form is there in all three: signing up is worth something
     whether or not a race is on.
-  * **Unlisted means unlisted.** It carries noindex, and no other page links
-    to it, until it is promoted on purpose.
+  * **Promoted on purpose, from 18 Nov.** The site-wide banner points here
+    from derby.ANNOUNCED until the winners have had their days, and the
+    page is indexed. (It shipped unlisted, and a test held it so, while it
+    was tried.)
   * **No person is in the HTML.** The page is static and public; a code or a
     phone number in it would be in every copy.
   * **The rules say what the admin screen does**: the minimum for the draw,
@@ -26,7 +28,7 @@ from datetime import datetime, timedelta
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from src import derby, flags, quiz  # noqa: E402
+from src import derby, events, flags, quiz  # noqa: E402
 
 MIGRATION = os.path.join(ROOT, "supabase", "migrations", "0072_derby_referrals.sql")
 STATIC = os.path.join(ROOT, "static")
@@ -125,10 +127,12 @@ class ThePage(unittest.TestCase):
         # Dropped for this race; it may come back as its own competition.
         self.assertNotIn("pred_home", _page(self.DURING))
 
-    def test_unlisted_while_testing(self):
-        html = _page(self.DURING)
-        self.assertTrue(derby.NOINDEX)
-        self.assertIn('<meta name="robots" content="noindex">', html)
+    def test_indexed_now_it_is_promoted(self):
+        self.assertFalse(derby.NOINDEX)
+        self.assertNotIn('name="robots"', _page(self.DURING))
+
+    def test_no_winners_block_until_they_are_named(self):
+        self.assertNotIn("qz-winners", _page(self.AFTER))
 
     def test_the_link_panel_ships_hidden(self):
         html = _page(self.DURING)
@@ -164,22 +168,35 @@ class ThePage(unittest.TestCase):
         self.assertIn(quiz._when(derby.CLOSES), rules)
 
 
-class NothingLinksHereYet(unittest.TestCase):
-    """Promotion is a decision, not a side effect: until it is made, the
-    banner and the homepage do not point at /derby/."""
+class TheBannerPointsHere(unittest.TestCase):
+    """events.banner puts the Derby in front of the quiz's winners from the
+    day it is announced; quiz.banner alone still knows nothing of it."""
 
-    def test_the_quiz_banner_does_not_point_here(self):
-        for day in (19, 20, 21):
-            now = datetime(2026, 11, day, 9, 0, tzinfo=derby.CAT)
-            self.assertNotIn("derby/", quiz.banner("", now))
+    def test_from_the_announcement_to_after_the_close(self):
+        for when in (derby.ANNOUNCED + timedelta(hours=1),
+                     derby.OPENS + timedelta(hours=1),
+                     derby.CLOSES + timedelta(hours=1)):
+            with self.subTest(when):
+                html = events.banner("../", when)
+                self.assertIn('href="../derby/"', html)
 
-    def test_no_source_file_links_to_the_page(self):
-        src = os.path.join(ROOT, "src")
-        for name in os.listdir(src):
-            if not name.endswith(".py") or name == "derby.py":
-                continue
-            with open(os.path.join(src, name), encoding="utf-8") as fh:
-                self.assertNotIn('derby/"', fh.read(), name)
+    def test_it_says_when_points_start_before_they_do(self):
+        html = events.banner("", derby.ANNOUNCED + timedelta(hours=1))
+        self.assertIn("starts Thursday", html)
+        self.assertIn(derby.CASH, html)
+
+    def test_it_goes_once_the_winners_have_had_their_days(self):
+        self.assertEqual(events.banner("", derby.WINNERS_BANNER_UNTIL), "")
+
+    def test_the_segments_run_end_to_end(self):
+        segs = derby.banner_segments()
+        for a, b in zip(segs, segs[1:]):
+            self.assertEqual(a["until"], b["from"])
+        self.assertTrue(all(s["href"] == "derby/" for s in segs))
+
+    def test_before_the_announcement_the_quiz_still_has_the_strip(self):
+        html = events.banner("", derby.ANNOUNCED - timedelta(hours=1))
+        self.assertIn('href="quiz/"', html)
 
 
 if __name__ == "__main__":

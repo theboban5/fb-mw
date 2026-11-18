@@ -231,6 +231,8 @@ def phase_at(now):
 
 # ── The banner ───────────────────────────────────────────────────────────────
 
+FLAG = "\U0001F1F2\U0001F1FC"   # the banner's icon for this campaign
+
 def _banner_segments():
     """What the banner says when: each open round, and the gap between them.
 
@@ -249,11 +251,13 @@ def _banner_segments():
                 segs.append({
                     "key": f"{q.id}:soon", "from": _ms(prev.closes),
                     "until": _ms(q.opens), "cta": "How",
+                    "href": "quiz/", "icon": FLAG,
                     "text": f"Know Your Flames Round {q.round} opens at "
                             f"{at} tonight: "
                             f"{q.prize[0].lower()}{q.prize[1:]}"})
         segs.append({"key": q.id, "from": _ms(q.opens), "until": _ms(q.closes),
-                     "cta": "Play", "text": q.banner})
+                     "cta": "Play", "text": q.banner, "href": "quiz/",
+                     "icon": FLAG})
     # After the last close the banner stays a few days more, pointing at the
     # winners: the week of the Lilongwe match brings the most readers the
     # campaign will see, and a draw nobody sees announced reads as no draw.
@@ -261,7 +265,8 @@ def _banner_segments():
     if last.closes < WINNERS_BANNER_UNTIL:
         segs.append({"key": "winners", "from": _ms(last.closes),
                      "until": _ms(WINNERS_BANNER_UNTIL), "cta": "See",
-                     "text": "Know Your Flames: meet the winners"})
+                     "text": "Know Your Flames: meet the winners",
+                     "href": "quiz/", "icon": FLAG})
     return segs
 
 
@@ -276,6 +281,8 @@ if(!seg){gone();return;}
 var off=null;try{off=localStorage.getItem('qz-banner-hidden');}catch(e){}
 if(off===seg.key){gone();return;}
 b.querySelector('.qz-banner-text').textContent=seg.text;
+b.querySelector('.qz-banner-flag').textContent=seg.icon||'';
+b.querySelector('.qz-banner-link').setAttribute('href',seg.href);
 b.querySelector('.qz-banner-go').textContent=seg.cta+' \\u2192';
 b.hidden=false;
 var x=b.querySelector('.qz-banner-x');x.hidden=false;
@@ -293,17 +300,29 @@ def banner(css_prefix, now):
     served on Tuesday), and remembers a dismissal per round, so closing Round
     1's banner does not hide Round 2's.
     """
-    segs = _banner_segments()
+    return strip(css_prefix, _banner_segments(), now)
+
+
+def strip(css_prefix, segs, now):
+    """The banner for any list of segments, first match wins: what
+    events.banner uses to put the Derby race in front of the quiz's winners.
+
+    Each segment carries its own link (from the site root) and icon, because
+    the strip now points at more than one page; the prefix is applied here,
+    so the JSON the script reads already holds this page's relative URL.
+    """
+    p = css_prefix or ""
+    segs = [dict(s, href=p + s["href"]) for s in segs]
     now_ms = _ms(now)
     current = next((s for s in segs if s["from"] <= now_ms < s["until"]),
                    None) or next((s for s in segs if now_ms < s["from"]), None)
     if current is None:
         return ""
-    p = escape(css_prefix)
     return (
         f'<div class="qz-banner" data-qz-banner="{escape(json.dumps(segs))}">'
-        f'<a class="qz-banner-link" href="{p}quiz/">'
-        '<span class="qz-banner-flag" aria-hidden="true">&#x1F1F2;&#x1F1FC;</span>'
+        f'<a class="qz-banner-link" href="{escape(current["href"])}">'
+        '<span class="qz-banner-flag" aria-hidden="true">'
+        f'{escape(current.get("icon", ""))}</span>'
         f'<span class="qz-banner-text">{escape(current["text"])}</span>'
         f'<span class="qz-banner-go">{escape(current["cta"])} &rarr;</span></a>'
         '<button class="qz-banner-x" type="button" hidden '
@@ -599,7 +618,7 @@ def render_page(*, css_ver, fl, updated, now, rpc_url="", key=""):
 {_rules()}
   </main>
 </div>
-{render.footer(updated)}
+{render.footer(updated, "../")}
 <script type="application/json" id="qz-config">{config}</script>
 <script type="module" src="quiz.js?v={js_ver}"></script>
 </body>

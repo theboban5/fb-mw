@@ -115,7 +115,7 @@ def page(*, title, social, css_prefix, css_ver, fl, day_html, leagues_html,
     {leagues}
   </main>
 </div>
-{render.footer(updated)}
+{render.footer(updated, css_prefix)}
 {scripts}
 </body>
 </html>"""

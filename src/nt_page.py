@@ -871,7 +871,7 @@ def build_page(dist, templates_dir, static_dir, team_data, ds, updated,
             .replace("{{CSS_PREFIX}}", "../")
             .replace("{{CSS_VER}}", css_ver)
             .replace("{{BACK_LINK}}", BACK_LINK)
-            .replace("{{FOOTER}}", render.footer(updated))
+            .replace("{{FOOTER}}", render.footer(updated, "../"))
             .replace("{{SOCIAL}}",
                      render.social_meta(f"{page_title} · {display_name}"))
         )

@@ -412,7 +412,7 @@ def build_page(dist, templates_dir, static_dir, updated) -> int:
         .replace("{{CSS_PREFIX}}", "../")
         .replace("{{CSS_VER}}", render.css_version(static_dir))
         .replace("{{BACK_LINK}}", BACK_LINK)
-        .replace("{{FOOTER}}", render.footer(updated))
+        .replace("{{FOOTER}}", render.footer(updated, "../"))
         # Results pages should never be crawled: they are query permutations of
         # pages that are already indexed on their own.
         .replace("{{SOCIAL}}",
