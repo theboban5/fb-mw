@@ -3501,59 +3501,147 @@ table.mp-table { table-layout: fixed; }
 .qz-rules li { margin-bottom: 6px; }
 
 /* ── Bring your friends to the Derby (0072, /derby/) ─────────────────────
-   The quiz page's cards and buttons, plus what a referral needs: a follow
-   row per platform, the link box, and the share buttons — which are <a>s
-   here (wa.me and Facebook's sharer are links), so they take the quiz
-   button's look without a button's defaults. */
-.dy-note { margin: 0 0 10px; color: var(--muted); font-size: 0.85rem; }
-.dy-follows.is-missing { border-color: #ce1126; box-shadow: 0 0 0 1px #ce1126; }
-.dy-follow-row {
-  display: grid;
-  gap: 8px;
-  margin: 0 0 10px;
-  padding: 0 0 10px;
-  border-bottom: 1px solid var(--line);
+   Written for readers who do not sign up for things online: one idea (a
+   friend who joins = a point), the prize in big type, and the flow as three
+   numbered steps that light up as the reader moves through them. The quiz's
+   cards, fields and red button underneath. */
+.dy-hero { text-align: center; }
+.dy-prize {
+  margin: 4px 0 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
-.dy-follow-row:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
-.dy-follow-row .qz-check { margin: 0; }
-.dy-pred .qz-score { gap: 6px; margin-top: 4px; }
-/* "Wanderers" is twice "Egypt": the quiz's boxes leave it touching the card
-   at 390px, so these are narrower and the names may shrink. */
-.dy-pred .qz-score-box { width: 2.6em; }
-.dy-pred .qz-score-team { min-width: 0; overflow-wrap: anywhere; }
-.dy-pred .dy-note { margin: 10px 0 0; text-align: center; }
-.dy-pred.is-missing { border-color: #ce1126; box-shadow: 0 0 0 1px #ce1126; }
-.dy-consent { margin: 0 0 12px; color: var(--muted); font-size: 0.85rem; }
-.dy-consent a { color: var(--accent); }
+.dy-prize strong {
+  display: block;
+  color: var(--accent);
+  font-size: 2.6rem;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+.dy-prize-sub { margin: 4px 0 0; font-weight: 700; }
+.dy-rule { margin: 12px 0 0; font-size: 1.02rem; }
+.dy-hero .qz-when { margin-top: 10px; }
 .dy-invited {
-  margin: 12px 0 0;
+  margin: 0 0 14px;
   padding: 10px 12px;
   border-radius: 10px;
   background: #0b6b3a;
   color: #ffffff;
-  font-weight: 700;
+  font-weight: 800;
+  line-height: 1.3;
 }
 .dy-invited[hidden] { display: none; }
-.dy-steps { margin: 14px 0 0; padding-left: 22px; }
-.dy-steps li { margin-bottom: 6px; }
 
-.dy-link { display: flex; gap: 8px; margin-top: 14px; }
+/* 1 Join · 2 Get your link · 3 Share it */
+.dy-flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.dy-flow-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  text-align: center;
+  opacity: 0.7;
+}
+.dy-flow-step.is-now { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); opacity: 1; }
+.dy-flow-step.is-done { opacity: 1; }
+.dy-flow-text strong { display: block; font-size: 0.88rem; line-height: 1.2; }
+.dy-flow-text small { display: block; margin-top: 2px; color: var(--muted); font-size: 0.72rem; line-height: 1.25; }
+.dy-flow-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--line);
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+.dy-flow-step.is-now .dy-flow-n, .dy-step-head .dy-flow-n { background: #ce1126; color: #ffffff; }
+.dy-flow-step.is-done .dy-flow-n { background: #0b6b3a; color: #ffffff; font-size: 0; }
+.dy-flow-step.is-done .dy-flow-n::after { content: "\2713"; font-size: 0.9rem; }
+
+.dy-step-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 10px;
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+.dy-form > .dy-step-head { margin-top: 0; }
+
+.dy-note { margin: 0 0 10px; color: var(--muted); font-size: 0.85rem; }
+.dy-follows.is-missing { border-color: #ce1126; box-shadow: 0 0 0 1px #ce1126; }
+.dy-follow-grid { display: grid; gap: 8px; }
+/* Outlined in the platform's colour until tapped, filled with a tick after:
+   the state of the hidden box beside it, worn where the tap was. */
+.dy-follow-btn {
+  --brand: #0b6b3a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 50px;
+  padding: 10px 12px;
+  border: 2px solid var(--brand);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--ink);
+  font-weight: 800;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.dy-follow-btn.is-whatsapp { --brand: #1fa855; }
+.dy-follow-btn.is-facebook { --brand: #1877f2; }
+.dy-follow-btn.is-linkedin { --brand: #0a66c2; }
+.dy-follow-tick { display: none; }
+.dy-follow-btn.is-on { background: var(--brand); color: #ffffff; }
+.dy-follow-btn.is-on .dy-follow-tick { display: inline; }
+.dy-consent { margin: 0 0 12px; color: var(--muted); font-size: 0.85rem; }
+.dy-consent a { color: var(--accent); }
+
+/* Steps 2 and 3 */
+.dy-done { text-align: left; }
+.dy-done:focus { outline: none; }
+.dy-done-in {
+  margin: 0;
+  color: var(--accent);
+  font-size: 1.3rem;
+  font-weight: 900;
+  text-align: center;
+}
+.dy-done .qz-done-note { margin: 0 0 12px; }
+.dy-link { display: flex; gap: 8px; }
 .dy-link-box {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 46px;
   margin: 0;
   padding: 11px 12px;
-  overflow-wrap: anywhere;
-  text-align: left;
-  user-select: all;
-  border: 1px solid var(--line);
+  border: 2px dashed var(--line);
   border-radius: 10px;
   background: var(--bg);
   color: var(--ink);
-  font: inherit;
   font-size: 1rem;
-  font-weight: 700;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+  user-select: all;
 }
 .dy-copy {
   flex: 0 0 auto;
@@ -3567,21 +3655,50 @@ table.mp-table { table-layout: fixed; }
   font-weight: 800;
   cursor: pointer;
 }
-.dy-share { display: grid; gap: 10px; margin-top: 14px; }
-.dy-share .qz-share { margin-top: 0; }
-.dy-share a.qz-submit, .dy-share a.qz-share {
+a.dy-share-wa {
   display: flex;
   align-items: center;
   justify-content: center;
+  min-height: 58px;
+  background: #1fa855;
+  font-size: 1.1rem;
   text-decoration: none;
 }
-.dy-share a.qz-submit { background: #0b6b3a; }
-.dy-share a.qz-share { background: #1877f2; }
-.dy-who { margin: 10px 0 0; color: var(--muted); font-size: 0.85rem; }
-.dy-count { margin: 16px 0 0; font-size: 1.05rem; font-weight: 800; }
-.dy-count[hidden] { display: none; }
+.dy-share-more {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 18px;
+  margin-top: 12px;
+}
+.dy-share-more a, .dy-share-more button {
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.dy-share-more [hidden] { display: none; }
+.dy-points {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  text-align: center;
+}
+.dy-points[hidden] { display: none; }
+.dy-points-n { margin: 0; font-size: 1.1rem; font-weight: 800; }
+.dy-points-n span { font-size: 2.4rem; line-height: 1; }
+.dy-points-note { margin: 6px 0 0; color: var(--muted); font-size: 0.9rem; }
+.dy-who { margin: 14px 0 0; color: var(--muted); font-size: 0.85rem; text-align: center; }
+.dy-who[hidden] { display: none; }
 .dy-reset {
-  margin-top: 16px;
+  display: block;
+  margin: 10px auto 0;
   padding: 6px;
   border: 0;
   background: none;
@@ -3591,3 +3708,9 @@ table.mp-table { table-layout: fixed; }
   text-decoration: underline;
   cursor: pointer;
 }
+details.qz-rules > summary {
+  color: var(--ink);
+  font-weight: 800;
+  cursor: pointer;
+}
+details.qz-rules[open] > summary { margin-bottom: 8px; }

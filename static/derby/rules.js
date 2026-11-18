@@ -34,16 +34,6 @@ export function phaseAt(now, opens, closes) {
   return now < closes ? "open" : "closed";
 }
 
-/* The optional prediction from its two boxes: both blank is no prediction,
- * both whole numbers 0–20 is one, anything else is a mistake to point at. */
-export function predValue(home, away) {
-  const blank = (s) => (s || "").trim() === "";
-  if (blank(home) && blank(away)) return { ok: true, home: null, away: null };
-  const ok = (s) => /^\s*\d{1,2}\s*$/.test(s || "") && Number(s) <= 20;
-  if (ok(home) && ok(away)) return { ok: true, home: Number(home), away: Number(away) };
-  return { ok: false };
-}
-
 /* A person's link. With a `source` it carries the UTM tags that tell GA4
  * which platform the friend came from; without, it is the short one shown
  * on the page and copied, because a link that looks like a tracking URL is
@@ -55,14 +45,20 @@ export function linkFor(page, code, source = "", campaign = "") {
     + `&utm_medium=referral&utm_campaign=${encodeURIComponent(campaign)}`;
 }
 
-/* The message a friend receives. The prediction is the hook when there is
- * one: "I say Bullets 2–1. What's yours?" is a reason to reply. */
-export function shareText({ cash, home, away, pred }, url) {
-  const guess = pred && pred.home != null && pred.away != null
-    ? ` I say ${home} ${pred.home}–${pred.away} ${away}. What's your score?`
-    : "";
-  return `${home} v ${away} is on Sunday!${guess} EveryLeague is giving away `
-    + `${cash} and VIP tickets for the Derby. Sign up with my link: ${url}`;
+/* The message a friend receives: what it is, what they could win, and the
+ * link last, so WhatsApp's preview card sits under the words. */
+export function shareText({ cash, home, away }, url) {
+  return `Join me in EveryLeague's ${home} v ${away} giveaway! You could win `
+    + `${cash} or VIP tickets for the Derby. Tap my link to join: ${url}`;
+}
+
+/* The line a friend sees on arriving: who sent them, by first name when the
+ * database knows it (0073), and what joining does for that person. */
+export function inviteLine(name) {
+  const who = (name || "").trim();
+  return who
+    ? `${who} invited you. Join below and ${who} gets a point.`
+    : "A friend invited you. Join below and they get a point.";
 }
 
 export function whatsappUrl(text) {
@@ -73,38 +69,36 @@ export function facebookUrl(url) {
   return `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`;
 }
 
-/* What the page says about a person's own link. Before the race, sign-ups
- * through it do not count yet, and the line says so rather than showing a
- * 0 that looks like a broken link. */
-export function countLine({ counted = 0, used = 0 } = {}, phase) {
-  const people = (n) => (n === 1 ? "1 friend" : `${n} friends`);
+/* A person's points as the page shows them: the number, big, and one line
+ * under it. Before the race a sign-up through the link earns nothing yet,
+ * and the line says so rather than leaving a 0 that looks like a broken
+ * link. */
+export function pointsView({ counted = 0, used = 0 } = {}, phase) {
+  const friends = (n) => (n === 1 ? "1 friend has" : `${n} friends have`);
   if (phase === "before") {
-    return used
-      ? `${people(used)} signed up through your link already. Only sign-ups once the race starts count.`
-      : "Nobody has signed up through your link yet. The race has not started.";
+    return { n: 0, note: used
+      ? `${friends(used)} joined with your link already. Points start counting when the competition opens.`
+      : "Points start counting when the competition opens. Get sharing!" };
   }
-  if (!counted) {
-    return phase === "closed"
-      ? "Nobody signed up through your link during the race."
-      : "Nobody has signed up through your link yet. Send it to a friend!";
+  if (phase === "closed") {
+    return { n: counted, note: "It's over. We will contact the winners." };
   }
-  return phase === "closed"
-    ? `You brought ${people(counted)}.`
-    : `You've brought ${people(counted)} so far.`;
+  return { n: counted, note: counted
+    ? "Keep sharing: the most points wins."
+    : "Nobody has joined with your link yet. Send it to a friend!" };
 }
 
 /* What is wrong with the form, as [field, sentence], or null when it can be
- * sent. Fields: "follows", "name", "phone", "email", "pred". In the page's
- * order, so the first problem is the one nearest the top. */
-export function formProblem({ follows = [], name = "", phone = "", email = "", pred }) {
+ * sent. Fields: "follows", "name", "phone", "email". In the page's order, so
+ * the first problem is the one nearest the top. */
+export function formProblem({ follows = [], name = "", phone = "", email = "" }) {
   if (!follows.some((f) => FOLLOW_VALUES.includes(f))) {
-    return ["follows", "Follow EveryLeague on at least one of these, then tick where you follow us."];
+    return ["follows", "Tap WhatsApp, Facebook or LinkedIn to follow us first."];
   }
   if (name.trim().length < 2) return ["name", "Please enter your name."];
   if (!normalisePhone(phone)) {
     return ["phone", "Please enter your phone number, like 0991 234 567."];
   }
   if (!emailOk(email)) return ["email", "That email address does not look right. Fix it, or leave it empty."];
-  if (pred && !pred.ok) return ["pred", "A prediction is two whole numbers, like 2 and 1. Or leave both empty."];
   return null;
 }

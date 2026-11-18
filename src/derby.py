@@ -82,11 +82,11 @@ def phase_at(now):
 
 def _phases(showing):
     lines = {
-        "before": f"The race starts {_when(OPENS)}. Get your link now: "
-                  f"friends who sign up from then on count for you.",
-        "open": f"Closes {_when(CLOSES)}.",
-        "closed": "The race has closed. We are checking the counts and "
-                  "will announce the winners here and on our Facebook page.",
+        "before": f"Points start counting {_when(OPENS)}. Get your link now "
+                  f"and have it ready.",
+        "open": f"Ends {_when(CLOSES)}.",
+        "closed": "It's over! We are checking the points and will announce "
+                  "the winners here and on our Facebook page.",
     }
     return "".join(
         f'<p class="qz-when" data-dy-phase="{key}"'
@@ -94,137 +94,146 @@ def _phases(showing):
         for key, text in lines.items())
 
 
-def _follow_rows():
-    rows = "".join(
-        f'<div class="dy-follow-row">'
-        f'<a class="qz-follow-link" href="{escape(url)}" target="_blank" '
-        f'rel="noopener" data-dy-follow="{value}">Follow on {escape(label)}</a>'
-        f'<label class="qz-check"><input type="checkbox" name="follow_{value}" '
-        f'value="{value}"><span>I follow on {escape(label)}</span></label>'
-        f"</div>"
+def _flow():
+    """1 Join, 2 Get your link, 3 Share it: the whole idea, before anything
+    is asked of anyone. derby.js moves the highlight as the reader moves,
+    so the step they are on is never a guess."""
+    steps = (("Join", "Follow us + your number"),
+             ("Get your link", "Your own, made for you"),
+             ("Share it", "1 friend who joins = 1 point"))
+    items = "".join(
+        f'<li class="dy-flow-step{" is-now" if n == 1 else ""}" data-dy-step="{n}">'
+        f'<span class="dy-flow-n" aria-hidden="true">{n}</span>'
+        f'<span class="dy-flow-text"><strong>{escape(title)}</strong>'
+        f"<small>{escape(sub)}</small></span></li>"
+        for n, (title, sub) in enumerate(steps, 1))
+    return f'<ol class="dy-flow" aria-label="How it works">{items}</ol>'
+
+
+def _follow_buttons():
+    """One tap per platform: the tap opens it in a new tab AND says you
+    follow there. A button and a tick box for each was six things to do
+    where one is enough; the tick boxes are still there, hidden, as the
+    form's state."""
+    buttons = "".join(
+        f'<a class="dy-follow-btn is-{value}" href="{escape(url)}" '
+        f'target="_blank" rel="noopener" data-dy-follow="{value}">'
+        f'<span class="dy-follow-tick" aria-hidden="true">&#x2713;</span>'
+        f"{escape(label)}</a>"
+        f'<input type="checkbox" name="follow_{value}" value="{value}" hidden>'
         for value, label, url in FOLLOWS if url)
     return f"""<fieldset class="qz-details dy-follows" data-dy-follows>
-      <legend class="qz-q-text"><span class="qz-q-n">Step 1</span>Follow EveryLeague</legend>
-      <p class="dy-note">On at least one of these, then tick where you follow
-        us. Winners show us before they are paid.</p>
-      {rows}
+      <legend class="qz-q-text">Follow EveryLeague</legend>
+      <p class="dy-note">Tap at least one. Already following? Tap it anyway.</p>
+      <div class="dy-follow-grid">{buttons}</div>
     </fieldset>"""
 
 
 def _form():
     return f"""<form class="qz-form dy-form" novalidate>
-    {_follow_rows()}
+    <h2 class="dy-step-head"><span class="dy-flow-n" aria-hidden="true">1</span>Join</h2>
+    {_follow_buttons()}
     <fieldset class="qz-details">
-      <legend class="qz-q-text"><span class="qz-q-n">Step 2</span>Your details</legend>
+      <legend class="qz-q-text">Your details</legend>
       <label class="qz-field"><span>Your name</span>
         <input name="name" type="text" autocomplete="name" maxlength="80"></label>
       <label class="qz-field"><span>Phone number</span>
         <input name="phone" type="tel" inputmode="tel" autocomplete="tel"
                placeholder="0991 234 567" maxlength="24">
-        <small>One sign-up per number. We call or WhatsApp it if you win.</small></label>
+        <small>We call or WhatsApp you on it if you win.</small></label>
       <label class="qz-field"><span>Email <em>(optional)</em></span>
         <input name="email" type="email" autocomplete="email" maxlength="120"></label>
     </fieldset>
-    <fieldset class="qz-q dy-pred" data-kind="score">
-      <legend class="qz-q-text"><span class="qz-q-n">Optional</span>Your prediction</legend>
-      <div class="qz-score">
-        <span class="qz-score-team">{HOME}</span>
-        <input class="qz-score-box" name="pred_home" type="text" inputmode="numeric"
-               pattern="[0-9]*" maxlength="2" autocomplete="off" aria-label="{HOME}'s goals">
-        <span class="qz-score-dash" aria-hidden="true">&ndash;</span>
-        <input class="qz-score-box" name="pred_away" type="text" inputmode="numeric"
-               pattern="[0-9]*" maxlength="2" autocomplete="off" aria-label="{AWAY}'s goals">
-        <span class="qz-score-team">{AWAY}</span>
-      </div>
-      <p class="dy-note">Just for fun: it goes in the message your friends see.</p>
-    </fieldset>
-    <p class="dy-consent">Signing up means EveryLeague may send you updates
-      (results, records and news) on WhatsApp or email, and that you agree to
-      the <a href="#rules">rules</a>. You can ask us to stop at any time.</p>
+    <p class="dy-consent">By joining you agree to the <a href="#rules">rules</a>
+      and to EveryLeague sending you football updates. You can ask us to stop
+      at any time.</p>
     <div class="qz-hp" aria-hidden="true"><label>Leave this empty
       <input name="hp_field" type="text" tabindex="-1" autocomplete="off"></label></div>
-    <button class="qz-submit" type="submit">Get my link</button>
+    <button class="qz-submit" type="submit">Join and get my link &rarr;</button>
     <p class="qz-status" role="status" aria-live="polite"></p>
-    <noscript><p class="qz-status is-error">Signing up needs JavaScript,
+    <noscript><p class="qz-status is-error">Joining needs JavaScript,
       which this browser has turned off.</p></noscript>
   </form>"""
 
 
 def _done():
-    """Shown once a sign-up comes back with a code, and on every later visit
-    from the same phone. Every button ships hidden or inert and the script
-    fills in the link: a page without JS never reaches this panel."""
-    return """<section class="qz-done dy-done" hidden>
-    <p class="qz-done-tick" aria-hidden="true">&#x2713;</p>
-    <h2 class="qz-title">Your link</h2>
-    <p class="qz-done-note">Send it to your friends. Everyone new who signs up
-      through it counts for you.</p>
-    <p class="dy-who" hidden></p>
+    """Steps 2 and 3, once a sign-up comes back with a code, and on every
+    later visit from the same phone. It leads with the one thing to do next,
+    WhatsApp, because a link someone does not know to send is no link."""
+    return """<section class="qz-done dy-done" hidden tabindex="-1">
+    <p class="dy-done-in">&#x2713; You're in!</p>
+    <h2 class="dy-step-head"><span class="dy-flow-n" aria-hidden="true">2</span>Here is your link</h2>
     <div class="dy-link">
       <p class="dy-link-box" aria-label="Your link"></p>
       <button class="dy-copy" type="button">Copy</button>
     </div>
-    <div class="dy-share">
-      <a class="qz-submit dy-share-wa" href="#" target="_blank" rel="noopener"
-         data-dy-share="whatsapp">Send on WhatsApp</a>
-      <a class="qz-share dy-share-fb" href="#" target="_blank" rel="noopener"
-         data-dy-share="facebook">Share on Facebook</a>
-      <button class="qz-share" type="button" hidden data-dy-share="native">More ways to share</button>
+    <h2 class="dy-step-head"><span class="dy-flow-n" aria-hidden="true">3</span>Now share it</h2>
+    <p class="qz-done-note">Send it to your friends and WhatsApp groups.
+      <strong>Every friend who joins with your link = 1 point.</strong></p>
+    <a class="qz-submit dy-share-wa" href="#" target="_blank" rel="noopener"
+       data-dy-share="whatsapp">Send to friends on WhatsApp</a>
+    <div class="dy-share-more">
+      <a href="#" target="_blank" rel="noopener" data-dy-share="facebook">Share on Facebook</a>
+      <button type="button" hidden data-dy-share="native">More ways to share</button>
     </div>
-    <p class="dy-count" aria-live="polite" hidden></p>
-    <button class="dy-reset" type="button">Not you? Sign up with another number</button>
+    <div class="dy-points" hidden>
+      <p class="dy-points-n"><span>0</span> points</p>
+      <p class="dy-points-note"></p>
+    </div>
+    <p class="dy-who" hidden></p>
+    <button class="dy-reset" type="button">Not you? Join with another number</button>
   </section>"""
 
 
 def _rules():
-    return f"""<section class="qz-rules" id="rules">
-  <h2>Rules</h2>
+    return f"""<details class="qz-rules" id="rules">
+  <summary>Full rules</summary>
   <ul>
-    <li>Free. One sign-up per phone number.</li>
+    <li>Free. One entry per phone number.</li>
     <li>To take part, follow EveryLeague on at least one of Facebook, our
       WhatsApp channel or LinkedIn. Winners show us that they follow before
       they are paid or given tickets.</li>
-    <li>Referrals count from {escape(_when(OPENS))} until
-      {escape(_when(CLOSES))}. A referral is a new person who signs up through
-      your link with their own phone number. People already on our list,
-      including everyone who asked for updates in Know Your Flames, do not
-      count.</li>
-    <li>The person with the most referrals that count wins {CASH}. If two or
-      more are level, the winner is drawn at random between them.</li>
+    <li>Points count from {escape(_when(OPENS))} until
+      {escape(_when(CLOSES))}. You get 1 point for each new person who joins
+      through your link with their own phone number. People already on our
+      list, including everyone who asked for updates in Know Your Flames, do
+      not earn points.</li>
+    <li>The person with the most points wins {CASH}. If two or more are
+      level, the winner is drawn at random between them.</li>
     <li>{TICKETS} VIP tickets for {escape(MATCH)} on
       {KICKOFF:%A} {KICKOFF.day} {KICKOFF:%B} are drawn at random among
-      everyone else with at least {MIN_REFERRALS} referrals that count. One
-      prize per person.</li>
+      everyone else with at least {MIN_REFERRALS} points. One prize per
+      person.</li>
     <li>Before any prize is given we phone some of the people each winner
-      referred. Sign-ups that were made up, or made without the person
+      brought. Entries that were made up, or made without the person
       agreeing, are removed, and whoever made them is disqualified.</li>
     <li>We contact winners on the phone number they gave, by call, SMS or
-      WhatsApp, after the race closes. A winner we cannot reach the same day
-      is replaced by the next in line.</li>
+      WhatsApp, after it ends. A winner we cannot reach the same day is
+      replaced by the next in line.</li>
     <li>We may announce winners' names on EveryLeague and on our
       Facebook page.</li>
-    <li>Your details are used to run this campaign and to send you EveryLeague
-      updates, which you can ask us to stop at any time. We never sell or
-      share them; ask us to delete them through the &ldquo;Send us a
+    <li>Your details are used to run this competition and to send you
+      EveryLeague updates, which you can ask us to stop at any time. We never
+      sell or share them; ask us to delete them through the &ldquo;Send us a
       message&rdquo; link at the bottom of the page.</li>
     <li>EveryLeague's own team cannot win.</li>
   </ul>
-</section>"""
+</details>"""
 
 
 def render_page(*, css_ver, fl, updated, now, rpc_base="", key=""):
     """`rpc_base` is PostgREST's /rest/v1/rpc; "" renders a page that says it
     cannot send, build._quiz_endpoint's degradation."""
     showing = phase_at(now)
-    title = f"Bring your friends to the Derby: win {CASH}"
+    title = f"Invite your friends, win {CASH}"
     social = render.social_meta(
         title, url=PAGE_URL,
-        description=f"Win {CASH} or VIP tickets for {MATCH}. Sign up on "
-                    "EveryLeague, get your own link, and every friend who "
-                    "joins counts for you.")
+        description=f"Win {CASH} or VIP tickets for {MATCH}. Join, get your "
+                    "own link, and every friend who joins with it is a point.")
     config = json.dumps({
         "signup": f"{rpc_base}/submit_derby_signup" if rpc_base else "",
         "count": f"{rpc_base}/referral_count" if rpc_base else "",
+        "inviter": f"{rpc_base}/referral_inviter" if rpc_base else "",
         "key": key,
         "campaign": CAMPAIGN_ID,
         "opens": _ms(OPENS),
@@ -265,23 +274,17 @@ def render_page(*, css_ver, fl, updated, now, rpc_base="", key=""):
 <div class="qz-wrap">
   {quiz._header(fl)}
   <main class="qz-main">
-  <header class="qz-hero">
-    <p class="qz-eyebrow">{HOME} v {AWAY} &middot; {KICKOFF:%A} {KICKOFF.day} {KICKOFF:%B}, {KICKOFF:%H:%M}</p>
-    <h2 class="qz-title">Bring your friends to the Derby</h2>
-    <p class="qz-lede">Win <strong>{CASH}</strong>, or one of {TICKETS} VIP
-      tickets for the Derby. Get your own link, send it to your friends, and
-      every friend who signs up counts for you.</p>
+  <header class="qz-hero dy-hero">
+    <p class="dy-invited" hidden>&#x1F44B; <span class="dy-invited-text">A friend
+      invited you. Join below and they get a point.</span></p>
+    <p class="qz-eyebrow">{HOME} v {AWAY} &middot; {KICKOFF:%A} {KICKOFF.day} {KICKOFF:%B}</p>
+    <p class="dy-prize">Win <strong>{CASH}</strong></p>
+    <p class="dy-prize-sub">or one of {TICKETS} VIP tickets for the Derby</p>
+    <p class="dy-rule">Invite your friends. <strong>Each friend who joins = 1
+      point.</strong> Most points wins.</p>
     {_phases(showing)}
-    <p class="dy-invited" hidden>A friend sent you here. Sign up below and it
-      counts for them.</p>
   </header>
-  <ol class="dy-steps">
-    <li><strong>Follow</strong> EveryLeague and sign up.</li>
-    <li><strong>Send</strong> your link to your friends.</li>
-    <li>The most friends signed up by {CLOSES:%A} {CLOSES:%H:%M}
-      wins <strong>{CASH}</strong>. {MIN_REFERRALS} or more puts you in the
-      draw for {TICKETS} VIP tickets.</li>
-  </ol>
+  {_flow()}
   {_form()}
   {_done()}
   {_rules()}

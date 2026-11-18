@@ -101,13 +101,29 @@ class ThePage(unittest.TestCase):
             self.assertIn('<form class="qz-form dy-form"', html)
             self.assertNotIn('<form class="qz-form dy-form" hidden', html)
 
-    def test_every_follow_has_a_link_and_a_tick(self):
+    def test_every_follow_is_one_button_backed_by_a_hidden_box(self):
         html = _page(self.DURING)
         for value, _label, url in derby.FOLLOWS:
             with self.subTest(value):
                 self.assertIn(f'data-dy-follow="{value}"', html)
-                self.assertIn(f'name="follow_{value}" value="{value}"', html)
+                self.assertIn(f'name="follow_{value}" value="{value}" hidden', html)
                 self.assertIn(url, html)
+
+    def test_the_flow_is_three_steps_with_the_first_lit(self):
+        html = _page(self.DURING)
+        steps = re.findall(r'<li class="dy-flow-step( is-now)?" data-dy-step="(\d)"', html)
+        self.assertEqual([n for _now, n in steps], ["1", "2", "3"])
+        self.assertEqual([n for now, n in steps if now], ["1"])
+
+    def test_the_share_step_leads_with_whatsapp(self):
+        done = _page(self.DURING).split('class="qz-done dy-done"', 1)[1]
+        self.assertLess(done.index("Now share it"), done.index('data-dy-share="whatsapp"'))
+        self.assertLess(done.index('data-dy-share="whatsapp"'),
+                        done.index('data-dy-share="facebook"'))
+
+    def test_no_prediction_on_the_form(self):
+        # Dropped for this race; it may come back as its own competition.
+        self.assertNotIn("pred_home", _page(self.DURING))
 
     def test_unlisted_while_testing(self):
         html = _page(self.DURING)
@@ -116,7 +132,7 @@ class ThePage(unittest.TestCase):
 
     def test_the_link_panel_ships_hidden(self):
         html = _page(self.DURING)
-        self.assertIn('<section class="qz-done dy-done" hidden>', html)
+        self.assertIn('<section class="qz-done dy-done" hidden tabindex="-1">', html)
         self.assertIn('<p class="dy-invited" hidden>', html)
 
     def test_endpoints_come_from_the_rpc_base(self):
@@ -124,6 +140,7 @@ class ThePage(unittest.TestCase):
                      key="sb_publishable_abc")
         self.assertIn('"signup": "https://x.supabase.co/rest/v1/rpc/submit_derby_signup"', html)
         self.assertIn('"count": "https://x.supabase.co/rest/v1/rpc/referral_count"', html)
+        self.assertIn('"inviter": "https://x.supabase.co/rest/v1/rpc/referral_inviter"', html)
         self.assertIn(f'"campaign": "{derby.CAMPAIGN_ID}"', html)
 
     def test_no_endpoint_is_an_empty_one_not_a_broken_one(self):
@@ -141,8 +158,9 @@ class ThePage(unittest.TestCase):
         rules = html.split('id="rules"', 1)[1]
         self.assertIn(derby.CASH, rules)
         self.assertIn(f"{derby.TICKETS} VIP tickets", rules)
-        self.assertIn(f"at least {derby.MIN_REFERRALS} referrals", rules)
+        self.assertIn(f"at least {derby.MIN_REFERRALS} points", rules)
         self.assertIn("phone some of the people each winner", rules)
+        self.assertIn('<details class="qz-rules" id="rules">', html)
         self.assertIn(quiz._when(derby.CLOSES), rules)
 
 

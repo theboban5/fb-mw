@@ -152,6 +152,14 @@ class DerbyReferralsTest(unittest.TestCase):
         self.assertFalse(out["ok"])
         self.assertIn("phone number", out["message"])
 
+    def test_a_code_gives_a_first_name_and_nothing_else(self):
+        code = self.sign(self.phone(), name="chikondi  live banda")["code"]
+        for asked in (code, code.lower()):
+            status, body = rpc("referral_inviter", {"p_code": asked})
+            self.assertEqual((status, body), (200, "Chikondi"))
+        status, body = rpc("referral_inviter", {"p_code": "ZZZZZZ"})
+        self.assertEqual((status, body), (200, ""))
+
     def test_the_quiz_signup_box_is_unchanged(self):
         phone = self.phone()
         status, body = rpc("submit_update_signup", {

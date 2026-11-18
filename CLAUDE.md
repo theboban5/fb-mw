@@ -222,6 +222,14 @@ Bring your friends to the Derby, migration `0072` — `/derby/`, `#/ops?tab=quiz
 - **Unlisted on purpose**: `derby.NOINDEX`, no banner, no homepage link, and
   `test_derby` fails if a page starts linking to it. Promoting it is a
   separate decision.
+- **Written for people who do not sign up for things online** (second cut,
+  `0073`): "1 friend who joins = 1 point", the prize in big type, and the
+  flow as three lit steps (Join → Get your link → Share it). Joining jumps
+  to "You're in! Now share it" with WhatsApp first. Follow is one tap per
+  platform (the tick boxes are hidden state). A friend arriving reads
+  "Chikondi invited you" (`referral_inviter`: a code's first name, nothing
+  else). The prediction is gone for now; the columns stay for its own
+  competition later.
 
 Know Your Flames, migrations `0067`–`0068` — `/quiz/`, `#/ops?tab=quiz`:
 
