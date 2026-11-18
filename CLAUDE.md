@@ -91,6 +91,7 @@ src/matches_page.py    /matches/ — every match on one date, any date
 src/home.py            the homepage shell: the day first, leagues beside it
 src/og_card.py         a link-preview PNG per match (/og/match/), cached in CI
 src/quiz.py            /quiz/ (Know Your Flames, 0067) + the banner on every page
+src/derby.py           /derby/ — the referral race (0072), unlisted until promoted
 static/report/results_grid.js  the matchday grid's rules, DOM-free and tested
 static/report/fixture_import.js  the fixture importer's rules, same bargain
 static/report/error_report.js  what to report when a screen breaks (0052)
@@ -199,6 +200,28 @@ fixture and clean up, and they never mutate a real match.
 ---
 
 ## Recent work (Nov 2026)
+
+Bring your friends to the Derby, migration `0072` — `/derby/`, `#/ops?tab=quiz`:
+
+- **A referral race before Bullets v Wanderers** (Sun 22 Nov): MK50,000 for
+  whoever brings the most, two VIP tickets drawn among everyone else with 3+.
+  A fan signs up and gets `/derby/?r=<code>`; a friend counts when they sign
+  up through it with a NEW phone number, inside the window (Thu 19 00:00 →
+  Sat 21 12:00 CAT), and was not already a quiz opt-in. Clicks are never
+  counted: a refreshed page is not a person. UTMs ride the share buttons only
+  for GA4's per-platform split.
+- **`referral_rows` is the single definition of a counted referral**, read by
+  the page's "you've brought N" (`referral_count`, anon) and the admin race
+  (`admin_referrers`, `admin_referral_referees` for the verification call,
+  `admin_draw_referral_tickets` — 0068's draw rules). A code belongs to a
+  person, a window to a `referral_campaigns` row: the next race is one row.
+- 0071's rules moved into `apply_update_signup` (0041's move);
+  `submit_update_signup` is unchanged. Following on Facebook / the WhatsApp
+  channel / LinkedIn is required and **self-declared** (`follows`): no
+  platform lets a page verify it, so winners are asked to show it.
+- **Unlisted on purpose**: `derby.NOINDEX`, no banner, no homepage link, and
+  `test_derby` fails if a page starts linking to it. Promoting it is a
+  separate decision.
 
 Know Your Flames, migrations `0067`–`0068` — `/quiz/`, `#/ops?tab=quiz`:
 

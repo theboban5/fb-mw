@@ -30,9 +30,9 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
 import validate  # noqa: E402
-from src import (adapt, dataset, flags, home, hubs, match_page,  # noqa: E402
-                 matches_page, nt, nt_page, og_card, officials, render, scorers,
-                 quiz, search, standings, trending)
+from src import (adapt, dataset, derby, flags, home, hubs,  # noqa: E402
+                 match_page, matches_page, nt, nt_page, og_card, officials,
+                 render, scorers, quiz, search, standings, trending)
 
 STATIC = os.path.join(ROOT, "static")
 TEMPLATES = os.path.join(ROOT, "templates")
@@ -1033,9 +1033,16 @@ def main(argv):
                                   national=list(national.values()), ntd=nt_data,
                                   hidden=HIDDEN_ON_LANDING)
     search.build_page(dist, TEMPLATES, STATIC, updated)
+    quiz_ep = _quiz_endpoint()
     quiz.build_page(dist, css_ver=render.css_version(STATIC),
                     fl=flags.Flags(STATIC), updated=updated, now=now,
-                    **_quiz_endpoint())
+                    **quiz_ep)
+    # /derby/ (0072): the same PostgREST base and publishable key. Unlisted:
+    # nothing above links to it until it is promoted.
+    derby.build_page(dist, css_ver=render.css_version(STATIC),
+                     fl=flags.Flags(STATIC), updated=updated, now=now,
+                     rpc_base=quiz_ep.get("rpc_url", "").rsplit("/", 1)[0],
+                     key=quiz_ep.get("key", ""))
 
     # Written last: club_hub_ids is only known once the leagues are built, and
     # the file should describe a build that actually finished.

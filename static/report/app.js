@@ -16570,7 +16570,172 @@ function quizCsv(rows, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// ── Bring your friends to the Derby (0072) ───────────────────────────────────
+// The referral race beside the quiz it followed: same admins, same private
+// numbers. Optional throughout: until 0072 is applied these RPCs do not
+// exist, and the quiz tab must still draw.
+
+async function loadOpsReferrals() {
+  const campaigns = await supabase.rpc("admin_referral_campaigns");
+  if (campaigns.error) throw campaigns.error;
+  const campaign = (campaigns.data || [])[0];
+  if (!campaign) return null;
+  const [referrers, draws] = await Promise.all([
+    supabase.rpc("admin_referrers", { p_campaign: campaign.campaign_id }),
+    supabase.rpc("admin_referral_draws", { p_campaign: campaign.campaign_id })]);
+  if (referrers.error) throw referrers.error;
+  if (draws.error) throw draws.error;
+  return { campaign, referrers: referrers.data || [], draws: draws.data || [] };
+}
+
+const FOLLOW_LABELS = { facebook: "Facebook", whatsapp: "WhatsApp", linkedin: "LinkedIn" };
+const followsText = (f) => (f || []).map((x) => FOLLOW_LABELS[x] || x).join(", ");
+
+function referrerHtml(r, campaignId) {
+  const extra = r.uncounted ? ` <small>(+${r.uncounted} not counted)</small>` : "";
+  return `
+    <div class="ops-row">
+      <span class="ops-row-teams">${r.place}. ${esc(r.name)} · ${r.counted}${extra}
+        ${r.drawn ? '<span class="ops-ok">Won a ticket</span>' : ""}</span>
+      <span class="ops-row-meta">${quizContact(r.phone)}${r.email ? ` · ${esc(r.email)}` : ""}</span>
+      <span class="ops-row-meta">Code ${esc(r.code)} · follows ${esc(followsText(r.follows) || "nothing ticked")}
+        · <a href="#/ops?tab=quiz&derby=${encodeURIComponent(r.code)}&campaign=${encodeURIComponent(campaignId)}">Who they brought &rarr;</a></span>
+    </div>`;
+}
+
+function referralDrawHtml(d, first) {
+  const winners = (d.winners || []).map((w, i) => `
+    <div class="rp-account-row"><span>${i + 1}. ${esc(w.name)}<br><small>VIP ticket · code ${esc(w.code)}</small></span>
+      <span>${quizContact(w.phone)}${w.email ? `<br>${esc(w.email)}` : ""}</span></div>`).join("");
+  return `
+    <p class="rp-hint">Drawn ${esc(quizWhen(d.drawn_at))}${d.drawn_by ? ` by ${esc(d.drawn_by)}` : ""}
+      from ${d.pool} with at least ${d.min_referrals} counted.</p>
+    ${first ? "" : '<p class="rp-hint">A replacement for a winner who could not be reached.</p>'}
+    ${winners || '<p class="rp-empty">Nobody was left to draw.</p>'}`;
+}
+
+function referralsHtml({ campaign: c, referrers, draws }) {
+  const closed = Date.now() >= new Date(c.closes_at).getTime();
+  const counting = referrers.filter((r) => r.counted > 0);
+  let draw;
+  if (!closed) {
+    draw = '<p class="rp-hint">The ticket draw opens when the race closes.</p>';
+  } else {
+    // The cash winner is a person's decision, made after phoning some of the
+    // people they brought; the draw only needs to know whom to leave out.
+    const top = counting.filter((r) => !r.drawn);
+    const n = draws.length ? 1 : 2;
+    draw = `
+      <label class="rp-label" for="ref-exclude">Leave out of the draw (the MK50,000 winner)</label>
+        <select class="rp-select" id="ref-exclude" data-ref-exclude>
+          <option value="">Nobody</option>
+          ${top.slice(0, 10).map((r, i) => `<option value="${r.signup_id}"${i === 0 ? " selected" : ""}>${r.place}. ${esc(r.name)} (${r.counted})</option>`).join("")}
+        </select>
+      <button class="rp-btn" type="button" data-ref-draw="${esc(c.campaign_id)}" data-n="${n}">${
+        draws.length ? "Draw 1 more (a winner could not be reached)" : "Draw 2 VIP tickets"}</button>`;
+  }
+  return `
+    <details class="rp-sec" open>
+      <summary><span class="rp-sec-name">${esc(c.title)}</span>
+        <span class="rp-sec-note">${esc(quizWindow(c))}</span>
+        <span class="rp-sec-count">${c.counted}</span></summary>
+      <div class="rp-sec-body">
+        <p class="rp-hint">Sign-ups from <a href="/derby/" target="_blank" rel="noopener">everyleague.co/derby/</a>.
+          A referral counts when a NEW phone number signs up through someone's
+          link inside the window, and was not already on the list from the quiz.
+          Phone a few of the top referrer's people before paying.</p>
+        <div class="rp-account-row"><span>Sign-ups on /derby/</span><span>${c.signups}</span></div>
+        <div class="rp-account-row"><span>Through someone's link</span><span>${c.referred}</span></div>
+        <div class="rp-account-row"><span>Counting</span><span>${c.counted}</span></div>
+        <div class="rp-account-row"><span>People who brought someone</span><span>${c.referrers}</span></div>
+        <div class="rp-account-row"><span>Say they follow</span>
+          <span>Facebook ${c.facebook} · WhatsApp ${c.whatsapp} · LinkedIn ${c.linkedin}</span></div>
+        <button class="rp-btn is-ghost" type="button" data-ref-csv>Download the race (CSV)</button>
+        ${referrers.map((r) => referrerHtml(r, c.campaign_id)).join("")
+          || '<p class="rp-empty">Nobody has brought anyone yet.</p>'}
+        ${draw}
+        ${draws.map((d, i) => referralDrawHtml(d, i === draws.length - 1)).join("")}
+      </div>
+    </details>`;
+}
+
+function csvDownload(header, rows, filename) {
+  const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lines = [header.map(cell).join(","), ...rows.map((r) => r.map(cell).join(","))];
+  const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function wireReferrals(data, params) {
+  view.querySelector("[data-ref-csv]")?.addEventListener("click", () => {
+    csvDownload(["place", "name", "phone", "email", "code", "counted", "not counted", "follows", "won a ticket"],
+      data.referrers.map((r) => [r.place, r.name, r.phone, r.email, r.code, r.counted, r.uncounted,
+        followsText(r.follows), r.drawn ? "yes" : "no"]),
+      `${data.campaign.campaign_id}-referrers.csv`);
+  });
+  const btn = view.querySelector("[data-ref-draw]");
+  if (!btn) return;
+  let armed = null;
+  btn.addEventListener("click", async () => {
+    const n = Number(btn.dataset.n);
+    if (!armed) {
+      const label = btn.textContent;
+      btn.textContent = `Tap again to draw ${n} at random`;
+      armed = setTimeout(() => { armed = null; btn.textContent = label; }, 5000);
+      return;
+    }
+    clearTimeout(armed);
+    btn.disabled = true;
+    const exclude = view.querySelector("[data-ref-exclude]")?.value;
+    const { data: out, error } = await supabase.rpc("admin_draw_referral_tickets", {
+      p_campaign: btn.dataset.refDraw, p_count: n, p_min: 3,
+      p_exclude: exclude ? [Number(exclude)] : [] });
+    if (error) {
+      flash(humanError(error), "error");
+      btn.disabled = false;
+      armed = null;
+      return;
+    }
+    flash(`Drawn ${out.winners.length} from ${out.pool}.`, "ok");
+    await renderOps(params);
+  });
+}
+
+async function renderOpsReferees(code, campaignId, header) {
+  const { data, error } = await supabase.rpc("admin_referral_referees",
+    { p_campaign: campaignId, p_code: code });
+  if (error) throw error;
+  const rows = data || [];
+  const counted = rows.filter((r) => r.counts).length;
+  header(`<a class="rp-btn is-ghost" href="#/ops?tab=quiz">&larr; Quiz</a>
+          <h2 class="rp-group-head">Brought by ${esc(code)}
+            <span class="rp-count">${counted}</span></h2>
+          <p class="rp-hint">Oldest first. Ring two or three and ask whether a
+            friend sent them the link. Many sign-ups a minute apart, or numbers
+            nobody answers, are worth a closer look.</p>
+          ${rows.map((r) => `
+            <div class="ops-row">
+              <span class="ops-row-teams">${esc(r.name)} ${r.counts
+                ? '<span class="ops-ok">Counts</span>'
+                : `<span class="ops-warn">Not counted: ${esc(r.reason)}</span>`}</span>
+              <span class="ops-row-meta">${quizContact(r.phone)}${r.email ? ` · ${esc(r.email)}` : ""}</span>
+              <span class="ops-row-meta">${esc(quizWhen(r.created_at))} · follows ${esc(followsText(r.follows) || "nothing ticked")}${
+                r.pred_home != null ? ` · predicts ${r.pred_home}–${r.pred_away}` : ""}</span>
+            </div>`).join("") || '<p class="rp-empty">Nobody has signed up through this link.</p>'}`);
+}
+
 async function renderOpsQuiz(params, header) {
+  const derbyCode = params.get("derby");
+  if (derbyCode) {
+    await renderOpsReferees(derbyCode, params.get("campaign") || "derby-2026", header);
+    return;
+  }
   const quizId = params.get("quiz");
   if (quizId) {
     const rows = await loadOpsQuizEntries(quizId);
@@ -16585,7 +16750,10 @@ async function renderOpsQuiz(params, header) {
   }
 
   const { rounds, draws } = await loadOpsQuiz();
-  header(`<h2 class="rp-group-head">Know Your Flames</h2>
+  let referrals = null;
+  try { referrals = await loadOpsReferrals(); } catch (_) { /* 0072 not applied yet */ }
+  header(`${referrals ? `<h2 class="rp-group-head">Referral race</h2>${referralsHtml(referrals)}` : ""}
+          <h2 class="rp-group-head">Know Your Flames</h2>
           <p class="rp-hint">Entries from <a href="/quiz/" target="_blank"
             rel="noopener">everyleague.co/quiz/</a>. Only administrators can see
             this tab. Treat these numbers as private.</p>
@@ -16593,6 +16761,8 @@ async function renderOpsQuiz(params, header) {
             || '<p class="rp-empty">No quiz rounds in the database.</p>'}
           <button class="rp-btn is-ghost" type="button" data-quiz-subs>Download
             everyone who wants updates (CSV)</button>`);
+
+  if (referrals) wireReferrals(referrals, params);
 
   for (const btn of view.querySelectorAll("[data-quiz-csv]")) {
     btn.addEventListener("click", async () => {
@@ -16629,7 +16799,7 @@ async function renderOpsQuiz(params, header) {
         const emails = new Set([...seen.values()].map((e) => e.email).filter(Boolean));
         for (const s of data || []) {
           if ((s.phone && seen.has(s.phone)) || (s.email && emails.has(s.email))) continue;
-          seen.set(s.phone || s.email, { ...s, quiz_id: "sign-up", opt_in_updates: true });
+          seen.set(s.phone || s.email, { ...s, quiz_id: s.source === "derby" ? "derby" : "sign-up", opt_in_updates: true });
         }
       } catch (_) { /* the quiz entries alone are still the list */ }
       quizCsv([...seen.values()], "everyleague-subscribers.csv");

@@ -3499,3 +3499,94 @@ table.mp-table { table-layout: fixed; }
 .qz-rules h2 { margin: 0 0 6px; color: var(--ink); font-size: 1rem; }
 .qz-rules ul { margin: 0; padding-left: 18px; }
 .qz-rules li { margin-bottom: 6px; }
+
+/* ── Bring your friends to the Derby (0072, /derby/) ─────────────────────
+   The quiz page's cards and buttons, plus what a referral needs: a follow
+   row per platform, the link box, and the share buttons — which are <a>s
+   here (wa.me and Facebook's sharer are links), so they take the quiz
+   button's look without a button's defaults. */
+.dy-note { margin: 0 0 10px; color: var(--muted); font-size: 0.85rem; }
+.dy-follows.is-missing { border-color: #ce1126; box-shadow: 0 0 0 1px #ce1126; }
+.dy-follow-row {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--line);
+}
+.dy-follow-row:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
+.dy-follow-row .qz-check { margin: 0; }
+.dy-pred .qz-score { gap: 6px; margin-top: 4px; }
+/* "Wanderers" is twice "Egypt": the quiz's boxes leave it touching the card
+   at 390px, so these are narrower and the names may shrink. */
+.dy-pred .qz-score-box { width: 2.6em; }
+.dy-pred .qz-score-team { min-width: 0; overflow-wrap: anywhere; }
+.dy-pred .dy-note { margin: 10px 0 0; text-align: center; }
+.dy-pred.is-missing { border-color: #ce1126; box-shadow: 0 0 0 1px #ce1126; }
+.dy-consent { margin: 0 0 12px; color: var(--muted); font-size: 0.85rem; }
+.dy-consent a { color: var(--accent); }
+.dy-invited {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #0b6b3a;
+  color: #ffffff;
+  font-weight: 700;
+}
+.dy-invited[hidden] { display: none; }
+.dy-steps { margin: 14px 0 0; padding-left: 22px; }
+.dy-steps li { margin-bottom: 6px; }
+
+.dy-link { display: flex; gap: 8px; margin-top: 14px; }
+.dy-link-box {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 46px;
+  margin: 0;
+  padding: 11px 12px;
+  overflow-wrap: anywhere;
+  text-align: left;
+  user-select: all;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.dy-copy {
+  flex: 0 0 auto;
+  min-height: 46px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #ffffff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.dy-share { display: grid; gap: 10px; margin-top: 14px; }
+.dy-share .qz-share { margin-top: 0; }
+.dy-share a.qz-submit, .dy-share a.qz-share {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+.dy-share a.qz-submit { background: #0b6b3a; }
+.dy-share a.qz-share { background: #1877f2; }
+.dy-count { margin: 16px 0 0; font-size: 1.05rem; font-weight: 800; }
+.dy-count[hidden] { display: none; }
+.dy-reset {
+  margin-top: 16px;
+  padding: 6px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
