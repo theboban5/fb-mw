@@ -78,7 +78,9 @@ WINNER_NAMES = ("Emily Kapanga",)
 # one VIP ticket to a fan who follows us and can get to the ground, in place
 # of the cash, because a fan at the Derby promotes the match and the site.
 WINNERS_NOTE = (f"Emily wins a VIP ticket to {MATCH} on {KICKOFF:%A} "
-                f"{KICKOFF.day} {KICKOFF:%B}. Thank you to everyone who "
+                f"{KICKOFF.day} {KICKOFF:%B}. Nobody reached {MIN_REFERRALS} "
+                f"points, so the other prizes were not given. Thank you to "
+                f"everyone who "
                 f"shared a link: more events and competitions are coming "
                 f"soon.")
 
