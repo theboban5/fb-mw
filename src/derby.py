@@ -73,8 +73,14 @@ ICON = "\U0001F3C6"   # the banner's trophy
 # Who won, filled in by hand once they are verified (the call, the follow).
 # The cash winner first; empty renders nothing. quiz.Quiz.winner_names'
 # arrangement, and /events/ reads the same two.
-WINNER_NAMES = ()
-WINNERS_NOTE = ""
+WINNER_NAMES = ("Emily Kapanga",)
+# Nobody reached MIN_REFERRALS, so neither prize went as the rules wrote it:
+# one VIP ticket to a fan who follows us and can get to the ground, in place
+# of the cash, because a fan at the Derby promotes the match and the site.
+WINNERS_NOTE = (f"Emily wins a VIP ticket to {MATCH} on {KICKOFF:%A} "
+                f"{KICKOFF.day} {KICKOFF:%B}. Thank you to everyone who "
+                f"shared a link: more events and competitions are coming "
+                f"soon.")
 
 # (value stored in update_signups.follows, label, link)
 FOLLOWS = (
@@ -122,8 +128,12 @@ def _phases(showing):
         "before": f"Points start counting {_when(OPENS)}. Get your link now "
                   f"and have it ready.",
         "open": f"Ends {_when(CLOSES)}.",
-        "closed": "It's over! We are checking the points and will announce "
-                  "the winners here and on our Facebook page.",
+        # The promise to announce, until the names are in; then it would
+        # sit above them still promising.
+        "closed": ("It's over! Thank you to everyone who took part."
+                   if WINNER_NAMES else
+                   "It's over! We are checking the points and will announce "
+                   "the winners here and on our Facebook page."),
     }
     return "".join(
         f'<p class="qz-when" data-dy-phase="{key}"'

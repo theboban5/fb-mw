@@ -23,6 +23,7 @@ import os
 import re
 import sys
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -139,7 +140,17 @@ class ThePage(unittest.TestCase):
         self.assertNotIn('name="robots"', _page(self.DURING))
 
     def test_no_winners_block_until_they_are_named(self):
-        self.assertNotIn("qz-winners", _page(self.AFTER))
+        with mock.patch.object(derby, "WINNER_NAMES", ()):
+            html = _page(self.AFTER)
+        self.assertNotIn("qz-winners", html)
+        self.assertIn("will announce", html)
+
+    def test_named_winners_replace_the_promise_to_announce(self):
+        html = _page(self.AFTER)
+        self.assertIn("qz-winners", html)
+        for name in derby.WINNER_NAMES:
+            self.assertIn(name, html)
+        self.assertNotIn("will announce", html)
 
     def test_the_link_panel_ships_hidden(self):
         html = _page(self.DURING)
